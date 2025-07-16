@@ -1,18 +1,23 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
-  --foreground: #171717;
-}
-
-body {
-  background: linear-gradient(135deg, #3b261d 0%, #4f3a2e 50%, #807268 100%);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  --foreground: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --foreground: #ffffff;
+    --foreground: #ffffff;  
+  }
+
+  .tourbillon-text-color {
+    color:  #F9F6F2;
+  }
+
+  a {
+    text-decoration: none;
+    color: inherit;
   }
 
   body {
