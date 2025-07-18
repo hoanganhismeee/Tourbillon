@@ -46,10 +46,10 @@ export default function NavBar() {
                         tracking-[0.03em] 
                         text-white uppercase
                         m-auto">  {/* m-auto is used to center the navbar */}
-            <a href="#" className="hover:opacity-10 transition-opacity">Watches</a>
-            <a href="#" className="hover:opacity-10 transition-opacity">Trend</a>
-            <a href="#" className="hover:opacity-10 transition-opacity">Stories</a>
-            <a href="#" className="hover:opacity-10 transition-opacity">Contact</a>
+            <Link href="/watches" className="hover:opacity-10 transition-opacity">Watches</Link>
+            <Link href="/trend" className="hover:opacity-10 transition-opacity">Trend</Link>
+            <Link href="/stories" className="hover:opacity-10 transition-opacity">Stories</Link>
+            <Link href="/contact" className="hover:opacity-10 transition-opacity">Contact</Link>
         </div>
         <Link href="/" className=" font-playfair 
                         text-[48px]  
@@ -66,23 +66,23 @@ export default function NavBar() {
                         style={{ paddingRight: '40px' }}>
           <button 
             onClick={handleSearchClick}
+            className="hover:opacity-70 transition-opacity cursor-pointer"
+            style={{ background: 'transparent', border: 'none' }} // idk why this is needed for this icon only
+          >
+            <UserIcon /> 
+          </button>
+          <Link 
+            href="/cart"
+            className="hover:opacity-70 transition-opacity cursor-pointer"
+          >
+            <CartIcon />
+          </Link>
+          <button 
+            onClick={handleSearchClick}
             className="hover:opacity-70 transition-opacity cursor-pointer bg-transparent border-none p-0"
-            style={{ background: 'transparent', border: 'none' }}
           >
             <SearchIcon />
           </button>
-          <Link 
-            href="/"
-            className="hover:opacity-70 transition-opacity cursor-pointer"
-          >
-            <UserIcon /> 
-          </Link>
-          <Link 
-            href="/"
-            className="hover:opacity-70 transition-opacity cursor-pointer"
-          >
-            <CartIcon/>
-          </Link>
         </div>
       </nav>
     );
