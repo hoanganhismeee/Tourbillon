@@ -1,3 +1,5 @@
+// This is the root layout for the entire application.
+// It sets up the global fonts, structure, and the navigation bar.
 import type { Metadata } from "next";
 import { Playfair_Display, Inter } from "next/font/google";
 import "./globals.css";
@@ -33,7 +35,10 @@ export default function RootLayout({
         className={`${playfairDisplay.variable} ${inter.variable} antialiased`}
         suppressHydrationWarning={true}>
         <NavBar />
-        {children}
+        {/* Main content flows naturally after the sticky navbar */}
+        <main>
+          {children}
+        </main>
       </body>
     </html>
   );

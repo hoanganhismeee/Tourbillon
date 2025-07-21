@@ -1,6 +1,7 @@
 "use client";
 
 import Link from 'next/link';
+import { useEffect, useRef } from 'react';
 
 // Icons
 const SearchIcon = () => ( 
@@ -22,10 +23,34 @@ const CartIcon = () => (
 )
 
 export default function NavBar() {
+    const navRef = useRef<HTMLElement>(null);
+
     const handleSearchClick = () => {
         // Add search functionality here
         console.log('Search clicked');
     };
+
+    useEffect(() => {
+        const updateNavbarHeight = () => {
+            if (navRef.current) {
+                const height = navRef.current.offsetHeight;
+                console.log('Navbar height:', height); // Debug log
+                document.documentElement.style.setProperty('--navbar-height', `${height}px`);
+            }
+        };
+
+        // Initial measurement
+        updateNavbarHeight();
+        
+        // Small delay to ensure DOM is fully rendered
+        const timer = setTimeout(updateNavbarHeight, 100);
+        
+        window.addEventListener('resize', updateNavbarHeight);
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener('resize', updateNavbarHeight);
+        };
+    }, []);
 
     // const handleUserClick = () => {
     //     // Add user functionality here
@@ -33,19 +58,20 @@ export default function NavBar() {
     // };
 
     return (
-      <nav className="fixed left-0 
-                      w-full z-50 
-                      pl-12 pr-12 pb-6 
-                      grid grid-cols-3 
-                      items-center bg-transparent" 
-                      style={{ top: '45px' }}>
+      <nav 
+        ref={navRef}
+        className=" sticky mt-20
+                    w-full z-50 
+                    px-12 py-8
+                    grid grid-cols-3 
+                    items-center 
+                    bg-black bg-opacity-20 backdrop-blur-md">
 
-        <div className="grid grid-cols-4
+        <div className="flex-1 grid grid-cols-4
                         gap-[50px]
                         font-inter font-light
                         tracking-[0.03em] 
-                        text-white uppercase
-                        m-auto">  {/* m-auto is used to center the navbar */}
+                        text-white uppercase">
             <Link href="/watches" className="hover:opacity-10 transition-opacity">Watches</Link>
             <Link href="/trend" className="hover:opacity-10 transition-opacity">Trend</Link>
             <Link href="/stories" className="hover:opacity-10 transition-opacity">Stories</Link>
@@ -62,8 +88,7 @@ export default function NavBar() {
             Tourbillon
         </Link> 
         <div className="flex items-center 
-                        justify-end gap-[40px]" 
-                        style={{ paddingRight: '40px' }}>
+                        justify-end gap-[40px]">
           <button 
             onClick={handleSearchClick}
             className="hover:opacity-70 transition-opacity cursor-pointer"
@@ -86,5 +111,5 @@ export default function NavBar() {
         </div>
       </nav>
     );
-  }
+}
   

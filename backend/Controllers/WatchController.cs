@@ -34,6 +34,13 @@ public class WatchController : ControllerBase
         return Ok(watches);
     }
 
+    [HttpGet("brand/{brandId}")]
+    public IActionResult GetByBrand(int brandId) // Returns all watches for a specific brand by its brand ID.
+    {
+        var watches = _context.Watches.Where(w => w.BrandId == brandId).ToList();
+        return Ok(watches);
+    }
+
     [HttpPost]
     public IActionResult CreateWatch([FromBody] Watch watch) // Creates a new watch in the database.
     {
