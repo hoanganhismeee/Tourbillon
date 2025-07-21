@@ -12,6 +12,9 @@ public class Watch
     public int BrandId { get; set; }
     public Brand Brand { get; set; } = null!; //null! because it will alway be filled
 
+    public int? CollectionId { get; set; }
+    public Collection? Collection { get; set; }
+
     // Navigation properties
     
     public ICollection<PriceTrend>? PriceHistory { get; set; } = new List<PriceTrend>();
