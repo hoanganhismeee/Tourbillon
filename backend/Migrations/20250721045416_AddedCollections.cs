@@ -1,15 +1,19 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+﻿// This migration introduces the 'Collections' entity to the database.
+// It adds a new 'Collections' table and links it to the existing 'Watches' table
+// by adding a 'CollectionId' foreign key, allowing watches to be organized into collections.
+using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
 namespace backend.Migrations
 {
+
     /// <inheritdoc />
     public partial class AddedCollections : Migration
     {
         /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
+        protected override void Up(MigrationBuilder migrationBuilder) // Applies the migration to add the Collections table and link it to Watches.
         {
             migrationBuilder.AddColumn<int>(
                 name: "CollectionId",
@@ -58,7 +62,7 @@ namespace backend.Migrations
         }
 
         /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
+        protected override void Down(MigrationBuilder migrationBuilder) // Reverts the migration by removing the Collections table and the foreign key from Watches.
         {
             migrationBuilder.DropForeignKey(
                 name: "FK_Watches_Collections_CollectionId",

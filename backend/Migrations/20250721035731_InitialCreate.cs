@@ -1,4 +1,7 @@
-﻿using System;
+﻿// This migration defines the initial database schema for the application.
+// It creates the core tables: Brands, Users, Watches, and PriceTrends,
+// establishing the foundational structure for storing product and user data.
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -10,7 +13,7 @@ namespace backend.Migrations
     public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
+        protected override void Up(MigrationBuilder migrationBuilder) // Applies the migration to create the initial tables and relationships.
         {
             migrationBuilder.CreateTable(
                 name: "Brands",
@@ -104,7 +107,7 @@ namespace backend.Migrations
         }
 
         /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
+        protected override void Down(MigrationBuilder migrationBuilder) // Reverts the migration, dropping all tables created in the Up method.
         {
             migrationBuilder.DropTable(
                 name: "PriceTrends");
