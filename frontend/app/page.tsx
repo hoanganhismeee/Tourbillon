@@ -2,7 +2,7 @@
 // It matches the styling theme of other pages for consistency.
 export default function Home() {
   return (
-    <div className="min-h-screen container mx-auto px-4 py-12">
+    <div className="container mx-auto px-8 py-24 pt-32">
       <div className="max-w-4xl mx-auto text-center">
         <h1 className="text-6xl font-playfair font-bold mb-8 tourbillon-text-color">
           Welcome to Tourbillon

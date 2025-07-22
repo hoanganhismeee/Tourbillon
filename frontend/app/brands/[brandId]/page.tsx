@@ -44,19 +44,19 @@ const BrandPage = () => {
   }, [brandId]);
 
   if (loading) {
-    return <div className="min-h-screen text-center py-20 tourbillon-text-color">Loading...</div>;
+    return <div className="container mx-auto px-8 py-24 pt-32 text-center tourbillon-text-color">Loading...</div>;
   }
 
   if (error) {
-    return <div className="min-h-screen text-center py-20 text-red-500">Error: {error}</div>;
+    return <div className="container mx-auto px-8 py-24 pt-32 text-center text-red-500">Error: {error}</div>;
   }
 
   if (!brand) {
-    return <div className="min-h-screen text-center py-20 tourbillon-text-color">Brand not found.</div>;
+    return <div className="container mx-auto px-8 py-24 pt-32 text-center tourbillon-text-color">Brand not found.</div>;
   }
 
   return (
-    <div className="min-h-screen container mx-auto px-4 py-12">
+    <div className="container mx-auto px-8 py-24 pt-32">
       <header className="text-center mb-16">
         <h1 className="text-6xl font-playfair font-bold mb-4 tourbillon-text-color">{brand.name}</h1>
         <p className="max-w-4xl mx-auto text-lg text-gray-300 leading-relaxed">{brand.description}</p>

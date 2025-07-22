@@ -1,4 +1,4 @@
-// This component defines the page for displaying the details of a single watch.
+// displaying the details of a single watch.
 // It fetches the watch data based on the ID from the URL and presents it
 // in a structured and styled layout.
 'use client';
@@ -40,19 +40,19 @@ const WatchDetailPage = () => {
   }, [watchId]);
 
   if (loading) {
-    return <div className="min-h-screen text-center py-20 tourbillon-text-color">Loading watch details...</div>;
+    return <div className="container mx-auto px-8 py-24 pt-32 text-center tourbillon-text-color">Loading watch details...</div>;
   }
 
   if (error) {
-    return <div className="min-h-screen text-center py-20 text-red-500">Error: {error}</div>;
+    return <div className="container mx-auto px-8 py-24 pt-32 text-center text-red-500">Error: {error}</div>;
   }
 
   if (!watch) {
-    return <div className="min-h-screen text-center py-20 tourbillon-text-color">Watch not found.</div>;
+    return <div className="container mx-auto px-8 py-24 pt-32 text-center tourbillon-text-color">Watch not found.</div>;
   }
 
   return (
-    <div className="min-h-screen container mx-auto px-4 py-12">
+    <div className="container mx-auto px-8 py-24 pt-32">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
         {/* Watch Image */}
         <div>

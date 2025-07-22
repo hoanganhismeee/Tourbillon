@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Icons
 const SearchIcon = () => ( 
@@ -24,11 +24,70 @@ const CartIcon = () => (
 
 export default function NavBar() {
     const navRef = useRef<HTMLElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const searchContainerRef = useRef<HTMLDivElement>(null);
+    const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     const handleSearchClick = () => {
-        // Add search functionality here
-        console.log('Search clicked');
+        if (isSearchExpanded) {
+            // If already expanded, perform search or close
+            if (searchQuery.trim()) {
+                // Perform search
+                console.log('Searching for:', searchQuery);
+                // You can redirect to a search results page or perform the search
+            } else {
+                // Close if no query
+                handleSearchClose();
+            }
+        } else {
+            // Expand the search
+            setIsSearchExpanded(true);
+            // Focus the input after the animation starts
+            setTimeout(() => {
+                if (searchInputRef.current) {
+                    searchInputRef.current.focus();
+                }
+            }, 200);
+        }
     };
+
+    const handleSearchClose = () => {
+        setIsSearchExpanded(false);
+        setSearchQuery('');
+    };
+
+    const handleSearchSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (searchQuery.trim()) {
+            // Add your search functionality here
+            console.log('Searching for:', searchQuery);
+            // You can redirect to a search results page or perform the search
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Escape') {
+            handleSearchClose();
+        }
+    };
+
+    // Handle clicking outside to close search
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+                handleSearchClose();
+            }
+        };
+
+        if (isSearchExpanded) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isSearchExpanded]);
 
     useEffect(() => {
         const updateNavbarHeight = () => {
@@ -52,23 +111,19 @@ export default function NavBar() {
         };
     }, []);
 
-    // const handleUserClick = () => {
-    //     // Add user functionality here
-    //     console.log('User clicked');
-    // };
-
     return (
       <nav 
         ref={navRef}
-        className=" sticky mt-20
+        className=" 
                     w-full z-50 
-                    px-12 py-8
+                    px-16 py-12 pr-24
                     grid grid-cols-3 
                     items-center 
                     bg-black bg-opacity-20 backdrop-blur-md">
 
-        <div className="flex-1 grid grid-cols-4
+        <div className="flex items-center justify-end
                         gap-[50px]
+                        pr-8
                         font-inter font-light
                         tracking-[0.03em] 
                         text-white uppercase">
@@ -77,7 +132,8 @@ export default function NavBar() {
             <Link href="/stories" className="hover:opacity-10 transition-opacity">Stories</Link>
             <Link href="/contact" className="hover:opacity-10 transition-opacity">Contact</Link>
         </div>
-        <Link href="/" className=" font-playfair 
+        
+        <Link href="/" className="font-playfair 
                         text-[48px]  
                         tourbillon-text-color  
                         justify-self-center
@@ -86,28 +142,83 @@ export default function NavBar() {
             style={{fontWeight: 300}}>
             {/* font-weight-300 hardcoded because the font-weight-300 is not available in playfair display */}
             Tourbillon
-        </Link> 
-        <div className="flex items-center 
-                        justify-end gap-[40px]">
-          <button 
-            onClick={handleSearchClick}
-            className="hover:opacity-70 transition-opacity cursor-pointer"
-            style={{ background: 'transparent', border: 'none' }} // idk why this is needed for this icon only
+        </Link>
+        
+        <div 
+          ref={searchContainerRef}
+          className="flex items-center justify-center gap-[50px] relative"
+        >
+          {/* Always render icons, but hide them when search is expanded */}
+          <Link 
+            href="/register"
+            className={`hover:opacity-70 transition-all duration-1000 cursor-pointer ${
+              isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            }`}
           >
             <UserIcon /> 
-          </button>
+          </Link>
           <Link 
             href="/cart"
-            className="hover:opacity-70 transition-opacity cursor-pointer"
+            className={`hover:opacity-70 transition-all duration-1000 cursor-pointer ${
+              isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            }`}
           >
             <CartIcon />
           </Link>
-          <button 
-            onClick={handleSearchClick}
-            className="hover:opacity-70 transition-opacity cursor-pointer bg-transparent border-none p-0"
-          >
-            <SearchIcon />
-          </button>
+          
+          {/* Search section - icon stays in place, bar slides from it */}
+          <div className="relative">
+            {/* Search icon - always visible and in place */}
+            <button 
+              onClick={handleSearchClick}
+              className="hover:opacity-70 transition-opacity cursor-pointer bg-transparent border-none p-0 relative z-20"
+            >
+              <SearchIcon />
+            </button>
+            
+            {/* Search bar - slides from behind the icon */}
+            <div 
+              className={`absolute top-1/2 -translate-y-1/2 flex items-center transition-all duration-1000 ease-out ${
+                isSearchExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              }`}
+              style={{ 
+                width: isSearchExpanded ? '450px' : '40px',
+                right: '0px',
+                overflow: 'hidden'
+              }}>
+              <form onSubmit={handleSearchSubmit} className="flex items-center relative w-full">
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Search luxury watches..."
+                  className={`w-full px-8 py-5 pr-20
+                           bg-transparent
+                           border-0 border-b-2 border-white border-opacity-40
+                           text-white placeholder-white placeholder-opacity-50
+                           focus:outline-none focus:border-opacity-90 focus:placeholder-opacity-70
+                           font-inter font-light tracking-wide text-xl
+                           transition-all duration-1000 ease-out
+                           hover:border-opacity-70 ${
+                             isSearchExpanded ? 'opacity-100' : 'opacity-0'
+                           }`}
+                  style={{
+                    background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.08) 100%)',
+                    backdropFilter: 'blur(12px)',
+                    height: '68px',
+                    color: '#f5f5dc',
+                    fontSize: '20px',
+                    borderRadius: '12px'
+                  }}
+                />
+                {/* Enhanced glow effect on focus */}
+                <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 scale-x-0 transition-transform duration-700 focus-within:scale-x-100 blur-sm"></div>
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-white to-transparent opacity-60 scale-x-0 transition-transform duration-700 focus-within:scale-x-100"></div>
+              </form>
+            </div>
+          </div>
         </div>
       </nav>
     );
