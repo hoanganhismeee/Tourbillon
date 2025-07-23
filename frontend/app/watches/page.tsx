@@ -6,7 +6,28 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { fetchBrands, Brand } from '@/lib/api';
 
-const BrandListPage = () => { // Renamed from WatchesPage for clarity
+// A reusable component for displaying a single brand in a list format.
+const BrandListItem = ({ brand }: { brand: Brand }) => {
+    // Truncate the description for the list view.
+    const truncateDescription = (text: string, length: number) => {
+        return text.length > length ? text.substring(0, length) + '...' : text;
+    };
+
+    return (
+        <Link href={`/brands/${brand.id}`} legacyBehavior>
+            <a className="group block w-full px-8 py-6 border-t border-white/10 transition-colors duration-300 hover:bg-black/20">
+                <h2 className="text-2xl font-playfair font-semibold text-[#f0e6d2] mb-2 transition-colors group-hover:text-white">
+                    {brand.name}
+                </h2>
+                <p className="text-sm text-white/60 transition-colors group-hover:text-white/80">
+                    {truncateDescription(brand.description, 200)}
+                </p>
+            </a>
+        </Link>
+    );
+};
+
+const BrandListPage = () => {
   const [brands, setBrands] = useState<Brand[]>([]);
 
   useEffect(() => {
@@ -23,16 +44,12 @@ const BrandListPage = () => { // Renamed from WatchesPage for clarity
   }, []);
 
   return (
-    <div className="container mx-auto px-8 py-24 pt-32">
-      <h1 className="text-5xl font-playfair font-bold text-center mb-16 tourbillon-text-color">Explore Our Brands</h1>
+    <div className="container mx-auto px-4 sm:px-8 py-24 pt-48">
+      <h1 className="text-5xl font-playfair font-bold text-center mb-16 text-[#f0e6d2]">Explore Our Brands</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+      <div className="border-b border-white/10">
         {brands.map((brand) => (
-          <Link href={`/brands/${brand.id}`} key={brand.id}>
-            <div className="block border border-gray-700 rounded-lg p-6 text-center transform hover:scale-105 transition-transform duration-300 ease-in-out cursor-pointer h-full">
-              <h2 className="text-3xl font-playfair font-semibold tourbillon-text-color">{brand.name}</h2>
-            </div>
-          </Link>
+          <BrandListItem key={brand.id} brand={brand} />
         ))}
       </div>
     </div>
