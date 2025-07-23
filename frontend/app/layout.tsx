@@ -38,7 +38,7 @@ export default function RootLayout({
         suppressHydrationWarning={true}>
         <AuthProvider>
           <NavBar />
-          <main className="relative z-10">{children}</main>
+          <main className="relative z-10 pt-[50px]">{children}</main>
         </AuthProvider>
       </body>
     </html>

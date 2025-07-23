@@ -14,15 +14,16 @@ const BrandListItem = ({ brand }: { brand: Brand }) => {
     };
 
     return (
-        <Link href={`/brands/${brand.id}`} legacyBehavior>
-            <a className="group block w-full px-8 py-6 border-t border-white/10 transition-colors duration-300 hover:bg-black/20">
-                <h2 className="text-2xl font-playfair font-semibold text-[#f0e6d2] mb-2 transition-colors group-hover:text-white">
-                    {brand.name}
-                </h2>
-                <p className="text-sm text-white/60 transition-colors group-hover:text-white/80">
-                    {truncateDescription(brand.description, 200)}
-                </p>
-            </a>
+        <Link
+            href={`/brands/${brand.id}`}
+            className="group block w-full px-8 py-6 border-t border-white/10 transition-colors duration-300 hover:bg-black/20"
+        >
+            <h2 className="text-2xl font-playfair font-semibold text-[#f0e6d2] mb-2 transition-colors group-hover:text-white">
+                {brand.name}
+            </h2>
+            <p className="text-sm text-white/60 transition-colors group-hover:text-white/80">
+                {truncateDescription(brand.description, 150)}
+            </p>
         </Link>
     );
 };

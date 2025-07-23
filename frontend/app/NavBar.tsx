@@ -26,210 +26,164 @@ const CartIcon = () => (
 const UserMenu = () => {
     const { isAuthenticated, user, logout } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
-
+  
     return (
-        <div 
-            className="relative"
-            onMouseEnter={() => setIsOpen(true)}
-            onMouseLeave={() => setIsOpen(false)}
-        >
-            <Link 
-                href={!isAuthenticated ? "/login" : "#"}
-                className="hover:opacity-70 transition-all duration-300 cursor-pointer"
-            >
-                <UserIcon /> 
-            </Link>
-
-            {isOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-black bg-opacity-70 backdrop-blur-md rounded-md shadow-lg py-2 z-50">
-                    {isAuthenticated ? (
-                        <>
-                            <div className="px-4 py-2 text-sm text-white border-b border-white/20">
-                                Welcome, {user?.firstName}
-                            </div>
-                            <Link href="/account/edit-details" className="block px-4 py-2 mt-1 text-sm text-white hover:bg-white/10">
-                                Edit Details
-                            </Link>
-                            <button onClick={logout} className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10">
-                                Logout
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <Link href="/login" className="block px-4 py-2 text-sm text-white hover:bg-white/10">
-                                Sign In
-                            </Link>
-                            <Link href="/register" className="block px-4 py-2 text-sm text-white hover:bg-white/10">
-                                Sign Up
-                            </Link>
-                        </>
-                    )}
+      <div className="relative" onMouseEnter={() => setIsOpen(true)} onMouseLeave={() => setIsOpen(false)}>
+        <Link href={!isAuthenticated ? "/login" : "#"} className="hover:opacity-70 transition-all duration-300 cursor-pointer">
+          <UserIcon />
+        </Link>
+        {isOpen && (
+          <div className="absolute right-0 mt-2 w-48 bg-black bg-opacity-70 backdrop-blur-md rounded-md shadow-lg py-2 z-50">
+            {isAuthenticated ? (
+              <>
+                <div className="px-4 py-2 text-sm text-white border-b border-white/20">
+                  Welcome, {user?.firstName}
                 </div>
+                <Link href="/account/edit-details" className="block px-4 py-2 mt-1 text-sm text-white hover:bg-white/10">
+                  Edit Details
+                </Link>
+                <button onClick={logout} className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10">
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="block px-4 py-2 text-sm text-white hover:bg-white/10">Sign In</Link>
+                <Link href="/register" className="block px-4 py-2 text-sm text-white hover:bg-white/10">Sign Up</Link>
+              </>
             )}
-        </div>
+          </div>
+        )}
+      </div>
     );
-};
-
-export default function NavBar() {
+  };
+  
+  export default function NavBar() {
     const navRef = useRef<HTMLElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const searchContainerRef = useRef<HTMLDivElement>(null);
     const [isSearchExpanded, setIsSearchExpanded] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-
+    const lastScrollY = useRef(0);
+    const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up');
+  
     const handleSearchClick = () => {
-        if (isSearchExpanded) {
-            // If already expanded, perform search or close
-            if (searchQuery.trim()) {
-                // Perform search
-                console.log('Searching for:', searchQuery);
-                // You can redirect to a search results page or perform the search
-            } else {
-                // Close if no query
-                handleSearchClose();
-            }
-        } else {
-            // Expand the search
-            setIsSearchExpanded(true);
-            // Focus the input after the animation starts
-            setTimeout(() => {
-                if (searchInputRef.current) {
-                    searchInputRef.current.focus();
-                }
-            }, 200);
-        }
+      if (isSearchExpanded) {
+        if (searchQuery.trim()) console.log('Searching for:', searchQuery);
+        else handleSearchClose();
+      } else {
+        setIsSearchExpanded(true);
+        setTimeout(() => searchInputRef.current?.focus(), 200);
+      }
     };
-
+  
     const handleSearchClose = () => {
-        setIsSearchExpanded(false);
-        setSearchQuery('');
+      setIsSearchExpanded(false);
+      setSearchQuery('');
     };
-
+  
     const handleSearchSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (searchQuery.trim()) {
-            // Add your search functionality here
-            console.log('Searching for:', searchQuery);
-            // You can redirect to a search results page or perform the search
-        }
+      e.preventDefault();
+      if (searchQuery.trim()) console.log('Searching for:', searchQuery);
     };
-
+  
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Escape') {
-            handleSearchClose();
-        }
+      if (e.key === 'Escape') handleSearchClose();
     };
-
-    // Handle clicking outside to close search
+  
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
-                handleSearchClose();
-            }
-        };
-
-        if (isSearchExpanded) {
-            document.addEventListener('mousedown', handleClickOutside);
+      const handleClickOutside = (event: MouseEvent) => {
+        if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+          handleSearchClose();
         }
-
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
+      };
+  
+      if (isSearchExpanded) document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isSearchExpanded]);
-
+  
     useEffect(() => {
-        const updateNavbarHeight = () => {
-            if (navRef.current) {
-                const height = navRef.current.offsetHeight;
-                console.log('Navbar height:', height); // Debug log
-                document.documentElement.style.setProperty('--navbar-height', `${height}px`);
-            }
-        };
-
-        // Initial measurement
-        updateNavbarHeight();
-        
-        // Small delay to ensure DOM is fully rendered
-        const timer = setTimeout(updateNavbarHeight, 100);
-        
-        window.addEventListener('resize', updateNavbarHeight);
-        return () => {
-            clearTimeout(timer);
-            window.removeEventListener('resize', updateNavbarHeight);
-        };
+      const updateNavbarHeight = () => {
+        if (navRef.current) {
+          const height = navRef.current.offsetHeight;
+          document.documentElement.style.setProperty('--navbar-height', `${height}px`);
+        }
+      };
+      updateNavbarHeight();
+      const timer = setTimeout(updateNavbarHeight, 100);
+      window.addEventListener('resize', updateNavbarHeight);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('resize', updateNavbarHeight);
+      };
     }, []);
-
+  
+    // ✅ Improved scroll detection with requestAnimationFrame
+    useEffect(() => {
+      let ticking = false;
+  
+      const handleScroll = () => {
+        const currentY = window.scrollY;
+  
+        if (!ticking) {
+          window.requestAnimationFrame(() => {
+            const diff = currentY - lastScrollY.current;
+  
+            if (diff > 10) setScrollDirection('down');
+            else if (diff < -10) setScrollDirection('up');
+  
+            lastScrollY.current = currentY;
+            ticking = false;
+          });
+  
+          ticking = true;
+        }
+      };
+  
+      window.addEventListener('scroll', handleScroll);
+      return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+  
     return (
-      <nav 
+      <nav
         ref={navRef}
-        className=" 
-                    w-full z-50 
-                    px-16 py-12 pr-24
-                    grid grid-cols-3 
-                    items-center 
-                    bg-black bg-opacity-20 backdrop-blur-md">
-
-        <div className="flex items-center justify-end
-                        gap-[50px]
-                        pr-8
-                        font-inter font-light
-                        tracking-[0.03em] 
-                        text-white uppercase">
-            <Link href="/watches" className="hover:opacity-10 transition-opacity">Watches</Link>
-            <Link href="/trend" className="hover:opacity-10 transition-opacity">Trend</Link>
-            <Link href="/stories" className="hover:opacity-10 transition-opacity">Stories</Link>
-            <Link href="/contact" className="hover:opacity-10 transition-opacity">Contact</Link>
+        className={`fixed top-0 left-0 w-full z-50 px-16 py-12 pr-24 grid grid-cols-3 items-center 
+          transition-all duration-400 ease-in-out 
+          ${scrollDirection === 'down' ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100'}`}
+        style={{
+          background: 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+        }}
+      >
+        <div className="flex items-center justify-end gap-[50px] pr-8 font-inter font-light tracking-[0.03em] text-white uppercase">
+          <Link href="/watches" className="hover:opacity-10 transition-opacity">Watches</Link>
+          <Link href="/trend" className="hover:opacity-10 transition-opacity">Trend</Link>
+          <Link href="/stories" className="hover:opacity-10 transition-opacity">Stories</Link>
+          <Link href="/contact" className="hover:opacity-10 transition-opacity">Contact</Link>
         </div>
-        
-        <Link href="/" className="font-playfair 
-                        text-[48px]  
-                        tourbillon-text-color  
-                        justify-self-center
-                        opacity-90
-                        hover:opacity-10 transition-opacity"
-            style={{fontWeight: 300}}>
-            {/* font-weight-300 hardcoded because the font-weight-300 is not available in playfair display */}
-            Tourbillon
+  
+        <Link href="/" className="font-playfair text-[48px] tourbillon-text-color justify-self-center opacity-90 hover:opacity-10 transition-opacity" style={{ fontWeight: 300 }}>
+          Tourbillon
         </Link>
-        
-        <div 
-          ref={searchContainerRef}
-          className="flex items-center justify-center gap-[50px] relative"
-        >
-          {/* Icons are always rendered, visibility is handled by the search bar expansion */}
+  
+        <div ref={searchContainerRef} className="flex items-center justify-center gap-[50px] relative">
           <div className={`transition-opacity duration-500 ${isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             <UserMenu />
           </div>
-
-          <Link 
-            href="/cart"
-            className={`hover:opacity-70 transition-opacity duration-500 cursor-pointer ${
-              isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'
-            }`}
-          >
+          <Link href="/cart" className={`hover:opacity-70 transition-opacity duration-500 cursor-pointer ${isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             <CartIcon />
           </Link>
-          
-          {/* Search section - icon stays in place, bar slides from it */}
           <div className="relative">
-            {/* Search icon - always visible and in place */}
-            <button 
-              onClick={handleSearchClick}
-              className="hover:opacity-70 transition-opacity cursor-pointer bg-transparent border-none p-0 relative z-20"
-            >
+            <button onClick={handleSearchClick} className="hover:opacity-70 transition-opacity cursor-pointer bg-transparent border-none p-0 relative z-20">
               <SearchIcon />
             </button>
-            
-            {/* Search bar - slides from behind the icon */}
-            <div 
+            <div
               className={`absolute top-1/2 -translate-y-1/2 flex items-center transition-all duration-1000 ease-out ${
                 isSearchExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
-              style={{ 
-                width: isSearchExpanded ? '400px' : '25px',
-                right: '0px',
-                overflow: 'hidden'
-              }}>
+              style={{ width: isSearchExpanded ? '400px' : '25px', right: '0px', overflow: 'hidden' }}
+            >
               <form onSubmit={handleSearchSubmit} className="flex items-center relative w-full">
                 <input
                   ref={searchInputRef}
@@ -238,26 +192,18 @@ export default function NavBar() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Search luxury brands and watches..."
-                  className={`w-full px-8 py-5 pr-20
-                           bg-transparent
-                           border-0 border-b-2 border-white border-opacity-40
-                           text-white placeholder-white placeholder-opacity-50
-                           focus:outline-none focus:border-opacity-90 focus:placeholder-opacity-70
-                           font-inter font-light tracking-wide text-xl
-                           transition-all duration-1000 ease-out
-                           hover:border-opacity-70 ${
-                             isSearchExpanded ? 'opacity-100' : 'opacity-0'
-                           }`}
+                  className={`w-full px-8 py-5 pr-20 bg-transparent border-0 border-b-2 border-white border-opacity-40 text-white placeholder-white placeholder-opacity-50 focus:outline-none focus:border-opacity-90 focus:placeholder-opacity-70 font-inter font-light tracking-wide text-xl transition-all duration-1000 ease-out hover:border-opacity-70 ${
+                    isSearchExpanded ? 'opacity-100' : 'opacity-0'
+                  }`}
                   style={{
                     background: 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)',
                     backdropFilter: 'blur(12px)',
                     height: '68px',
                     color: '#f5f5dc',
                     fontSize: '20px',
-                    borderRadius: '12px'
+                    borderRadius: '12px',
                   }}
                 />
-                {/* Enhanced glow effect on focus */}
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 scale-x-0 transition-transform duration-700 focus-within:scale-x-100 blur-sm"></div>
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-white to-transparent opacity-60 scale-x-0 transition-transform duration-700 focus-within:scale-x-100"></div>
               </form>
@@ -266,5 +212,4 @@ export default function NavBar() {
         </div>
       </nav>
     );
-}
-  
+  }
