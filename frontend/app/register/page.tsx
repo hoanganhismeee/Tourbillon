@@ -2,9 +2,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { registerUser } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -14,6 +17,7 @@ export default function RegisterPage() {
     confirmPassword: "",
     agreeToTerms: false,
   });
+  const [error, setError] = useState("");
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -23,10 +27,33 @@ export default function RegisterPage() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log(formData);
-    router.push("/");
+    setError("");
+
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    try {
+      await registerUser({
+        email: formData.email,
+        password: formData.password,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phoneNumber: formData.phoneNumber,
+      });
+      await login(); // Trigger a state refresh in the context
+      router.push("/");
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("An unexpected error occurred.");
+      }
+      console.error(err);
+    }
   };
 
   return (
@@ -103,6 +130,8 @@ export default function RegisterPage() {
               required
             />
           </div>
+
+          {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 
           {/* Checkbox */}
           <div className="flex items-center gap-3 mt-4 text-sm text-[#bfa68a]">

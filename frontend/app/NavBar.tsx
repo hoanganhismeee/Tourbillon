@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Icons
 const SearchIcon = () => ( 
@@ -21,6 +22,53 @@ const CartIcon = () => (
 <path d="M33.75 10H27.5C27.5 8.01088 26.7098 6.10322 25.3033 4.6967C23.8968 3.29018 21.9891 2.5 20 2.5C18.0109 2.5 16.1032 3.29018 14.6967 4.6967C13.2902 6.10322 12.5 8.01088 12.5 10H6.25C5.58696 10 4.95107 10.2634 4.48223 10.7322C4.01339 11.2011 3.75 11.837 3.75 12.5V31.25C3.75 31.913 4.01339 32.5489 4.48223 33.0178C4.95107 33.4866 5.58696 33.75 6.25 33.75H33.75C34.413 33.75 35.0489 33.4866 35.5178 33.0178C35.9866 32.5489 36.25 31.913 36.25 31.25V12.5C36.25 11.837 35.9866 11.2011 35.5178 10.7322C35.0489 10.2634 34.413 10 33.75 10ZM20 5C21.3261 5 22.5979 5.52678 23.5355 6.46447C24.4732 7.40215 25 8.67392 25 10H15C15 8.67392 15.5268 7.40215 16.4645 6.46447C17.4021 5.52678 18.6739 5 20 5ZM33.75 31.25H6.25V12.5H12.5V15C12.5 15.3315 12.6317 15.6495 12.8661 15.8839C13.1005 16.1183 13.4185 16.25 13.75 16.25C14.0815 16.25 14.3995 16.1183 14.6339 15.8839C14.8683 15.6495 15 15.3315 15 15V12.5H25V15C25 15.3315 25.1317 15.6495 25.3661 15.8839C25.6005 16.1183 25.9185 16.25 26.25 16.25C26.5815 16.25 26.8995 16.1183 27.1339 15.8839C27.3683 15.6495 27.5 15.3315 27.5 15V12.5H33.75V31.25Z" fill="black"/>
 </svg>
 )
+
+const UserMenu = () => {
+    const { isAuthenticated, user, logout } = useAuth();
+    const [isOpen, setIsOpen] = useState(false);
+
+    return (
+        <div 
+            className="relative"
+            onMouseEnter={() => setIsOpen(true)}
+            onMouseLeave={() => setIsOpen(false)}
+        >
+            <Link 
+                href={!isAuthenticated ? "/login" : "#"}
+                className="hover:opacity-70 transition-all duration-300 cursor-pointer"
+            >
+                <UserIcon /> 
+            </Link>
+
+            {isOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-black bg-opacity-70 backdrop-blur-md rounded-md shadow-lg py-2 z-50">
+                    {isAuthenticated ? (
+                        <>
+                            <div className="px-4 py-2 text-sm text-white border-b border-white/20">
+                                Welcome, {user?.firstName}
+                            </div>
+                            <Link href="/account/edit-details" className="block px-4 py-2 mt-1 text-sm text-white hover:bg-white/10">
+                                Edit Details
+                            </Link>
+                            <button onClick={logout} className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10">
+                                Logout
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <Link href="/login" className="block px-4 py-2 text-sm text-white hover:bg-white/10">
+                                Sign In
+                            </Link>
+                            <Link href="/register" className="block px-4 py-2 text-sm text-white hover:bg-white/10">
+                                Sign Up
+                            </Link>
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
 
 export default function NavBar() {
     const navRef = useRef<HTMLElement>(null);
@@ -148,18 +196,14 @@ export default function NavBar() {
           ref={searchContainerRef}
           className="flex items-center justify-center gap-[50px] relative"
         >
-          {/* Always render icons, but hide them when search is expanded */}
-          <Link 
-            href="/register"
-            className={`hover:opacity-70 transition-all duration-1000 cursor-pointer ${
-              isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'
-            }`}
-          >
-            <UserIcon /> 
-          </Link>
+          {/* Icons are always rendered, visibility is handled by the search bar expansion */}
+          <div className={`transition-opacity duration-500 ${isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+            <UserMenu />
+          </div>
+
           <Link 
             href="/cart"
-            className={`hover:opacity-70 transition-all duration-1000 cursor-pointer ${
+            className={`hover:opacity-70 transition-opacity duration-500 cursor-pointer ${
               isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'
             }`}
           >

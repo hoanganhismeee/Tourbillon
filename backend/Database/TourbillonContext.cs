@@ -1,9 +1,12 @@
-using Microsoft.EntityFrameworkCore;
+// This file defines the database context for the application, which is responsible for managing the connection to the database and mapping the models to the database tables.
 using backend.Models;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 
 namespace backend.Database;
 
-public class TourbillonContext : DbContext
+public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
 {
     public TourbillonContext(DbContextOptions<TourbillonContext> options) : base(options) { }
 
@@ -12,5 +15,4 @@ public class TourbillonContext : DbContext
 
     public DbSet<Collection> Collections { get; set; } //brand's specific watches collection
     public DbSet<PriceTrend> PriceTrends { get; set; } //price history
-    public DbSet<User> Users { get; set; } //user data
 }

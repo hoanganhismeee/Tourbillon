@@ -1,4 +1,6 @@
 using backend.Database;
+using backend.Models;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +14,33 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<TourbillonContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Adds and configures ASP.NET Core Identity for user management and authentication.
+builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
+{
+    // Sets the password complexity requirements for user accounts.
+    options.Password.RequireDigit = true;
+    options.Password.RequiredLength = 8;
+    options.Password.RequireNonAlphanumeric = false;
+    options.Password.RequireUppercase = true;
+    options.Password.RequireLowercase = false;
+})
+.AddEntityFrameworkStores<TourbillonContext>(); // Links Identity to the Entity Framework data store.
+
+// Configures the application's cookie for handling authentication sessions.
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Cookie.HttpOnly = true; // Prevents client-side scripts from accessing the cookie.
+    options.Cookie.SameSite = SameSiteMode.Strict; // Restricts cookie to first-party context.
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(30); // Sets cookie expiration time.
+    options.SlidingExpiration = true; // Resets the expiration time on each request.
+    options.Events.OnRedirectToLogin = context =>
+    {
+        // Prevents the default redirect to a login page and returns a 401 Unauthorized status instead.
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return Task.CompletedTask;
+    };
+});
+
 // Add CORS services
 builder.Services.AddCors(options =>
 {
@@ -20,7 +49,8 @@ builder.Services.AddCors(options =>
         {
             builder.WithOrigins("http://localhost:3000") // The origin of your frontend app
                    .AllowAnyHeader()
-                   .AllowAnyMethod();
+                   .AllowAnyMethod()
+                   .AllowCredentials(); // Allow credentials (cookies)
         });
 });
 
@@ -38,6 +68,7 @@ app.UseHttpsRedirection();
 // Enable CORS
 app.UseCors("AllowFrontend");
 
+app.UseAuthentication(); // Enable authentication
 app.UseAuthorization();
 
 // Map controllers

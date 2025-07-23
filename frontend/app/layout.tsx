@@ -2,6 +2,7 @@
 // It sets up the global fonts, structure, and the navigation bar.
 import type { Metadata } from "next";
 import { Playfair_Display, Inter } from "next/font/google";
+import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
 import NavBar from "./NavBar";
 
@@ -21,7 +22,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Tourbillon"
+  title: "Tourbillon",
+  description: "A timeless collection of luxury watches",
 };
 
 export default function RootLayout({
@@ -34,11 +36,10 @@ export default function RootLayout({
       <body
         className={`${playfairDisplay.variable} ${inter.variable} antialiased`}
         suppressHydrationWarning={true}>
-        <NavBar />
-        {/* Main content flows naturally after the sticky navbar */}
-        <main>
-          {children}
-        </main>
+        <AuthProvider>
+          <NavBar />
+          <main className="relative z-10">{children}</main>
+        </AuthProvider>
       </body>
     </html>
   );
