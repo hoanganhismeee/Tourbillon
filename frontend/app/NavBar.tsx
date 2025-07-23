@@ -182,7 +182,7 @@ export default function NavBar() {
                 isSearchExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
               style={{ 
-                width: isSearchExpanded ? '450px' : '40px',
+                width: isSearchExpanded ? '400px' : '25px',
                 right: '0px',
                 overflow: 'hidden'
               }}>
@@ -193,7 +193,7 @@ export default function NavBar() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Search luxury watches..."
+                  placeholder="Search luxury brands and watches..."
                   className={`w-full px-8 py-5 pr-20
                            bg-transparent
                            border-0 border-b-2 border-white border-opacity-40
@@ -205,7 +205,7 @@ export default function NavBar() {
                              isSearchExpanded ? 'opacity-100' : 'opacity-0'
                            }`}
                   style={{
-                    background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.08) 100%)',
+                    background: 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)',
                     backdropFilter: 'blur(12px)',
                     height: '68px',
                     color: '#f5f5dc',
