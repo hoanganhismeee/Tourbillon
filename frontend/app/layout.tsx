@@ -5,7 +5,8 @@ import { Playfair_Display, Inter } from "next/font/google";
 import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
 import NavBar from "./NavBar";
-
+import { AnimatePresence } from "framer-motion";
+import MotionMain from "./scrollMotion/MotionMain";
 
 const playfairDisplay = Playfair_Display({
   variable: "--font-playfair-display",
@@ -38,7 +39,14 @@ export default function RootLayout({
         suppressHydrationWarning={true}>
         <AuthProvider>
           <NavBar />
-          <main className="relative z-10 pt-[50px]">{children}</main>
+          <AnimatePresence mode="wait">
+            <MotionMain
+              className="relative z-10 pt-[50px]"
+              key={typeof window !== 'undefined' ? window.location.pathname : ''}
+            >
+              {children}
+            </MotionMain>
+          </AnimatePresence>
         </AuthProvider>
       </body>
     </html>

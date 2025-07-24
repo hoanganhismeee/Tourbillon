@@ -66,6 +66,7 @@ const UserMenu = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const lastScrollY = useRef(0);
     const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up');
+    const [isAtTop, setIsAtTop] = useState(true);
   
     const handleSearchClick = () => {
       if (isSearchExpanded) {
@@ -118,28 +119,26 @@ const UserMenu = () => {
       };
     }, []);
   
-    // ✅ Improved scroll detection with requestAnimationFrame
     useEffect(() => {
       let ticking = false;
-  
       const handleScroll = () => {
         const currentY = window.scrollY;
-  
         if (!ticking) {
           window.requestAnimationFrame(() => {
             const diff = currentY - lastScrollY.current;
-  
-            if (diff > 10) setScrollDirection('down');
-            else if (diff < -10) setScrollDirection('up');
-  
+            //navbar dissappears with just 5 pixels of scrolling down
+            if (diff > 5) setScrollDirection('down');
+
+            //navbar appears with just 3 pixels of scrolling up
+            else if (diff < -3) setScrollDirection('up');
+            //navbar disappears with just 10 pixels of downward scroll
+            setIsAtTop(currentY <= 10);
             lastScrollY.current = currentY;
             ticking = false;
           });
-  
           ticking = true;
         }
       };
-  
       window.addEventListener('scroll', handleScroll);
       return () => window.removeEventListener('scroll', handleScroll);
     }, []);
@@ -147,15 +146,15 @@ const UserMenu = () => {
     return (
       <nav
         ref={navRef}
-        className={`fixed top-0 left-0 w-full z-50 px-16 py-12 pr-24 grid grid-cols-3 items-center 
-          transition-all duration-400 ease-in-out 
-          ${scrollDirection === 'down' ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100'}`}
+        className={`fixed top-0 left-0 w-full z-50 px-16 py-12 pr-24 grid grid-cols-3 items-center transition-all duration-400 ease-in-out ${scrollDirection === 'down' ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100'}`}
         style={{
-          background: 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
+          background: isAtTop ? 'transparent' : 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)',
+          backdropFilter: isAtTop ? 'none' : 'blur(14px)',
+          WebkitBackdropFilter: isAtTop ? 'none' : 'blur(14px)',
+          transition: 'all 0.2s ease',
         }}
       >
+        {/* Left Menu */}
         <div className="flex items-center justify-end gap-[50px] pr-8 font-inter font-light tracking-[0.03em] text-white uppercase">
           <Link href="/watches" className="hover:opacity-10 transition-opacity">Watches</Link>
           <Link href="/trend" className="hover:opacity-10 transition-opacity">Trend</Link>
@@ -163,10 +162,12 @@ const UserMenu = () => {
           <Link href="/contact" className="hover:opacity-10 transition-opacity">Contact</Link>
         </div>
   
-        <Link href="/" className="font-playfair text-[48px] tourbillon-text-color justify-self-center opacity-90 hover:opacity-10 transition-opacity" style={{ fontWeight: 300 }}>
+        {/* Logo */}
+          <Link href="/" className="font-playfair text-[48px] logo-text justify-self-center opacity-90 hover:opacity-10 transition-opacity" style={{ fontWeight: 300 }}>
           Tourbillon
         </Link>
   
+        {/* Right Section */}
         <div ref={searchContainerRef} className="flex items-center justify-center gap-[50px] relative">
           <div className={`transition-opacity duration-500 ${isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             <UserMenu />
@@ -178,12 +179,7 @@ const UserMenu = () => {
             <button onClick={handleSearchClick} className="hover:opacity-70 transition-opacity cursor-pointer bg-transparent border-none p-0 relative z-20">
               <SearchIcon />
             </button>
-            <div
-              className={`absolute top-1/2 -translate-y-1/2 flex items-center transition-all duration-1000 ease-out ${
-                isSearchExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
-              }`}
-              style={{ width: isSearchExpanded ? '400px' : '25px', right: '0px', overflow: 'hidden' }}
-            >
+            <div className={`absolute top-1/2 -translate-y-1/2 flex items-center transition-all duration-1000 ease-out ${isSearchExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} style={{ width: isSearchExpanded ? '400px' : '25px', right: '0px', overflow: 'hidden' }}>
               <form onSubmit={handleSearchSubmit} className="flex items-center relative w-full">
                 <input
                   ref={searchInputRef}
@@ -192,9 +188,7 @@ const UserMenu = () => {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Search luxury brands and watches..."
-                  className={`w-full px-8 py-5 pr-20 bg-transparent border-0 border-b-2 border-white border-opacity-40 text-white placeholder-white placeholder-opacity-50 focus:outline-none focus:border-opacity-90 focus:placeholder-opacity-70 font-inter font-light tracking-wide text-xl transition-all duration-1000 ease-out hover:border-opacity-70 ${
-                    isSearchExpanded ? 'opacity-100' : 'opacity-0'
-                  }`}
+                  className={`w-full px-8 py-5 pr-20 bg-transparent border-0 border-b-2 border-white border-opacity-40 text-white placeholder-white placeholder-opacity-50 focus:outline-none focus:border-opacity-90 focus:placeholder-opacity-70 font-inter font-light tracking-wide text-xl transition-all duration-1000 ease-out hover:border-opacity-70 ${isSearchExpanded ? 'opacity-100' : 'opacity-0'}`}
                   style={{
                     background: 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)',
                     backdropFilter: 'blur(12px)',
@@ -213,3 +207,4 @@ const UserMenu = () => {
       </nav>
     );
   }
+  

@@ -5,10 +5,11 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { fetchBrandById, fetchWatchesByBrand, Brand, Watch } from '@/lib/api';
 
+
 // A reusable component for displaying a single watch card.
 const WatchCard = ({ watch }: { watch: Watch }) => {
     return (
-        <Link href={`/watches/${watch.id}`} legacyBehavior>
+        <Link href={`/watches/${watch.id}`} prefetch={false}>
             <a className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-4 transition-all duration-300 hover:border-white/30 hover:scale-105">
                 {/* Placeholder for watch image */}
                 <div className="w-full h-48 bg-black/30 rounded-lg mb-4 flex items-center justify-center">
@@ -81,7 +82,7 @@ const BrandPage = () => {
         {/* Brand Description */}
         <aside className="lg:col-span-1">
           <div className="sticky top-32 bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-6">
-            <h2 className="text-2xl font-playfair font-semibold text-white/90 mb-4">Our Heritage</h2>
+            <h2 className="text-2xl font-playfair font-semibold text-white/90 mb-4">Description</h2>
             <p className="text-white/70 leading-relaxed whitespace-pre-line">{brand.description}</p>
           </div>
         </aside>

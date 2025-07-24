@@ -5,6 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { fetchBrands, Brand } from '@/lib/api';
+import ScrollFade from '../scrollMotion/ScrollFade';
 
 // A reusable component for displaying a single brand in a list format.
 const BrandListItem = ({ brand }: { brand: Brand }) => {
@@ -18,7 +19,7 @@ const BrandListItem = ({ brand }: { brand: Brand }) => {
             href={`/brands/${brand.id}`}
             className="group block w-full px-8 py-6 border-t border-white/10 transition-colors duration-300 hover:bg-black/20"
         >
-            <h2 className="text-2xl font-playfair font-semibold text-[#f0e6d2] mb-2 transition-colors group-hover:text-white">
+            <h2 className="text-2xl font-playfair font-semibold brand-name mb-2 transition-colors group-hover:text-white">
                 {brand.name}
             </h2>
             <p className="text-sm text-white/60 transition-colors group-hover:text-white/80">
@@ -46,11 +47,13 @@ const BrandListPage = () => {
 
   return (
     <div className="container mx-auto px-4 sm:px-8 py-24 pt-48">
-      <h1 className="text-5xl font-playfair font-bold text-center mb-16 text-[#f0e6d2]">Explore Our Brands</h1>
+      <h1 className="text-5xl font-playfair font-bold text-center mb-16 text-heading">Explore Our Brands</h1>
 
       <div className="border-b border-white/10">
         {brands.map((brand) => (
-          <BrandListItem key={brand.id} brand={brand} />
+          <ScrollFade key={brand.id}>
+            <BrandListItem brand={brand} />
+          </ScrollFade>
         ))}
       </div>
     </div>

@@ -12,6 +12,7 @@ const config: Config = {
         playfair: ['var(--font-playfair-display)', 'serif'],
         inter: ['var(--font-inter)', 'sans-serif'],
       },
+
       transitionProperty: {
         'opacity': 'opacity',
         'spacing': 'margin, padding',

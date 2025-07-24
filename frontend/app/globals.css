@@ -3,17 +3,15 @@
 @tailwind utilities;
 
 :root {
-  --foreground: #ffffff;
+  --white: #ffffff;
+  --cream-gold: #f0e6d2;
+  --cream: #fefbf3;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --foreground: #ffffff;  
-  }
-
-  .tourbillon-text-color {
-    color:  #F9F6F2;
-  }
+  .logo-text { color: var(--cream); }
+  .brand-name { color: var(--cream-gold); }
+  .text-white { color: var(--white); }
 
   a {
     text-decoration: none;
@@ -26,7 +24,7 @@
   }
 
   body {
-    color: var(--foreground);
+    color: var(--white);
     margin-top: 3rem;
   }
 }
