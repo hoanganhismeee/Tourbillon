@@ -9,6 +9,7 @@ export interface Brand {
   name: string;
   description: string;
   image: string;
+  summary: string;
 }
 
 export interface Collection {
@@ -89,6 +90,14 @@ export const fetchWatchesByCollection = async (collectionId: number): Promise<Wa
   const response = await fetch(`${API_BASE_URL}/watch/collection/${collectionId}`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error(`Failed to fetch watches for collectionId: ${collectionId}`);
+  }
+  return response.json();
+};
+
+export const fetchCollectionsByBrand = async (brandId: number): Promise<Collection[]> => { // fetchs collections for based on brandId
+  const response = await fetch(`${API_BASE_URL}/collection/brand/${brandId}`, { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch collections for brandId: ${brandId}`);
   }
   return response.json();
 };

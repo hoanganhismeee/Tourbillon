@@ -9,10 +9,6 @@ import ScrollFade from '../scrollMotion/ScrollFade';
 
 // A reusable component for displaying a single brand in a list format.
 const BrandListItem = ({ brand }: { brand: Brand }) => {
-    // Truncate the description for the list view.
-    const truncateDescription = (text: string, length: number) => {
-        return text.length > length ? text.substring(0, length) + '...' : text;
-    };
 
     return (
         <Link
@@ -23,7 +19,7 @@ const BrandListItem = ({ brand }: { brand: Brand }) => {
                 {brand.name}
             </h2>
             <p className="text-sm text-white/60 transition-colors group-hover:text-white/80">
-                {truncateDescription(brand.description, 150)}
+                {brand.summary}
             </p>
         </Link>
     );

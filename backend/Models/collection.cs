@@ -8,6 +8,5 @@ public class Collection
     public string? Image { get; set; }
     public int BrandId { get; set; }
     public Brand Brand { get; set; } = null!;
-
     public ICollection<Watch>? Watches { get; set; } = new List<Watch>();
 }

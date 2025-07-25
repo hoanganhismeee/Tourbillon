@@ -27,6 +27,13 @@ public class CollectionController : ControllerBase
         return collection == null ? NotFound() : Ok(collection);
     }
 
+    [HttpGet("brand/{brandId}")]
+    public IActionResult GetCollectionsByBrand(int brandId)
+    {
+        var collections = _context.Collections.Where(c => c.BrandId == brandId).ToList();
+        return Ok(collections);
+    }
+
     [HttpPost]
     public IActionResult CreateCollection([FromBody] Collection collection) // Creates a new collection in the database.
     {
