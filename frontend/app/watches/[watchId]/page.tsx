@@ -14,6 +14,8 @@ const WatchDetailPage = () => {
     const watchId = params.watchId as string;
     const [watch, setWatch] = useState<Watch | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [imageError, setImageError] = useState(false);
+    const [imageLoading, setImageLoading] = useState(true);
 
     useEffect(() => {
         if (watchId) {
@@ -36,12 +38,40 @@ const WatchDetailPage = () => {
         }
     }, [watchId]);
 
+    const handleImageError = () => {
+        setImageError(true);
+        setImageLoading(false);
+    };
+
+    const handleImageLoad = () => {
+        setImageLoading(false);
+    };
+
     if (error) {
-        return <div className="flex justify-center items-center min-h-screen text-red-400">{error}</div>;
+        return (
+            <div className="flex justify-center items-center min-h-screen">
+                <div className="text-center">
+                    <div className="w-24 h-24 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-12 h-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                    </div>
+                    <h2 className="text-2xl font-playfair font-bold text-red-400 mb-2">Error Loading Watch</h2>
+                    <p className="text-white/60">{error}</p>
+                </div>
+            </div>
+        );
     }
 
     if (!watch) {
-        return <div className="flex justify-center items-center min-h-screen text-white/80">Loading watch...</div>;
+        return (
+            <div className="flex justify-center items-center min-h-screen">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white/30 mx-auto mb-6"></div>
+                    <p className="text-white/80 text-lg">Loading watch details...</p>
+                </div>
+            </div>
+        );
     }
 
     // Dummy data for specs - replace with actual data from your model if available
@@ -59,21 +89,54 @@ const WatchDetailPage = () => {
                 {/* Left Column: Watch Image */}
                 <div className="flex justify-center items-start">
                     <div className="sticky top-32 w-full max-w-md bg-black/20 p-8 rounded-xl border border-white/10">
-                        {/* Placeholder for the image */}
-                        <div className="aspect-square bg-white/5 flex items-center justify-center rounded-lg">
-                            <span className="text-white/40">Image of {watch.name}</span>
+                        {/* Watch Image with Error Handling */}
+                        <div className="aspect-square bg-white/5 flex items-center justify-center rounded-lg relative overflow-hidden">
+                            {watch.image && !imageError ? (
+                                <>
+                                    {/* Loading state */}
+                                    {imageLoading && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white/30"></div>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Actual image */}
+                                    <img 
+                                        src={watch.image} 
+                                        alt={watch.name} 
+                                        className={`w-full h-full object-cover rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+                                        onError={handleImageError}
+                                        onLoad={handleImageLoad}
+                                    />
+                                </>
+                            ) : (
+                                /* Fallback when no image or image failed to load */
+                                <div className="flex flex-col items-center justify-center text-center p-8">
+                                    <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-4">
+                                        <svg className="w-10 h-10 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                    </div>
+                                    <span className="text-white/40 text-lg font-medium">{watch.name}</span>
+                                    <span className="text-white/20 text-sm mt-2">Image unavailable</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
 
                 {/* Right Column: Details & Actions */}
                 <div className="pt-8">
-                    <h1 className="text-4xl lg:text-5xl font-playfair font-bold text-[#f0e6d2] mb-4">{watch.name}</h1>
-                    <p className="text-lg text-white/70 mb-8">{watch.description || 'No description available.'}</p>
+                    <h1 className="text-4xl lg:text-5xl font-playfair font-bold text-[#f0e6d2] mb-4">
+                        {watch.name || 'Unnamed Watch'}
+                    </h1>
+                    <p className="text-lg text-white/70 mb-8">
+                        {watch.description || 'No description available.'}
+                    </p>
 
                     <div className="mb-8">
-                        <span className="text-4xl font-semibold text-white">
-                            ${watch.currentPrice.toLocaleString()}
+                        <span className="text-7xl font-bold text-white">
+                            {watch.currentPrice > 0 ? `$${watch.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Price on request'}
                         </span>
                         <p className="text-sm text-white/50 mt-1">Price subject to market changes</p>
                     </div>

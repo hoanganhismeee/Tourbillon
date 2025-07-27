@@ -12,6 +12,8 @@ public class Watch
     public Brand Brand { get; set; } = null!; //null! because it will alway be filled
 
     public int? CollectionId { get; set; }
+
+    public string? Specs { get; set; }
     public Collection? Collection { get; set; } //null! because it will alway be filled
 
     // Navigation properties

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { registerUser } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import StaggeredFade from "../scrollMotion/StaggeredFade";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -57,6 +58,7 @@ export default function RegisterPage() {
   };
 
   return (
+    <StaggeredFade>
     <div className="flex justify-center pt-20 pb-24 px-4">
       <div className="w-full max-w-[900px] min-w-[640px] rounded-[20px] border border-[#bfa68a] bg-white/5 backdrop-blur-xl px-12 py-14 shadow-lg">
         <div className="text-center mb-10">
@@ -169,5 +171,6 @@ export default function RegisterPage() {
         </form>
       </div>
     </div>
+    </StaggeredFade>
   );
 }

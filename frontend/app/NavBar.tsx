@@ -67,6 +67,11 @@ const UserMenu = () => {
     const lastScrollY = useRef(0);
     const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up');
     const [isAtTop, setIsAtTop] = useState(true);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+      setMounted(true);
+    }, []);
   
     const handleSearchClick = () => {
       if (isSearchExpanded) {
@@ -110,16 +115,23 @@ const UserMenu = () => {
           document.documentElement.style.setProperty('--navbar-height', `${height}px`);
         }
       };
-      updateNavbarHeight();
-      const timer = setTimeout(updateNavbarHeight, 100);
-      window.addEventListener('resize', updateNavbarHeight);
-      return () => {
-        clearTimeout(timer);
-        window.removeEventListener('resize', updateNavbarHeight);
-      };
+      
+      // Only run on client side
+      if (typeof window !== 'undefined') {
+        updateNavbarHeight();
+        const timer = setTimeout(updateNavbarHeight, 100);
+        window.addEventListener('resize', updateNavbarHeight);
+        return () => {
+          clearTimeout(timer);
+          window.removeEventListener('resize', updateNavbarHeight);
+        };
+      }
     }, []);
   
     useEffect(() => {
+      // Only run on client side
+      if (typeof window === 'undefined') return;
+      
       let ticking = false;
       const handleScroll = () => {
         const currentY = window.scrollY;
@@ -146,11 +158,11 @@ const UserMenu = () => {
     return (
       <nav
         ref={navRef}
-        className={`fixed top-0 left-0 w-full z-50 px-16 py-12 pr-24 grid grid-cols-3 items-center transition-all duration-400 ease-in-out ${scrollDirection === 'down' ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100'}`}
+        className={`fixed top-0 left-0 w-full z-50 px-16 py-12 pr-24 grid grid-cols-3 items-center transition-all duration-400 ease-in-out ${mounted && scrollDirection === 'down' ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100'}`}
         style={{
-          background: isAtTop ? 'transparent' : 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)',
-          backdropFilter: isAtTop ? 'none' : 'blur(14px)',
-          WebkitBackdropFilter: isAtTop ? 'none' : 'blur(14px)',
+          background: mounted && !isAtTop ? 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)' : 'transparent',
+          backdropFilter: mounted && !isAtTop ? 'blur(14px)' : 'none',
+          WebkitBackdropFilter: mounted && !isAtTop ? 'blur(14px)' : 'none',
           transition: 'all 0.2s ease',
         }}
       >
@@ -163,9 +175,15 @@ const UserMenu = () => {
         </div>
   
         {/* Logo */}
-          <Link href="/" className="font-playfair text-[48px] logo-text justify-self-center opacity-90 hover:opacity-10 transition-opacity" style={{ fontWeight: 300 }}>
-          Tourbillon
-        </Link>
+        <div className="backdrop-blur-sm bg-white/5 rounded-md px-4 py-1 justify-self-center">
+          <Link 
+            href="/" 
+            className="font-playfair text-[48px] logo-text opacity-90 hover:opacity-10 transition-opacity" 
+            style={{ fontWeight: 300 }}
+          >
+            Tourbillon
+          </Link>
+        </div>
   
         {/* Right Section */}
         <div ref={searchContainerRef} className="flex items-center justify-center gap-[50px] relative">

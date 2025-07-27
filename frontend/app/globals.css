@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Font Utility Classes */
+.font-playfair {
+  font-family: var(--font-playfair-display), serif;
+}
+
 :root {
   --white: #ffffff;
   --cream-gold: #f0e6d2;
@@ -9,7 +14,10 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .logo-text { color: var(--cream); }
+  .logo-text { 
+    color: var(--cream-gold); 
+    text-shadow: 0 0 15px rgba(240, 230, 210, 0.4);
+  }
   .brand-name { color: var(--cream-gold); }
   .text-white { color: var(--white); }
 
@@ -21,10 +29,34 @@
   html {
     background: linear-gradient(135deg, #1e1512 0%, #2a211c 50%, #3b2f26 100%);
     min-height: 100vh;
+    scroll-behavior: smooth;
   }
 
   body {
     color: var(--white);
     margin-top: 3rem;
+    overflow-x: hidden;
+  }
+
+  /* Ensure scroll animations work properly */
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Prevent container overflow from breaking animations */
+  .container {
+    overflow: visible;
+  }
+
+  /* Improve animation performance */
+  [data-framer-motion] {
+    will-change: opacity, transform;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+
+  /* Ensure grid items animate properly */
+  .grid > * {
+    transform: translateZ(0);
   }
 }

@@ -36,7 +36,9 @@ export default function RootLayout({
     <html lang="en">
       <body
         className={`${playfairDisplay.variable} ${inter.variable} antialiased`}
-        suppressHydrationWarning={true}>
+        suppressHydrationWarning={true}
+        style={{ scrollBehavior: 'auto' }}
+      >
         <AuthProvider>
           <NavBar />
           <AnimatePresence mode="wait">
@@ -48,6 +50,18 @@ export default function RootLayout({
             </MotionMain>
           </AnimatePresence>
         </AuthProvider>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined') {
+                if ('scrollRestoration' in history) {
+                  history.scrollRestoration = 'manual';
+                }
+                window.scrollTo(0, 0);
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );

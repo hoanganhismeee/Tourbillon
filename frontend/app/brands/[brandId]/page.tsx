@@ -2,25 +2,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
 import { fetchBrandById, fetchWatchesByBrand, fetchCollectionsByBrand, Brand, Watch, Collection } from '@/lib/api';
+import ScrollFade from '../../scrollMotion/ScrollFade';
+import StaggeredFade from '../../scrollMotion/StaggeredFade';
+import WatchCard from '../../watches/[watchId]/WatchCard';
 
 
-// A reusable component for displaying a single watch card.
-const WatchCard = ({ watch }: { watch: Watch }) => {
-    return (
-        <Link href={`/watches/${watch.id}`} prefetch={false}>
-            <a className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-4 transition-all duration-300 hover:border-white/30 hover:scale-105">
-                {/* Placeholder for watch image */}
-                <div className="w-full h-48 bg-black/30 rounded-lg mb-4 flex items-center justify-center">
-                    <span className="text-white/30">Image</span>
-                </div>
-                <h3 className="text-lg font-semibold text-[#f0e6d2] group-hover:text-white transition-colors">{watch.name}</h3>
-                <p className="text-md text-white/60">${watch.currentPrice.toLocaleString()}</p>
-            </a>
-        </Link>
-    );
-};
+
 
 // A reusable component for displaying a single collection card.
 const CollectionCard = ({ collection }: { collection: Collection }) => {
@@ -94,43 +82,42 @@ const BrandPage = () => {
   
   return (
     <div className="container mx-auto px-4 sm:px-8 py-24 pt-48">
-      <header className="text-center mb-16">
-        <h1 className="text-5xl md:text-6xl font-playfair font-bold mb-4 text-[#f0e6d2]">{brand.name}</h1>
-      </header>
+      <ScrollFade>
+        <header className="text-center mb-8">
+          <h1 className="text-5xl md:text-6xl font-playfair font-bold mb-6 text-[#f0e6d2]">{brand.name}</h1>
+          <p className="text-white/80 leading-relaxed whitespace-pre-line max-w-3xl mx-auto font-playfair font-light tracking-wide text-lg">
+            {brand.description}
+          </p>
+        </header>
+      </ScrollFade>
 
       {/* Collections Grid */}
       <section className="mb-16">
-        <h2 className="text-3xl font-playfair font-semibold mb-8 text-white/90">Collections</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
+        <ScrollFade>
+          <h2 className="text-3xl font-playfair font-semibold mb-8 text-white/90">Collections</h2>
+        </ScrollFade>
+        <StaggeredFade className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
           {collections.length > 0 ? (
             collections.map((collection) => <CollectionCard key={collection.id} collection={collection} />)
           ) : (
             <p className="text-white/60 col-span-full">No collections available for this brand yet.</p>
           )}
-        </div>
+        </StaggeredFade>
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-        {/* Brand Description */}
-        <aside className="lg:col-span-1">
-          <div className="sticky top-32 bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-6">
-            <h2 className="text-2xl font-playfair font-semibold text-white/90 mb-4">Description</h2>
-            <p className="text-white/70 leading-relaxed whitespace-pre-line">{brand.description}</p>
-          </div>
-        </aside>
-
-        {/* Watch Collection */}
-        <main className="lg:col-span-2">
-          <h2 className="text-3xl font-playfair font-semibold mb-8 text-white/90">The Collection</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
-            {watches.length > 0 ? (
-              watches.map((watch) => <WatchCard key={watch.id} watch={watch} />)
-            ) : (
-              <p className="text-white/60 col-span-full">No watches available for this brand yet.</p>
-            )}
-          </div>
-        </main>
-      </div>
+      {/* Watch Collection */}
+      <section>
+        <ScrollFade>
+          <h2 className="text-3xl font-playfair font-semibold mb-8 text-white/90">Watches</h2>
+        </ScrollFade>
+        <StaggeredFade className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
+          {watches.length > 0 ? (
+            watches.map((watch) => <WatchCard key={watch.id} watch={watch} />)
+          ) : (
+            <p className="text-white/60 col-span-full">No watches available for this brand yet.</p>
+          )}
+        </StaggeredFade>
+      </section>
     </div>
   );
 };

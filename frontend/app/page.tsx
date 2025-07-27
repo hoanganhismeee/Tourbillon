@@ -1,6 +1,9 @@
 // This component renders the homepage, providing a welcoming introduction to the Tourbillon watch collection.
 // It matches the styling theme of other pages for consistency.
 import ScrollFade from "./scrollMotion/ScrollFade";
+// import StaggeredFade from "./scrollMotion/StaggeredFade";
+// use ScrollFade for independent animations (from bottom to top)
+// use StaggeredFade for animations that require a delay between items (from top to bottom)
 
 export default function Home() {
   return (

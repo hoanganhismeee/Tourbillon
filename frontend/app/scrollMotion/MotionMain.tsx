@@ -1,6 +1,6 @@
-// MotionMain.tsx
-// Provides a fade-in and upward motion animation for the main content area on page load or navigation.
-// Use for page transition effects.
+// Page Transition Animation (fade in when page loads)
+// use ScrollFade for independent animations (from bottom to top)
+// use StaggeredFade for animations that require a delay between items (from top to bottom)
 "use client";
 import { motion, HTMLMotionProps } from "framer-motion";
 
