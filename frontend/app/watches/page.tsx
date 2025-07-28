@@ -48,47 +48,80 @@ const BrandListPage = () => {
   const trinityBrands = brands.slice(0, 3);
   const remainingBrands = brands.slice(3);
 
+  // Debug logging
+  console.log('Brands loaded:', brands.length);
+  console.log('Trinity brands:', trinityBrands.map(b => b.name));
+
   return (
-    <div className="container mx-auto px-16 sm:px-20 lg:px-28 xl:px-36 py-24 pt-48 max-w-4xl">
+    <div className="container mx-auto px-8 sm:px-12 lg:px-16 xl:px-20 py-24 pt-30 max-w-7xl">
       <ScrollFade>
-        <h1 className="text-5xl font-playfair font-bold text-center mb-16 text-heading">
+        <h1 className="text-4xl font-playfair font-bold text-center mb-10 text-[#f0e6d2]">
           Explore Our Brands
         </h1>
       </ScrollFade>
 
       {/* White line separator */}
-      <div className="w-full h-px bg-white/20 mb-20"></div>
+      <div className="w-full h-[2px] bg-white/60 mb-20"></div>
 
       {/* Holy Trinity Showcase */}
       <section className="mb-20">
         <ScrollFade>
-          <h2 className="text-4xl font-playfair font-bold text-center mb-12 text-[#f0e6d2]">
+          <h2 className="text-5xl font-playfair font-bold text-center mb-20 text-[#f0e6d2]">
             The Holy Trinity - Haute Horlogerie
           </h2>
         </ScrollFade>
         
-        {trinityBrands.length >= 3 && (
+        {trinityBrands.length > 0 ? (
           <>
-            <TrinityShowcase 
-              brand={trinityBrands[0]} 
-              tagline="Timeless prestige in Swiss watchmaking"
-            />
-            <TrinityShowcase 
-              brand={trinityBrands[1]} 
-              tagline="Heritage and refinement since 1755"
-            />
-            <TrinityShowcase 
-              brand={trinityBrands[2]} 
-              tagline="Distinctive design meets Swiss tradition"
-            />
+            {trinityBrands[0] && (
+              <ScrollFade>
+                <TrinityShowcase 
+                  brand={trinityBrands[0]} 
+                  tagline="Timeless prestige in Swiss watchmaking"
+                />
+              </ScrollFade>
+            )}
+            {trinityBrands[1] && (
+              <>
+                {/* White line separator between Trinity brands */}
+                <div className="w-full h-[2px] bg-white/60 my-24"></div>
+                <ScrollFade>
+                  <TrinityShowcase 
+                    brand={trinityBrands[1]} 
+                    tagline="Heritage and refinement since 1755"
+                  />
+                </ScrollFade>
+              </>
+            )}
+            {trinityBrands[2] && (
+              <>
+                {/* White line separator between Trinity brands */}
+                <div className="w-full h-[2px] bg-white/60 my-24"></div>
+                <ScrollFade>
+                  <TrinityShowcase 
+                    brand={trinityBrands[2]} 
+                    tagline="Distinctive design meets Swiss tradition"
+                  />
+                </ScrollFade>
+              </>
+            )}
           </>
+        ) : (
+          // Loading state for Trinity showcase
+          <div className="text-center py-16">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white/40 mx-auto mb-4"></div>
+            <p className="text-white/60 font-playfair">Loading luxury brands...</p>
+          </div>
         )}
       </section>
+
+      {/* White line separator between sections */}
+      <div className="w-full h-[2px] bg-white/60 my-32"></div>
 
       {/* Explore More Brands */}
       <section>
         <ScrollFade>
-          <h2 className="text-4xl font-playfair font-bold text-center mb-12 text-[#f0e6d2]">
+          <h2 className="text-5xl font-playfair font-bold text-center mb-16 text-[#f0e6d2]">
             Explore More Brands
           </h2>
         </ScrollFade>

@@ -28,6 +28,7 @@ export interface Watch {
   currentPrice: number;
   brandId: number;
   collectionId: number | null;
+  specs: string | null;
 }
 
 export interface User {

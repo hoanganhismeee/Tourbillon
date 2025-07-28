@@ -7,7 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Watch, fetchWatchById } from '@/lib/api';
-import { ShoppingCartIcon } from '@heroicons/react/24/outline'; // Using outline icons for a cleaner look
+
 
 const WatchDetailPage = () => {
     const params = useParams();
@@ -74,14 +74,52 @@ const WatchDetailPage = () => {
         );
     }
 
-    // Dummy data for specs - replace with actual data from your model if available
-    const specifications = [
-        { name: 'Reference', value: `REF-${watch.id}` },
-        { name: 'Case Material', value: 'Stainless Steel' },
-        { name: 'Diameter', value: '41mm' },
-        { name: 'Movement', value: 'Automatic' },
-        { name: 'Water Resistance', value: '100m' },
-    ];
+    // Parse specs from the database if available, otherwise use fallback specs
+    const parseSpecifications = (specsString: string | null) => {
+        if (!specsString) {
+            // Fallback specs if no specs data is available
+            return [
+                { name: 'No watch specs available', value: 'No watch specs available' }
+            ];
+        }
+
+        try {
+            // Try to parse specs as JSON first
+            const specs = JSON.parse(specsString);
+            if (Array.isArray(specs)) {
+                return specs.map(spec => ({
+                    name: spec.name || spec.key || 'Specification',
+                    value: spec.value || spec.val || 'N/A'
+                }));
+            }
+        } catch {
+            // If JSON parsing fails, try to parse as semicolon-separated key-value pairs
+            const specs = specsString.split(';').map(spec => spec.trim()).filter(spec => spec);
+            return specs.map(spec => {
+                const colonIndex = spec.indexOf(':');
+                if (colonIndex > 0) {
+                    const name = spec.substring(0, colonIndex).trim();
+                    const value = spec.substring(colonIndex + 1).trim();
+                    return {
+                        name: name || 'Specification',
+                        value: value || spec
+                    };
+                } else {
+                    return {
+                        name: 'Specification',
+                        value: spec
+                    };
+                }
+            });
+        }
+
+        // If all parsing fails, return as single spec
+        return [
+            { name: 'Specifications', value: specsString }
+        ];
+    };
+
+    const specifications = parseSpecifications(watch.specs);
 
     return (
         <div className="container mx-auto px-4 sm:px-8 py-24 pt-48 text-white">
@@ -113,9 +151,7 @@ const WatchDetailPage = () => {
                                 /* Fallback when no image or image failed to load */
                                 <div className="flex flex-col items-center justify-center text-center p-8">
                                     <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-4">
-                                        <svg className="w-10 h-10 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
+                                        <svg className="w-10 h-10 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">                                        </svg>
                                     </div>
                                     <span className="text-white/40 text-lg font-medium">{watch.name}</span>
                                     <span className="text-white/20 text-sm mt-2">Image unavailable</span>
@@ -142,10 +178,6 @@ const WatchDetailPage = () => {
                     </div>
 
                     <div className="flex items-center gap-4 mb-10">
-                        <button className="flex-grow py-4 px-8 rounded-xl font-semibold bg-gradient-to-r from-[#bfa68a] to-[#f0e6d2] text-[#1e1512] hover:opacity-90 transition flex items-center justify-center gap-3">
-                            <ShoppingCartIcon className="h-6 w-6" />
-                            <span>Add to Cart</span>
-                        </button>
                         <button className="py-4 px-8 rounded-xl font-semibold bg-white/10 text-white hover:bg-white/20 transition">
                             Contact Advisor
                         </button>

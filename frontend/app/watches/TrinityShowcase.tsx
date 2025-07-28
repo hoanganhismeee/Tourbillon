@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { Brand, Watch, fetchWatchById, fetchWatchesByBrand } from '@/lib/api';
 import WatchCard from './[watchId]/WatchCard';
 import ScrollFade from '../scrollMotion/ScrollFade';
-import StaggeredFade from '../scrollMotion/StaggeredFade';
 
 interface TrinityShowcaseProps {
     brand: Brand;
@@ -15,6 +14,9 @@ interface TrinityShowcaseProps {
 const TrinityShowcase = ({ brand, tagline }: TrinityShowcaseProps) => {
     const [watches, setWatches] = useState<Watch[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // Debug logging
+    console.log(`TrinityShowcase rendering for brand: ${brand.name}`, { brand, tagline });
 
     useEffect(() => {
         const fetchWatches = async () => {
@@ -81,52 +83,54 @@ const TrinityShowcase = ({ brand, tagline }: TrinityShowcaseProps) => {
     );
 
     return (
-        <div className="mb-16">
+        <div className="mb-20 px-4">
             <ScrollFade>
-                <div className="text-center mb-8">
-                    <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2] mb-3">{brand.name}</h2>
-                    <p className="text-xl text-white/70 mb-6">{tagline}</p>
+                <div className="text-center mb-16">
+                    <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2] mb-4">{brand.name}</h2>
+                    <p className="text-2xl text-white/70 font-playfair font-light">{tagline}</p>
                 </div>
             </ScrollFade>
             
-            <StaggeredFade className="grid grid-cols-4 gap-8 mb-6">
-                {/* Watch cards - 3 watches */}
-                {loading ? (
-                    // Loading placeholders
-                    [1, 2, 3].map((i) => (
-                        <div key={i} className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-6 transition-all duration-300">
-                            <div className="w-full h-80 bg-black/30 rounded-lg mb-4 flex items-center justify-center">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/30"></div>
+            <div className="flex flex-col items-center mb-8">
+                {/* Watch cards - 3 watches in a grid */}
+                <div className="grid grid-cols-3 gap-16 mb-8">
+                    {loading ? (
+                        // Loading placeholders
+                        [1, 2, 3].map((i) => (
+                            <div key={i} className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-6 transition-all duration-300">
+                                <div className="w-full h-80 bg-black/30 rounded-lg mb-4 flex items-center justify-center">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/30"></div>
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="h-6 bg-white/10 rounded animate-pulse"></div>
+                                    <div className="h-4 bg-white/5 rounded animate-pulse"></div>
+                                    <div className="h-4 bg-white/10 rounded animate-pulse"></div>
+                                </div>
                             </div>
-                            <div className="space-y-2">
-                                <div className="h-6 bg-white/10 rounded animate-pulse"></div>
-                                <div className="h-4 bg-white/5 rounded animate-pulse"></div>
-                                <div className="h-4 bg-white/10 rounded animate-pulse"></div>
-                            </div>
-                        </div>
-                    ))
-                ) : (
-                    // Actual watch cards or placeholders
-                    Array.from({ length: 3 }, (_, index) => {
-                        const watch = watches[index];
-                        if (watch) {
-                            return <WatchCard key={watch.id} watch={watch} />;
-                        } else {
-                            return renderPlaceholderCard(index);
-                        }
-                    })
-                )}
+                        ))
+                    ) : (
+                        // Actual watch cards or placeholders
+                        Array.from({ length: 3 }, (_, index) => {
+                            const watch = watches[index];
+                            if (watch) {
+                                return <WatchCard key={watch.id} watch={watch} />;
+                            } else {
+                                return renderPlaceholderCard(index);
+                            }
+                        })
+                    )}
+                </div>
                 
-                {/* Discovery button in the 4th column */}
-                <div className="flex items-center justify-center">
+                {/* Discovery button positioned below */}
+                <div className="flex items-center">
                     <Link 
                         href={`/brands/${brand.id}`}
-                        className="inline-flex items-center text-[#f0e6d2] hover:text-white transition-colors duration-300 text-lg font-playfair"
+                        className="inline-flex items-center text-[#f0e6d2] hover:text-white transition-colors duration-500 text-2xl font-playfair font-medium hover:scale-105"
                     >
-                        Discovery →
+                        Explore More
                     </Link>
                 </div>
-            </StaggeredFade>
+            </div>
         </div>
     );
 };

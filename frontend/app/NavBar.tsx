@@ -66,7 +66,7 @@ const UserMenu = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const lastScrollY = useRef(0);
     const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up');
-    const [isAtTop, setIsAtTop] = useState(true);
+    const [scrollY, setScrollY] = useState(0);
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
@@ -143,8 +143,8 @@ const UserMenu = () => {
 
             //navbar appears with just 3 pixels of scrolling up
             else if (diff < -3) setScrollDirection('up');
-            //navbar disappears with just 10 pixels of downward scroll
-            setIsAtTop(currentY <= 10);
+            
+            setScrollY(currentY);
             lastScrollY.current = currentY;
             ticking = false;
           });
@@ -158,16 +158,25 @@ const UserMenu = () => {
     return (
       <nav
         ref={navRef}
-        className={`fixed top-0 left-0 w-full z-50 px-16 py-12 pr-24 grid grid-cols-3 items-center transition-all duration-400 ease-in-out ${mounted && scrollDirection === 'down' ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100'}`}
-        style={{
-          background: mounted && !isAtTop ? 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)' : 'transparent',
-          backdropFilter: mounted && !isAtTop ? 'blur(14px)' : 'none',
-          WebkitBackdropFilter: mounted && !isAtTop ? 'blur(14px)' : 'none',
-          transition: 'all 0.2s ease',
-        }}
+        className={`fixed top-0 left-0 w-full z-50 px-16 py-12 grid grid-cols-3 items-center transition-all duration-800 ease-in-out ${mounted ? (scrollDirection === 'down' ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100') : 'translate-y-0 opacity-100'}`}
       >
+        {mounted && (
+          <div 
+            className="absolute inset-0 rounded-[20px] mt-10 mb-10"
+            style={{
+              background: 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)',
+              backdropFilter: 'blur(14px)',
+              WebkitBackdropFilter: 'blur(14px)',
+              zIndex: -1,
+              opacity: Math.min(scrollY / 25, 1), // Smooth fade from 0 to 1 over 25px scroll
+              transition: 'opacity 0.5s ease',
+              marginLeft: '20px', // Custom left padding
+              marginRight: '20px', // Custom right padding
+            }}
+          />
+        )}
         {/* Left Menu */}
-        <div className="flex items-center justify-end gap-[50px] pr-8 font-inter font-light tracking-[0.03em] text-white uppercase">
+        <div className="flex items-center justify-end gap-[50px] pr-8 font-playfair font-light tracking-[0.03em] text-white uppercase">
           <Link href="/watches" className="hover:opacity-10 transition-opacity">Watches</Link>
           <Link href="/trend" className="hover:opacity-10 transition-opacity">Trend</Link>
           <Link href="/stories" className="hover:opacity-10 transition-opacity">Stories</Link>
@@ -175,7 +184,7 @@ const UserMenu = () => {
         </div>
   
         {/* Logo */}
-        <div className="backdrop-blur-sm bg-white/5 rounded-md px-4 py-1 justify-self-center">
+        <div className="justify-self-center">
           <Link 
             href="/" 
             className="font-playfair text-[48px] logo-text opacity-90 hover:opacity-10 transition-opacity" 
@@ -185,19 +194,19 @@ const UserMenu = () => {
           </Link>
         </div>
   
-        {/* Right Section */}
-        <div ref={searchContainerRef} className="flex items-center justify-center gap-[50px] relative">
-          <div className={`transition-opacity duration-500 ${isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+        {/* Right Icons */}
+        <div ref={searchContainerRef} className="flex items-center gap-12 relative pr-4 justify-end">
+          <div className={`transition-opacity duration-500 ${mounted && isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             <UserMenu />
           </div>
-          <Link href="/cart" className={`hover:opacity-70 transition-opacity duration-500 cursor-pointer ${isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+          <Link href="/cart" className={`hover:opacity-70 transition-opacity duration-500 cursor-pointer ${mounted && isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             <CartIcon />
           </Link>
           <div className="relative">
             <button onClick={handleSearchClick} className="hover:opacity-70 transition-opacity cursor-pointer bg-transparent border-none p-0 relative z-20">
               <SearchIcon />
             </button>
-            <div className={`absolute top-1/2 -translate-y-1/2 flex items-center transition-all duration-1000 ease-out ${isSearchExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} style={{ width: isSearchExpanded ? '400px' : '25px', right: '0px', overflow: 'hidden' }}>
+            <div className={`absolute top-1/2 -translate-y-1/2 flex items-center transition-all duration-1000 ease-out ${isSearchExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} style={{ width: isSearchExpanded ? '450px' : '20px', right: '0px', overflow: 'hidden' }}>
               <form onSubmit={handleSearchSubmit} className="flex items-center relative w-full">
                 <input
                   ref={searchInputRef}
@@ -216,8 +225,8 @@ const UserMenu = () => {
                     borderRadius: '12px',
                   }}
                 />
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 scale-x-0 transition-transform duration-700 focus-within:scale-x-100 blur-sm"></div>
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-white to-transparent opacity-60 scale-x-0 transition-transform duration-700 focus-within:scale-x-100"></div>
+                <div className="absolute -bottom-2 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 scale-x-0 transition-transform duration-700 focus-within:scale-x-100 blur-sm"></div>
+                <div className="absolute -bottom-2 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-white to-transparent opacity-60 scale-x-0 transition-transform duration-700 focus-within:scale-x-100"></div>
               </form>
             </div>
           </div>

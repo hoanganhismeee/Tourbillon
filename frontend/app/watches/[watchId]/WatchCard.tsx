@@ -55,16 +55,16 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
   return (
     <Link 
       href={`/watches/${watch.id}`} 
-      className={`group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-6 transition-all duration-300 hover:border-white/30 hover:scale-105 ${className}`}
+      className={`group block bg-black/30 backdrop-blur-md border border-white/20 rounded-2xl p-6 transition-all duration-500 hover:border-white/40 hover:bg-black/40 hover:scale-[1.02] ${className}`}
     >
       {/* Watch Image */}
-      <div className="w-full h-80 bg-black/30 rounded-lg mb-4 flex items-center justify-center relative overflow-hidden">
+      <div className="w-full h-80 bg-black/40 rounded-xl mb-4 flex items-center justify-center relative overflow-hidden">
         {!imageError ? (
           <>
             {/* Loading state */}
             {imageLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/30"></div>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white/40"></div>
               </div>
             )}
             
@@ -72,30 +72,30 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
             <img 
               src={watch.image} 
               alt={watch.name} 
-              className={`w-full h-full object-cover rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+              className={`w-full h-full object-cover rounded-xl transition-opacity duration-500 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
               onError={handleImageError}
               onLoad={handleImageLoad}
             />
           </>
         ) : (
           /* Fallback when no image or image failed to load */
-          <div className="flex flex-col items-center justify-center text-center p-4">
-            <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mb-3">
-              <svg className="w-8 h-8 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex flex-col items-center justify-center text-center p-8">
+            <div className="w-20 h-20 bg-white/15 rounded-full flex items-center justify-center mb-4">
+              <svg className="w-10 h-10 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <span className="text-white/20 text-xs mt-1">Image unavailable</span>
+            <span className="text-white/30 text-sm font-playfair">Image unavailable</span>
           </div>
         )}
       </div>
       
       {/* Collection Name - Clickable Button */}
       {collection && (
-        <div className="mb-2 text-center">
+        <div className="mb-3 text-center">
           <button 
             onClick={handleCollectionClick}
-            className="inline-block text-sm text-white hover:text-white/90 transition-colors font-playfair font-semibold cursor-pointer bg-transparent border-none p-1"
+            className="inline-block text-sm text-white/80 hover:text-white transition-colors font-playfair font-medium cursor-pointer bg-transparent border-none p-1"
           >
             {collection.name}
           </button>
@@ -103,11 +103,11 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
       )}
       
       {/* Watch Details */}
-      <div className="space-y-2 text-center">
-        <h3 className="text-lg font-semibold text-[#f0e6d2] group-hover:text-white transition-colors">
+      <div className="space-y-3 text-center">
+        <h3 className="text-xl font-playfair font-semibold text-[#f0e6d2] group-hover:text-white transition-colors">
           {watch.name}
         </h3>
-        <p className="text-lg text-white/80 font-semibold">
+        <p className="text-lg text-white/90 font-playfair font-medium">
           {watch.currentPrice === 0 ? 'Price on request' : `$${watch.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
         </p>
       </div>
