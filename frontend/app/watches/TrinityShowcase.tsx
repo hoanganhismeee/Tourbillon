@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Brand, Watch, fetchWatchById, fetchWatchesByBrand } from '@/lib/api';
+import { Brand, Watch, fetchWatchById, fetchWatchesByBrand } from '@/api/api';
 import WatchCard from './[watchId]/WatchCard';
 import ScrollFade from '../scrollMotion/ScrollFade';
 

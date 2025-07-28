@@ -6,7 +6,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Watch, fetchWatchById } from '@/lib/api';
+import { Watch, fetchWatchById } from '@/api/api';
 
 
 const WatchDetailPage = () => {

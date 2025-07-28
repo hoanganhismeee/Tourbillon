@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { fetchBrands, Brand } from '@/lib/api';
+import { fetchBrands, Brand } from '@/api/api';
 import ScrollFade from '../scrollMotion/ScrollFade';
 import TrinityShowcase from './TrinityShowcase';
 
@@ -30,6 +30,7 @@ const BrandListItem = ({ brand }: { brand: Brand }) => {
 
 const BrandListPage = () => {
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [showAllBrands, setShowAllBrands] = useState(false);
 
   useEffect(() => {
     const getBrands = async () => {
@@ -47,6 +48,9 @@ const BrandListPage = () => {
   // Get the first 3 brands for the Holy Trinity showcase
   const trinityBrands = brands.slice(0, 3);
   const remainingBrands = brands.slice(3);
+  
+  // Show only first 3 remaining brands initially, or all if showAllBrands is true
+  const displayedBrands = showAllBrands ? remainingBrands : remainingBrands.slice(0, 3);
 
   // Debug logging
   console.log('Brands loaded:', brands.length);
@@ -116,22 +120,58 @@ const BrandListPage = () => {
       </section>
 
       {/* White line separator between sections */}
-      <div className="w-full h-[2px] bg-white/60 my-32"></div>
+      <div className="w-full h-[2px] bg-white/60 my-25"></div>
 
       {/* Explore More Brands */}
       <section>
         <ScrollFade>
-          <h2 className="text-5xl font-playfair font-bold text-center mb-16 text-[#f0e6d2]">
+          <h2 className="text-5xl font-playfair font-bold text-center mb-10 text-[#f0e6d2]">
             Explore More Brands
           </h2>
         </ScrollFade>
         
         <div className="max-w-2xl mx-auto">
-          {remainingBrands.map((brand) => (
+          {displayedBrands.map((brand) => (
             <ScrollFade key={brand.id}>
               <BrandListItem brand={brand} />
             </ScrollFade>
           ))}
+          
+          {/* Show More/Less Button */}
+          {remainingBrands.length > 3 && (
+            <div className="text-center mt-8">
+              <button
+                onClick={() => setShowAllBrands(!showAllBrands)}
+                className="inline-flex items-center text-[#f0e6d2] hover:text-white transition-colors duration-500 text-xl font-playfair font-medium hover:scale-105"
+              >
+                {showAllBrands ? (
+                  <div className="flex flex-col items-center">
+                    <div className="flex flex-col mb-0">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                      <svg className="w-4 h-4 -mt-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    </div>
+                    <span>Show Less</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center">
+                    <span>Show More</span>
+                    <div className="flex flex-col mt-0">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                      <svg className="w-4 h-4 -mt-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </section>
     </div>

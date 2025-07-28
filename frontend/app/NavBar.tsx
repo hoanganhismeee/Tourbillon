@@ -162,7 +162,7 @@ const UserMenu = () => {
       >
         {mounted && (
           <div 
-            className="absolute inset-0 rounded-[20px] mt-10 mb-10"
+            className="absolute inset-0 rounded-[20px] mt-12 mb-12"
             style={{
               background: 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)',
               backdropFilter: 'blur(14px)',

@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Watch, Collection, fetchCollectionsByBrand } from '@/lib/api';
+import { Watch, Collection, fetchCollectionsByBrand } from '@/api/api';
 
 interface WatchCardProps {
   watch: Watch;
