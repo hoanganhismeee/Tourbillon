@@ -14,6 +14,7 @@
     "framer-motion": "^12.23.9",
     "intersection-observer": "^0.12.2",
     "next": "15.3.3",
+    "next-cloudinary": "^6.16.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-intersection-observer": "^9.16.0"
