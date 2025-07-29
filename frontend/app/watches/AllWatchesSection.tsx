@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { fetchWatches, fetchCollections, Watch, Collection, Brand } from '@/api/api';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
+import { useNavigation } from '@/contexts/NavigationContext';
 
 // Individual watch card component for grid layout on Page 1
 // Displays watch image placeholder, brand name, collection, model name, and price
@@ -12,69 +13,53 @@ const WatchCard = ({ watch, brands, collections }: {
   watch: Watch; 
   brands: Brand[]; 
   collections: Collection[] 
-}) => (
-  <Link
-    key={watch.id}
-    href={`/watches/${watch.id}`}
-    className="group block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10"
-  >
-    {/* Watch image placeholder - 1:1 aspect ratio */}
-    <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10">
-      <span className="text-white/60 text-xs font-light">Watch Image</span>
-    </div>
-    {/* Watch information - brand, collection, model, price */}
-    <div className="space-y-2">
-      <p className="text-xs text-white/60 font-inter font-light uppercase tracking-wide">
-        {brands.find(b => b.id === watch.brandId)?.name || 'Unknown Brand'}
-      </p>
-      <p className="text-xs text-white/50 font-inter font-light">
-        {collections.find(c => c.id === watch.collectionId)?.name || ''}
-      </p>
-      <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate">
-        {watch.name}
-      </h3>
-      <p className="text-lg text-[#f0e6d2] font-inter font-semibold">
-        {watch.currentPrice === 0 ? 'Price on Request' : `$${watch.currentPrice.toLocaleString()}`}
-      </p>
-    </div>
-  </Link>
-);
+}) => {
+  // Get navigation context for saving back state
+  const { saveNavigationState } = useNavigation();
+  // Get current page from watches page context
+  const { currentPage } = useWatchesPage();
 
-// Individual watch list item component for list layout on Pages 2+
-// Displays watch details in a horizontal layout with brand, collection, description, and price
-const WatchListItem = ({ watch, brands, collections }: { 
-  watch: Watch; 
-  brands: Brand[]; 
-  collections: Collection[] 
-}) => (
-  <Link
-    key={watch.id}
-    href={`/watches/${watch.id}`}
-    className="group block w-full px-8 py-6 border-t border-white/10 transition-colors duration-300 hover:bg-black/20"
-  >
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-sm text-white/60 font-inter font-light uppercase tracking-wide mb-1">
+  // Handle watch card click to save navigation state
+  const handleWatchClick = () => {
+    // Save current navigation state for back functionality
+    const navigationState = {
+      scrollPosition: window.scrollY, // Current scroll position
+      currentPage: currentPage, // Current page number
+      path: window.location.pathname, // Current path
+      timestamp: Date.now(), // Timestamp for state management
+    };
+    saveNavigationState(navigationState);
+  };
+
+  return (
+    <Link
+      key={watch.id}
+      href={`/watches/${watch.id}`}
+      onClick={handleWatchClick} // Save navigation state when clicked
+      className="group block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10"
+    >
+      {/* Watch image placeholder - 1:1 aspect ratio */}
+      <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10">
+        <span className="text-white/60 text-xs font-light">Watch Image</span>
+      </div>
+      {/* Watch information - brand, collection, model, price */}
+      <div className="space-y-2">
+        <p className="text-xs text-white/60 font-inter font-light uppercase tracking-wide">
           {brands.find(b => b.id === watch.brandId)?.name || 'Unknown Brand'}
         </p>
-        <p className="text-sm text-white/50 font-inter font-light mb-1">
+        <p className="text-xs text-white/50 font-inter font-light">
           {collections.find(c => c.id === watch.collectionId)?.name || ''}
         </p>
-        <h3 className="text-2xl font-playfair font-semibold text-white group-hover:text-[#f0e6d2] transition-colors mb-2">
+        <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate">
           {watch.name}
         </h3>
-        <p className="text-sm text-white/70 font-playfair font-light tracking-wide">
-          {watch.description}
-        </p>
-      </div>
-      <div className="text-right">
-        <p className="text-xl font-playfair font-semibold text-[#f0e6d2]">
+        <p className="text-lg text-[#f0e6d2] font-inter font-semibold">
           {watch.currentPrice === 0 ? 'Price on Request' : `$${watch.currentPrice.toLocaleString()}`}
         </p>
       </div>
-    </div>
-  </Link>
-);
+    </Link>
+  );
+};
 
 // Props interface for AllWatchesSection component
 interface AllWatchesSectionProps {
@@ -246,16 +231,18 @@ const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
               )}
             </div>
           ) : (
-            // PAGES 2+: Simple list layout for pagination
-            <div className="max-w-4xl mx-auto">
-              {paginatedWatches.map((watch) => (
-                <WatchListItem 
-                  key={watch.id}
-                  watch={watch} 
-                  brands={brands} 
-                  collections={collections} 
-                />
-              ))}
+            // PAGES 2+: Grid layout with cards (same as Page 1)
+            <div className="max-w-7xl mx-auto">
+              <div className="grid grid-cols-4 gap-x-8 gap-y-20 mb-20">
+                {paginatedWatches.map((watch) => (
+                  <WatchCard 
+                    key={watch.id}
+                    watch={watch} 
+                    brands={brands} 
+                    collections={collections} 
+                  />
+                ))}
+              </div>
             </div>
           )}
 

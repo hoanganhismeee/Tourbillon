@@ -7,6 +7,8 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Watch, Collection, fetchCollectionsByBrand } from '@/api/api';
+import { useNavigation } from '@/contexts/NavigationContext';
+import { useWatchesPage } from '@/contexts/WatchesPageContext';
 
 interface WatchCardProps {
   watch: Watch;
@@ -18,6 +20,11 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
   const [imageLoading, setImageLoading] = useState(true);
   const [collection, setCollection] = useState<Collection | null>(null);
   const router = useRouter();
+  
+  // Get navigation context for saving back state
+  const { saveNavigationState } = useNavigation();
+  // Get current page from watches page context
+  const { currentPage } = useWatchesPage();
 
   const handleImageError = () => {
     setImageError(true);
@@ -32,6 +39,18 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
     e.preventDefault();
     e.stopPropagation();
     router.push(`/brands/${watch.brandId}`);
+  };
+
+  // Handle watch card click to save navigation state
+  const handleWatchClick = () => {
+    // Save current navigation state for back functionality
+    const navigationState = {
+      scrollPosition: window.scrollY, // Current scroll position
+      currentPage: currentPage, // Current page number
+      path: window.location.pathname, // Current path
+      timestamp: Date.now(), // Timestamp for state management
+    };
+    saveNavigationState(navigationState);
   };
 
   // Fetch collection data when watch has a collectionId
@@ -55,6 +74,7 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
   return (
     <Link 
       href={`/watches/${watch.id}`} 
+      onClick={handleWatchClick} // Save navigation state when clicked
       className={`group block bg-black/30 backdrop-blur-md border border-white/20 rounded-2xl p-6 transition-all duration-500 hover:border-white/40 hover:bg-black/40 hover:scale-[1.02] ${className}`}
     >
       {/* Watch Image */}
