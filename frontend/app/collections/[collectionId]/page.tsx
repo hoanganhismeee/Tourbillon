@@ -5,7 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { fetchCollectionById, fetchWatchesByCollection, fetchBrandById, Collection, Watch, Brand } from '@/api/api';
+import { fetchCollectionById, fetchWatchesByCollection, fetchBrandById, Collection, Watch, Brand } from '@/lib/api';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import StaggeredFade from '../../scrollMotion/StaggeredFade';
 import WatchCard from '../../watches/[watchId]/WatchCard';

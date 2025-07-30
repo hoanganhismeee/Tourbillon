@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { registerUser } from "@/api/api";
+import { registerUser } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import StaggeredFade from "../scrollMotion/StaggeredFade";
 

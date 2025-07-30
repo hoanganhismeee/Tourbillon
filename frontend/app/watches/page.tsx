@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { fetchBrands, Brand } from '@/api/api';
+import { fetchBrands, Brand } from '@/lib/api';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import ScrollFade from '../scrollMotion/ScrollFade';
 import TrinityShowcase from './TrinityShowcase';

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Brand, Watch, fetchWatchById, fetchWatchesByBrand } from '@/api/api';
+import { Brand, Watch, fetchWatchById, fetchWatchesByBrand } from '@/lib/api';
 import WatchCard from './[watchId]/WatchCard';
 import ScrollFade from '../scrollMotion/ScrollFade';
 
@@ -23,12 +23,14 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
                 if (brand.id === 1) {
                     // For Patek Philippe (brand.id === 1), fetch specific watch IDs: 2, 4, 11
                     const watchIds = [2, 4, 11];
+                    console.log('Fetching Patek Philippe watches with IDs:', watchIds);
                     const watchPromises = watchIds.map(id => fetchWatchById(id));
                     const watchResults = await Promise.allSettled(watchPromises);
                     
                     const successfulWatches = watchResults
                         .map((result, index) => {
                             if (result.status === 'fulfilled') {
+                                console.log(`Successfully fetched watch ${watchIds[index]}:`, result.value);
                                 return result.value;
                             } else {
                                 console.error(`Error fetching watch ${watchIds[index]}:`, result.reason);
@@ -37,6 +39,7 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
                         })
                         .filter((watch): watch is Watch => watch !== null);
                     
+                    console.log('Final watches array for Patek Philippe:', successfulWatches);
                     setWatches(successfulWatches);
                 } else if (brand.id === 2) {
                     // For Vacheron Constantin (brand.id === 2), fetch specific watch IDs: 13, 18, 24

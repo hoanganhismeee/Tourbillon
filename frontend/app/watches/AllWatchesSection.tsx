@@ -3,9 +3,10 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { fetchWatches, fetchCollections, Watch, Collection, Brand } from '@/api/api';
+import { fetchWatches, fetchCollections, Watch, Collection, Brand } from '@/lib/api';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import { useNavigation } from '@/contexts/NavigationContext';
+import { imageTransformations } from '@/lib/cloudinary';
 
 // Individual watch card component for grid layout on Page 1
 // Displays watch image placeholder, brand name, collection, model name, and price
@@ -38,9 +39,18 @@ const WatchCard = ({ watch, brands, collections }: {
       onClick={handleWatchClick} // Save navigation state when clicked
       className="group block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10"
     >
-      {/* Watch image placeholder - 1:1 aspect ratio */}
-      <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10">
-        <span className="text-white/60 text-xs font-light">Watch Image</span>
+      {/* Watch image with Cloudinary optimization */}
+      <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10 overflow-hidden">
+        {watch.image ? (
+          <img 
+            src={imageTransformations.card(watch.image)} 
+            alt={watch.name}
+            className="w-full h-full object-cover rounded-xl"
+            loading="lazy"
+          />
+        ) : (
+          <span className="text-white/60 text-xs font-light">{watch.name}</span>
+        )}
       </div>
       {/* Watch information - brand, collection, model, price */}
       <div className="space-y-2">

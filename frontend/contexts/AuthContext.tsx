@@ -4,7 +4,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCurrentUser, logoutUser, User } from '@/api/api';
+import { getCurrentUser, logoutUser, User } from '@/lib/api';
 
 // Define the shape of the context
 interface AuthContextType {
