@@ -93,10 +93,11 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
             {(() => {
               // Use the same approach as watch detail page - assume watch.image is already a public ID
               const imageUrl = imageTransformations.showcase(watch.image);
-              console.log(`WatchCard for ${watch.name} (ID: ${watch.id}):`, {
-                originalImage: watch.image,
-                generatedUrl: imageUrl
-              });
+                             console.log(`WatchCard for ${watch.name} (ID: ${watch.id}):`, {
+                 originalImage: watch.image,
+                 generatedUrl: imageUrl,
+                 transformation: 'showcase 600x600 with auto-refresh'
+               });
               return (
                 <img 
                   src={imageUrl} 

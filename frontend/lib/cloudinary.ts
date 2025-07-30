@@ -83,25 +83,25 @@ export const imageTransformations = {
     crop: 'fill',
     quality: 'auto',
     format: 'auto'
-  }),
+  }) + `?t=${Date.now()}`, // Auto-refresh with timestamp
 
-  // For Trinity Showcase (rectangular format)
+  // For Trinity Showcase (square format to match container)
   showcase: (publicId: string) => getOptimizedImageUrl(publicId, {
-    width: 400,
-    height: 320,
+    width: 600,
+    height: 600,
     crop: 'fill',
     quality: 'auto',
     format: 'auto'
-  }),
+  }) + `?t=${Date.now()}`, // Auto-refresh with timestamp
 
   // For individual watch detail pages
   detail: (publicId: string) => getOptimizedImageUrl(publicId, {
-    width: 800,
-    height: 800,
+    width: 1200,
+    height: 1200,
     crop: 'fill',
     quality: 'auto',
     format: 'auto'
-  }),
+  }) + `?t=${Date.now()}`, // Auto-refresh with timestamp
 
   // For thumbnails
   thumbnail: (publicId: string) => getOptimizedImageUrl(publicId, {
@@ -110,7 +110,7 @@ export const imageTransformations = {
     crop: 'fill',
     quality: 'auto',
     format: 'auto'
-  }),
+  }) + `?t=${Date.now()}`, // Auto-refresh with timestamp
 
   // For brand logos
   logo: (publicId: string) => getOptimizedImageUrl(publicId, {
@@ -119,7 +119,7 @@ export const imageTransformations = {
     crop: 'fit',
     quality: 'auto',
     format: 'auto'
-  })
+  }) + `?t=${Date.now()}`, // Auto-refresh with timestamp
 };
 
 // Note: Upload functionality requires server-side implementation
