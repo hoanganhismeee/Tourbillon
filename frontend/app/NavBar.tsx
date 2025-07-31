@@ -35,39 +35,78 @@ const CartIcon = () => (
 const UserMenu = () => {
     const { isAuthenticated, user, logout } = useAuth(); // Get auth state from context
     const [isOpen, setIsOpen] = useState(false); // Local state for dropdown visibility
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for timeout management
+    const isHoveringRef = useRef(false); // Ref to track hover state reliably
+  
+    // Handle mouse enter with delay to prevent flickering
+    const handleMouseEnter = () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      isHoveringRef.current = true;
+      setIsOpen(true);
+    };
+  
+    // Handle mouse leave with delay to allow moving to dropdown
+    const handleMouseLeave = () => {
+      isHoveringRef.current = false;
+      timeoutRef.current = setTimeout(() => {
+        if (!isHoveringRef.current) {
+          setIsOpen(false);
+        }
+      }, 150); // 150ms delay to allow cursor movement
+    };
+  
+    // Cleanup timeout on unmount
+    useEffect(() => {
+      return () => {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+      };
+    }, []);
   
     return (
-      <div className="relative" onMouseEnter={() => setIsOpen(true)} onMouseLeave={() => setIsOpen(false)}>
+      <div 
+        className="relative" 
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
         {/* User icon that triggers dropdown on hover */}
         <Link href={!isAuthenticated ? "/login" : "#"} className="hover:opacity-70 transition-all duration-300 cursor-pointer">
           <UserIcon />
         </Link>
         
-        {/* Dropdown menu - only show when isOpen is true */}
-        {isOpen && (
-          <div className="absolute right-0 mt-2 w-48 bg-black bg-opacity-70 backdrop-blur-md rounded-md shadow-lg py-2 z-50">
-            {isAuthenticated ? (
-              // Authenticated user menu options
-              <>
-                <div className="px-4 py-2 text-sm text-white border-b border-white/20">
-                  Welcome, {user?.firstName}
-                </div>
-                <Link href="/account/edit-details" className="block px-4 py-2 mt-1 text-sm text-white hover:bg-white/10">
-                  Edit Details
-                </Link>
-                <button onClick={logout} className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10">
-                  Logout
-                </button>
-              </>
-            ) : (
-              // Non-authenticated user menu options
-              <>
-                <Link href="/login" className="block px-4 py-2 text-sm text-white hover:bg-white/10">Sign In</Link>
-                <Link href="/register" className="block px-4 py-2 text-sm text-white hover:bg-white/10">Sign Up</Link>
-              </>
-            )}
-          </div>
-        )}
+                 {/* Dropdown menu - only show when isOpen is true */}
+         {isOpen && (
+           <div 
+             className="absolute right-0 mt-2 w-32 bg-white/5 border border-[#bfa68a] rounded-xl shadow-lg py-2 z-50 backdrop-blur-md"
+             onMouseEnter={handleMouseEnter}
+             onMouseLeave={handleMouseLeave}
+           >
+             {isAuthenticated ? (
+               // Authenticated user menu options
+               <>
+                 <div className="px-3 py-2 text-sm text-[#bfa68a] border-b border-[#bfa68a]/30 font-medium text-center">
+                   Welcome, {user?.firstName}
+                 </div>
+                 <Link href="/account/edit-details" className="block px-3 py-2 mt-1 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
+                   Edit Details
+                 </Link>
+                 <button onClick={logout} className="block w-full px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
+                   Logout
+                 </button>
+               </>
+             ) : (
+               // Non-authenticated user menu options
+               <>
+                 <Link href="/login" className="block px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">Sign In</Link>
+                 <Link href="/register" className="block px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">Join Us</Link>
+               </>
+             )}
+           </div>
+         )}
       </div>
     );
   };

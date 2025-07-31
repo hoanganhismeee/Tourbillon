@@ -23,8 +23,7 @@ export const getPublicId = (imageName: string, folder: string = 'Watches') => {
 
 // Helper function to get local image URL when Cloudinary is not available
 export const getLocalImageUrl = (imageName: string) => {
-  // Since other images are working, let's try a different approach
-  // For now, return a placeholder or try to construct a valid URL
+  // Serve images from the backend API
   return `/${imageName}`;
 };
 
