@@ -81,7 +81,7 @@ const UserMenu = () => {
                  {/* Dropdown menu - only show when isOpen is true */}
          {isOpen && (
            <div 
-             className="absolute right-0 mt-2 w-32 bg-white/5 border border-[#bfa68a] rounded-xl shadow-lg py-2 z-50 backdrop-blur-md"
+             className="absolute right-0 mt-2 w-48 bg-white/5 border border-[#bfa68a] rounded-xl shadow-lg py-2 z-50 backdrop-blur-md"
              onMouseEnter={handleMouseEnter}
              onMouseLeave={handleMouseLeave}
            >

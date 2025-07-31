@@ -25,6 +25,9 @@
   --white: #ffffff;
   --cream-gold: #f0e6d2;
   --cream: #fefbf3;
+  --primary-brown: #bfa68a;
+  --light-cream: #F9F6F2;
+  --dark-brown: #1e1512;
 }
 
 @media (prefers-color-scheme: dark) {

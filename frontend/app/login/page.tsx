@@ -67,13 +67,13 @@ export default function LoginPage() {
                         />
                     </div>
                     {error && <p className="text-sm text-red-500">{error}</p>}
-                    <button type="submit" className="w-full py-2 font-semibold text-[#1e1512] bg-gradient-to-r from-[#bfa68a] to-[#f0e6d2] rounded-xl hover:opacity-90">
+                    <button type="submit" className="w-full py-2 font-semibold text-[#1e1512] bg-gradient-to-r from-[#bfa68a] to-[#f0e6d2] rounded-xl hover:opacity-90 cursor-pointer">
                         Sign In
                     </button>
                 </form>
                 <p className="text-sm text-center text-[#bfa68a]">
                     Don&apos;t have an account?{" "}
-                    <Link href="/register" className="underline hover:text-[#F9F6F2]">
+                    <Link href="/register" className="underline hover:text-[#F9F6F2] cursor-pointer">
                         Sign Up
                     </Link>
                 </p>
