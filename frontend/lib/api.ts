@@ -71,6 +71,14 @@ export const fetchCollections = async (): Promise<Collection[]> => {
   return response.json();
 };
 
+export const fetchCollectionById = async (id: number): Promise<Collection> => {
+  const response = await fetch(`${API_BASE_URL}/collection/${id}`, { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch collection with id: ${id}`);
+  }
+  return response.json();
+};
+
 export const fetchWatches = async (): Promise<Watch[]> => {
   const response = await fetch(`${API_BASE_URL}/watch`, { credentials: 'include' });
   if (!response.ok) {

@@ -6,24 +6,25 @@ import { fetchBrandById, fetchWatchesByBrand, fetchCollectionsByBrand, Brand, Wa
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import StaggeredFade from '../../scrollMotion/StaggeredFade';
 import WatchCard from '../../watches/[watchId]/WatchCard';
-
-
+import Link from 'next/link';
 
 
 // A reusable component for displaying a single collection card.
 const CollectionCard = ({ collection }: { collection: Collection }) => {
     return (
-        <div className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-4 transition-all duration-300 hover:border-white/30 hover:scale-105">
-            <div className="w-full h-40 bg-black/30 rounded-lg mb-4 flex items-center justify-center">
-                {collection.image ? (
-                    <img src={"/" + collection.image} alt={collection.name} className="h-full object-contain rounded" />
-                ) : (
-                    <span className="text-white/30">Image</span>
-                )}
+        <Link href={`/collections/${collection.id}`} className="block">
+            <div className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-4 transition-all duration-300 hover:border-white/30 hover:scale-105 cursor-pointer">
+                <div className="w-full h-40 bg-black/30 rounded-lg mb-4 flex items-center justify-center">
+                    {collection.image ? (
+                        <img src={"/" + collection.image} alt={collection.name} className="h-full object-contain rounded" />
+                    ) : (
+                        <span className="text-white/30">Image</span>
+                    )}
+                </div>
+                <h3 className="text-lg font-semibold text-[#f0e6d2] group-hover:text-white transition-colors mb-2">{collection.name}</h3>
+                <p className="text-sm text-white/60 group-hover:text-white/80">{collection.description}</p>
             </div>
-            <h3 className="text-lg font-semibold text-[#f0e6d2] group-hover:text-white transition-colors mb-2">{collection.name}</h3>
-            <p className="text-sm text-white/60 group-hover:text-white/80">{collection.description}</p>
-        </div>
+        </Link>
     );
 };
 

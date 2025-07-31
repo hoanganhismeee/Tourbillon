@@ -5,17 +5,48 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Watch, fetchWatchById } from '@/lib/api';
-
+import { useNavigation } from '@/contexts/NavigationContext';
+import { useWatchesPage } from '@/contexts/WatchesPageContext';
+import { imageTransformations } from '@/lib/cloudinary';
 
 const WatchDetailPage = () => {
     const params = useParams();
+    const router = useRouter();
     const watchId = params.watchId as string;
     const [watch, setWatch] = useState<Watch | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [imageError, setImageError] = useState(false);
     const [imageLoading, setImageLoading] = useState(true);
+    
+    // Get navigation context for back functionality
+    const { navigationState, clearNavigationState } = useNavigation();
+    // Get setCurrentPage from watches page context
+    const { setCurrentPage } = useWatchesPage();
+
+    // Handle back navigation with position restoration
+    const handleBackClick = () => {
+        if (navigationState) {
+            // Navigate back to the saved path
+            router.push(navigationState.path);
+            
+            // Use setTimeout to ensure navigation completes before restoring state
+            setTimeout(() => {
+                // Restore the page number
+                setCurrentPage(navigationState.currentPage);
+                
+                // Restore scroll position
+                window.scrollTo(0, navigationState.scrollPosition);
+                
+                // Clear the navigation state after successful restoration
+                clearNavigationState();
+            }, 100);
+        } else {
+            // Fallback: go back to watches page
+            router.push('/watches');
+        }
+    };
 
     useEffect(() => {
         if (watchId) {
@@ -123,6 +154,19 @@ const WatchDetailPage = () => {
 
     return (
         <div className="container mx-auto px-4 sm:px-8 py-24 pt-48 text-white">
+            {/* Back Navigation Button */}
+            <div className="mb-8">
+                <button
+                    onClick={handleBackClick}
+                    className="inline-flex items-center text-white/60 hover:text-white transition-colors duration-300 text-lg font-playfair font-medium"
+                >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back
+                </button>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-24">
                 {/* Left Column: Watch Image */}
                 <div className="flex justify-center items-start">
@@ -138,13 +182,13 @@ const WatchDetailPage = () => {
                                         </div>
                                     )}
                                     
-                                    {/* Actual image */}
+                                                                        {/* Actual image with Cloudinary optimization */}
                                     <img 
-                                        src={watch.image} 
-                                        alt={watch.name} 
-                                        className={`w-full h-full object-cover rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
-                                        onError={handleImageError}
-                                        onLoad={handleImageLoad}
+                                      src={imageTransformations.detail(watch.image)} 
+                                      alt={watch.name} 
+                                      className={`w-full h-full object-cover rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+                                      onError={handleImageError}
+                                      onLoad={handleImageLoad}
                                     />
                                 </>
                             ) : (

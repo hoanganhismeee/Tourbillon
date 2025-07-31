@@ -3,6 +3,8 @@
 import type { Metadata } from "next";
 import { Playfair_Display, Inter } from "next/font/google";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { WatchesPageProvider } from "@/contexts/WatchesPageContext";
+import { NavigationProvider } from "@/contexts/NavigationContext";
 import "./globals.css";
 import NavBar from "./NavBar";
 import { AnimatePresence } from "framer-motion";
@@ -40,15 +42,19 @@ export default function RootLayout({
         style={{ scrollBehavior: 'auto' }}
       >
         <AuthProvider>
-          <NavBar />
-          <AnimatePresence mode="wait">
-            <MotionMain
-              className="relative z-10 pt-[50px]"
-              key={typeof window !== 'undefined' ? window.location.pathname : ''}
-            >
-              {children}
-            </MotionMain>
-          </AnimatePresence>
+          <WatchesPageProvider>
+            <NavigationProvider>
+              <NavBar />
+              <AnimatePresence mode="wait">
+                <MotionMain
+                  className="relative z-10 pt-[50px]"
+                  key={typeof window !== 'undefined' ? window.location.pathname : ''}
+                >
+                  {children}
+                </MotionMain>
+              </AnimatePresence>
+            </NavigationProvider>
+          </WatchesPageProvider>
         </AuthProvider>
         <script
           dangerouslySetInnerHTML={{

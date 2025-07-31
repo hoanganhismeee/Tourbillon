@@ -8,15 +8,14 @@ import ScrollFade from '../scrollMotion/ScrollFade';
 
 interface TrinityShowcaseProps {
     brand: Brand;
-    tagline: string;
 }
 
-const TrinityShowcase = ({ brand, tagline }: TrinityShowcaseProps) => {
+const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
     const [watches, setWatches] = useState<Watch[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Debug logging
-    console.log(`TrinityShowcase rendering for brand: ${brand.name}`, { brand, tagline });
+    console.log(`TrinityShowcase rendering for brand: ${brand.name}`, { brand });
 
     useEffect(() => {
         const fetchWatches = async () => {
@@ -24,8 +23,6 @@ const TrinityShowcase = ({ brand, tagline }: TrinityShowcaseProps) => {
                 if (brand.id === 1) {
                     // For Patek Philippe (brand.id === 1), fetch specific watch IDs: 2, 4, 11
                     const watchIds = [2, 4, 11];
-<<<<<<< Updated upstream
-=======
                     console.log('Fetching Patek Philippe watches with IDs:', watchIds);
                     const watchPromises = watchIds.map(id => fetchWatchById(id));
                     const watchResults = await Promise.allSettled(watchPromises);
@@ -47,7 +44,6 @@ const TrinityShowcase = ({ brand, tagline }: TrinityShowcaseProps) => {
                 } else if (brand.id === 2) {
                     // For Vacheron Constantin (brand.id === 2), fetch specific watch IDs: 13, 18, 24
                     const watchIds = [13, 18, 24];
-                    console.log('Fetching Vacheron Constantin watches with IDs:', watchIds);
                     const watchPromises = watchIds.map(id => fetchWatchById(id));
                     const watchResults = await Promise.allSettled(watchPromises);
                     
@@ -64,10 +60,8 @@ const TrinityShowcase = ({ brand, tagline }: TrinityShowcaseProps) => {
                     
                     setWatches(successfulWatches);
                 } else if (brand.id === 3) {
-                    // For Audemars Piguet (brand.id === 3), fetch specific watch IDs: 28, 30, 35
-                    const watchIds = [28, 30, 35];
-                    console.log('Fetching Audemars Piguet watches with IDs:', watchIds);
->>>>>>> Stashed changes
+                    // For Audemars Piguet (brand.id === 3), fetch specific watch IDs: 28, 30, 34
+                    const watchIds = [28, 30, 34];
                     const watchPromises = watchIds.map(id => fetchWatchById(id));
                     const watchResults = await Promise.allSettled(watchPromises);
                     
@@ -131,7 +125,7 @@ const TrinityShowcase = ({ brand, tagline }: TrinityShowcaseProps) => {
             <ScrollFade>
                 <div className="text-center mb-16">
                     <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2] mb-4">{brand.name}</h2>
-                    <p className="text-2xl text-white/70 font-playfair font-light">{tagline}</p>
+                    <p className="text-2xl text-white/70 font-playfair font-light">{brand.summary}</p>
                 </div>
             </ScrollFade>
             

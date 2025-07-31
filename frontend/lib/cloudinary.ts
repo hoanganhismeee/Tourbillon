@@ -21,13 +21,6 @@ export const getPublicId = (imageName: string, folder: string = 'Watches') => {
   return `${folder}/${nameWithoutExtension}`;
 };
 
-// Helper function to get local image URL when Cloudinary is not available
-export const getLocalImageUrl = (imageName: string) => {
-  // For now, we'll use a placeholder or return the image name
-  // In a real setup, you'd serve these from your backend or public directory
-  return `/api/images/${imageName}`;
-};
-
 // Utility function to generate optimized image URLs
 export const getOptimizedImageUrl = (
   publicId: string,
@@ -41,16 +34,7 @@ export const getOptimizedImageUrl = (
   } = {}
 ) => {
   if (!CLOUDINARY_CLOUD_NAME) {
-    console.warn('Cloudinary cloud name not configured, using local fallback');
-    // If the publicId looks like a Cloudinary public ID (contains '/'), 
-    // extract the original filename and return local URL
-    if (publicId.includes('/')) {
-      const parts = publicId.split('/');
-      const filename = parts[parts.length - 1];
-      // Try to reconstruct the original filename with extension
-      // This is a simple approach - in practice you'd want to store the original filename
-      return getLocalImageUrl(filename);
-    }
+    console.warn('Cloudinary cloud name not configured');
     return publicId; // Return original URL if Cloudinary not configured
   }
 
