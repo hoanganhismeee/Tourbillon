@@ -135,22 +135,41 @@ export default function RegisterPage() {
 
           {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 
-          {/* Checkbox */}
+                    {/* Checkbox */}
           <div className="flex items-center gap-3 mt-4 text-sm text-[#bfa68a]">
             <input
               type="checkbox"
+              id="agreeToTerms"
               name="agreeToTerms"
               checked={formData.agreeToTerms}
               onChange={handleChange}
               className="accent-[#bfa68a] w-5 h-5"
               required
             />
-            <span>
-              I agree to{" "}
-              <Link href="#" className="underline hover:text-[#F9F6F2]">
-                Terms of Service
-              </Link>
-            </span>
+            <label 
+              htmlFor="agreeToTerms" 
+              className="cursor-pointer flex items-center gap-1"
+            >
+              <span>I agree to</span>
+                             <Link 
+                 href="#" 
+                 className="underline hover:text-[#F9F6F2]"
+                 onClick={(e) => {
+                   e.preventDefault();
+                   e.stopPropagation();
+                   // Toggle the checkbox when clicking the link
+                   const checkbox = document.getElementById('agreeToTerms') as HTMLInputElement;
+                   if (checkbox) {
+                     checkbox.checked = !checkbox.checked;
+                     // Trigger the change event to update the state
+                     const event = new Event('change', { bubbles: true });
+                     checkbox.dispatchEvent(event);
+                   }
+                 }}
+               >
+                 Terms of Service
+               </Link>
+            </label>
           </div>
 
           {/* Submit */}

@@ -1,6 +1,6 @@
 // This file defines the Login page for the application.
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { loginUser } from "@/lib/api";
@@ -12,6 +12,17 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const { login } = useAuth();
     const router = useRouter();
+
+    // Prevent scrolling for login page
+    useEffect(() => {
+        document.body.style.overflow = 'hidden';
+        document.documentElement.style.overflow = 'hidden';
+        
+        return () => {
+            document.body.style.overflow = '';
+            document.documentElement.style.overflow = '';
+        };
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -28,27 +39,30 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="flex justify-center items-center h-screen">
-            <div className="w-full max-w-md p-8 space-y-6 bg-white/5 border border-[#bfa68a] rounded-2xl shadow-lg backdrop-blur-lg">
-                <h1 className="text-3xl font-bold text-center text-[#F9F6F2]">Sign In</h1>
+        <div className="flex justify-center items-center h-screen overflow-hidden" style={{ height: '100vh', maxHeight: '100vh' }}>
+            <div className="w-full max-w-md p-8 space-y-6 bg-white/5 border border-[#bfa68a] rounded-2xl shadow-lg backdrop-blur-lg transform -translate-y-[25%]">
+                 <h1 className="text-4xl font-playfair text-center text-[#F9F6F2]">Welcome Back</h1>
+                 <p className="text-[#bfa68a] mt-2 text-sm text-center">
+                   We are happy to see you again!
+                 </p>
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
-                        <label className="block text-sm font-medium text-[#bfa68a]">Email</label>
                         <input
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="w-full px-3 py-2 mt-1 text-[#bfa68a] bg-transparent border border-[#bfa68a] rounded-md focus:outline-none focus:ring-2 focus:ring-[#bfa68a] placeholder-[#bfa68a]/70"
+                            placeholder="Email"
+                            className="w-full h-10 px-4 rounded-md border border-[#bfa68a] text-[#bfa68a] bg-transparent placeholder-[#bfa68a]/70 focus:outline-none"
                             required
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-[#bfa68a]">Password</label>
                         <input
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="w-full px-3 py-2 mt-1 text-[#bfa68a] bg-transparent border border-[#bfa68a] rounded-md focus:outline-none focus:ring-2 focus:ring-[#bfa68a] placeholder-[#bfa68a]/70"
+                            placeholder="Password"
+                            className="w-full h-10 px-4 rounded-md border border-[#bfa68a] text-[#bfa68a] bg-transparent placeholder-[#bfa68a]/70 focus:outline-none"
                             required
                         />
                     </div>
