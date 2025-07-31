@@ -24,6 +24,50 @@ const TrinityShowcase = ({ brand, tagline }: TrinityShowcaseProps) => {
                 if (brand.id === 1) {
                     // For Patek Philippe (brand.id === 1), fetch specific watch IDs: 2, 4, 11
                     const watchIds = [2, 4, 11];
+<<<<<<< Updated upstream
+=======
+                    console.log('Fetching Patek Philippe watches with IDs:', watchIds);
+                    const watchPromises = watchIds.map(id => fetchWatchById(id));
+                    const watchResults = await Promise.allSettled(watchPromises);
+                    
+                    const successfulWatches = watchResults
+                        .map((result, index) => {
+                            if (result.status === 'fulfilled') {
+                                console.log(`Successfully fetched watch ${watchIds[index]}:`, result.value);
+                                return result.value;
+                            } else {
+                                console.error(`Error fetching watch ${watchIds[index]}:`, result.reason);
+                                return null;
+                            }
+                        })
+                        .filter((watch): watch is Watch => watch !== null);
+                    
+                    console.log('Final watches array for Patek Philippe:', successfulWatches);
+                    setWatches(successfulWatches);
+                } else if (brand.id === 2) {
+                    // For Vacheron Constantin (brand.id === 2), fetch specific watch IDs: 13, 18, 24
+                    const watchIds = [13, 18, 24];
+                    console.log('Fetching Vacheron Constantin watches with IDs:', watchIds);
+                    const watchPromises = watchIds.map(id => fetchWatchById(id));
+                    const watchResults = await Promise.allSettled(watchPromises);
+                    
+                    const successfulWatches = watchResults
+                        .map((result, index) => {
+                            if (result.status === 'fulfilled') {
+                                return result.value;
+                            } else {
+                                console.error(`Error fetching watch ${watchIds[index]}:`, result.reason);
+                                return null;
+                            }
+                        })
+                        .filter((watch): watch is Watch => watch !== null);
+                    
+                    setWatches(successfulWatches);
+                } else if (brand.id === 3) {
+                    // For Audemars Piguet (brand.id === 3), fetch specific watch IDs: 28, 30, 35
+                    const watchIds = [28, 30, 35];
+                    console.log('Fetching Audemars Piguet watches with IDs:', watchIds);
+>>>>>>> Stashed changes
                     const watchPromises = watchIds.map(id => fetchWatchById(id));
                     const watchResults = await Promise.allSettled(watchPromises);
                     
