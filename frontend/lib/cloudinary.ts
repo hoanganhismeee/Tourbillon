@@ -23,9 +23,9 @@ export const getPublicId = (imageName: string, folder: string = 'Watches') => {
 
 // Helper function to get local image URL when Cloudinary is not available
 export const getLocalImageUrl = (imageName: string) => {
-  // For now, we'll use a placeholder or return the image name
-  // In a real setup, you'd serve these from your backend or public directory
-  return `/api/images/${imageName}`;
+  // Since other images are working, let's try a different approach
+  // For now, return a placeholder or try to construct a valid URL
+  return `/${imageName}`;
 };
 
 // Utility function to generate optimized image URLs
@@ -51,7 +51,8 @@ export const getOptimizedImageUrl = (
       // This is a simple approach - in practice you'd want to store the original filename
       return getLocalImageUrl(filename);
     }
-    return publicId; // Return original URL if Cloudinary not configured
+    // If publicId is just a filename (like 'AP26589.webp'), use local URL
+    return getLocalImageUrl(publicId);
   }
 
   const {
