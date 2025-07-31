@@ -175,6 +175,7 @@ export default function RegisterPage() {
                value={formData.password}
                onChange={handleChange}
                placeholder="Password"
+               autoComplete="on"
                className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
              />
              <input
@@ -183,6 +184,7 @@ export default function RegisterPage() {
                value={formData.confirmPassword}
                onChange={handleChange}
                placeholder="Confirm Password"
+               autoComplete="on"
                className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
              />
            </div>

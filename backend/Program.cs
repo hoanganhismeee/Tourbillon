@@ -1,5 +1,7 @@
 using backend.Database;
 using backend.Models;
+using backend.Services;
+using backend.Middleware;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +11,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Add memory cache for rate limiting
+builder.Services.AddMemoryCache();
 
 // Add DbContext (PostgreSQL)
 builder.Services.AddDbContext<TourbillonContext>(options =>
@@ -25,6 +30,12 @@ builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
     options.Password.RequireLowercase = false;
 })
 .AddEntityFrameworkStores<TourbillonContext>(); // Links Identity to the Entity Framework data store.
+
+// Register secure password change service
+builder.Services.AddScoped<IPasswordChangeService, PasswordChangeService>();
+
+// Register rate limiting service
+builder.Services.AddScoped<IPasswordChangeRateLimitService, PasswordChangeRateLimitService>();
 
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
@@ -64,6 +75,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Add request sanitization middleware for password-related endpoints
+app.UseMiddleware<RequestSanitizationMiddleware>();
 
 // Enable CORS
 app.UseCors("AllowFrontend");

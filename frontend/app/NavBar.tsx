@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
+import { usePathname } from 'next/navigation';
 
 // Custom SVG icon components for consistent styling and easy maintenance
 
@@ -125,6 +126,7 @@ const UserMenu = () => {
     // State for scroll-based animations and navbar behavior
     const lastScrollY = useRef(0); // Previous scroll position for direction detection
     const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up'); // Current scroll direction
+    const pathname = usePathname(); // Current pathname for route change detection, Debug function
     const [scrollY, setScrollY] = useState(0); // Current scroll position for background opacity
     const [mounted, setMounted] = useState(false); // Hydration state to prevent SSR/client mismatch
     
@@ -226,6 +228,11 @@ const UserMenu = () => {
       window.addEventListener('scroll', handleScroll);
       return () => window.removeEventListener('scroll', handleScroll);
     }, []);
+
+    // Reset navbar to visible on route change
+    useEffect(() => {
+      setScrollDirection('up');
+    }, [pathname]);
   
     return (
       <nav

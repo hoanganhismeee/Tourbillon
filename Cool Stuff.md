@@ -230,6 +230,35 @@ Every page transition, card hover, and scroll effect is buttery smooth!
 
 ---
 
+## 🔒 **COMPREHENSIVE PASSWORD SECURITY WITH ANONYMOUS LOGGING**
+
+### **The Magic:**
+Passwords are completely anonymous - even administrators can never see them! Multi-layered security with rate limiting, current password verification, and comprehensive audit trails.
+
+### **Cool Implementation:**
+- **PasswordChangeService.cs** (lines 1-50): Centralized secure password operations with anonymous logging
+- **RequestSanitizationMiddleware.cs** (lines 1-40): Automatically redacts password fields from all logs
+- **PasswordChangeRateLimitService.cs** (lines 1-35): Prevents brute force attacks with configurable limits
+- **AccountController.cs** Update method (lines 80-120): Secure password change with current password verification
+
+### **Why It's Cool:**
+- **Anonymous Logging**: Passwords never logged in any form (plain text, hashed, or encrypted)
+- **Rate Limiting**: Maximum 5 attempts per 15-minute window prevents brute force attacks
+- **Current Password Verification**: Users must prove they know their current password
+- **Request Sanitization**: All password-related requests automatically redacted from logs
+- **Comprehensive Audit Trail**: Security events logged without sensitive data exposure
+- **Multi-Layer Security**: Rate limiting, validation, and secure service layer protection
+
+### **Security Features:**
+- **No Password Exposure**: Even administrators cannot see user passwords
+- **Brute Force Protection**: Rate limiting with automatic reset after time window
+- **Secure Validation**: ASP.NET Core Identity with password complexity requirements
+- **Anonymous Monitoring**: Security events tracked without password data
+- **Error Handling**: Generic messages prevent information disclosure
+- **Automatic Expiration**: Rate limit data expires automatically for security
+
+---
+
 ## 🧩 **MODULAR COMPONENT ARCHITECTURE**
 
 ### **The Magic:**

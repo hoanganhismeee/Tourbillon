@@ -36,6 +36,10 @@ export interface User {
     firstName: string;
     lastName: string;
     phoneNumber: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    country?: string;
 }
 
 // API Fetch Functions
@@ -175,5 +179,74 @@ export const logoutUser = async () => {
     });
     if (!response.ok) {
         throw new Error('Logout failed');
+    }
+};
+
+// Interface for updating user data
+interface UpdateUserData {
+    email: string;
+    firstName: string;
+    lastName: string;
+    phoneNumber?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    currentPassword?: string; // Required when changing password
+    newPassword?: string;
+}
+
+// Interface for deleting user account
+interface DeleteAccountData {
+    currentPassword: string;
+    confirmPassword: string;
+}
+
+export const updateUser = async (data: UpdateUserData) => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/account/update`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+            credentials: 'include',
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            // Handle both array of errors and single error message
+            if (Array.isArray(errorData)) {
+                const errorMessage = errorData.map((err: AuthError) => err.description).join(', ') || 'Update failed';
+                return { error: errorMessage };
+            } else {
+                // Show the specific error message from backend
+                const errorMessage = errorData.Message || errorData.message || 'Update failed';
+                return { error: errorMessage };
+            }
+        }
+        return response.json();
+    } catch (err) {
+        console.error('Network error:', err);
+        return { error: 'Network error occurred' };
+    }
+};
+
+export const deleteAccount = async (data: DeleteAccountData) => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/account/delete`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+            credentials: 'include',
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            const errorMessage = errorData.Message || 'Account deletion failed';
+            return { error: errorMessage };
+        }
+        // Handle empty response for successful deletion
+        const text = await response.text();
+        return text ? JSON.parse(text) : { Message: "Account deleted successfully" };
+    } catch (err) {
+        console.error('Network error:', err);
+        return { error: 'Network error occurred' };
     }
 }; 
