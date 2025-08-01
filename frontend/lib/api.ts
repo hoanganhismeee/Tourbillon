@@ -36,6 +36,7 @@ export interface User {
     firstName: string;
     lastName: string;
     phoneNumber: string;
+    dateOfBirth?: string;
     address?: string;
     city?: string;
     state?: string;
@@ -153,7 +154,9 @@ export const registerUser = async (data: RegisterData) => {
     });
     if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.map((err: AuthError) => err.description).join(', ') || 'Registration failed');
+        // Handle the new error format from backend
+        const errorMessage = errorData.Message || errorData.message || 'Registration failed';
+        throw new Error(errorMessage);
     }
     return response.json();
 };
@@ -166,7 +169,9 @@ export const loginUser = async (data: LoginData) => {
         credentials: 'include',
     });
     if (!response.ok) {
-        throw new Error('Login failed');
+        const errorData = await response.json();
+        const errorMessage = errorData.Message || errorData.message || 'Login failed';
+        throw new Error(errorMessage);
     }
     // Login doesn't return user data, it sets a cookie. AuthContext will fetch the user.
     return;
@@ -178,7 +183,9 @@ export const logoutUser = async () => {
         credentials: 'include',
     });
     if (!response.ok) {
-        throw new Error('Logout failed');
+        const errorData = await response.json();
+        const errorMessage = errorData.Message || errorData.message || 'Logout failed';
+        throw new Error(errorMessage);
     }
 };
 
@@ -188,6 +195,7 @@ interface UpdateUserData {
     firstName: string;
     lastName: string;
     phoneNumber?: string;
+    dateOfBirth?: string;
     address?: string;
     city?: string;
     state?: string;

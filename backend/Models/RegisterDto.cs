@@ -18,6 +18,7 @@ public class RegisterDto
     [Required]
     public string Password { get; set; } = string.Empty;
 
-
     public string? PhoneNumber { get; set; }
+    
+    public DateTime? DateOfBirth { get; set; }
 } 

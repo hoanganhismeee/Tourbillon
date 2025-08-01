@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { updateUser, User } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { AUSTRALIAN_STATES } from "@/lib/states";
 
 interface UpdateDetailsFormProps {
   user: User;
@@ -15,6 +16,7 @@ export default function UpdateDetailsForm({ user }: UpdateDetailsFormProps) {
     lastName: "",
     email: "",
     phoneNumber: "",
+    dateOfBirth: "",
     address: "",
     city: "",
     state: "",
@@ -31,6 +33,7 @@ export default function UpdateDetailsForm({ user }: UpdateDetailsFormProps) {
         lastName: user.lastName || "",
         email: user.email || "",
         phoneNumber: user.phoneNumber || "",
+        dateOfBirth: user.dateOfBirth || "",
         address: user.address || "",
         city: user.city || "",
         state: user.state || "",
@@ -39,7 +42,7 @@ export default function UpdateDetailsForm({ user }: UpdateDetailsFormProps) {
     }
   }, [user]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     
     // Special handling for phone number - only allow numbers
@@ -99,6 +102,7 @@ export default function UpdateDetailsForm({ user }: UpdateDetailsFormProps) {
         firstName: formData.firstName,
         lastName: formData.lastName,
         phoneNumber: formData.phoneNumber,
+        dateOfBirth: formData.dateOfBirth,
         address: formData.address,
         city: formData.city,
         state: formData.state,
@@ -160,6 +164,28 @@ export default function UpdateDetailsForm({ user }: UpdateDetailsFormProps) {
         />
       </div>
 
+      <div className="grid grid-cols-2 gap-6">
+        <input
+          type="date"
+          name="dateOfBirth"
+          value={formData.dateOfBirth}
+          onChange={handleChange}
+          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent focus:outline-none"
+        />
+        <select
+          name="state"
+          value={formData.state}
+          onChange={handleChange}
+          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent focus:outline-none"
+        >
+          {AUSTRALIAN_STATES.map((state) => (
+            <option key={state.value} value={state.value} className="bg-[var(--dark-brown)] text-[var(--primary-brown)]">
+              {state.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Address Information */}
       <div className="grid grid-cols-1 gap-6">
         <input
@@ -179,14 +205,6 @@ export default function UpdateDetailsForm({ user }: UpdateDetailsFormProps) {
           value={formData.city}
           onChange={handleChange}
           placeholder="City"
-          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
-        />
-        <input
-          type="text"
-          name="state"
-          value={formData.state}
-          onChange={handleChange}
-          placeholder="State/Province"
           className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
         />
         <input
