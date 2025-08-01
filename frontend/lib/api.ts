@@ -138,7 +138,7 @@ interface LoginData {
 }
 
 export const getCurrentUser = async (): Promise<User> => {
-    const response = await fetch(`${API_BASE_URL}/account/me`, { credentials: 'include' });
+    const response = await fetch(`${API_BASE_URL}/profile/me`, { credentials: 'include' });
     if (!response.ok) {
         throw new Error('Not authenticated');
     }
@@ -146,7 +146,7 @@ export const getCurrentUser = async (): Promise<User> => {
 };
 
 export const registerUser = async (data: RegisterData) => {
-    const response = await fetch(`${API_BASE_URL}/account/register`, {
+    const response = await fetch(`${API_BASE_URL}/authentication/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -162,7 +162,7 @@ export const registerUser = async (data: RegisterData) => {
 };
 
 export const loginUser = async (data: LoginData) => {
-    const response = await fetch(`${API_BASE_URL}/account/login`, {
+    const response = await fetch(`${API_BASE_URL}/authentication/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -178,7 +178,7 @@ export const loginUser = async (data: LoginData) => {
 };
 
 export const logoutUser = async () => {
-    const response = await fetch(`${API_BASE_URL}/account/logout`, {
+    const response = await fetch(`${API_BASE_URL}/authentication/logout`, {
         method: 'POST',
         credentials: 'include',
     });
@@ -212,7 +212,7 @@ interface DeleteAccountData {
 
 export const updateUser = async (data: UpdateUserData) => {
     try {
-        const response = await fetch(`${API_BASE_URL}/account/update`, {
+        const response = await fetch(`${API_BASE_URL}/profile/update`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),

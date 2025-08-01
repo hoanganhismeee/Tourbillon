@@ -37,6 +37,11 @@ builder.Services.AddScoped<IPasswordChangeService, PasswordChangeService>();
 // Register rate limiting service
 builder.Services.AddScoped<IPasswordChangeRateLimitService, PasswordChangeRateLimitService>();
 
+// Register SOLID refactored services
+builder.Services.AddScoped<IUserRegistrationService, UserRegistrationService>();
+builder.Services.AddScoped<IUserProfileService, UserProfileService>();
+builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>();
+
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
 {
