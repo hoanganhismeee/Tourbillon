@@ -1,6 +1,6 @@
-// This file serves as a centralized API layer for the frontend.
-// It contains all the functions responsible for making requests to the backend API,
-// creating a reusable and maintainable way to manage data fetching.
+// Centralized API layer for the frontend
+// Contains all functions for making requests to the backend API
+// Creates a reusable and maintainable way to manage data fetching
 const API_BASE_URL = 'http://localhost:5248/api';
 
 // Data Interfaces
@@ -42,6 +42,7 @@ export interface User {
     city?: string;
     state?: string;
     country?: string;
+    hasPassword?: boolean; // Track if user has set a password
 }
 
 // API Fetch Functions
@@ -256,7 +257,7 @@ export const updateUser = async (data: UpdateUserData) => {
 // Permanently deletes the current user's account
 export const deleteAccount = async (data: DeleteAccountData) => {
     try {
-        const response = await fetch(`${API_BASE_URL}/account/delete`, {
+        const response = await fetch(`${API_BASE_URL}/profile/delete`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
@@ -274,4 +275,85 @@ export const deleteAccount = async (data: DeleteAccountData) => {
         console.error('Network error:', err);
         return { error: 'Network error occurred' };
     }
+};
+
+// Interface for email-based login
+interface EmailLoginData {
+    email: string;
+}
+
+// Interface for forgot password
+interface ForgotPasswordData {
+    emailOrPhone: string;
+}
+
+// Interface for password reset
+interface ResetPasswordData {
+    token: string;
+    newPassword: string;
+    confirmPassword: string;
+}
+
+// Sends login link via email for passwordless authentication
+export const emailLogin = async (data: EmailLoginData) => {
+    const response = await fetch(`${API_BASE_URL}/authentication/email-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        credentials: 'include',
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.Message || errorData.message || 'Failed to send login link';
+        throw new Error(errorMessage);
+    }
+    return response.json();
+};
+
+// Verifies email token and signs user in
+export const verifyEmailToken = async (data: ResetPasswordData) => {
+    const response = await fetch(`${API_BASE_URL}/authentication/verify-email-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        credentials: 'include',
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.Message || errorData.message || 'Invalid token';
+        throw new Error(errorMessage);
+    }
+    return response.json();
+};
+
+// Sends password reset link via email
+export const forgotPassword = async (data: ForgotPasswordData) => {
+    const response = await fetch(`${API_BASE_URL}/authentication/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        credentials: 'include',
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.Message || errorData.message || 'Failed to send reset link';
+        throw new Error(errorMessage);
+    }
+    return response.json();
+};
+
+// Resets user password using token
+export const resetPassword = async (data: ResetPasswordData) => {
+    const response = await fetch(`${API_BASE_URL}/authentication/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        credentials: 'include',
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.Message || errorData.message || 'Failed to reset password';
+        throw new Error(errorMessage);
+    }
+    return response.json();
 }; 

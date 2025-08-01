@@ -1,5 +1,5 @@
-// This controller handles user profile management operations.
-// It follows Single Responsibility Principle by focusing only on profile concerns.
+// Handles user profile management operations
+// Follows Single Responsibility Principle by focusing only on profile concerns
 using backend.Models;
 using backend.Services;
 using Microsoft.AspNetCore.Identity;
@@ -62,31 +62,52 @@ public class ProfileController : ControllerBase
         // Handle password change separately if provided
         if (!string.IsNullOrEmpty(updateDto.NewPassword))
         {
-            // Verify current password is provided
-            if (string.IsNullOrEmpty(updateDto.CurrentPassword))
+            // Check if user logged in via email (no password set)
+            if (!user.HasPassword)
             {
-                return BadRequest(new { Message = "Current password is required to change password" });
+                // User logged in via email, no current password required
+                var result = await _userManager.AddPasswordAsync(user, updateDto.NewPassword);
+                if (!result.Succeeded)
+                {
+                    var errors = result.Errors.Select(e => e.Description);
+                    return BadRequest(new { Message = string.Join(", ", errors) });
+                }
+
+                // Mark that user now has a password
+                user.HasPassword = true;
+                await _userManager.UpdateAsync(user);
+
+                _logger.LogInformation("Password set for email-login user: {Email}", user.Email);
+                return Ok(new { Message = "Password set successfully" });
             }
-
-            // Log the attempt for debugging
-            _logger.LogInformation("Password change attempt for user: {Email}", user.Email);
-
-            // Use secure password change service
-            var (success, message) = await _passwordChangeService.ChangePasswordAsync(
-                user, 
-                updateDto.CurrentPassword, 
-                updateDto.NewPassword
-            );
-
-            if (!success)
+            else
             {
-                _logger.LogWarning("Password change failed for user: {Email} - {Message}", user.Email, message);
-                return BadRequest(new { Message = message });
-            }
+                // User has password, require current password
+                if (string.IsNullOrEmpty(updateDto.CurrentPassword))
+                {
+                    return BadRequest(new { Message = "Current password is required to change password" });
+                }
 
-            _logger.LogInformation("Password change successful for user: {Email}", user.Email);
-            // Return success for password change only
-            return Ok(new { Message = "Password changed successfully" });
+                // Log the attempt for debugging
+                _logger.LogInformation("Password change attempt for user: {Email}", user.Email);
+
+                // Use secure password change service
+                var (success, message) = await _passwordChangeService.ChangePasswordAsync(
+                    user, 
+                    updateDto.CurrentPassword, 
+                    updateDto.NewPassword
+                );
+
+                if (!success)
+                {
+                    _logger.LogWarning("Password change failed for user: {Email} - {Message}", user.Email, message);
+                    return BadRequest(new { Message = message });
+                }
+
+                _logger.LogInformation("Password change successful for user: {Email}", user.Email);
+                // Return success for password change only
+                return Ok(new { Message = "Password changed successfully" });
+            }
         }
 
         // Update profile information only (no password change)

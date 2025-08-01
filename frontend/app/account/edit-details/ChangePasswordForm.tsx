@@ -1,4 +1,4 @@
-// This component handles changing user passwords with security verification
+// Handles changing user passwords with smart logic for email-login users
 "use client";
 import { useState } from "react";
 import { updateUser, User } from "@/lib/api";
@@ -31,8 +31,8 @@ export default function ChangePasswordForm({ user }: ChangePasswordFormProps) {
   };
 
   const validatePasswordForm = () => {
-    // Require current password when changing password
-    if (!formData.currentPassword) {
+    // If user doesn't have a password (logged in via email), skip current password requirement
+    if (user.hasPassword && !formData.currentPassword) {
       setError("Please enter your current password to change it");
       return false;
     }
@@ -65,8 +65,8 @@ export default function ChangePasswordForm({ user }: ChangePasswordFormProps) {
       return false;
     }
 
-    // Ensure new password is different from current password
-    if (formData.newPassword === formData.currentPassword) {
+    // Ensure new password is different from current password (only if user has password)
+    if (user.hasPassword && formData.newPassword === formData.currentPassword) {
       setError("New password must be different from current password");
       return false;
     }
@@ -132,27 +132,34 @@ export default function ChangePasswordForm({ user }: ChangePasswordFormProps) {
     <form onSubmit={handleSubmit} className="space-y-5">
       {/* Password Change Section */}
       <div className="border-t border-[var(--primary-brown)]/30 pt-6">
-        <h3 className="text-[var(--light-cream)] font-semibold mb-4">Change Password</h3>
+        <h3 className="text-[var(--light-cream)] font-semibold mb-4">
+          {user.hasPassword ? 'Change Password' : 'Set Password'}
+        </h3>
         <p className="text-[var(--primary-brown)] text-sm mb-4">
-          To change your password, please enter your current password for security verification, then provide your new password.
+          {user.hasPassword 
+            ? 'To change your password, please enter your current password for security verification, then provide your new password.'
+            : 'You logged in via email. Set a password for your account to enable password-based login in the future.'
+          }
         </p>
         <div className="grid grid-cols-1 gap-6">
-          <input
-            type="password"
-            name="currentPassword"
-            value={formData.currentPassword}
-            onChange={handleChange}
-            placeholder="Current Password"
-            autoComplete="current-password"
-            className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
-          />
+          {user.hasPassword && (
+            <input
+              type="password"
+              name="currentPassword"
+              value={formData.currentPassword}
+              onChange={handleChange}
+              placeholder="Current Password"
+              autoComplete="current-password"
+              className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
+            />
+          )}
           <div className="grid grid-cols-2 gap-6">
             <input
               type="password"
               name="newPassword"
               value={formData.newPassword}
               onChange={handleChange}
-              placeholder="New Password"
+              placeholder={user.hasPassword ? "New Password" : "Set Password"}
               autoComplete="new-password"
               className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
             />
@@ -161,7 +168,7 @@ export default function ChangePasswordForm({ user }: ChangePasswordFormProps) {
               name="confirmPassword"
               value={formData.confirmPassword}
               onChange={handleChange}
-              placeholder="Confirm New Password"
+              placeholder="Confirm Password"
               autoComplete="new-password"
               className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
             />
@@ -174,7 +181,7 @@ export default function ChangePasswordForm({ user }: ChangePasswordFormProps) {
         type="submit"
         className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-[var(--primary-brown)] to-[var(--cream-gold)] text-[var(--dark-brown)] hover:opacity-90 transition cursor-pointer"
       >
-        Change Password
+        {user.hasPassword ? 'Change Password' : 'Set Password'}
       </button>
 
       {error && <p className="text-sm text-red-500 text-center">{error}</p>}
