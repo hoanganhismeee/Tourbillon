@@ -33,6 +33,9 @@ namespace backend.Database
         
         [Name("Image")]
         public string? Image { get; set; }
+        
+        [Name("AdditionalImages")]
+        public string? AdditionalImages { get; set; }
     }
 
     // Responsible for seeding initial data into the database (like default brands).
