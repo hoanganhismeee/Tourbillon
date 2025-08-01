@@ -42,9 +42,6 @@ builder.Services.AddScoped<IUserRegistrationService, UserRegistrationService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>();
 
-// Register email service for passwordless login and password reset
-builder.Services.AddScoped<IEmailService, EmailService>();
-
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
 {
