@@ -6,7 +6,6 @@ public class Watch
     public string Name { get; set; } = string.Empty;  //string.empty because it will alway be filled
     public string? Description { get; set; }
     public string? Image { get; set; }
-    public string? AdditionalImages { get; set; } // JSON array of additional image filenames
     public decimal CurrentPrice { get; set; }
 
     public int BrandId { get; set; }

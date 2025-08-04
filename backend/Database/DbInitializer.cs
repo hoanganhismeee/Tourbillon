@@ -33,13 +33,11 @@ namespace backend.Database
         
         [Name("Image")]
         public string? Image { get; set; }
-        
-        [Name("AdditionalImages")]
-        public string? AdditionalImages { get; set; }
     }
 
     // Responsible for seeding initial data into the database (like default brands).
     // dotnet ef database drop --force && dotnet ef database update
+    // Nhớ close hết tất cả csv windows trước khi chạy
     // dotnet ef migrations add AddCollections && dotnet ef database update (mỗi khi thêm model mới thì phải làm cái này)
 
     // make sure to dotnet run so pgadmin shows the updated database

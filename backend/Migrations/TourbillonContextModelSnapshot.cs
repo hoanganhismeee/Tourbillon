@@ -332,9 +332,6 @@ namespace backend.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("AdditionalImages")
-                        .HasColumnType("text");
-
                     b.Property<int>("BrandId")
                         .HasColumnType("integer");
 

@@ -1,4 +1,4 @@
-// Defines the authentication context for the application
+// Tefines the authentication context for the application
 // which provides a way to manage and share user authentication state across all components.
 "use client";
 

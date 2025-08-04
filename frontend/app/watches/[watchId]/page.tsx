@@ -1,5 +1,5 @@
-// This component displays the detailed product page for a single watch.
-// It fetches watch data based on the dynamic ID from the URL and presents it in a two-column layout
+// the detailed product page for a single watch.
+// fetches watch data based on the dynamic ID from the URL and presents it in a two-column layout
 // with an image, description, specifications, and purchasing options.
 
 'use client';

@@ -25,7 +25,6 @@ export interface Watch {
   name: string;
   description: string;
   image: string;
-  additionalImages?: string; // Comma-separated list of additional image filenames
   currentPrice: number;
   brandId: number;
   collectionId: number | null;
@@ -45,8 +44,6 @@ export interface User {
 }
 
 // API Fetch Functions
-
-// Fetches all brands from the backend
 export const fetchBrands = async (): Promise<Brand[]> => {
   const response = await fetch(`${API_BASE_URL}/brand`, { credentials: 'include' });
   if (!response.ok) {
@@ -55,7 +52,6 @@ export const fetchBrands = async (): Promise<Brand[]> => {
   return response.json();
 };
 
-// Fetches a specific brand by its ID
 export const fetchBrandById = async (id: number): Promise<Brand> => {
   const response = await fetch(`${API_BASE_URL}/brand/${id}`, { credentials: 'include' });
   if (!response.ok) {
@@ -64,7 +60,6 @@ export const fetchBrandById = async (id: number): Promise<Brand> => {
   return response.json();
 };
 
-// Fetches a specific watch by its ID
 export const fetchWatchById = async (id: number): Promise<Watch> => {
   const response = await fetch(`${API_BASE_URL}/watch/${id}`, { credentials: 'include' });
   if (!response.ok) {
@@ -73,7 +68,6 @@ export const fetchWatchById = async (id: number): Promise<Watch> => {
   return response.json();
 };
 
-// Fetches all collections from the backend
 export const fetchCollections = async (): Promise<Collection[]> => {
   const response = await fetch(`${API_BASE_URL}/collection`, { credentials: 'include' });
   if (!response.ok) {
@@ -82,7 +76,6 @@ export const fetchCollections = async (): Promise<Collection[]> => {
   return response.json();
 };
 
-// Fetches a specific collection by its ID
 export const fetchCollectionById = async (id: number): Promise<Collection> => {
   const response = await fetch(`${API_BASE_URL}/collection/${id}`, { credentials: 'include' });
   if (!response.ok) {
@@ -91,7 +84,6 @@ export const fetchCollectionById = async (id: number): Promise<Collection> => {
   return response.json();
 };
 
-// Fetches all watches from the backend
 export const fetchWatches = async (): Promise<Watch[]> => {
   const response = await fetch(`${API_BASE_URL}/watch`, { credentials: 'include' });
   if (!response.ok) {
@@ -100,7 +92,6 @@ export const fetchWatches = async (): Promise<Watch[]> => {
   return response.json();
 };
 
-// Fetches all watches that belong to a specific brand
 export const fetchWatchesByBrand = async (brandId: number): Promise<Watch[]> => {
   const response = await fetch(`${API_BASE_URL}/watch/brand/${brandId}`, { credentials: 'include' });
   if (!response.ok) {
@@ -109,7 +100,6 @@ export const fetchWatchesByBrand = async (brandId: number): Promise<Watch[]> => 
   return response.json();
 };
 
-// Fetches all watches that belong to a specific collection
 export const fetchWatchesByCollection = async (collectionId: number): Promise<Watch[]> => {
   const response = await fetch(`${API_BASE_URL}/watch/collection/${collectionId}`, { credentials: 'include' });
   if (!response.ok) {
@@ -118,8 +108,7 @@ export const fetchWatchesByCollection = async (collectionId: number): Promise<Wa
   return response.json();
 };
 
-// Fetches all collections that belong to a specific brand
-export const fetchCollectionsByBrand = async (brandId: number): Promise<Collection[]> => {
+export const fetchCollectionsByBrand = async (brandId: number): Promise<Collection[]> => { // fetchs collections for based on brandId
   const response = await fetch(`${API_BASE_URL}/collection/brand/${brandId}`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error(`Failed to fetch collections for brandId: ${brandId}`);
@@ -148,7 +137,6 @@ interface LoginData {
     password?: string;
 }
 
-// Gets the currently logged-in user's profile information
 export const getCurrentUser = async (): Promise<User> => {
     const response = await fetch(`${API_BASE_URL}/profile/me`, { credentials: 'include' });
     if (!response.ok) {
@@ -157,7 +145,6 @@ export const getCurrentUser = async (): Promise<User> => {
     return response.json();
 };
 
-// Registers a new user account
 export const registerUser = async (data: RegisterData) => {
     const response = await fetch(`${API_BASE_URL}/authentication/register`, {
         method: 'POST',
@@ -174,7 +161,6 @@ export const registerUser = async (data: RegisterData) => {
     return response.json();
 };
 
-// Logs in an existing user
 export const loginUser = async (data: LoginData) => {
     const response = await fetch(`${API_BASE_URL}/authentication/login`, {
         method: 'POST',
@@ -191,7 +177,6 @@ export const loginUser = async (data: LoginData) => {
     return;
 };
 
-// Logs out the current user
 export const logoutUser = async () => {
     const response = await fetch(`${API_BASE_URL}/authentication/logout`, {
         method: 'POST',
@@ -225,7 +210,6 @@ interface DeleteAccountData {
     confirmPassword: string;
 }
 
-// Updates the current user's profile information
 export const updateUser = async (data: UpdateUserData) => {
     try {
         const response = await fetch(`${API_BASE_URL}/profile/update`, {
@@ -253,7 +237,6 @@ export const updateUser = async (data: UpdateUserData) => {
     }
 };
 
-// Permanently deletes the current user's account
 export const deleteAccount = async (data: DeleteAccountData) => {
     try {
         const response = await fetch(`${API_BASE_URL}/account/delete`, {
