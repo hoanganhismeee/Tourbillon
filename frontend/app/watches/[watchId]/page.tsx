@@ -7,9 +7,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Watch, fetchWatchById } from '@/lib/api';
+import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
-import { imageTransformations } from '@/lib/cloudinary';
+
 
 const WatchDetailPage = () => {
     const params = useParams();
@@ -183,13 +184,13 @@ const WatchDetailPage = () => {
                                     )}
                                     
                                                                         {/* Actual image with Cloudinary optimization */}
-                                    <img 
-                                      src={imageTransformations.detail(watch.image)} 
-                                      alt={watch.name} 
-                                      className={`w-full h-full object-cover rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
-                                      onError={handleImageError}
-                                      onLoad={handleImageLoad}
-                                    />
+                                                                         <img 
+                                       src={imageTransformations.detail(watch.image)}
+                                       alt={watch.name} 
+                                       className={`w-full h-full object-cover rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+                                       onError={handleImageError}
+                                       onLoad={handleImageLoad}
+                                     />
                                 </>
                             ) : (
                                 /* Fallback when no image or image failed to load */

@@ -7,9 +7,10 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Watch, Collection, fetchCollectionsByBrand } from '@/lib/api';
+import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
-import { imageTransformations } from '@/lib/cloudinary';
+
 
 interface WatchCardProps {
   watch: Watch;
@@ -89,25 +90,24 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
               </div>
             )}
             
-            {/* Actual image with Cloudinary optimization */}
-            {(() => {
-              // Use the same approach as watch detail page - assume watch.image is already a public ID
-              const imageUrl = imageTransformations.showcase(watch.image);
-                             console.log(`WatchCard for ${watch.name} (ID: ${watch.id}):`, {
+                         {/* Actual image with Cloudinary optimization */}
+             {(() => {
+               const imageUrl = imageTransformations.showcase(watch.image);
+               console.log(`WatchCard for ${watch.name} (ID: ${watch.id}):`, {
                  originalImage: watch.image,
                  generatedUrl: imageUrl,
                  transformation: 'showcase 600x600 with auto-refresh'
                });
-              return (
-                <img 
-                  src={imageUrl} 
-                  alt={watch.name} 
-                  className={`w-full h-full object-cover rounded-xl transition-opacity duration-500 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
-                  onError={handleImageError}
-                  onLoad={handleImageLoad}
-                />
-              );
-            })()}
+               return (
+                 <img 
+                   src={imageUrl} 
+                   alt={watch.name} 
+                   className={`w-full h-full object-cover rounded-xl transition-opacity duration-500 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+                   onError={handleImageError}
+                   onLoad={handleImageLoad}
+                 />
+               );
+             })()}
           </>
         ) : (
           /* Fallback when no image or image failed to load */

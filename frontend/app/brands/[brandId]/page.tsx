@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { fetchBrandById, fetchWatchesByBrand, fetchCollectionsByBrand, Brand, Watch, Collection } from '@/lib/api';
+import { imageTransformations } from '@/lib/cloudinary';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import StaggeredFade from '../../scrollMotion/StaggeredFade';
 import WatchCard from '../../watches/[watchId]/WatchCard';
@@ -82,17 +83,72 @@ const BrandPage = () => {
   }
   
   return (
-    <div className="container mx-auto px-4 sm:px-8 py-24 pt-48">
+    <div className="container mx-auto px-4 sm:px-8 py-20 pt-20">
       <ScrollFade>
         <header className="text-center mb-8">
-          <h1 className="text-5xl md:text-6xl font-playfair font-bold mb-6 text-[#f0e6d2]">{brand.name}</h1>
-          <p className="text-white/80 leading-relaxed whitespace-pre-line max-w-3xl mx-auto font-playfair font-light tracking-wide text-lg">
-            {brand.description}
-          </p>
-        </header>
-      </ScrollFade>
+          
+            {/* Brand Logo */}
+            {brand.image && (
+              <div className="flex justify-center mb-10">
+                {(() => {
+                  const logoUrl = imageTransformations.logo(brand.image);
+                  console.log(`🔍 Brand: ${brand.name}, Image: ${brand.image}, URL: ${logoUrl}`);
+                  return (
+                    <img 
+                      src={logoUrl}
+                      alt={`${brand.name} logo`}
+                      className="h-32 md:h-48 lg:h-56 object-contain"
+                      onError={(e) => {
+                        console.log(`❌ Failed to load brand logo: ${brand.image}`);
+                        console.log(`❌ Error target src:`, e.currentTarget.src);
+                      }}
+                      onLoad={() => console.log(`Brand logo loaded successfully: ${brand.name}`)}
+                    />
+                  );
+                })()}
+              </div>
+            )}
 
-      {/* Collections Grid */}
+           {/* White line separator between logo and description */}
+           <div className="w-full border-t border-white/10 my-10"></div>
+
+           <div className="mt-16 max-w-7xl mx-auto px-4 sm:px-8">
+             <div className="text-white/85 leading-relaxed font-playfair font-light tracking-wide text-lg md:text-xl lg:text-2xl text-left">
+                               {(() => {
+                  // Split by actual newlines and filter out empty paragraphs
+                  const paragraphs = brand.description
+                    .split('\n')
+                    .map(p => p.trim())
+                    .filter(p => p.length > 0);
+                  
+                  return paragraphs.map((paragraph, index) => {
+                    // Check if this is the adage (first paragraph with quotes)
+                    if (index === 0 && paragraph.includes('"')) {
+                      return (
+                        <div key={index} className="mb-8">
+                          <blockquote className="text-[#f0e6d2] text-base md:text-lg lg:text-xl font-medium italic text-center border-l-4 border-[#f0e6d2]/30 pl-6 py-4">
+                            {paragraph}
+                          </blockquote>
+                        </div>
+                      );
+                    }
+                    // Regular paragraphs
+                    return (
+                      <p key={index} className="mb-6">
+                        {paragraph}
+                      </p>
+                    );
+                  });
+                })()}
+             </div>
+           </div>
+                 </header>
+       </ScrollFade>
+
+       {/* White line separator between description and collections */}
+       <div className="w-full border-t border-white/10 my-24"></div>
+
+       {/* Collections Grid */}
       <section className="mb-16">
         <ScrollFade>
           <h2 className="text-3xl font-playfair font-semibold mb-8 text-white/90">Collections</h2>
@@ -103,10 +159,13 @@ const BrandPage = () => {
           ) : (
             <p className="text-white/60 col-span-full">No collections available for this brand yet.</p>
           )}
-        </StaggeredFade>
-      </section>
+                 </StaggeredFade>
+       </section>
 
-      {/* Watch Collection */}
+       {/* White line separator between collections and watches */}
+       <div className="w-full border-t border-white/10 my-24"></div>
+
+       {/* Watch Collection */}
       <section>
         <ScrollFade>
           <h2 className="text-3xl font-playfair font-semibold mb-8 text-white/90">Watches</h2>

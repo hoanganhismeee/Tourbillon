@@ -129,13 +129,12 @@ export const imageTransformations = {
   }) + `?t=${Date.now()}`, // Auto-refresh with timestamp
 
   // For brand logos
-  logo: (publicId: string) => getOptimizedImageUrl(publicId, {
-    width: 300,
-    height: 100,
-    crop: 'fit',
-    quality: 'auto',
-    format: 'auto'
-  }) + `?t=${Date.now()}`, // Auto-refresh with timestamp
+  logo: (publicId: string) => {
+    // Try a simpler URL first without transformations
+    const simpleUrl = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${publicId}?t=${Date.now()}&v=3`;
+    console.log(`Brand logo URL for ${publicId}:`, simpleUrl);
+    return simpleUrl;
+  },
 };
 
 // Note: Upload functionality requires server-side implementation
