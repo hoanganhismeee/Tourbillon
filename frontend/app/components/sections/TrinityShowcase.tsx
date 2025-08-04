@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Brand, Watch, fetchWatchById, fetchWatchesByBrand } from '@/lib/api';
-import WatchCard from './[watchId]/WatchCard';
-import ScrollFade from '../scrollMotion/ScrollFade';
+import WatchCard from '../../watches/[watchId]/WatchCard';
+import ScrollFade from '../../scrollMotion/ScrollFade';
 
 interface TrinityShowcaseProps {
     brand: Brand;

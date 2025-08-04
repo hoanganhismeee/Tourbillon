@@ -4,7 +4,6 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Image from 'next/image';
 import Link from 'next/link';
 import { imageTransformations } from '@/lib/cloudinary';
 
@@ -170,100 +169,100 @@ export default function SearchPage() {
           </div>
         ) : searchResults ? (
           <div className="space-y-12">
-                         {/* Brands Results (Highest Priority) */}
-             {searchResults.brands && searchResults.brands.length > 0 && (
-               <div>
-                 <h2 className="text-2xl font-semibold mb-6 font-playfair">Brands</h2>
-                 <div className="space-y-4">
-                   {searchResults.brands.map((brand, index) => (
-                     <Link
-                       key={brand.id}
-                       href={`/brands/${brand.id}`}
-                       className="block group"
-                     >
-                                               <div className="py-4 border-b border-gray-200 last:border-b-0">
-                          <h3 className="text-xl font-semibold group-hover:text-[#bfa68a] transition-colors">
-                            {brand.name}
-                          </h3>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Discover luxury timepieces from {brand.name}
-                          </p>
-                        </div>
-                     </Link>
-                   ))}
-                 </div>
-               </div>
-             )}
+            {/* Brands Results (Highest Priority) */}
+            {searchResults.brands && searchResults.brands.length > 0 && (
+              <div>
+                <h2 className="text-2xl font-semibold mb-6 font-playfair">Brands</h2>
+                <div className="space-y-4">
+                  {searchResults.brands.map((brand) => (
+                    <Link
+                      key={brand.id}
+                      href={`/brands/${brand.id}`}
+                      className="block group"
+                    >
+                      <div className="py-4 border-b border-gray-200 last:border-b-0">
+                        <h3 className="text-xl font-semibold group-hover:text-[#bfa68a] transition-colors">
+                          {brand.name}
+                        </h3>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Discover luxury timepieces from {brand.name}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
 
-                         {/* Watches Results (Second Priority) */}
-             {searchResults.watches && searchResults.watches.length > 0 && (
-               <div>
-                 <h2 className="text-2xl font-semibold mb-6 font-playfair">Watches</h2>
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                   {searchResults.watches.map((watch) => (
-                     <Link
-                       key={watch.id}
-                       href={`/watches/${watch.id}`}
-                       className="group block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10"
-                     >
-                       {/* Watch image with Cloudinary optimization */}
-                       <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10 overflow-hidden">
-                         {watch.image ? (
-                           <img 
-                             src={imageTransformations.card(watch.image)}
-                             alt={watch.name}
-                             className="w-full h-full object-cover rounded-xl"
-                             loading="lazy"
-                           />
-                         ) : (
-                           <span className="text-white/60 text-xs font-light">{watch.name}</span>
-                         )}
-                       </div>
-                       {/* Watch information - brand, model, price */}
-                       <div className="space-y-2">
-                         <p className="text-xs text-white/60 font-inter font-light uppercase tracking-wide">
-                           {watch.brand?.name || 'Unknown Brand'}
-                         </p>
-                         <p className="text-xs text-white/50 font-inter font-light">
-                           {watch.collection?.name || ''}
-                         </p>
-                         <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate">
-                           {watch.name}
-                         </h3>
-                         <p className="text-lg text-[#f0e6d2] font-inter font-semibold">
-                           {watch.currentPrice ? formatPrice(watch.currentPrice) : 'Price on Request'}
-                         </p>
-                       </div>
-                     </Link>
-                   ))}
-                 </div>
-               </div>
-             )}
+            {/* Watches Results (Second Priority) */}
+            {searchResults.watches && searchResults.watches.length > 0 && (
+              <div>
+                <h2 className="text-2xl font-semibold mb-6 font-playfair">Watches</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  {searchResults.watches.map((watch) => (
+                    <Link
+                      key={watch.id}
+                      href={`/watches/${watch.id}`}
+                      className="group block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10"
+                    >
+                      {/* Watch image with Cloudinary optimization */}
+                      <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10 overflow-hidden">
+                        {watch.image ? (
+                          <img 
+                            src={imageTransformations.card(watch.image)}
+                            alt={watch.name}
+                            className="w-full h-full object-cover rounded-xl"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span className="text-white/60 text-xs font-light">{watch.name}</span>
+                        )}
+                      </div>
+                      {/* Watch information - brand, model, price */}
+                      <div className="space-y-2">
+                        <p className="text-xs text-white/60 font-inter font-light uppercase tracking-wide">
+                          {watch.brand?.name || 'Unknown Brand'}
+                        </p>
+                        <p className="text-xs text-white/50 font-inter font-light">
+                          {watch.collection?.name || ''}
+                        </p>
+                        <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate">
+                          {watch.name}
+                        </h3>
+                        <p className="text-lg text-[#f0e6d2] font-inter font-semibold">
+                          {watch.currentPrice ? formatPrice(watch.currentPrice) : 'Price on Request'}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
 
-                         {/* Collections Results (Third Priority) */}
-             {searchResults.collections && searchResults.collections.length > 0 && (
-               <div>
-                 <h2 className="text-2xl font-semibold mb-6 font-playfair">Collections</h2>
-                 <div className="space-y-4">
-                   {searchResults.collections.map((collection) => (
-                     <Link
-                       key={collection.id}
-                       href={`/collections/${collection.id}`}
-                       className="block group"
-                     >
-                                               <div className="py-4 border-b border-gray-200 last:border-b-0">
-                          <h3 className="text-xl font-semibold group-hover:text-[#bfa68a] transition-colors">
-                            {collection.name}
-                          </h3>
-                          <p className="text-sm text-gray-600 mt-1">
-                            {collection.brand?.name || 'Unknown Brand'}
-                          </p>
-                        </div>
-                     </Link>
-                   ))}
-                 </div>
-               </div>
-             )}
+            {/* Collections Results (Third Priority) */}
+            {searchResults.collections && searchResults.collections.length > 0 && (
+              <div>
+                <h2 className="text-2xl font-semibold mb-6 font-playfair">Collections</h2>
+                <div className="space-y-4">
+                  {searchResults.collections.map((collection) => (
+                    <Link
+                      key={collection.id}
+                      href={`/collections/${collection.id}`}
+                      className="block group"
+                    >
+                      <div className="py-4 border-b border-gray-200 last:border-b-0">
+                        <h3 className="text-xl font-semibold group-hover:text-[#bfa68a] transition-colors">
+                          {collection.name}
+                        </h3>
+                        <p className="text-sm text-gray-600 mt-1">
+                          {collection.brand?.name || 'Unknown Brand'}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* No Results */}
             {(!searchResults.watches || searchResults.watches.length === 0) && 

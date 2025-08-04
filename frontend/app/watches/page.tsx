@@ -8,8 +8,8 @@ import Link from 'next/link';
 import { fetchBrands, Brand } from '@/lib/api';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import ScrollFade from '../scrollMotion/ScrollFade';
-import TrinityShowcase from './TrinityShowcase';
-import AllWatchesSection from './AllWatchesSection';
+import TrinityShowcase from '../components/sections/TrinityShowcase';
+import AllWatchesSection from '../components/sections/AllWatchesSection';
 
 // A reusable component for displaying a single brand in a list format.
 // Used in the "Explore More Brands" section to show brand name and summary

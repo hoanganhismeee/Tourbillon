@@ -6,7 +6,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { WatchesPageProvider } from "@/contexts/WatchesPageContext";
 import { NavigationProvider } from "@/contexts/NavigationContext";
 import "./globals.css";
-import NavBar from "./NavBar";
+import NavBar from "./components/layout/NavBar";
 import { AnimatePresence } from "framer-motion";
 import MotionMain from "./scrollMotion/MotionMain";
 
