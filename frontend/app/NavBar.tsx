@@ -141,9 +141,12 @@ const UserMenu = () => {
     // Handle search icon click - toggle search expansion and focus input
     const handleSearchClick = () => {
       if (isSearchExpanded) {
-        // If search is expanded and has content, log the search (placeholder for actual search)
-        if (searchQuery.trim()) console.log('Searching for:', searchQuery);
-        else handleSearchClose(); // If no content, close search
+        // If search is expanded and has content, navigate to search page
+        if (searchQuery.trim()) {
+          window.location.href = `/search?q=${encodeURIComponent(searchQuery.trim())}`;
+        } else {
+          handleSearchClose(); // If no content, close search
+        }
       } else {
         // Expand search and focus input after animation delay
         setIsSearchExpanded(true);
@@ -157,10 +160,12 @@ const UserMenu = () => {
       setSearchQuery('');
     };
   
-    // Handle search form submission (prevent default and log search)
+    // Handle search form submission - navigate to search page
     const handleSearchSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      if (searchQuery.trim()) console.log('Searching for:', searchQuery);
+      if (searchQuery.trim()) {
+        window.location.href = `/search?q=${encodeURIComponent(searchQuery.trim())}`;
+      }
     };
   
     // Handle keyboard events in search input (Escape to close)
