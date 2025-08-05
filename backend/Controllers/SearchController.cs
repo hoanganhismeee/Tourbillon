@@ -3,18 +3,18 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
-using Tourbillon.Data;
-using Tourbillon.Models;
+using backend.Database;
+using backend.Models;
 
-namespace Tourbillon.Controllers;
+namespace backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 public class SearchController : ControllerBase
 {
-    private readonly ApplicationDbContext _context;
+    private readonly TourbillonContext _context;
 
-    public SearchController(ApplicationDbContext context)
+    public SearchController(TourbillonContext context)
     {
         _context = context;
     }
@@ -39,7 +39,6 @@ public class SearchController : ControllerBase
             // Get data from database first
             var brands = await _context.Brands
                 .Include(b => b.Watches)
-                .Include(b => b.Collections)
                 .ToListAsync();
 
             var watches = await _context.Watches
@@ -100,7 +99,7 @@ public class SearchController : ControllerBase
                 .Take(10)
                 .ToList();
 
-            var totalResults = relevantBrands.Count + relevantWatches.Count + relevantCollections.Count;
+            var totalResults = relevantBrands.Count() + relevantWatches.Count() + relevantCollections.Count();
 
             // Generate suggestions
             var suggestions = GenerateSuggestions(searchTerm, brands, watches, collections);
