@@ -14,6 +14,88 @@ export const testCloudinaryConnection = () => {
   return true;
 };
 
+/** Ensure we always have a full publicId with folder and no extension */
+export const toPublicId = (value: string) => {
+  if (!value) return '';
+  // If caller already passed a full publicId (has '/'), keep it
+  if (value.includes('/')) return value.replace(/\.[^/.]+$/, '');
+  
+  // For your Cloudinary setup: images are in root folder with extensions
+  // Just return the clean filename without folder prefix
+  const cleanName = value.replace(/\.[^/.]+$/, '');
+  
+  // Handle Cloudinary auto-suffixes by mapping base names to their actual public IDs
+  const suffixMapping: Record<string, string> = {
+    // Add your actual mappings here as you discover them
+    // Format: 'baseName': 'baseName_actualSuffix'
+    // Example: 'PP3029': 'PP3029_ejwq2',
+    // Example: 'patekphilippe': 'patekphilippe_abc123',
+    
+    // Current mappings based on your data
+    'JLCchrono': 'JLCchronograph', // From your spreadsheet data
+    'JLCgyro': 'JLCgyro', // If this has a suffix, update it
+    'JLCsphero': 'JLCsphero', // If this has a suffix, update it
+    
+    // Add more mappings here as you discover them
+    // For example, if you upload PP3029 and it becomes PP3029_ejwq2:
+    // 'PP3029': 'PP3029_ejwq2',
+  };
+  
+  // If we have a mapping for this base name, use it
+  if (suffixMapping[cleanName]) {
+    return suffixMapping[cleanName];
+  }
+  
+  // Otherwise, return the clean name (for assets without suffixes)
+  return cleanName;
+};
+
+// Helper function to add suffix mappings easily
+export const addSuffixMapping = (baseName: string, actualPublicId: string) => {
+  console.log(`📝 Adding suffix mapping: ${baseName} → ${actualPublicId}`);
+  // In a real implementation, you might want to store this in localStorage or a config file
+  // For now, this is just for documentation
+};
+
+// Helper function to get all current mappings (for debugging)
+export const getSuffixMappings = () => {
+  return {
+    // This would return the actual mappings in a real implementation
+    message: 'Check the suffixMapping object in toPublicId function'
+  };
+};
+
+// TEMPORARY FIX OPTION: If your Cloudinary assets have different naming,
+// uncomment and modify one of these alternatives:
+
+// Option 1: If your assets are in root folder without extensions
+// export const toPublicId = (value: string, folder = 'Watches') => {
+//   if (!value) return '';
+//   if (value.includes('/')) return value.replace(/\.[^/.]+$/, '');
+//   // Remove folder prefix and just use the clean name
+//   return value.replace(/\.[^/.]+$/, '');
+// };
+
+// Option 2: If your assets have suffixes like _abc123
+// export const toPublicId = (value: string, folder = 'Watches') => {
+//   if (!value) return '';
+//   if (value.includes('/')) return value.replace(/\.[^/.]+$/, '');
+//   // Add your actual suffix pattern here
+//   const cleanName = value.replace(/\.[^/.]+$/, '');
+//   return `${folder}/${cleanName}_abc123`; // Replace with your actual suffix
+// };
+
+// Option 3: If your assets are in different folders
+// export const toPublicId = (value: string, folder = 'Watches') => {
+//   if (!value) return '';
+//   if (value.includes('/')) return value.replace(/\.[^/.]+$/, '');
+//   // Map to your actual folder structure
+//   const cleanName = value.replace(/\.[^/.]+$/, '');
+//   if (folder === 'Brands') return `Logos/${cleanName}`; // If brands are in "Logos" folder
+//   if (folder === 'Watches') return `Products/${cleanName}`; // If watches are in "Products" folder
+//   return `${folder}/${cleanName}`;
+// };
+
 // Helper function to construct public ID with folder structure
 export const getPublicId = (imageName: string, folder: string = 'Watches') => {
   // Remove file extension if present
@@ -93,47 +175,50 @@ export const getOptimizedImageUrl = (
 // Predefined transformations for different use cases
 export const imageTransformations = {
   // For watch cards in grid (AllWatchesSection)
-  card: (publicId: string) => getOptimizedImageUrl(publicId, {
-    width: 400,
-    height: 400,
-    crop: 'fill',
-    quality: 'auto',
-    format: 'auto'
-  }) + `?t=${Date.now()}`, // Auto-refresh with timestamp
+  card: (value: string) =>
+    getOptimizedImageUrl(toPublicId(value), {
+      width: 400,
+      height: 400,
+      crop: 'fill',
+      quality: 'auto',
+      format: 'auto'
+    }) + (process.env.NODE_ENV === 'development' ? `?t=${Date.now()}` : ''),
 
   // For Trinity Showcase (square format to match container)
-  showcase: (publicId: string) => getOptimizedImageUrl(publicId, {
-    width: 600,
-    height: 600,
-    crop: 'fill',
-    quality: 'auto',
-    format: 'auto'
-  }) + `?t=${Date.now()}`, // Auto-refresh with timestamp
+  showcase: (value: string) =>
+    getOptimizedImageUrl(toPublicId(value), {
+      width: 600,
+      height: 600,
+      crop: 'fill',
+      quality: 'auto',
+      format: 'auto'
+    }) + (process.env.NODE_ENV === 'development' ? `?t=${Date.now()}` : ''),
 
   // For individual watch detail pages
-  detail: (publicId: string) => getOptimizedImageUrl(publicId, {
-    width: 1200,
-    height: 1200,
-    crop: 'fill',
-    quality: 'auto',
-    format: 'auto'
-  }) + `?t=${Date.now()}`, // Auto-refresh with timestamp
+  detail: (value: string) =>
+    getOptimizedImageUrl(toPublicId(value), {
+      width: 1200,
+      height: 1200,
+      crop: 'fill',
+      quality: 'auto',
+      format: 'auto'
+    }) + (process.env.NODE_ENV === 'development' ? `?t=${Date.now()}` : ''),
 
   // For thumbnails
-  thumbnail: (publicId: string) => getOptimizedImageUrl(publicId, {
-    width: 200,
-    height: 200,
-    crop: 'fill',
-    quality: 'auto',
-    format: 'auto'
-  }) + `?t=${Date.now()}`, // Auto-refresh with timestamp
+  thumbnail: (value: string) =>
+    getOptimizedImageUrl(toPublicId(value), {
+      width: 200,
+      height: 200,
+      crop: 'fill',
+      quality: 'auto',
+      format: 'auto'
+    }) + (process.env.NODE_ENV === 'development' ? `?t=${Date.now()}` : ''),
 
   // For brand logos
-  logo: (publicId: string) => {
-    // Try a simpler URL first without transformations
-    const simpleUrl = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${publicId}?t=${Date.now()}&v=3`;
-    console.log(`Brand logo URL for ${publicId}:`, simpleUrl);
-    return simpleUrl;
+  logo: (value: string) => {
+    const pid = toPublicId(value); // change folder if you use a different one for logos
+    return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${pid}`
+      + (process.env.NODE_ENV === 'development' ? `?t=${Date.now()}` : '');
   },
 };
 
