@@ -4,6 +4,8 @@ using backend.Services;
 using backend.Middleware;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
+using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -89,6 +91,17 @@ app.UseCors("AllowFrontend");
 
 app.UseAuthentication(); // Enable authentication
 app.UseAuthorization();
+
+// Serve static image assets from the local Images/ directory at /images
+var imagesPath = Path.Combine(Directory.GetCurrentDirectory(), "Images");
+if (Directory.Exists(imagesPath))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(imagesPath),
+        RequestPath = "/images"
+    });
+}
 
 // Map controllers
 app.MapControllers();

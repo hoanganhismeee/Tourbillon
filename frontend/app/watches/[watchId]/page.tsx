@@ -10,6 +10,8 @@ import { Watch, fetchWatchById } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
+import Image from 'next/image';
+
 
 
 const WatchDetailPage = () => {
@@ -20,6 +22,8 @@ const WatchDetailPage = () => {
     const [error, setError] = useState<string | null>(null);
     const [imageError, setImageError] = useState(false);
     const [imageLoading, setImageLoading] = useState(true);
+    const [imgSrc, setImgSrc] = useState<string | null>(null);
+    const [retryCount, setRetryCount] = useState<number>(0);
     
     // Get navigation context for back functionality
     const { navigationState, clearNavigationState } = useNavigation();
@@ -71,6 +75,13 @@ const WatchDetailPage = () => {
     }, [watchId]);
 
     const handleImageError = () => {
+        // One-time retry with explicit JPG and cache-busting to mitigate transient failures
+        if (watch && retryCount < 1) {
+            setRetryCount(1);
+            const fallback = imageTransformations.detail(watch.image) + `?r=${Date.now()}`;
+            setImgSrc(fallback.replace('/f_auto', '/f_jpg')); // coarse switch to JPG if URL contains f_auto
+            return;
+        }
         setImageError(true);
         setImageLoading(false);
     };
@@ -183,14 +194,20 @@ const WatchDetailPage = () => {
                                         </div>
                                     )}
                                     
-                                                                        {/* Actual image with Cloudinary optimization */}
-                                                                         <img 
-                                       src={imageTransformations.detail(watch.image)}
-                                       alt={watch.name} 
-                                       className={`w-full h-full object-cover rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
-                                       onError={handleImageError}
-                                       onLoad={handleImageLoad}
-                                     />
+                                    {/* Actual image with Cloudinary optimization */}
+                                    <Image
+                                      src={imgSrc || imageTransformations.detail(watch.image)}
+                                      alt={watch.name}
+                                      width={1200}
+                                      height={1200}
+                                      sizes="(min-width: 1024px) 600px, 90vw"
+                                      className={`w-full h-full object-cover rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+                                      onError={handleImageError}
+                                      onLoad={handleImageLoad}
+                                      priority
+                                      fetchPriority="high"
+                                      unoptimized
+                                    />
                                 </>
                             ) : (
                                 /* Fallback when no image or image failed to load */

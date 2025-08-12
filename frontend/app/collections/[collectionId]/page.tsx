@@ -1,11 +1,16 @@
 // Collection detail page - displays collection information and watches that belong to this collection
 // Shows collection description, brand info, and all watches that match the collection ID
+// Collection page: loads the collection, its brand, and all member watches.
+// Client-side fetching keeps things straightforward; images use Cloudinary thumbs.
+// Small, human-friendly UI touches guide the user if data is missing.
 'use client';
 
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { fetchCollectionById, fetchWatchesByCollection, fetchBrandById, Collection, Watch, Brand } from '@/lib/api';
+import { imageTransformations } from '@/lib/cloudinary';
+import Image from 'next/image';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import StaggeredFade from '../../scrollMotion/StaggeredFade';
 import WatchCard from '../../watches/[watchId]/WatchCard';
@@ -91,10 +96,13 @@ const CollectionPage = () => {
           <div className="mb-6">
             {collection.image && (
               <div className="w-32 h-32 mx-auto mb-6 bg-black/30 rounded-full flex items-center justify-center">
-                <img 
-                  src={"/" + collection.image} 
-                  alt={collection.name} 
-                  className="w-24 h-24 object-contain rounded-full" 
+                <Image
+                  src={imageTransformations.thumbnail(collection.image)}
+                  alt={collection.name}
+                  width={96}
+                  height={96}
+                  sizes="96px"
+                  className="w-24 h-24 object-contain rounded-full"
                 />
               </div>
             )}

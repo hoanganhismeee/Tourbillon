@@ -1,6 +1,9 @@
 // Main entry point for browsing, displaying a list of all available watch brands, and some random watches
 // From here, users can navigate to a specific brand's page.
 // Features Holy Trinity showcase, Explore More Brands section, and All Watches with pagination
+// Main Watches hub: brands overview + Trinity showcase + the full watches grid below.
+// Data loads on the client for simplicity; animations add polish without blocking.
+// Uses the shared watches section for optimized images and pagination.
 'use client';
 
 import React, { useEffect, useState } from 'react';

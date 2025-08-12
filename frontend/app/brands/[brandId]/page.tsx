@@ -1,9 +1,13 @@
+// Brand page: shows brand logo, description, collections, and watches in one place.
+// Fetches brand, collections, and watches client-side for simplicity.
+// Uses Cloudinary-optimized images with `next/image` and retry-friendly URLs.
 'use client';
 
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { fetchBrandById, fetchWatchesByBrand, fetchCollectionsByBrand, Brand, Watch, Collection } from '@/lib/api';
-import { imageTransformations } from '@/lib/cloudinary';
+import { imageTransformations, getLocalImageUrl } from '@/lib/cloudinary';
+import Image from 'next/image';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import StaggeredFade from '../../scrollMotion/StaggeredFade';
 import WatchCard from '../../watches/[watchId]/WatchCard';
@@ -17,7 +21,15 @@ const CollectionCard = ({ collection }: { collection: Collection }) => {
             <div className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-4 transition-all duration-300 hover:border-white/30 hover:scale-105 cursor-pointer">
                 <div className="w-full h-40 bg-black/30 rounded-lg mb-4 flex items-center justify-center">
                     {collection.image ? (
-                        <img src={"/" + collection.image} alt={collection.name} className="h-full object-contain rounded" />
+                        <Image
+                          src={imageTransformations.thumbnail(collection.image)}
+                          alt={collection.name}
+                          width={300}
+                          height={160}
+                          sizes="(min-width: 1024px) 300px, 50vw"
+                          className="h-full w-auto object-contain rounded"
+                          loading="lazy"
+                        />
                     ) : (
                         <span className="text-white/30">Image</span>
                     )}
@@ -38,6 +50,7 @@ const BrandPage = () => {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [logoSrc, setLogoSrc] = useState<string>('');
 
   useEffect(() => {
     if (!brandId) return;
@@ -70,6 +83,13 @@ const BrandPage = () => {
     getBrandData();
   }, [brandId]);
 
+  // Initialize brand logo source when brand data arrives
+  useEffect(() => {
+    if (brand?.image) {
+      setLogoSrc(imageTransformations.logo(brand.image));
+    }
+  }, [brand?.image]);
+
   if (loading) {
     return <div className="flex justify-center items-center min-h-screen text-white/80">Loading...</div>;
   }
@@ -90,22 +110,27 @@ const BrandPage = () => {
             {/* Brand Logo */}
             {brand.image && (
               <div className="flex justify-center mb-10">
-                {(() => {
-                  const logoUrl = imageTransformations.logo(brand.image);
-                  console.log(`🔍 Brand: ${brand.name}, Image: ${brand.image}, URL: ${logoUrl}`);
-                  return (
-                    <img 
-                      src={logoUrl}
-                      alt={`${brand.name} logo`}
-                      className="h-32 md:h-48 lg:h-56 object-contain"
-                      onError={(e) => {
-                        console.log(`❌ Failed to load brand logo: ${brand.image}`);
-                        console.log(`❌ Error target src:`, e.currentTarget.src);
-                      }}
-                      onLoad={() => console.log(`Brand logo loaded successfully: ${brand.name}`)}
-                    />
-                  );
-                })()}
+                <Image
+                  // Use computed fallback so we never pass an empty src on first paint
+                  src={logoSrc || imageTransformations.logo(brand.image)}
+                  alt={`${brand.name} logo`}
+                  width={800}
+                  height={200}
+                  sizes="(min-width: 1024px) 600px, 80vw"
+                  className="h-32 md:h-48 lg:h-56 w-auto object-contain"
+                  priority
+                  onError={() => {
+                    if (!brand?.image) return;
+                    // First failure: fall back to local backend static asset
+                    const localUrl = getLocalImageUrl(`Brands/${brand.image}`);
+                    if (logoSrc !== localUrl) {
+                      setLogoSrc(localUrl);
+                      return;
+                    }
+                    // If even local fails once, try a cache-busted retry
+                    setLogoSrc(localUrl + `?r=${Date.now()}`);
+                  }}
+                />
               </div>
             )}
 

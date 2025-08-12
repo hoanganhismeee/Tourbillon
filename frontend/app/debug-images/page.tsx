@@ -4,15 +4,20 @@
 'use client';
 
 import React, { useState } from 'react';
-import { imageTransformations, toPublicId, addSuffixMapping } from '@/lib/cloudinary';
+import { imageTransformations, getPublicId } from '@/lib/cloudinary';
 
 const DebugImagesPage = () => {
   const [testImage, setTestImage] = useState('patekphilippe.png');
   const [testWatchImage, setTestWatchImage] = useState('PP6119G.png');
   const [baseName, setBaseName] = useState('');
   const [actualPublicId, setActualPublicId] = useState('');
+  const [bulkImageNames, setBulkImageNames] = useState('');
+  const [bulkResults, setBulkResults] = useState<Array<{name: string, url: string, status: 'pending' | 'success' | 'error'}>>([]);
 
   const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+
+  // Use a static timestamp to prevent hydration errors
+  const staticTimestamp = '1754403505572';
 
   const testCases: Array<{ name: string; value: string; type: 'logo' | 'watch' }> = [
     // Brand logos
@@ -25,29 +30,87 @@ const DebugImagesPage = () => {
     { name: 'PP6119G', value: 'PP6119G.png', type: 'watch' },
     { name: 'AP16202ST', value: 'AP16202ST.png', type: 'watch' },
     { name: 'AP26331', value: 'AP26331', type: 'watch' },
-         { name: 'JLCchrono', value: 'JLCchronograph', type: 'watch' },
+    { name: 'JLCchrono', value: 'JLCchronograph', type: 'watch' },
   ];
 
   const generateUrl = (value: string, type: 'logo' | 'watch') => {
     if (type === 'logo') {
-      return imageTransformations.logo(value);
+      // Use static timestamp for debug page to prevent hydration errors
+      const baseUrl = imageTransformations.logo(value);
+      return baseUrl.replace(/\?t=\d+/, '') + `?t=${staticTimestamp}`;
     } else {
-      return imageTransformations.card(value);
+      const baseUrl = imageTransformations.card(value);
+      return baseUrl.replace(/\?t=\d+/, '') + `?t=${staticTimestamp}`;
     }
   };
 
-  const getPublicId = (value: string) => {
-    // Both logos and watches use the same function now since they're all in root folder
-    return toPublicId(value);
-  };
+  const getPid = (value: string) => getPublicId(value);
 
   const handleAddMapping = () => {
     if (baseName && actualPublicId) {
-      addSuffixMapping(baseName, actualPublicId);
-      alert(`Mapping added: ${baseName} → ${actualPublicId}\n\nNow update the suffixMapping object in cloudinary.ts with this mapping.`);
+      alert(`Mapping no longer required. Store the correct Cloudinary public_id in the database instead. Given: ${baseName} → ${actualPublicId}`);
       setBaseName('');
       setActualPublicId('');
     }
+  };
+
+  // Bulk testing function
+  const handleBulkTest = () => {
+    if (!bulkImageNames.trim()) return;
+
+    // Parse the bulk input - support multiple formats
+    const imageNames = bulkImageNames
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .map(line => {
+        // Handle different input formats
+        if (line.includes('.')) {
+          return line; // Already has extension
+        } else {
+          return line + '.png'; // Assume .png if no extension
+        }
+      });
+
+    // Generate URLs for all images
+    const results = imageNames.map(name => ({
+      name,
+      url: generateUrl(name, 'watch'),
+      status: 'pending' as const
+    }));
+
+    setBulkResults(results);
+
+    // Test each URL
+    results.forEach((result, index) => {
+      const img = new Image();
+      img.onload = () => {
+        setBulkResults(prev => 
+          prev.map((r, i) => 
+            i === index ? { ...r, status: 'success' as const } : r
+          )
+        );
+      };
+      img.onerror = () => {
+        setBulkResults(prev => 
+          prev.map((r, i) => 
+            i === index ? { ...r, status: 'error' as const } : r
+          )
+        );
+      };
+      img.src = result.url;
+    });
+  };
+
+  // Generate mapping suggestions for failed images
+  const generateMappingSuggestions = () => {
+    const failedImages = bulkResults.filter(r => r.status === 'error');
+    if (failedImages.length === 0) return '';
+
+    return failedImages.map(result => {
+      const cleanName = result.name.replace(/\.[^/.]+$/, '');
+      return `'${cleanName}': '${cleanName}_SUFFIX', // Replace SUFFIX with actual Cloudinary suffix`;
+    }).join('\n');
   };
 
   return (
@@ -99,6 +162,56 @@ const DebugImagesPage = () => {
       </div>
 
       <div className="mb-8 p-6 bg-black/20 rounded-lg">
+        <h2 className="text-xl font-semibold mb-4">Bulk Image Testing</h2>
+        <p className="mb-4 text-sm text-white/70">
+          Paste multiple image names (one per line) to test them all at once.
+        </p>
+        
+        <div className="space-y-4">
+          <textarea
+            value={bulkImageNames}
+            onChange={(e) => setBulkImageNames(e.target.value)}
+            className="w-full p-2 bg-black/30 border border-white/20 rounded text-white"
+            rows={5}
+            placeholder="e.g., PP6119G.png\nAP16202ST.png\nAP26331.png"
+          />
+          <button
+            onClick={handleBulkTest}
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white font-medium"
+          >
+            Test All Bulk Images
+          </button>
+        </div>
+
+        {bulkResults.length > 0 && (
+          <div className="mt-6 p-4 bg-black/10 rounded-lg border border-white/10">
+            <h3 className="text-lg font-semibold mb-2">Bulk Test Results</h3>
+            <div className="space-y-3">
+              {bulkResults.map((result, index) => (
+                <div key={index} className="flex items-center justify-between p-2 bg-black/5 rounded">
+                  <span className="text-sm">{result.name}</span>
+                  <span className={`text-sm font-medium ${
+                    result.status === 'success' ? 'text-green-400' :
+                    result.status === 'error' ? 'text-red-400' : 'text-yellow-400'
+                  }`}>
+                    {result.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {bulkResults.some(r => r.status === 'error') && (
+              <div className="mt-4 p-3 bg-red-600/20 rounded-lg border border-red-600/30 text-red-300 text-sm">
+                <h4 className="font-semibold mb-2">Failed Images:</h4>
+                <pre className="whitespace-pre-wrap break-words text-xs">
+                  {generateMappingSuggestions()}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-8 p-6 bg-black/20 rounded-lg">
         <h2 className="text-xl font-semibold mb-4">Test Cases</h2>
         <p className="mb-4 text-sm text-white/70">
           These are the image names from your CSV data. Click on any URL to test it in a new tab.
@@ -106,7 +219,7 @@ const DebugImagesPage = () => {
         
         <div className="space-y-4">
                       {testCases.map((testCase, index) => {
-              const publicId = getPublicId(testCase.value);
+              const publicId = getPid(testCase.value);
               const url = generateUrl(testCase.value, testCase.type);
               
               return (
@@ -144,7 +257,7 @@ const DebugImagesPage = () => {
               placeholder="e.g., patekphilippe.png"
             />
                           <div className="mt-2">
-                <p><strong>Public ID:</strong> {toPublicId(testImage)}</p>
+                <p><strong>Public ID:</strong> {getPid(testImage)}</p>
                 <p><strong>URL:</strong> {imageTransformations.logo(testImage)}</p>
               </div>
           </div>
@@ -159,7 +272,7 @@ const DebugImagesPage = () => {
               placeholder="e.g., PP6119G.png"
             />
                           <div className="mt-2">
-                <p><strong>Public ID:</strong> {toPublicId(testWatchImage)}</p>
+                <p><strong>Public ID:</strong> {getPid(testWatchImage)}</p>
                 <p><strong>URL:</strong> {imageTransformations.card(testWatchImage)}</p>
               </div>
           </div>
@@ -172,8 +285,7 @@ const DebugImagesPage = () => {
           <li>Click on each URL above to see if it loads in a new tab</li>
           <li>If you get 404 errors, the public ID doesn&apos;t exist in Cloudinary</li>
           <li>Check your Cloudinary Media Library for the exact public IDs</li>
-          <li>Use the &quot;Suffix Mapping Helper&quot; above to add mappings</li>
-          <li>Copy the mapping to the <code>suffixMapping</code> object in <code>cloudinary.ts</code></li>
+          <li>Ensure your DB stores the exact Cloudinary <code>public_id</code> (no suffix mapping needed)</li>
           <li>Test again - the image should now load!</li>
         </ol>
       </div>

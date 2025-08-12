@@ -1,20 +1,26 @@
 // AllWatchesSection component - handles watches display, pagination, and data management
+// All watches grid + pagination. Fetches data client-side and optimizes thumb images.
+// First row images are prioritized for a snappier feel; others lazy-load.
+// Includes one-time retry for transient image load issues.
 'use client';
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { fetchWatches, fetchCollections, Watch, Collection, Brand } from '@/lib/api';
-import { imageTransformations } from '@/lib/cloudinary';
+import { imageTransformations, getOptimizedImageUrl } from '@/lib/cloudinary';
+import Image from 'next/image';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import { useNavigation } from '@/contexts/NavigationContext';
 
 
 // Individual watch card component for grid layout on Page 1
 // Displays watch image placeholder, brand name, collection, model name, and price
-const WatchCard = ({ watch, brands, collections }: { 
-  watch: Watch; 
-  brands: Brand[]; 
-  collections: Collection[] 
+const WatchCard = ({ watch, brands, collections, isPriority = false }: {
+  watch: Watch;
+  brands: Brand[];
+  collections: Collection[];
+  // Eager-load above-the-fold images to improve perceived speed on first render
+  isPriority?: boolean;
 }) => {
   // Get navigation context for saving back state
   const { saveNavigationState } = useNavigation();
@@ -33,6 +39,25 @@ const WatchCard = ({ watch, brands, collections }: {
     saveNavigationState(navigationState);
   };
 
+  // Local retry state for handling intermittent Cloudinary/optimizer hiccups
+  const [src, setSrc] = useState<string>(imageTransformations.card(watch.image));
+  const [retryCount, setRetryCount] = useState<number>(0);
+
+  const handleImgError = () => {
+    // One fallback attempt: switch to explicit JPG and add a cache-busting query param
+    if (retryCount < 1) {
+      setRetryCount(1);
+      const fallback = getOptimizedImageUrl(watch.image, {
+        width: 400,
+        height: 400,
+        crop: 'fill',
+        quality: 'auto',
+        format: 'jpg',
+      }) + `?r=${Date.now()}`;
+      setSrc(fallback);
+    }
+  };
+
   return (
     <Link
       key={watch.id}
@@ -42,12 +67,20 @@ const WatchCard = ({ watch, brands, collections }: {
     >
       {/* Watch image with Cloudinary optimization */}
       <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10 overflow-hidden">
-                 {watch.image ? (
-           <img 
-             src={imageTransformations.card(watch.image)}
+         {watch.image ? (
+           <Image
+             src={src}
              alt={watch.name}
+             width={400}
+             height={400}
+             sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"
              className="w-full h-full object-cover rounded-xl"
-             loading="lazy"
+             // Prioritize just the first row to improve LCP without overfetching
+             priority={isPriority}
+             fetchPriority={isPriority ? 'high' as const : 'auto'}
+             placeholder="blur"
+             blurDataURL={getOptimizedImageUrl(watch.image, { width: 16, height: 16, quality: 1, crop: 'fill', format: 'jpg' })}
+             onError={handleImgError}
            />
          ) : (
           <span className="text-white/60 text-xs font-light">{watch.name}</span>
@@ -190,12 +223,14 @@ const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
             <div className="max-w-7xl mx-auto">
               {/* Watch cards in 4-column grid layout */}
               <div className="grid grid-cols-4 gap-x-8 gap-y-20 mb-20">
-                {displayedWatches.map((watch) => (
+                {displayedWatches.map((watch, index) => (
                   <WatchCard 
                     key={watch.id}
                     watch={watch} 
                     brands={brands} 
-                    collections={collections} 
+                    collections={collections}
+                    // Mark the first row of 4 cards as priority for better perceived speed
+                    isPriority={index < 4}
                   />
                 ))}
               </div>

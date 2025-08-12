@@ -1,5 +1,5 @@
-// This component renders the homepage, providing a welcoming introduction to the Tourbillon watch collection.
-// It matches the styling theme of other pages for consistency.
+// Simple landing page: a calm welcome with brand voice.
+// Keeps SSR-friendly content light, letting users jump straight into watches.
 import ScrollFade from "./scrollMotion/ScrollFade";
 // import StaggeredFade from "./scrollMotion/StaggeredFade";
 // use ScrollFade for independent animations (from bottom to top)

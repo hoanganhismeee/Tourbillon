@@ -1,5 +1,5 @@
-// This component displays a single watch card with image, details, and navigation to the watch detail page.
-// It's designed to be reusable across different pages and provides a consistent watch card design.
+// Reusable watch card used across the app: image, quick details, and navigation.
+// Handles scroll-position memory and resilient image loading in a compact, clean UI.
 
 'use client';
 
@@ -10,6 +10,7 @@ import { Watch, Collection, fetchCollectionsByBrand } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
+import Image from 'next/image';
 
 
 interface WatchCardProps {
@@ -21,6 +22,8 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [collection, setCollection] = useState<Collection | null>(null);
+  const [imgSrc, setImgSrc] = useState<string>(imageTransformations.showcase(watch.image));
+  const [retryCount, setRetryCount] = useState<number>(0);
   const router = useRouter();
   
   // Get navigation context for saving back state
@@ -29,6 +32,14 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
   const { currentPage } = useWatchesPage();
 
   const handleImageError = () => {
+    // One-time retry with explicit JPG + cache-busting to smooth over transient CDN hiccups
+    if (retryCount < 1) {
+      setRetryCount(1);
+      setImgSrc(
+        imageTransformations.showcase(watch.image).replace('/f_auto', '/f_jpg') + `?r=${Date.now()}`
+      );
+      return;
+    }
     setImageError(true);
     setImageLoading(false);
   };
@@ -92,16 +103,13 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
             
                          {/* Actual image with Cloudinary optimization */}
              {(() => {
-               const imageUrl = imageTransformations.showcase(watch.image);
-               console.log(`WatchCard for ${watch.name} (ID: ${watch.id}):`, {
-                 originalImage: watch.image,
-                 generatedUrl: imageUrl,
-                 transformation: 'showcase 600x600 with auto-refresh'
-               });
                return (
-                 <img 
-                   src={imageUrl} 
-                   alt={watch.name} 
+                 <Image
+                   src={imgSrc}
+                   alt={watch.name}
+                   width={600}
+                   height={600}
+                   sizes="(min-width: 1024px) 300px, 80vw"
                    className={`w-full h-full object-cover rounded-xl transition-opacity duration-500 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
                    onError={handleImageError}
                    onLoad={handleImageLoad}

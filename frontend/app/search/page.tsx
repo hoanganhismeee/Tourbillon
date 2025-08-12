@@ -1,11 +1,13 @@
-// Clean and elegant search page for Tourbillon
-// Displays search results with priority: brands first, then watches, then collections
+// Search page for Tourbillon.
+// Shows brands, watches, and collections (in that order) with simple client-side fetching.
+// Includes resilient image loading for watch thumbnails to avoid transient failures.
 "use client";
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { imageTransformations } from '@/lib/cloudinary';
+import { imageTransformations, getOptimizedImageUrl } from '@/lib/cloudinary';
+import Image from 'next/image';
 
 interface Brand {
   id: number;
@@ -105,6 +107,66 @@ export default function SearchPage() {
     }).format(price);
   };
 
+  // Lightweight watch card for search results with one-time retry fallback
+  // (kept inline for simplicity in this page)
+  const SearchWatchCard = ({ watch }: { watch: Watch }) => {
+    const [src, setSrc] = useState<string>(imageTransformations.card(watch.image || ''));
+    const [retry, setRetry] = useState(false);
+    const handleImgError = () => {
+      if (!retry && watch.image) {
+        setRetry(true);
+        setSrc(
+          getOptimizedImageUrl(watch.image, {
+            width: 400,
+            height: 400,
+            crop: 'fill',
+            format: 'jpg',
+            quality: 'auto',
+          }) + `?r=${Date.now()}`
+        );
+      }
+    };
+    return (
+      <Link
+        key={watch.id}
+        href={`/watches/${watch.id}`}
+        className="group block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10"
+      >
+        <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10 overflow-hidden">
+          {watch.image ? (
+            <Image
+              src={src}
+              alt={watch.name}
+              width={400}
+              height={400}
+              sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"
+              className="w-full h-full object-cover rounded-xl"
+              placeholder="blur"
+              onError={handleImgError}
+              blurDataURL={getOptimizedImageUrl(watch.image, { width: 16, height: 16, crop: 'fill', format: 'jpg', quality: 1 })}
+            />
+          ) : (
+            <span className="text-white/60 text-xs font-light">{watch.name}</span>
+          )}
+        </div>
+        <div className="space-y-2">
+          <p className="text-xs text-white/60 font-inter font-light uppercase tracking-wide">
+            {watch.brand?.name || 'Unknown Brand'}
+          </p>
+          <p className="text-xs text-white/50 font-inter font-light">
+            {watch.collection?.name || ''}
+          </p>
+          <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate">
+            {watch.name}
+          </h3>
+          <p className="text-lg text-[#f0e6d2] font-inter font-semibold">
+            {watch.currentPrice ? formatPrice(watch.currentPrice) : 'Price on Request'}
+          </p>
+        </div>
+      </Link>
+    );
+  };
+
   if (!query) {
     return (
       <div className="min-h-screen">
@@ -200,40 +262,7 @@ export default function SearchPage() {
                 <h2 className="text-2xl font-semibold mb-6 font-playfair">Watches</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                   {searchResults.watches.map((watch) => (
-                    <Link
-                      key={watch.id}
-                      href={`/watches/${watch.id}`}
-                      className="group block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10"
-                    >
-                      {/* Watch image with Cloudinary optimization */}
-                      <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10 overflow-hidden">
-                        {watch.image ? (
-                          <img 
-                            src={imageTransformations.card(watch.image)}
-                            alt={watch.name}
-                            className="w-full h-full object-cover rounded-xl"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <span className="text-white/60 text-xs font-light">{watch.name}</span>
-                        )}
-                      </div>
-                      {/* Watch information - brand, model, price */}
-                      <div className="space-y-2">
-                        <p className="text-xs text-white/60 font-inter font-light uppercase tracking-wide">
-                          {watch.brand?.name || 'Unknown Brand'}
-                        </p>
-                        <p className="text-xs text-white/50 font-inter font-light">
-                          {watch.collection?.name || ''}
-                        </p>
-                        <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate">
-                          {watch.name}
-                        </h3>
-                        <p className="text-lg text-[#f0e6d2] font-inter font-semibold">
-                          {watch.currentPrice ? formatPrice(watch.currentPrice) : 'Price on Request'}
-                        </p>
-                      </div>
-                    </Link>
+                    <SearchWatchCard key={watch.id} watch={watch} />
                   ))}
                 </div>
               </div>

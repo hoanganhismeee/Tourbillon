@@ -3,6 +3,19 @@
 // creating a reusable and maintainable way to manage data fetching.
 const API_BASE_URL = 'http://localhost:5248/api';
 
+// Small helper to avoid hanging requests in dev when backend is down
+// Aborts the request after the given timeout (default 10s)
+const fetchWithTimeout = async (input: RequestInfo | URL, init?: RequestInit & { timeoutMs?: number }) => {
+  const { timeoutMs = 10000, ...rest } = init || {};
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...rest, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 // Data Interfaces
 export interface Brand {
   id: number;
@@ -45,7 +58,7 @@ export interface User {
 
 // API Fetch Functions
 export const fetchBrands = async (): Promise<Brand[]> => {
-  const response = await fetch(`${API_BASE_URL}/brand`, { credentials: 'include' });
+  const response = await fetchWithTimeout(`${API_BASE_URL}/brand`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error('Failed to fetch brands');
   }
@@ -53,7 +66,7 @@ export const fetchBrands = async (): Promise<Brand[]> => {
 };
 
 export const fetchBrandById = async (id: number): Promise<Brand> => {
-  const response = await fetch(`${API_BASE_URL}/brand/${id}`, { credentials: 'include' });
+  const response = await fetchWithTimeout(`${API_BASE_URL}/brand/${id}`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error(`Failed to fetch brand with id: ${id}`);
   }
@@ -61,7 +74,7 @@ export const fetchBrandById = async (id: number): Promise<Brand> => {
 };
 
 export const fetchWatchById = async (id: number): Promise<Watch> => {
-  const response = await fetch(`${API_BASE_URL}/watch/${id}`, { credentials: 'include' });
+  const response = await fetchWithTimeout(`${API_BASE_URL}/watch/${id}`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error(`Failed to fetch watch with id: ${id}`);
   }
@@ -69,7 +82,7 @@ export const fetchWatchById = async (id: number): Promise<Watch> => {
 };
 
 export const fetchCollections = async (): Promise<Collection[]> => {
-  const response = await fetch(`${API_BASE_URL}/collection`, { credentials: 'include' });
+  const response = await fetchWithTimeout(`${API_BASE_URL}/collection`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error('Failed to fetch collections');
   }
@@ -77,7 +90,7 @@ export const fetchCollections = async (): Promise<Collection[]> => {
 };
 
 export const fetchCollectionById = async (id: number): Promise<Collection> => {
-  const response = await fetch(`${API_BASE_URL}/collection/${id}`, { credentials: 'include' });
+  const response = await fetchWithTimeout(`${API_BASE_URL}/collection/${id}`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error(`Failed to fetch collection with id: ${id}`);
   }
@@ -85,7 +98,7 @@ export const fetchCollectionById = async (id: number): Promise<Collection> => {
 };
 
 export const fetchWatches = async (): Promise<Watch[]> => {
-  const response = await fetch(`${API_BASE_URL}/watch`, { credentials: 'include' });
+  const response = await fetchWithTimeout(`${API_BASE_URL}/watch`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error('Failed to fetch watches');
   }
@@ -93,7 +106,7 @@ export const fetchWatches = async (): Promise<Watch[]> => {
 };
 
 export const fetchWatchesByBrand = async (brandId: number): Promise<Watch[]> => {
-  const response = await fetch(`${API_BASE_URL}/watch/brand/${brandId}`, { credentials: 'include' });
+  const response = await fetchWithTimeout(`${API_BASE_URL}/watch/brand/${brandId}`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error(`Failed to fetch watches for brandId: ${brandId}`);
   }
@@ -101,7 +114,7 @@ export const fetchWatchesByBrand = async (brandId: number): Promise<Watch[]> => 
 };
 
 export const fetchWatchesByCollection = async (collectionId: number): Promise<Watch[]> => {
-  const response = await fetch(`${API_BASE_URL}/watch/collection/${collectionId}`, { credentials: 'include' });
+  const response = await fetchWithTimeout(`${API_BASE_URL}/watch/collection/${collectionId}`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error(`Failed to fetch watches for collectionId: ${collectionId}`);
   }
