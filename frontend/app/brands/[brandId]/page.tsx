@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { fetchBrandById, fetchWatchesByBrand, fetchCollectionsByBrand, Brand, Watch, Collection } from '@/lib/api';
-import { imageTransformations, getLocalImageUrl } from '@/lib/cloudinary';
+import { imageTransformations } from '@/lib/cloudinary';
 import Image from 'next/image';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import StaggeredFade from '../../scrollMotion/StaggeredFade';
@@ -121,14 +121,8 @@ const BrandPage = () => {
                   priority
                   onError={() => {
                     if (!brand?.image) return;
-                    // First failure: fall back to local backend static asset
-                    const localUrl = getLocalImageUrl(`Brands/${brand.image}`);
-                    if (logoSrc !== localUrl) {
-                      setLogoSrc(localUrl);
-                      return;
-                    }
-                    // If even local fails once, try a cache-busted retry
-                    setLogoSrc(localUrl + `?r=${Date.now()}`);
+                    // If Cloudinary image fails, set to empty to show placeholder
+                    setLogoSrc('');
                   }}
                 />
               </div>

@@ -26,41 +26,6 @@ const normalizePublicId = (value: string): string => {
 // Quick URL detector
 const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value);
 
-// Helper to construct a public ID with folder if you need to enforce one (optional)
-export const getPublicId = (imageName: string, folder?: string) => {
-  const nameWithoutExtension = imageName.replace(/\.[^/.]+$/, '');
-  return folder ? `${folder}/${nameWithoutExtension}` : nameWithoutExtension;
-};
-
-// Helper function to get local image URL when Cloudinary is not available
-export const getLocalImageUrl = (rawValue: string) => {
-  const BACKEND_BASE = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:5248';
-
-  // Pass through full URLs unchanged
-  if (isHttpUrl(rawValue)) return rawValue;
-
-  // Normalize path and default to png extension when missing
-  let value = (rawValue || '').replace(/^\/+/, '');
-
-  // If no folder provided, default watch images into watches/; brand code supplies Brands/ already
-  if (!value.includes('/')) {
-    value = `watches/${value}`;
-  }
-
-  // Normalize common folder names and casing
-  value = value
-    .replace(/^Brands\//i, 'brands/')
-    .replace(/^Watches\//i, 'watches/')
-    .replace(/^Collections\//i, 'collections/');
-
-  // Append .png if missing an extension
-  if (!/\.[a-zA-Z0-9]+$/.test(value)) {
-    value += '.png';
-  }
-
-  return `${BACKEND_BASE}/images/${value}`;
-};
-
 // Utility function to generate optimized image URLs
 export const getOptimizedImageUrl = (
   publicId: string,
@@ -73,24 +38,11 @@ export const getOptimizedImageUrl = (
     gravity?: 'auto' | 'center' | 'face' | 'north' | 'south' | 'east' | 'west';
   } = {}
 ) => {
-  if (!CLOUDINARY_CLOUD_NAME) {
-    console.warn('Cloudinary cloud name not configured, using fallback');
-    // If a direct URL is provided and Cloudinary is not configured, just return the URL
-    if (isHttpUrl(publicId)) return publicId;
-    // Otherwise, serve the path from the backend static /images mount
-    return getLocalImageUrl(publicId);
-  }
-
   const {
     width,
     height,
     crop = 'fill',
-    // Note: we always inject q_auto and f_auto in the transformation list below,
-    // so explicit quality/format values are intentionally ignored.
-    // Keeping options in the signature for future extension.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     quality = 'auto',
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     format = 'auto',
     gravity = 'auto'
   } = options;
@@ -116,15 +68,14 @@ export const getOptimizedImageUrl = (
     return `${fetchBase}/${transformationString}${encodeURIComponent(publicId)}`;
   }
   const uploadBase = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload`;
-  const id = normalizePublicId(publicId);
-  return `${uploadBase}/${transformationString}${id}`;
+  return `${uploadBase}/${transformationString}${publicId}`;
 };
 
 // Predefined transformations for different use cases
 export const imageTransformations = {
   // For watch cards in grid (AllWatchesSection)
   card: (value: string) =>
-    getOptimizedImageUrl(value, {
+    getOptimizedImageUrl(normalizePublicId(value), {
       width: 400,
       height: 400,
       crop: 'fill',
@@ -134,7 +85,7 @@ export const imageTransformations = {
 
   // For Trinity Showcase (square format to match container)
   showcase: (value: string) =>
-    getOptimizedImageUrl(value, {
+    getOptimizedImageUrl(normalizePublicId(value), {
       width: 600,
       height: 600,
       crop: 'fill',
@@ -144,7 +95,7 @@ export const imageTransformations = {
 
   // For individual watch detail pages
   detail: (value: string) =>
-    getOptimizedImageUrl(value, {
+    getOptimizedImageUrl(normalizePublicId(value), {
       width: 1200,
       height: 1200,
       crop: 'fill',
@@ -154,7 +105,7 @@ export const imageTransformations = {
 
   // For thumbnails
   thumbnail: (value: string) =>
-    getOptimizedImageUrl(value, {
+    getOptimizedImageUrl(normalizePublicId(value), {
       width: 200,
       height: 200,
       crop: 'fill',
@@ -164,16 +115,9 @@ export const imageTransformations = {
 
   // For brand logos
   logo: (value: string) => {
-    // If a direct URL is provided, delegate to fetch. Otherwise, ensure Brands/ prefix when missing
-    const valueWithFolder = isHttpUrl(value)
-      ? value
-      : (value.includes('/') ? value : `Brands/${value}`);
-    return getOptimizedImageUrl(valueWithFolder, {
-      width: 800,
-      crop: 'fit',
-      quality: 'auto',
-      format: 'auto'
-    });
+    // Brand logos work better without transformations
+    const normalizedValue = normalizePublicId(value);
+    return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}`;
   },
 };
 
@@ -266,7 +210,4 @@ export const uploadImageWithName = async (
     unique_filename: false,
     overwrite: true,
   });
-};
-
-// Upload functionality is now available with unique_filename: false configuration
-// This allows overwriting files with the same name for consistent naming 
+}; 
