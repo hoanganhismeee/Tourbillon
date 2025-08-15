@@ -74,48 +74,74 @@ export const getOptimizedImageUrl = (
 // Predefined transformations for different use cases
 export const imageTransformations = {
   // For watch cards in grid (AllWatchesSection)
-  card: (value: string) =>
-    getOptimizedImageUrl(normalizePublicId(value), {
-      width: 400,
-      height: 400,
-      crop: 'fill',
-      quality: 'auto',
-      format: 'auto'
-    }),
+  card: (value: string) => {
+    const normalizedValue = normalizePublicId(value);
+    // Try with transformations first, fallback to simple URL for small images
+    try {
+      return getOptimizedImageUrl(normalizedValue, {
+        width: 400,
+        height: 400,
+        crop: 'fill',
+        quality: 'auto',
+        format: 'auto'
+      });
+    } catch {
+      // Fallback for small images that can't be transformed
+      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}`;
+    }
+  },
 
   // For Trinity Showcase (square format to match container)
-  showcase: (value: string) =>
-    getOptimizedImageUrl(normalizePublicId(value), {
-      width: 600,
-      height: 600,
-      crop: 'fill',
-      quality: 'auto',
-      format: 'auto'
-    }),
+  showcase: (value: string) => {
+    const normalizedValue = normalizePublicId(value);
+    try {
+      return getOptimizedImageUrl(normalizedValue, {
+        width: 600,
+        height: 600,
+        crop: 'fill',
+        quality: 'auto',
+        format: 'auto'
+      });
+    } catch {
+      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}`;
+    }
+  },
 
   // For individual watch detail pages
-  detail: (value: string) =>
-    getOptimizedImageUrl(normalizePublicId(value), {
-      width: 1200,
-      height: 1200,
-      crop: 'fill',
-      quality: 'auto',
-      format: 'auto'
-    }),
+  detail: (value: string) => {
+    const normalizedValue = normalizePublicId(value);
+    try {
+      return getOptimizedImageUrl(normalizedValue, {
+        width: 1200,
+        height: 1200,
+        crop: 'fill',
+        quality: 'auto',
+        format: 'auto'
+      });
+    } catch {
+      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}`;
+    }
+  },
 
   // For thumbnails
-  thumbnail: (value: string) =>
-    getOptimizedImageUrl(normalizePublicId(value), {
-      width: 200,
-      height: 200,
-      crop: 'fill',
-      quality: 'auto',
-      format: 'auto'
-    }),
+  thumbnail: (value: string) => {
+    const normalizedValue = normalizePublicId(value);
+    try {
+      return getOptimizedImageUrl(normalizedValue, {
+        width: 200,
+        height: 200,
+        crop: 'fill',
+        quality: 'auto',
+        format: 'auto'
+      });
+    } catch {
+      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}`;
+    }
+  },
 
   // For brand logos
   logo: (value: string) => {
-    // Brand logos work better without transformations
+    // Brand logos - use simple URL since transformations cause 400 errors
     const normalizedValue = normalizePublicId(value);
     return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}`;
   },
