@@ -1,6 +1,6 @@
 // Forgot password page with three-step flow: email -> verify code -> reset password
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { forgotPassword, verifyCode, resetPassword } from "@/lib/api";
@@ -16,6 +16,17 @@ export default function ForgotPasswordPage() {
     const [success, setSuccess] = useState("");
     const [loading, setLoading] = useState(false);
     const router = useRouter();
+
+    // Prevent scrolling to match login page behavior
+    useEffect(() => {
+        document.body.style.overflow = 'hidden';
+        document.documentElement.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = '';
+            document.documentElement.style.overflow = '';
+        };
+    }, []);
 
     const handleSendCode = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -92,15 +103,15 @@ export default function ForgotPasswordPage() {
 
     return (
         <StaggeredFade>
-            <div className="flex justify-center items-center min-h-screen py-20 px-4">
-                <div className="w-full max-w-md p-8 space-y-6 bg-white/5 border border-[#bfa68a] rounded-2xl shadow-lg backdrop-blur-lg">
+            <div className="flex justify-center items-center h-screen overflow-hidden">
+                <div className="w-full max-w-md p-8 space-y-4 bg-white/5 border border-[#bfa68a] rounded-2xl shadow-lg backdrop-blur-lg transform -translate-y-[25%]">
                     {step === "email" ? (
                         <>
                             <h1 className="text-4xl font-playfair text-center text-[#F9F6F2]">Reset Password</h1>
                             <p className="text-[#bfa68a] mt-2 text-sm text-center">
                                 Enter your email address and we&apos;ll send you a verification code.
                             </p>
-                            <form onSubmit={handleSendCode} className="space-y-6">
+                            <form onSubmit={handleSendCode} className="space-y-4">
                                 <div>
                                     <input
                                         type="email"
@@ -149,7 +160,7 @@ export default function ForgotPasswordPage() {
                             <p className="text-[#bfa68a] text-sm text-center leading-relaxed">
                                 Enter the 6-digit code sent to your email.
                             </p>
-                            <form onSubmit={handleVerifyCode} className="space-y-6">
+                            <form onSubmit={handleVerifyCode} className="space-y-4">
                                 <div className="space-y-4">
                                     <div className="bg-[#bfa68a]/10 border-2 border-[#bfa68a]/30 rounded-xl p-6 backdrop-blur-sm">
                                         <input
@@ -215,7 +226,7 @@ export default function ForgotPasswordPage() {
                             <p className="text-[#bfa68a] mt-2 text-sm text-center">
                                 Enter your new password below.
                             </p>
-                            <form onSubmit={handleResetPassword} className="space-y-6">
+                            <form onSubmit={handleResetPassword} className="space-y-4">
                                 <div className="space-y-4">
                                     <input
                                         type="password"
@@ -239,8 +250,14 @@ export default function ForgotPasswordPage() {
                                     />
                                 </div>
                                 {error && (
-                                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                                        <p className="text-sm text-red-400 text-center">{error}</p>
+                                    <div className="relative overflow-hidden bg-gradient-to-r from-red-500/20 to-rose-500/20 border-2 border-red-500/40 rounded-xl p-4 backdrop-blur-sm">
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl"></div>
+                                        <div className="relative flex items-start gap-3">
+                                            <svg className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <p className="text-sm text-red-300 leading-relaxed">{error}</p>
+                                        </div>
                                     </div>
                                 )}
                                 {success && (

@@ -1,5 +1,4 @@
 // Route constants for the Tourbillon application
-
 export const ROUTES = {
   // Main pages
   HOME: '/',
