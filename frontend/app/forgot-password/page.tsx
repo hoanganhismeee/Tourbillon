@@ -15,6 +15,7 @@ export default function ForgotPasswordPage() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [loading, setLoading] = useState(false);
+    const [countdown, setCountdown] = useState(30); // Countdown timer for resend cooldown
     const router = useRouter();
 
     // Prevent scrolling to match login page behavior
@@ -28,6 +29,17 @@ export default function ForgotPasswordPage() {
         };
     }, []);
 
+    // Countdown timer for resend button (starts when user reaches verify step)
+    useEffect(() => {
+        if (step === "verify" && countdown > 0) {
+            const timer = setInterval(() => {
+                setCountdown((prev) => prev - 1);
+            }, 1000);
+
+            return () => clearInterval(timer);
+        }
+    }, [step, countdown]);
+
     const handleSendCode = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
@@ -36,10 +48,29 @@ export default function ForgotPasswordPage() {
 
         try {
             await forgotPassword({ email });
-            setSuccess("If an account with that email exists, a verification code has been sent. Please check your email.");
+            setSuccess("A verification code has been sent to your email");
             setStep("verify");
+            setCountdown(20); // Reset countdown when sending code
         } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : "Failed to send verification code. Please try again.";
+            setError(errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Resends verification code (reuses same code via backend deduplication)
+    const handleResendCode = async () => {
+        setError("");
+        setSuccess("");
+        setLoading(true);
+
+        try {
+            await forgotPassword({ email });
+            setSuccess("Verification code resent to your email");
+            setCountdown(30); // Reset countdown
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : "Failed to resend code. Please try again.";
             setError(errorMessage);
         } finally {
             setLoading(false);
@@ -50,7 +81,7 @@ export default function ForgotPasswordPage() {
         e.preventDefault();
         setError("");
         setSuccess("");
-        
+
         if (code.length !== 6) {
             setError("Please enter a 6-digit code.");
             return;
@@ -62,9 +93,10 @@ export default function ForgotPasswordPage() {
             await verifyCode({ email, code });
             setSuccess("Code verified! Please enter your new password.");
             setStep("reset");
-        } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : "Invalid or expired verification code.";
-            setError(errorMessage);
+        } catch {
+            // User-friendly error message when code verification fails
+            setError("The code you entered is incorrect or has expired. Please try again or request a new code.");
+            setCode(""); // Clear the input field so button changes back to "Resend Code"
         } finally {
             setLoading(false);
         }
@@ -176,13 +208,24 @@ export default function ForgotPasswordPage() {
                                             autoFocus
                                         />
                                     </div>
-                                    <button
-                                        type="submit"
-                                        disabled={loading || code.length !== 6}
-                                        className="w-full py-3 font-semibold text-[#1e1512] bg-gradient-to-r from-[#bfa68a] to-[#f0e6d2] rounded-xl hover:opacity-90 hover:scale-[1.02] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                                    >
-                                        {loading ? "Verifying..." : "Verify Code"}
-                                    </button>
+                                    {code.length === 0 ? (
+                                        <button
+                                            type="button"
+                                            onClick={handleResendCode}
+                                            disabled={loading || countdown > 0}
+                                            className="w-full py-3 font-semibold text-[#1e1512] bg-gradient-to-r from-[#bfa68a] to-[#f0e6d2] rounded-xl hover:opacity-90 hover:scale-[1.02] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                                        >
+                                            {loading ? "Resending..." : countdown > 0 ? `Resend Code (${countdown}s)` : "Resend Code"}
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="submit"
+                                            disabled={loading || code.length !== 6}
+                                            className="w-full py-3 font-semibold text-[#1e1512] bg-gradient-to-r from-[#bfa68a] to-[#f0e6d2] rounded-xl hover:opacity-90 hover:scale-[1.02] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                                        >
+                                            {loading ? "Verifying..." : "Verify Code"}
+                                        </button>
+                                    )}
                                 </div>
                                 {error && (
                                     <div className="relative overflow-hidden bg-gradient-to-r from-red-500/20 to-rose-500/20 border-2 border-red-500/40 rounded-xl p-4 backdrop-blur-sm">
