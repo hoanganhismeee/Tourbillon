@@ -1,5 +1,6 @@
-// Handles sending emails via SMTP configuration from appsettings.json or User Secrets
-// Uses MailKit library for reliable Gmail STARTTLS support
+// Service for sending emails via SMTP using MailKit library
+// Supports Gmail with App Passwords and implements detailed logging for debugging
+// Configured through appsettings.json with SMTP host, port, and credentials
 using Microsoft.Extensions.Options;
 using MailKit.Net.Smtp;
 using MailKit.Security;

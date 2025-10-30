@@ -103,8 +103,8 @@ export default function ForgotPasswordPage() {
 
     return (
         <StaggeredFade>
-            <div className="flex justify-center items-center h-screen overflow-hidden">
-                <div className="w-full max-w-md p-8 space-y-4 bg-white/5 border border-[#bfa68a] rounded-2xl shadow-lg backdrop-blur-lg transform -translate-y-[25%]">
+            <div className="flex justify-center items-center h-screen overflow-hidden px-4">
+                <div className="w-full max-w-md p-8 space-y-4 bg-white/5 border border-[#bfa68a] rounded-2xl shadow-lg backdrop-blur-lg">
                     {step === "email" ? (
                         <>
                             <h1 className="text-4xl font-playfair text-center text-[#F9F6F2]">Reset Password</h1>

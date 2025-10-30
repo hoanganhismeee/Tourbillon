@@ -1,4 +1,6 @@
-// Handles password reset operations using 6-digit codes with email sending
+// Service for password reset operations using 6-digit verification codes
+// Implements security best practices: rate limiting, code expiration, and fire-and-forget email delivery
+// Follows SOLID principles with single responsibility for password reset workflow
 using backend.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Caching.Memory;
@@ -13,6 +15,7 @@ public class PasswordResetService : IPasswordResetService
     private readonly IMemoryCache _cache;
     private readonly ILogger<PasswordResetService> _logger;
     private const int CodeExpirationMinutes = 10;
+    private const int CooldownSeconds = 30; // Prevent spam: minimum time between requests
 
     public PasswordResetService(
         UserManager<User> userManager,
@@ -26,7 +29,8 @@ public class PasswordResetService : IPasswordResetService
         _logger = logger;
     }
 
-    // Generates a 6-digit code and sends it via email
+    // Generates a 6-digit verification code and sends it via email
+    // Implements cooldown to prevent spam and reuses existing codes to avoid confusion
     public async Task<(bool Success, string Message)> RequestPasswordResetAsync(string email)
     {
         try
@@ -39,17 +43,44 @@ public class PasswordResetService : IPasswordResetService
                 return (true, "If an account with that email exists, a verification code has been sent.");
             }
 
-            // Generate 6-digit code
-            var random = new Random();
-            var code = random.Next(100000, 999999).ToString();
-            
-            // Store code in cache with expiration
             var cacheKey = $"password_reset_{email.ToLowerInvariant()}";
-            var cacheOptions = new MemoryCacheEntryOptions
+            var cooldownKey = $"password_reset_cooldown_{email.ToLowerInvariant()}";
+
+            // Check cooldown to prevent spam (30-second limit between requests)
+            if (_cache.TryGetValue(cooldownKey, out _))
             {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(CodeExpirationMinutes)
+                _logger.LogWarning("Cooldown in effect for password reset request: {Email}", email);
+                return (false, $"Please wait {CooldownSeconds} seconds before requesting another code.");
+            }
+
+            // Check if a valid code already exists - reuse it instead of generating a new one
+            string code;
+            if (_cache.TryGetValue(cacheKey, out string? existingCode))
+            {
+                code = existingCode!;
+                _logger.LogInformation("Reusing existing password reset code for {Email}", email);
+            }
+            else
+            {
+                // Generate new 6-digit code
+                var random = new Random();
+                code = random.Next(100000, 999999).ToString();
+
+                // Store code in cache with expiration
+                var cacheOptions = new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(CodeExpirationMinutes)
+                };
+                _cache.Set(cacheKey, code, cacheOptions);
+                _logger.LogInformation("Generated new password reset code for {Email}", email);
+            }
+
+            // Set cooldown timer to prevent rapid successive requests
+            var cooldownOptions = new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(CooldownSeconds)
             };
-            _cache.Set(cacheKey, code, cacheOptions);
+            _cache.Set(cooldownKey, true, cooldownOptions);
 
             var emailBody = $@"
 <!DOCTYPE html>
@@ -76,18 +107,26 @@ public class PasswordResetService : IPasswordResetService
 </body>
 </html>";
 
-            var emailSent = await _emailService.SendEmailAsync(
-                user.Email!,
-                "Your Tourbillon Password Reset Code",
-                emailBody);
-
-            if (!emailSent)
+            // Fire-and-forget email sending for instant user feedback
+            // Email is sent in background without blocking the response
+            var userEmail = user.Email!;
+            _ = Task.Run(async () =>
             {
-                _logger.LogError("Failed to send password reset email to {Email}", email);
-                return (false, "Failed to send email. Please try again later.");
-            }
+                try
+                {
+                    await _emailService.SendEmailAsync(
+                        userEmail,
+                        "Your Tourbillon Password Reset Code",
+                        emailBody);
+                    _logger.LogInformation("Password reset code email sent successfully to {Email}", email);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to send password reset email to {Email} in background task", email);
+                }
+            });
 
-            _logger.LogInformation("Password reset code sent to {Email}", email);
+            _logger.LogInformation("Password reset code generated for {Email}, email queued for delivery", email);
             return (true, "If an account with that email exists, a verification code has been sent.");
         }
         catch (Exception ex)
@@ -97,7 +136,8 @@ public class PasswordResetService : IPasswordResetService
         }
     }
 
-    // Verifies the 6-digit code without resetting the password
+    // Verifies if the provided 6-digit code matches the cached code for the email
+    // Does not reset password, only validates the code for multi-step flow
     public async Task<(bool Success, string Message)> VerifyCodeAsync(string email, string code)
     {
         try
@@ -126,7 +166,8 @@ public class PasswordResetService : IPasswordResetService
         }
     }
 
-    // Resets the user's password using the provided 6-digit code
+    // Resets the user's password after verifying the 6-digit code
+    // Removes the code from cache after successful reset to prevent reuse
     public async Task<(bool Success, string Message)> ResetPasswordAsync(string email, string code, string newPassword)
     {
         try

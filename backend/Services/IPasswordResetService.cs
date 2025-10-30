@@ -1,4 +1,5 @@
-// Service interface for password reset operations using 6-digit codes
+// Interface for password reset service using 6-digit verification codes
+// Defines contract for three-step password reset flow: request, verify, reset
 
 namespace backend.Services;
 
