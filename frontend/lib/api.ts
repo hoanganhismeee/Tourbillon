@@ -270,4 +270,81 @@ export const deleteAccount = async (data: DeleteAccountData) => {
         console.error('Network error:', err);
         return { error: 'Network error occurred' };
     }
+};
+
+// Password Reset Interfaces
+interface ForgotPasswordData {
+    email: string;
+}
+
+interface VerifyCodeData {
+    email: string;
+    code: string;
+}
+
+interface ResetPasswordData {
+    email: string;
+    code: string;
+    newPassword: string;
+}
+
+// Password Reset API Functions
+export const forgotPassword = async (data: ForgotPasswordData) => {
+    const response = await fetch(`${API_BASE_URL}/authentication/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+    
+    // Check if response has content before parsing JSON
+    const text = await response.text();
+    
+    if (!response.ok) {
+        try {
+            const errorData = JSON.parse(text);
+            const errorMessage = errorData.Message || errorData.message || 'Failed to send reset email';
+            throw new Error(errorMessage);
+        } catch {
+            throw new Error(text || 'Failed to send reset email');
+        }
+    }
+    
+    // Return parsed JSON or empty object if response is empty
+    return text ? JSON.parse(text) : { Message: 'Reset email sent successfully' };
+};
+
+export const verifyCode = async (data: VerifyCodeData) => {
+    const response = await fetch(`${API_BASE_URL}/authentication/verify-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+    
+    const text = await response.text();
+    
+    if (!response.ok) {
+        try {
+            const errorData = JSON.parse(text);
+            const errorMessage = errorData.Message || errorData.message || 'Invalid verification code';
+            throw new Error(errorMessage);
+        } catch {
+            throw new Error(text || 'Invalid verification code');
+        }
+    }
+    
+    return text ? JSON.parse(text) : { Message: 'Code verified successfully' };
+};
+
+export const resetPassword = async (data: ResetPasswordData) => {
+    const response = await fetch(`${API_BASE_URL}/authentication/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.Message || errorData.message || 'Failed to reset password';
+        throw new Error(errorMessage);
+    }
+    return response.json();
 }; 

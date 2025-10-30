@@ -42,8 +42,6 @@ export const getOptimizedImageUrl = (
     width,
     height,
     crop = 'fill',
-    quality = 'auto',
-    format = 'auto',
     gravity = 'auto'
   } = options;
 

@@ -80,6 +80,12 @@ export default function LoginPage() {
                             Sign Up
                         </Link>
                     </p>
+                    <p className="text-sm text-center text-[#bfa68a]">
+                        Forgot your password?{" "}
+                        <Link href="/forgot-password" className="underline hover:text-[#F9F6F2] cursor-pointer">
+                            Reset Password
+                        </Link>
+                    </p>
                 </div>
             </div>
         </StaggeredFade>

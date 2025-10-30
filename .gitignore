@@ -399,3 +399,10 @@ FodyWeavers.xsd
 
 # Python venv
 ai-service/venv/
+
+# appsettings files with sensitive data
+appsettings.json
+appsettings.Development.json
+appsettings.Production.json
+appsettings.*.json
+!appsettings.example.json

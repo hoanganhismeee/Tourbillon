@@ -44,6 +44,14 @@ builder.Services.AddScoped<IUserRegistrationService, UserRegistrationService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>();
 
+// Configure SMTP settings
+builder.Services.Configure<backend.Services.SmtpOptions>(
+    builder.Configuration.GetSection(backend.Services.SmtpOptions.SectionName));
+
+// Register email and password reset services
+builder.Services.AddScoped<backend.Services.IEmailService, backend.Services.EmailService>();
+builder.Services.AddScoped<backend.Services.IPasswordResetService, backend.Services.PasswordResetService>();
+
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
 {
