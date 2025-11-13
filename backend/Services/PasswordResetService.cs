@@ -1,6 +1,6 @@
-// Service for password reset operations using 6-digit verification codes
+// password reset operations using 6-digit verification codes
 // Implements security best practices: rate limiting, code expiration, and fire-and-forget email delivery
-// Follows SOLID principles with single responsibility for password reset workflow
+
 using backend.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Caching.Memory;
@@ -40,7 +40,7 @@ public class PasswordResetService : IPasswordResetService
             {
                 // Don't reveal if email exists - security best practice
                 _logger.LogWarning("Password reset requested for non-existent email: {Email}", email);
-                return (true, "If an account with that email exists, a verification code has been sent.");
+                return (true, "A verification code has been sent to your email.");
             }
 
             var cacheKey = $"password_reset_{email.ToLowerInvariant()}";
@@ -82,51 +82,44 @@ public class PasswordResetService : IPasswordResetService
             };
             _cache.Set(cooldownKey, true, cooldownOptions);
 
-            var emailBody = $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .code {{ font-size: 32px; font-weight: bold; color: #bfa68a; text-align: center; padding: 20px; background: #f0e6d2; border-radius: 10px; margin: 20px 0; }}
-    </style>
-</head>
-<body>
-    <div class=""container"">
-        <h2>Password Reset Verification Code</h2>
-        <p>Hello {user.FirstName},</p>
-        <p>You requested to reset your password for your Tourbillon account.</p>
-        <p>Your verification code is:</p>
-        <div class=""code"">{code}</div>
-        <p>Enter this code on the password reset page to continue.</p>
-        <p>This code will expire in {CodeExpirationMinutes} minutes.</p>
-        <p>If you didn't request this password reset, please ignore this email.</p>
-        <p>Best regards,<br>The Tourbillon Team</p>
-    </div>
-</body>
-</html>";
+// EMAIL SENT TO USER 
+                var emailBody = $@"
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                    .code {{ font-size: 32px; font-weight: bold; color: #bfa68a; text-align: center; padding: 20px; background: #f0e6d2; border-radius: 10px; margin: 20px 0; }}
+                </style>
+            </head>
+            <body>
+                <div class=""container"">
+                    <h2>Password Reset Verification Code</h2>
+                    <p>Hello {user.FirstName},</p>
+                    <p>You requested to reset your password for your Tourbillon account.</p>
+                    <p>Your verification code is:</p>
+                    <div class=""code"">{code}</div>
+                    <p>Enter this code on the password reset page to continue.</p>
+                    <p>This code will expire in {CodeExpirationMinutes} minutes.</p>
+                    <p>If you didn't request this password reset, please ignore this email.</p>
+                    <p>Best regards,<br>Tourillon</p>
+                </div>
+            </body>
+            </html>";
 
-            // Fire-and-forget email sending for instant user feedback
-            // Email is sent in background without blocking the response
-            var userEmail = user.Email!;
-            _ = Task.Run(async () =>
+            var emailSent = await _emailService.SendEmailAsync(
+                user.Email!,
+                "Your Tourbillon Password Reset Code",
+                emailBody);
+
+            if (!emailSent)
             {
-                try
-                {
-                    await _emailService.SendEmailAsync(
-                        userEmail,
-                        "Your Tourbillon Password Reset Code",
-                        emailBody);
-                    _logger.LogInformation("Password reset code email sent successfully to {Email}", email);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to send password reset email to {Email} in background task", email);
-                }
-            });
+                _logger.LogError("Failed to send password reset email to {Email}", email);
+                return (false, "Failed to send email. Please try again later.");
+            }
 
-            _logger.LogInformation("Password reset code generated for {Email}, email queued for delivery", email);
+            _logger.LogInformation("Password reset code sent to {Email}", email);
             return (true, "If an account with that email exists, a verification code has been sent.");
         }
         catch (Exception ex)
@@ -136,8 +129,7 @@ public class PasswordResetService : IPasswordResetService
         }
     }
 
-    // Verifies if the provided 6-digit code matches the cached code for the email
-    // Does not reset password, only validates the code for multi-step flow
+    // Verifies the 6-digit code without resetting the password
     public async Task<(bool Success, string Message)> VerifyCodeAsync(string email, string code)
     {
         try
@@ -166,8 +158,7 @@ public class PasswordResetService : IPasswordResetService
         }
     }
 
-    // Resets the user's password after verifying the 6-digit code
-    // Removes the code from cache after successful reset to prevent reuse
+    // Resets the user's password using the provided 6-digit code
     public async Task<(bool Success, string Message)> ResetPasswordAsync(string email, string code, string newPassword)
     {
         try

@@ -16,7 +16,7 @@ Tourbillon is a full-stack e-commerce portfolio project focused on luxury watche
 | :--------- | :--------------------------------------------------- |
 | **Frontend** | Next.js (React), Tailwind CSS (brown classic theme)  |
 | **Backend**  | ASP.NET Core Web API (.NET 8), Entity Framework Core |
-| **Database** | PostgreSQL with pgAdmin4                             |
+| **Database** | PostgreSQL with pgAdmin4/Neon                             |
 
 ## Getting Started
 
