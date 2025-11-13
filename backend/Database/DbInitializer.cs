@@ -93,28 +93,53 @@ namespace backend.Database
 
             Console.WriteLine($"Starting to seed watches from {csvPath}");
 
+            // Holy Trinity showcase watches - only load these from CSV
+            // The rest will come from the Watch API
+            var showcaseWatchIds = new HashSet<int>
+            {
+                1,  // Patek Philippe - 6119G Clous de Paris (Calatrava)
+                4,  // Patek Philippe - 5811/1G Blue Dial (Nautilus)
+                7,  // Patek Philippe - 5167A Steel (Aquanaut)
+                13, // Vacheron Constantin - 43175 Perpetual Calendar (Patrimony)
+                16, // Vacheron Constantin - 4500V Overseas
+                19, // Vacheron Constantin - American 1921 (Historiques)
+                28, // Audemars Piguet - Jumbo Extra-Thin 16202ST (Royal Oak)
+                31, // Audemars Piguet - Offshore "The Beast" (Royal Oak Offshore)
+                34  // Audemars Piguet - Concept (2002) (Royal Oak Concept)
+            };
+
             try
             {
                 var lines = File.ReadAllLines(csvPath);
                 Console.WriteLine($"CSV file has {lines.Length} lines");
-                
+
                 // Skip header line
                 var dataLines = lines.Skip(1).ToList();
                 int addedCount = 0;
-                
+                int skippedCount = 0;
+
                 foreach (var line in dataLines)
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
-                    
+
                     try
                     {
                         // Simple CSV parsing - split by comma but handle quoted fields
                         var fields = ParseCsvLine(line);
-                        
+
                         if (fields.Length < 8) continue; // Skip incomplete lines
-                        
+
                         // Parse fields
                         if (!int.TryParse(fields[0], out int id)) continue;
+
+                        // IMPORTANT: Only load showcase watches from CSV
+                        // All other watches will be fetched from the Watch API
+                        if (!showcaseWatchIds.Contains(id))
+                        {
+                            skippedCount++;
+                            continue;
+                        }
+
                         var name = fields[1]?.Trim('"');
                         if (!int.TryParse(fields[2], out int brandId)) continue;
                         int? collectionId = int.TryParse(fields[3], out int cid) ? cid : null;
@@ -122,7 +147,7 @@ namespace backend.Database
                         var description = fields[5]?.Trim('"');
                         var specs = fields[6]?.Trim('"');
                         var image = fields[7]?.Trim('"');
-                        
+
                         // Skip if essential fields are missing
                         if (string.IsNullOrWhiteSpace(name)) continue;
                         
@@ -167,7 +192,7 @@ namespace backend.Database
                 }
                 
                 context.SaveChanges();
-                Console.WriteLine($"Successfully added {addedCount} watches to database");
+                Console.WriteLine($"Successfully added {addedCount} showcase watches from CSV (skipped {skippedCount} watches - will be loaded from API)");
             }
             catch (Exception ex)
             {
