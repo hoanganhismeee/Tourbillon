@@ -95,17 +95,18 @@ namespace backend.Database
 
             // Holy Trinity showcase watches - only load these from CSV
             // The rest will come from the Watch API
+            // These IDs match what the frontend expects in TrinityShowcase.tsx
             var showcaseWatchIds = new HashSet<int>
             {
-                1,  // Patek Philippe - 6119G Clous de Paris (Calatrava)
-                4,  // Patek Philippe - 5811/1G Blue Dial (Nautilus)
-                7,  // Patek Philippe - 5167A Steel (Aquanaut)
-                13, // Vacheron Constantin - 43175 Perpetual Calendar (Patrimony)
-                16, // Vacheron Constantin - 4500V Overseas
-                19, // Vacheron Constantin - American 1921 (Historiques)
-                28, // Audemars Piguet - Jumbo Extra-Thin 16202ST (Royal Oak)
-                31, // Audemars Piguet - Offshore "The Beast" (Royal Oak Offshore)
-                34  // Audemars Piguet - Concept (2002) (Royal Oak Concept)
+                2,  // Patek Philippe - Calatrava
+                4,  // Patek Philippe - Nautilus
+                11, // Patek Philippe - Aquanaut
+                13, // Vacheron Constantin - Patrimony
+                18, // Vacheron Constantin - Overseas
+                24, // Vacheron Constantin - Historiques
+                28, // Audemars Piguet - Royal Oak
+                30, // Audemars Piguet - Royal Oak Offshore
+                35  // Audemars Piguet - Royal Oak Concept
             };
 
             try

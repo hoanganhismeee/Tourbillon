@@ -49,8 +49,8 @@ public class WatchApiService : IWatchApiService
                 return (false, "API token is not configured. Please set WatchApi:ApiToken in user secrets.");
             }
 
-            // Try to fetch a small set of watches to test the connection
-            var response = await _httpClient.GetAsync($"/watches?limit=1&api_token={_apiToken}");
+            // Try to fetch brands to test the connection
+            var response = await _httpClient.GetAsync($"/brand/list?api_token={_apiToken}");
 
             if (response.IsSuccessStatusCode)
             {
@@ -72,29 +72,26 @@ public class WatchApiService : IWatchApiService
 
     public async Task<WatchApiListResponse?> GetWatchesAsync(int page = 1, int limit = 100)
     {
+        // Note: The Watch API doesn't have a paginated "get all watches" endpoint
+        // This method now returns watches by searching with common terms
+        // For full sync, use GetWatchesByBrandAsync for each brand
         try
         {
-            _logger.LogInformation("Fetching watches from API - Page: {Page}, Limit: {Limit}", page, limit);
+            _logger.LogInformation("Fetching watches from API using search");
 
-            var url = $"/watches?page={page}&limit={limit}&api_token={_apiToken}";
-            var response = await _httpClient.GetAsync(url);
+            // Use a broad search to get some watches
+            var watches = await SearchWatchesAsync("");
 
-            if (!response.IsSuccessStatusCode)
+            var response = new WatchApiListResponse
             {
-                _logger.LogWarning("Failed to fetch watches: {StatusCode}", response.StatusCode);
-                return null;
-            }
-
-            var content = await response.Content.ReadAsStringAsync();
-            var options = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
+                Data = watches.Take(limit).ToList(),
+                Total = watches.Count,
+                Page = page,
+                Limit = limit
             };
 
-            var result = JsonSerializer.Deserialize<WatchApiListResponse>(content, options);
-            _logger.LogInformation("Successfully fetched {Count} watches", result?.Data?.Count ?? 0);
-
-            return result;
+            _logger.LogInformation("Successfully fetched {Count} watches", response.Data.Count);
+            return response;
         }
         catch (Exception ex)
         {
@@ -109,7 +106,7 @@ public class WatchApiService : IWatchApiService
         {
             _logger.LogInformation("Fetching watch by reference: {Reference}", reference);
 
-            var url = $"/watches/{reference}?api_token={_apiToken}";
+            var url = $"/reference/search?search={Uri.EscapeDataString(reference)}&api_token={_apiToken}";
             var response = await _httpClient.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
@@ -124,7 +121,8 @@ public class WatchApiService : IWatchApiService
                 PropertyNameCaseInsensitive = true
             };
 
-            return JsonSerializer.Deserialize<WatchApiDto>(content, options);
+            var watches = JsonSerializer.Deserialize<List<WatchApiDto>>(content, options);
+            return watches?.FirstOrDefault();
         }
         catch (Exception ex)
         {
@@ -139,13 +137,13 @@ public class WatchApiService : IWatchApiService
         {
             _logger.LogInformation("Fetching brands from API");
 
-            var url = $"/brands?api_token={_apiToken}";
+            var url = $"/brand/list?api_token={_apiToken}";
             var response = await _httpClient.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Failed to fetch brands: {StatusCode}", response.StatusCode);
-                return new List<BrandApiDto>();
+                return [];
             }
 
             var content = await response.Content.ReadAsStringAsync();
@@ -154,15 +152,17 @@ public class WatchApiService : IWatchApiService
                 PropertyNameCaseInsensitive = true
             };
 
-            var result = JsonSerializer.Deserialize<BrandApiResponse>(content, options);
-            _logger.LogInformation("Successfully fetched {Count} brands", result?.Data?.Count ?? 0);
+            // API returns {"data": ["Brand1", "Brand2", ...]}
+            var brandListResponse = JsonSerializer.Deserialize<BrandListResponse>(content, options);
+            _logger.LogInformation("Successfully fetched {Count} brands", brandListResponse?.Data?.Count ?? 0);
 
-            return result?.Data ?? new List<BrandApiDto>();
+            // Convert brand names to BrandApiDto objects
+            return brandListResponse?.Data?.Select(name => new BrandApiDto { Name = name }).ToList() ?? [];
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching brands from API");
-            return new List<BrandApiDto>();
+            return [];
         }
     }
 
@@ -172,28 +172,38 @@ public class WatchApiService : IWatchApiService
         {
             _logger.LogInformation("Fetching watches for brand: {Brand}", brandName);
 
-            var url = $"/watches?brand={Uri.EscapeDataString(brandName)}&api_token={_apiToken}";
+            var url = $"/model/search?brand={Uri.EscapeDataString(brandName)}&api_token={_apiToken}";
             var response = await _httpClient.GetAsync(url);
+
+            var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Failed to fetch watches for brand {Brand}: {StatusCode}", brandName, response.StatusCode);
-                return new List<WatchApiDto>();
+                // Check if it's a "too many results" error (common with free API plan)
+                if (content.Contains("too_many_results"))
+                {
+                    _logger.LogWarning("Too many results for brand {Brand}. Free API plan limit exceeded (max 3 results). Try more specific searches.", brandName);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to fetch watches for brand {Brand}: {StatusCode} - {Content}", brandName, response.StatusCode, content);
+                }
+                return [];
             }
 
-            var content = await response.Content.ReadAsStringAsync();
             var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             };
 
-            var result = JsonSerializer.Deserialize<WatchApiListResponse>(content, options);
-            return result?.Data ?? new List<WatchApiDto>();
+            // API returns {"data": [...]} format
+            var watchResponse = JsonSerializer.Deserialize<WatchListDataResponse>(content, options);
+            return watchResponse?.Data ?? [];
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching watches for brand: {Brand}", brandName);
-            return new List<WatchApiDto>();
+            return [];
         }
     }
 
@@ -203,28 +213,37 @@ public class WatchApiService : IWatchApiService
         {
             _logger.LogInformation("Searching watches: {Query}", query);
 
-            var url = $"/watches?search={Uri.EscapeDataString(query)}&api_token={_apiToken}";
+            var url = $"/model/search?search={Uri.EscapeDataString(query)}&api_token={_apiToken}";
             var response = await _httpClient.GetAsync(url);
+
+            var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Search failed: {StatusCode}", response.StatusCode);
-                return new List<WatchApiDto>();
+                if (content.Contains("too_many_results"))
+                {
+                    _logger.LogWarning("Search '{Query}' returned too many results. Free API plan limit (3 results). Try more specific search.", query);
+                }
+                else
+                {
+                    _logger.LogWarning("Search failed: {StatusCode} - {Content}", response.StatusCode, content);
+                }
+                return [];
             }
 
-            var content = await response.Content.ReadAsStringAsync();
             var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             };
 
-            var result = JsonSerializer.Deserialize<WatchApiListResponse>(content, options);
-            return result?.Data ?? new List<WatchApiDto>();
+            // API returns {"data": [...]} format
+            var watchResponse = JsonSerializer.Deserialize<WatchListDataResponse>(content, options);
+            return watchResponse?.Data ?? [];
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error searching watches: {Query}", query);
-            return new List<WatchApiDto>();
+            return [];
         }
     }
 }

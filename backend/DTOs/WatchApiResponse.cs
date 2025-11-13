@@ -36,6 +36,18 @@ public class BrandApiResponse
     public List<BrandApiDto> Data { get; set; } = new();
 }
 
+// Brand list response from The Watch API (returns array of brand names)
+public class BrandListResponse
+{
+    public List<string> Data { get; set; } = new();
+}
+
+// Watch list response from The Watch API (returns array of watches)
+public class WatchListDataResponse
+{
+    public List<WatchApiDto> Data { get; set; } = new();
+}
+
 public class BrandApiDto
 {
     public string? Id { get; set; }

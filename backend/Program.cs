@@ -122,6 +122,43 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<TourbillonContext>();
+
+    // Create database if it doesn't exist (for Neon cloud)
+    try
+    {
+        var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+        var connectionStringBuilder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
+        var databaseName = connectionStringBuilder.Database;
+
+        // Connect to postgres database to create our database
+        connectionStringBuilder.Database = "postgres";
+
+        using (var conn = new Npgsql.NpgsqlConnection(connectionStringBuilder.ToString()))
+        {
+            await conn.OpenAsync();
+
+            // Check if database exists
+            using (var cmd = new Npgsql.NpgsqlCommand($"SELECT 1 FROM pg_database WHERE datname = '{databaseName}'", conn))
+            {
+                var exists = await cmd.ExecuteScalarAsync();
+
+                if (exists == null)
+                {
+                    // Database doesn't exist, create it
+                    using (var createCmd = new Npgsql.NpgsqlCommand($"CREATE DATABASE {databaseName}", conn))
+                    {
+                        await createCmd.ExecuteNonQueryAsync();
+                        Console.WriteLine($"Created database: {databaseName}");
+                    }
+                }
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Database creation check: {ex.Message}");
+    }
+
     context.Database.Migrate(); // Apply pending migrations
     DbInitializer.Initialize(context); // Seed initial data (9 Holy Trinity showcase watches)
 

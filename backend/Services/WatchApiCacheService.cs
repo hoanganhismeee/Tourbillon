@@ -38,50 +38,107 @@ public class WatchApiCacheService
             }
 
             int totalWatchesAdded = 0;
-            int currentPage = 1;
-            bool hasMorePages = true;
+            int apiCallsUsed = 0;
 
-            while (hasMorePages)
+            // Step 1: Get brands from OUR database (not from the API)
+            // We only want to fetch watches for our curated 15 brands
+            _logger.LogInformation("Loading brands from local database...");
+            var localBrands = await _context.Brands.ToListAsync();
+
+            if (localBrands == null || localBrands.Count == 0)
             {
-                _logger.LogInformation("Fetching page {Page} from API", currentPage);
+                return (false, "No brands found in local database", 0);
+            }
 
-                var response = await _watchApiService.GetWatchesAsync(currentPage, 100);
+            _logger.LogInformation("Found {Count} brands in local database", localBrands.Count);
 
-                if (response == null || response.Data == null || response.Data.Count == 0)
+            // Step 2: Get collections from our database (4 collections per brand on average = 60 total)
+            // We'll search by "Brand + Collection" to avoid "too many results" errors
+            _logger.LogInformation("Loading collections from local database...");
+            var collections = await _context.Collections.Include(c => c.Brand).ToListAsync();
+
+            if (collections == null || collections.Count == 0)
+            {
+                _logger.LogInformation("No collections found. Falling back to brand-only search.");
+                // Fallback: try brand-only search
+                collections = new List<Collection>();
+            }
+
+            _logger.LogInformation("Found {Count} collections across {BrandCount} brands", collections.Count, localBrands.Count);
+
+            // Step 3: For each collection, search "Brand Collection" in the API
+            // This should return ≤3 watches per search (fits free plan limit)
+            int collectionsProcessed = 0;
+            int collectionsSkipped = 0;
+
+            foreach (var collection in collections)
+            {
+                try
                 {
-                    hasMorePages = false;
-                    break;
-                }
+                    // Check if this collection already has watches
+                    // Skip collections that already have watches to avoid re-fetching
+                    var existingWatchCount = await _context.Watches
+                        .Where(w => w.CollectionId == collection.Id)
+                        .CountAsync();
 
-                // Process each watch from the API
-                foreach (var apiWatch in response.Data)
-                {
-                    try
+                    if (existingWatchCount > 0)
                     {
-                        await ProcessWatchAsync(apiWatch);
-                        totalWatchesAdded++;
+                        _logger.LogDebug("Skipping collection '{Collection}' - already has {Count} watches", collection.Name, existingWatchCount);
+                        collectionsSkipped++;
+                        continue;
                     }
-                    catch (Exception ex)
+
+                    // Search for "Brand Collection" (e.g., "Rolex Submariner", "Patek Philippe Nautilus")
+                    var searchQuery = $"{collection.Brand.Name} {collection.Name}";
+                    _logger.LogInformation("Fetching watches for collection: {Query}", searchQuery);
+
+                    var watches = await _watchApiService.SearchWatchesAsync(searchQuery);
+                    apiCallsUsed++;
+                    collectionsProcessed++;
+
+                    if (watches == null || watches.Count == 0)
                     {
-                        _logger.LogWarning(ex, "Failed to process watch: {Reference}", apiWatch.Reference ?? apiWatch.ReferenceNumber);
+                        _logger.LogInformation("No watches found for: {Query}", searchQuery);
+                        continue;
+                    }
+
+                    _logger.LogInformation("Found {Count} watches for: {Query}", watches.Count, searchQuery);
+
+                    // Process each watch
+                    foreach (var apiWatch in watches)
+                    {
+                        try
+                        {
+                            await ProcessWatchAsync(apiWatch);
+                            totalWatchesAdded++;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to process watch: {Model}", apiWatch.Model);
+                        }
+                    }
+
+                    // Save after each collection to avoid losing progress
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Saved watches for collection: {Collection}", collection.Name);
+
+                    // Respect API rate limits (25 calls/day on free plan)
+                    if (apiCallsUsed >= 25)
+                    {
+                        var remainingCollections = collections.Count - collectionsProcessed - collectionsSkipped;
+                        _logger.LogWarning("Reached API call limit for today (25 calls). Processed {Processed} collections, skipped {Skipped} already-synced collections. {Remaining} collections remaining. Run again tomorrow to continue.",
+                            collectionsProcessed, collectionsSkipped, remainingCollections);
+                        break;
                     }
                 }
-
-                await _context.SaveChangesAsync();
-                _logger.LogInformation("Saved {Count} watches from page {Page}", response.Data.Count, currentPage);
-
-                // Check if there are more pages
-                if (response.Data.Count < 100 || currentPage * 100 >= response.Total)
+                catch (Exception ex)
                 {
-                    hasMorePages = false;
-                }
-                else
-                {
-                    currentPage++;
+                    _logger.LogError(ex, "Error processing collection: {Collection}", collection.Name);
+                    // Continue with next collection
                 }
             }
 
-            var message = $"Successfully synced {totalWatchesAdded} watches from API";
+            var message = $"Successfully synced {totalWatchesAdded} watches from {localBrands.Count} brands ({apiCallsUsed} API calls used)";
             _logger.LogInformation(message);
             return (true, message, totalWatchesAdded);
         }
