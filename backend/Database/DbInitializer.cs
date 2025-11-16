@@ -40,7 +40,7 @@ namespace backend.Database
                     foreach (var c in collections)
                     {
                         // Ensure navigation property is not set to avoid EF Core tracking issues
-                        c.Brand = null;
+                        c.Brand = null!;
                         // Check if collection already exists (by name and BrandId)
                         if (!context.Collections.Any(x => x.Name == c.Name && x.BrandId == c.BrandId))
                         {
@@ -52,6 +52,97 @@ namespace backend.Database
             }
         }
 
+
+        // CSV record class for watches
+        private class WatchCsvRecord
+        {
+            public int Id { get; set; }
+            public string Name { get; set; } = string.Empty;
+            public int BrandId { get; set; }
+            public int? CollectionId { get; set; }
+            public string CurrentPrice { get; set; } = string.Empty;
+            public string Description { get; set; } = string.Empty;
+            public string Specs { get; set; } = string.Empty;
+            public string Image { get; set; } = string.Empty;
+        }
+
+        public static void SeedWatchesFromCsv(TourbillonContext context)
+        {
+            // Only seed the 9 showcase watches from CSV
+            var showcaseWatchIds = new HashSet<int> { 2, 4, 11, 13, 18, 24, 28, 30, 35 };
+
+            var csvPath = Path.Combine("Data", "watches.csv");
+            if (!File.Exists(csvPath))
+            {
+                Console.WriteLine($"watches.csv not found at {csvPath}, skipping showcase watch seeding");
+                return;
+            }
+
+            using (var reader = new StreamReader(csvPath))
+            {
+                var config = new CsvConfiguration(CultureInfo.InvariantCulture)
+                {
+                    HeaderValidated = null,
+                    MissingFieldFound = null,
+                    TrimOptions = TrimOptions.Trim,
+                };
+                using (var csv = new CsvReader(reader, config))
+                {
+                    var records = csv.GetRecords<WatchCsvRecord>().ToList();
+                    int seededCount = 0;
+                    
+                    foreach (var record in records)
+                    {
+                        // Only seed showcase watches
+                        if (!showcaseWatchIds.Contains(record.Id))
+                            continue;
+
+                        // Check if watch already exists
+                        if (context.Watches.Any(w => w.Id == record.Id))
+                            continue;
+
+                        decimal price = 0;
+                        if (!string.IsNullOrEmpty(record.CurrentPrice))
+                        {
+                            var cleanPrice = record.CurrentPrice.Replace(",", "").Trim();
+                            decimal.TryParse(cleanPrice, out price);
+                        }
+
+                        var watch = new Watch
+                        {
+                            Id = record.Id,
+                            Name = record.Name,
+                            BrandId = record.BrandId,
+                            CollectionId = record.CollectionId,
+                            CurrentPrice = price,
+                            Description = record.Description,
+                            Specs = record.Specs,
+                            Image = record.Image
+                        };
+
+                        context.Watches.Add(watch);
+                        seededCount++;
+                    }
+
+                    if (seededCount > 0)
+                    {
+                        context.SaveChanges();
+                        Console.WriteLine($"Seeded {seededCount} showcase watches from CSV");
+
+                        // Reset the PostgreSQL sequence to avoid ID conflicts when scraping new watches
+                        // The highest showcase watch ID is 35, so we start the sequence from 36
+                        ResetWatchIdSequence(context, 36);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Showcase watches already exist, skipping CSV seed");
+
+                        // Even if watches exist, make sure sequence is properly set
+                        ResetWatchIdSequence(context, 36);
+                    }
+                }
+            }
+        }
 
         public static void Initialize(TourbillonContext context)
         {
@@ -80,10 +171,37 @@ namespace backend.Database
             // Seed collections from CSV (contains descriptions and heritage information)
             SeedCollectionsFromCsv(context);
             
-            // NOTE: Watches are NO LONGER seeded from CSV
-            // All watches (including showcase watches) now come from web scraping
-            // Showcase watches will have their curated images preserved during scraping
-            Console.WriteLine("Watch seeding from CSV disabled - all watches come from web scraping");
+            // Seed the 9 showcase watches from CSV with their curated images
+            // IDs: 2, 4, 11, 13, 18, 24, 28, 30, 35
+            SeedWatchesFromCsv(context);
+        }
+
+        /// <summary>
+        /// Resets the PostgreSQL auto-increment sequence for Watch IDs
+        /// This prevents ID conflicts when inserting new scraped watches
+        /// </summary>
+        private static void ResetWatchIdSequence(TourbillonContext context, int startValue)
+        {
+            try
+            {
+                // Get the maximum Watch ID from the database
+                var maxId = context.Watches.Any()
+                    ? context.Watches.Max(w => w.Id)
+                    : 0;
+
+                // Use the higher of the two values (startValue or maxId + 1)
+                var nextId = Math.Max(startValue, maxId + 1);
+
+                // Reset PostgreSQL sequence to start from nextId
+                var sql = $"SELECT setval(pg_get_serial_sequence('\"Watches\"', 'Id'), {nextId}, false);";
+                context.Database.ExecuteSqlRaw(sql);
+
+                Console.WriteLine($"Reset Watch ID sequence to start from {nextId}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not reset Watch ID sequence: {ex.Message}");
+            }
         }
     }
 }

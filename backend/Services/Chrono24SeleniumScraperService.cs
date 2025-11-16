@@ -13,16 +13,19 @@ public class Chrono24SeleniumScraperService : IChrono24ScraperService, IDisposab
 {
     private readonly ILogger<Chrono24SeleniumScraperService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly CurrencyConverter _currencyConverter;
     private readonly string _baseUrl;
     private readonly int _requestDelayMs;
     private IWebDriver? _driver;
 
     public Chrono24SeleniumScraperService(
         ILogger<Chrono24SeleniumScraperService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        CurrencyConverter currencyConverter)
     {
         _logger = logger;
         _configuration = configuration;
+        _currencyConverter = currencyConverter;
 
         _baseUrl = _configuration.GetValue<string>("Chrono24:BaseUrl") ?? "https://www.chrono24.com";
         _requestDelayMs = _configuration.GetValue<int>("Chrono24:RequestDelayMs", 3000);
@@ -236,7 +239,7 @@ public class Chrono24SeleniumScraperService : IChrono24ScraperService, IDisposab
     private string BuildSearchUrl(string searchQuery)
     {
         var encodedQuery = HttpUtility.UrlEncode(searchQuery);
-        return $"{_baseUrl}/search/index.htm?query={encodedQuery}&dosearch=true&searchexplain=1&resultview=block";
+        return $"{_baseUrl}/search/index.htm?query={encodedQuery}&dosearch=true&usedOrNew=new&searchexplain=1&resultview=block";
     }
 
     private string BuildBrandUrl(string brandName)
@@ -247,7 +250,7 @@ public class Chrono24SeleniumScraperService : IChrono24ScraperService, IDisposab
             .Replace(".", "")
             .Replace("&", "and");
 
-        return $"{_baseUrl}/{normalizedBrand}/index.htm";
+        return $"{_baseUrl}/{normalizedBrand}/index.htm?dosearch=true&usedOrNew=new";
     }
 
     private async Task<string> FetchPageWithSelenium(string url)
@@ -358,9 +361,12 @@ public class Chrono24SeleniumScraperService : IChrono24ScraperService, IDisposab
             // Combine model name and description for the watch name
             var name = !string.IsNullOrEmpty(fullDescription) ? fullDescription : modelName;
 
-            // Extract price (in the div with align-content-end)
+            // Extract price (in the div with align-content-end) and convert to AUD
             var priceNode = node.SelectSingleNode(".//div[contains(@class, 'align-content-end')]//p[contains(@class, 'text-bold')]");
-            var price = priceNode?.InnerText?.Trim() ?? "Price on request";
+            var priceString = priceNode?.InnerText?.Trim() ?? "Price on request";
+            
+            // Convert price to AUD
+            var price = ConvertPriceToAUD(priceString);
 
             // Extract image URL (first img tag with alt attribute)
             var imageNode = node.SelectSingleNode(".//img[@alt]");
@@ -431,6 +437,27 @@ public class Chrono24SeleniumScraperService : IChrono24ScraperService, IDisposab
         text = HttpUtility.HtmlDecode(text);
         text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");
         return text.Trim();
+    }
+
+    private string ConvertPriceToAUD(string priceString)
+    {
+        if (string.IsNullOrEmpty(priceString) ||
+            priceString.ToLower().Contains("request") ||
+            priceString.ToLower().Contains("contact"))
+        {
+            return "Price on request";
+        }
+
+        // Parse and convert price to AUD
+        decimal audPrice = _currencyConverter.ParseAndConvertToAUD(priceString);
+        
+        if (audPrice <= 0)
+        {
+            return "Price on request";
+        }
+
+        // Format price in AUD
+        return _currencyConverter.FormatPriceAUD(audPrice);
     }
 
     #endregion

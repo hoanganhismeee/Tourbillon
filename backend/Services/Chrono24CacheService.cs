@@ -13,18 +13,15 @@ public class Chrono24CacheService
     private readonly TourbillonContext _context;
     private readonly IChrono24ScraperService _scraperService;
     private readonly ILogger<Chrono24CacheService> _logger;
-    private readonly Configuration.ShowcaseWatchMapping _showcaseMapping;
 
     public Chrono24CacheService(
         TourbillonContext context,
         IChrono24ScraperService scraperService,
-        ILogger<Chrono24CacheService> logger,
-        Configuration.ShowcaseWatchMapping showcaseMapping)
+        ILogger<Chrono24CacheService> logger)
     {
         _context = context;
         _scraperService = scraperService;
         _logger = logger;
-        _showcaseMapping = showcaseMapping;
     }
 
     /// Scrapes and caches watches for a specific brand and collection
@@ -368,14 +365,40 @@ public class Chrono24CacheService
             }
 
             // Check if watch already exists (by name and brand)
+            // Try exact match first
             var existingWatch = await _context.Watches
                 .FirstOrDefaultAsync(w =>
                     w.Name == scrapedWatch.Name &&
                     w.BrandId == brand.Id);
 
+            // If no exact match, try matching by reference number (for showcase watches)
+            if (existingWatch == null)
+            {
+                var refNumber = ExtractReferenceNumber(scrapedWatch.Name);
+                if (!string.IsNullOrEmpty(refNumber))
+                {
+                    // Look for existing watches from same brand that contain this reference number
+                    var allBrandWatches = await _context.Watches
+                        .Where(w => w.BrandId == brand.Id)
+                        .ToListAsync();
+                    
+                    existingWatch = allBrandWatches.FirstOrDefault(w => 
+                        ExtractReferenceNumber(w.Name) == refNumber);
+                    
+                    if (existingWatch != null)
+                    {
+                        _logger.LogInformation("Matched by reference number: {RefNumber} - Existing: {ExistingName}, Scraped: {ScrapedName}", 
+                            refNumber, existingWatch.Name, scrapedWatch.Name);
+                    }
+                }
+            }
+
             if (existingWatch != null)
             {
                 _logger.LogDebug("Watch already exists: {Name}", scrapedWatch.Name);
+
+                // IDs of the 9 showcase watches with curated images
+                var showcaseWatchIds = new HashSet<int> { 2, 4, 11, 13, 18, 24, 28, 30, 35 };
 
                 // Update price
                 UpdateWatchPrice(existingWatch, scrapedWatch.CurrentPrice);
@@ -383,11 +406,12 @@ public class Chrono24CacheService
                 // Update image only if not a showcase watch
                 if (!string.IsNullOrEmpty(scrapedWatch.ImageUrl))
                 {
-                    // Check if this is a showcase watch by name
-                    if (_showcaseMapping.IsShowcaseWatch(scrapedWatch.Name, out string _))
+                    // Check if this is a showcase watch by ID
+                    if (showcaseWatchIds.Contains(existingWatch.Id))
                     {
-                        _logger.LogDebug("Preserved curated image for showcase watch: {Name}", scrapedWatch.Name);
-                        // Don't update image for showcase watches - keep curated image
+                        _logger.LogInformation("Preserved curated image for showcase watch ID {Id}: {Name} (image: {Image})", 
+                            existingWatch.Id, scrapedWatch.Name, existingWatch.Image);
+                        // Don't update image for showcase watches - keep curated image from CSV
                     }
                     else
                     {
@@ -402,14 +426,8 @@ public class Chrono24CacheService
             // Parse price
             decimal parsedPrice = ParsePrice(scrapedWatch.CurrentPrice);
 
-            // Check if this is a showcase watch and use curated image if so
+            // For new watches, use scraped image URL
             string imageToUse = scrapedWatch.ImageUrl ?? string.Empty;
-            if (_showcaseMapping.IsShowcaseWatch(scrapedWatch.Name, out string curatedImage))
-            {
-                imageToUse = curatedImage;
-                _logger.LogInformation("Using curated image for showcase watch: {Name} → {Image}", 
-                    scrapedWatch.Name, curatedImage);
-            }
 
             // Create new watch
             var watch = new Watch
@@ -512,6 +530,36 @@ public class Chrono24CacheService
             _logger.LogInformation("Updated price for {Name}: ${Old} -> ${New}",
                 watch.Name, watch.CurrentPrice, newPrice);
         }
+    }
+
+    /// <summary>
+    /// Extracts reference number from watch name for matching
+    /// Examples: "5227G-010", "5811/1G", "16202ST", "5303R"
+    /// </summary>
+    private string ExtractReferenceNumber(string watchName)
+    {
+        if (string.IsNullOrEmpty(watchName))
+            return string.Empty;
+
+        // Common patterns for luxury watch reference numbers
+        var patterns = new[]
+        {
+            @"\b(\d{4,5}[A-Z]{0,2}[-/]\d{3}[A-Z]?)\b",  // 5227G-010, 5811/1G-001
+            @"\b(\d{4,5}[A-Z]{1,2})\b",                  // 5303R, 16202ST, 6119G
+            @"\b([A-Z]{2}\d{4,5}[A-Z]?)\b",              // VC43175, AP16202
+            @"\b(\d{5})\b"                               // Generic 5-digit ref
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(watchName, pattern);
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+
+        return string.Empty;
     }
 
     #endregion
