@@ -31,4 +31,16 @@ public interface IChrono24ScraperService
     Task<List<ScrapedWatchDto>> ScrapeWatchesByBrandAsync(
         string brandName,
         int maxWatchesPerCollection = 40);
+
+    /// <summary>
+    /// Scrapes a specific watch by exact name search
+    /// Used for updating showcase watches while preserving their curated images
+    /// </summary>
+    /// <param name="watchName">Exact watch name to search for</param>
+    /// <param name="brandName">Name of the watch brand</param>
+    /// <param name="collectionName">Name of the collection</param>
+    Task<ScrapedWatchDto?> ScrapeWatchByExactNameAsync(
+        string watchName,
+        string brandName,
+        string collectionName);
 }

@@ -154,6 +154,49 @@ public class Chrono24ScraperService : IChrono24ScraperService
         return scrapedWatches;
     }
 
+    public async Task<ScrapedWatchDto?> ScrapeWatchByExactNameAsync(
+        string watchName,
+        string brandName,
+        string collectionName)
+    {
+        try
+        {
+            _logger.LogInformation("Scraping watch by exact name: {Name} ({Brand})", watchName, brandName);
+
+            // Construct Chrono24 search URL with exact watch name
+            var searchUrl = BuildSearchUrl(watchName);
+            _logger.LogInformation("Search URL: {Url}", searchUrl);
+
+            // Fetch the page
+            var html = await FetchPageWithDelay(searchUrl);
+
+            if (string.IsNullOrEmpty(html))
+            {
+                _logger.LogWarning("No HTML content received for watch {Name}", watchName);
+                return null;
+            }
+
+            // Parse HTML and extract watch listings
+            var watches = ParseWatchListings(html, brandName, collectionName, 5); // Get top 5 results
+
+            if (!watches.Any())
+            {
+                _logger.LogWarning("No watches found for {Name}", watchName);
+                return null;
+            }
+
+            // Return the first result (most relevant)
+            var watch = watches.First();
+            _logger.LogInformation("Found watch: {Name} - {Price}", watch.Name, watch.CurrentPrice);
+            return watch;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error scraping watch by exact name: {Name}", watchName);
+            return null;
+        }
+    }
+
     #region Private Helper Methods
 
     private string BuildSearchUrl(string searchQuery)

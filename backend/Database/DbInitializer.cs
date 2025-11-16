@@ -4,6 +4,7 @@ using CsvHelper;
 using System.IO;
 using CsvHelper.Configuration;
 using CsvHelper.Configuration.Attributes;
+using Microsoft.EntityFrameworkCore;
 
 namespace backend.Database
 {
@@ -193,6 +194,19 @@ namespace backend.Database
                 }
                 
                 context.SaveChanges();
+
+                // Reset the PostgreSQL sequence to avoid ID conflicts with scraped watches
+                // The showcase watches have IDs up to 35, so start new watches at 36
+                try
+                {
+                    context.Database.ExecuteSqlRaw("SELECT setval('\"Watches_Id_seq\"', 36, false);");
+                    Console.WriteLine("Reset Watches ID sequence to start at 36");
+                }
+                catch (Exception seqEx)
+                {
+                    Console.WriteLine($"Warning: Could not reset sequence: {seqEx.Message}");
+                }
+
                 Console.WriteLine($"Successfully added {addedCount} showcase watches from CSV (skipped {skippedCount} watches - will be loaded from API)");
             }
             catch (Exception ex)

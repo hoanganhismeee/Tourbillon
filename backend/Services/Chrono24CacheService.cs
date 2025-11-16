@@ -277,6 +277,84 @@ public class Chrono24CacheService
     }
 
     /// <summary>
+    /// Scrapes and updates the 9 Holy Trinity showcase watches while preserving their curated images
+    /// Searches for exact watch names and updates price, description, and specs only
+    /// </summary>
+    public async Task<(bool success, string message, int watchesUpdated)> ScrapeShowcaseWatchesAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Starting showcase watch scraping (preserving curated images)");
+
+            // Showcase watches with exact names to search for
+            var showcaseWatches = new Dictionary<int, (string WatchName, string Brand, string Collection)>
+            {
+                // Patek Philippe
+                { 2, ("Patek Philippe Calatrava 5227G-010", "Patek Philippe", "Calatrava") },
+                { 4, ("Patek Philippe Nautilus 5811/1G Blue Dial", "Patek Philippe", "Nautilus") },
+                { 11, ("Patek Philippe Grand Complications 5303R Minute Repeater Tourbillon", "Patek Philippe", "Grand Complications") },
+
+                // Vacheron Constantin
+                { 13, ("Vacheron Constantin Patrimony 43175 Perpetual Calendar", "Vacheron Constantin", "Patrimony") },
+                { 18, ("Vacheron Constantin Overseas 6000V Tourbillon", "Vacheron Constantin", "Overseas") },
+                { 24, ("Vacheron Constantin Métiers d'Art 6007A Scorpio Celestial", "Vacheron Constantin", "Métiers d'Art") },
+
+                // Audemars Piguet
+                { 28, ("Audemars Piguet Royal Oak Jumbo Extra-Thin 16202ST", "Audemars Piguet", "Royal Oak") },
+                { 30, ("Audemars Piguet Royal Oak Perpetual Calendar", "Audemars Piguet", "Royal Oak") },
+                { 35, ("Audemars Piguet Royal Oak Concept Flying Tourbillon GMT", "Audemars Piguet", "Royal Oak Concept") }
+            };
+
+            int watchesUpdated = 0;
+
+            foreach (var (watchId, (watchName, brand, collection)) in showcaseWatches)
+            {
+                try
+                {
+                    _logger.LogInformation("Scraping showcase watch ID {Id}: {Name}", watchId, watchName);
+
+                    // Scrape the watch by exact name
+                    var scrapedWatch = await _scraperService.ScrapeWatchByExactNameAsync(watchName, brand, collection);
+
+                    if (scrapedWatch != null)
+                    {
+                        // Update the existing watch while preserving its image
+                        var updated = await UpdateShowcaseWatchAsync(watchId, scrapedWatch);
+                        if (updated)
+                        {
+                            watchesUpdated++;
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Could not find watch: {Name}", watchName);
+                    }
+
+                    // Polite scraping: delay between requests
+                    await Task.Delay(3000);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error scraping showcase watch {Name}", watchName);
+                    // Continue with next watch
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            var successMessage = $"Successfully updated {watchesUpdated} of 9 showcase watches (images preserved)";
+            _logger.LogInformation(successMessage);
+            return (true, successMessage, watchesUpdated);
+        }
+        catch (Exception ex)
+        {
+            var errorMessage = $"Error scraping showcase watches: {ex.Message}";
+            _logger.LogError(ex, errorMessage);
+            return (false, errorMessage, 0);
+        }
+    }
+
+    /// <summary>
     /// Clears all watches from database except the 9 showcase watches from CSV
     /// Showcase watch IDs: 2, 4, 11, 13, 18, 24, 28, 30, 35
     /// </summary>
@@ -326,6 +404,62 @@ public class Chrono24CacheService
 
     #region Private Helper Methods
 
+    /// <summary>
+    /// Updates a showcase watch with scraped data while preserving its curated image
+    /// </summary>
+    private async Task<bool> UpdateShowcaseWatchAsync(int watchId, ScrapedWatchDto scrapedWatch)
+    {
+        try
+        {
+            var existingWatch = await _context.Watches.FindAsync(watchId);
+
+            if (existingWatch == null)
+            {
+                _logger.LogWarning("Showcase watch ID {Id} not found in database", watchId);
+                return false;
+            }
+
+            // Parse and format price in AUD
+            decimal parsedPrice = ParsePrice(scrapedWatch.CurrentPrice);
+
+            // Store the existing image URL before updating
+            var preservedImage = existingWatch.Image;
+
+            // Update watch data
+            existingWatch.Name = scrapedWatch.Name;
+            existingWatch.CurrentPrice = parsedPrice;
+            existingWatch.Description = scrapedWatch.Description;
+            existingWatch.Specs = scrapedWatch.Specs;
+
+            // CRITICAL: Preserve the curated image
+            existingWatch.Image = preservedImage;
+
+            _logger.LogInformation("Updated showcase watch ID {Id}: {Name} - ${Price:N2} AUD (image preserved)",
+                watchId, existingWatch.Name, existingWatch.CurrentPrice);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating showcase watch ID {Id}", watchId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Formats price as AUD with thousands separator and 2 decimal places
+    /// </summary>
+    private string FormatPriceAUD(decimal price)
+    {
+        if (price <= 0)
+        {
+            return "Price on request";
+        }
+
+        // Format as AUD: $113,000.00
+        return $"${price:N2} AUD";
+    }
+
     private async Task<bool> ProcessScrapedWatchAsync(ScrapedWatchDto scrapedWatch)
     {
         try
@@ -354,8 +488,27 @@ public class Chrono24CacheService
             if (existingWatch != null)
             {
                 _logger.LogDebug("Watch already exists: {Name}", scrapedWatch.Name);
-                // Optionally update price
-                UpdateWatchPrice(existingWatch, scrapedWatch.CurrentPrice);
+
+                // Showcase watch IDs that should preserve their curated images
+                var showcaseWatchIds = new HashSet<int> { 2, 4, 11, 13, 18, 24, 28, 30, 35 };
+
+                // Update price (and preserve image for showcase watches)
+                if (showcaseWatchIds.Contains(existingWatch.Id))
+                {
+                    // For showcase watches, update price but preserve the curated image
+                    UpdateWatchPrice(existingWatch, scrapedWatch.CurrentPrice);
+                    _logger.LogDebug("Updated showcase watch {Id} (image preserved)", existingWatch.Id);
+                }
+                else
+                {
+                    // For regular watches, update both price and image
+                    UpdateWatchPrice(existingWatch, scrapedWatch.CurrentPrice);
+                    if (!string.IsNullOrEmpty(scrapedWatch.ImageUrl))
+                    {
+                        existingWatch.Image = scrapedWatch.ImageUrl;
+                    }
+                }
+
                 return false;
             }
 
