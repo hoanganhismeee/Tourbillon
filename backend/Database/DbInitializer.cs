@@ -266,8 +266,8 @@ namespace backend.Database
                     context.SaveChanges();
                 }
             }
-            // Always try to seed collections (it will skip if already present)
-            SeedCollectionsFromCsv(context);
+            // Collections are now auto-discovered from API watches (not seeded from CSV)
+            // SeedCollectionsFromCsv(context);
             // Always try to seed watches (it will skip if already present)
             SeedWatchesFromCsv(context);
         }

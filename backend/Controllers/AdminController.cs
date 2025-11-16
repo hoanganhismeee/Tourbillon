@@ -135,4 +135,36 @@ public class AdminController : ControllerBase
             Brands = brands
         });
     }
+
+    // POST: api/admin/bulk-cache
+    // Bulk cache ALL available watches from API (optimized for paid plans)
+    // Use this during your paid subscription month to cache everything, then cancel
+    // Query param: maxApiCalls (default: 1000) - adjust based on your paid plan limits
+    [HttpPost("bulk-cache")]
+    public async Task<IActionResult> BulkCache([FromQuery] int maxApiCalls = 1000)
+    {
+        _logger.LogInformation("Bulk cache operation triggered (max {MaxCalls} API calls)", maxApiCalls);
+
+        var (success, message, watchesAdded) = await _cacheService.BulkCacheAllWatchesAsync(maxApiCalls);
+
+        if (success)
+        {
+            return Ok(new
+            {
+                Success = true,
+                Message = message,
+                WatchesAdded = watchesAdded,
+                MaxApiCalls = maxApiCalls,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
+        return BadRequest(new
+        {
+            Success = false,
+            Message = message,
+            WatchesAdded = watchesAdded,
+            Timestamp = DateTime.UtcNow
+        });
+    }
 }

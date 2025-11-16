@@ -50,7 +50,7 @@ public class WatchApiService : IWatchApiService
             }
 
             // Try to fetch brands to test the connection
-            var response = await _httpClient.GetAsync($"/brand/list?api_token={_apiToken}");
+            var response = await _httpClient.GetAsync($"/v1/brand/list?api_token={_apiToken}");
 
             if (response.IsSuccessStatusCode)
             {
@@ -106,7 +106,7 @@ public class WatchApiService : IWatchApiService
         {
             _logger.LogInformation("Fetching watch by reference: {Reference}", reference);
 
-            var url = $"/reference/search?search={Uri.EscapeDataString(reference)}&api_token={_apiToken}";
+            var url = $"/v1/reference/search?search={Uri.EscapeDataString(reference)}&api_token={_apiToken}";
             var response = await _httpClient.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
@@ -137,7 +137,7 @@ public class WatchApiService : IWatchApiService
         {
             _logger.LogInformation("Fetching brands from API");
 
-            var url = $"/brand/list?api_token={_apiToken}";
+            var url = $"/v1/brand/list?api_token={_apiToken}";
             var response = await _httpClient.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
@@ -172,7 +172,7 @@ public class WatchApiService : IWatchApiService
         {
             _logger.LogInformation("Fetching watches for brand: {Brand}", brandName);
 
-            var url = $"/model/search?brand={Uri.EscapeDataString(brandName)}&api_token={_apiToken}";
+            var url = $"/v1/model/search?brand={Uri.EscapeDataString(brandName)}&api_token={_apiToken}";
             var response = await _httpClient.GetAsync(url);
 
             var content = await response.Content.ReadAsStringAsync();
@@ -213,7 +213,7 @@ public class WatchApiService : IWatchApiService
         {
             _logger.LogInformation("Searching watches: {Query}", query);
 
-            var url = $"/model/search?search={Uri.EscapeDataString(query)}&api_token={_apiToken}";
+            var url = $"/v1/model/search?search={Uri.EscapeDataString(query)}&api_token={_apiToken}";
             var response = await _httpClient.GetAsync(url);
 
             var content = await response.Content.ReadAsStringAsync();
