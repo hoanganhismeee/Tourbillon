@@ -1,69 +1,103 @@
-// Chrono24 web scraper service
-// Scrapes watch data from Chrono24 luxury watch marketplace
+// Chrono24 web scraper service using Selenium WebDriver
+// Bypasses anti-bot protection by using a real Chrome browser
 
 using backend.DTOs;
 using HtmlAgilityPack;
-using Microsoft.Extensions.Configuration;
+using OpenQA.Selenium;
+using OpenQA.Selenium.Chrome;
 using System.Web;
 
 namespace backend.Services;
 
-public class Chrono24ScraperService : IChrono24ScraperService
+public class Chrono24SeleniumScraperService : IChrono24ScraperService, IDisposable
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<Chrono24ScraperService> _logger;
+    private readonly ILogger<Chrono24SeleniumScraperService> _logger;
     private readonly IConfiguration _configuration;
-    private readonly int _requestDelayMs;
     private readonly string _baseUrl;
+    private readonly int _requestDelayMs;
+    private IWebDriver? _driver;
 
-    public Chrono24ScraperService(
-        HttpClient httpClient,
-        ILogger<Chrono24ScraperService> logger,
+    public Chrono24SeleniumScraperService(
+        ILogger<Chrono24SeleniumScraperService> logger,
         IConfiguration configuration)
     {
-        _httpClient = httpClient;
         _logger = logger;
         _configuration = configuration;
 
-        // Configure HttpClient with realistic browser headers
-        _httpClient.DefaultRequestHeaders.Add("User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        _httpClient.DefaultRequestHeaders.Add("Accept",
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7");
-        _httpClient.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
-        _httpClient.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br");
-        _httpClient.DefaultRequestHeaders.Add("Connection", "keep-alive");
-        _httpClient.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
-        _httpClient.DefaultRequestHeaders.Add("Sec-Fetch-Dest", "document");
-        _httpClient.DefaultRequestHeaders.Add("Sec-Fetch-Mode", "navigate");
-        _httpClient.DefaultRequestHeaders.Add("Sec-Fetch-Site", "none");
-        _httpClient.DefaultRequestHeaders.Add("Sec-Fetch-User", "?1");
-        _httpClient.DefaultRequestHeaders.Add("sec-ch-ua", "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\"");
-        _httpClient.DefaultRequestHeaders.Add("sec-ch-ua-mobile", "?0");
-        _httpClient.DefaultRequestHeaders.Add("sec-ch-ua-platform", "\"Windows\"");
-        _httpClient.Timeout = TimeSpan.FromSeconds(30);
-
-        // Load configuration
         _baseUrl = _configuration.GetValue<string>("Chrono24:BaseUrl") ?? "https://www.chrono24.com";
         _requestDelayMs = _configuration.GetValue<int>("Chrono24:RequestDelayMs", 3000);
+    }
+
+    private IWebDriver GetDriver()
+    {
+        if (_driver != null)
+        {
+            return _driver;
+        }
+
+        _logger.LogInformation("Initializing Chrome WebDriver with anti-detection settings");
+
+        var options = new ChromeOptions();
+
+        // Anti-detection settings
+        options.AddArgument("--disable-blink-features=AutomationControlled");
+        options.AddExcludedArgument("enable-automation");
+        options.AddAdditionalOption("useAutomationExtension", false);
+
+        // Headless mode (runs without visible browser window)
+        options.AddArgument("--headless=new");
+        options.AddArgument("--disable-gpu");
+
+        // Realistic browser settings
+        options.AddArgument("--window-size=1920,1080");
+        options.AddArgument("--disable-dev-shm-usage");
+        options.AddArgument("--no-sandbox");
+
+        // User agent
+        options.AddArgument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+        // Performance optimizations
+        options.AddArgument("--disable-images"); // Don't load images for faster scraping
+        options.AddArgument("--blink-settings=imagesEnabled=false");
+
+        // Additional preferences
+        options.AddUserProfilePreference("profile.default_content_setting_values.images", 2);
+        options.AddUserProfilePreference("profile.managed_default_content_settings.images", 2);
+
+        try
+        {
+            _driver = new ChromeDriver(options);
+
+            // Set page load timeout
+            _driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(30);
+            _driver.Manage().Timeouts().ImplicitWait = TimeSpan.FromSeconds(10);
+
+            _logger.LogInformation("Chrome WebDriver initialized successfully");
+            return _driver;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to initialize Chrome WebDriver");
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> TestConnectionAsync()
     {
         try
         {
-            _logger.LogInformation("Testing connection to Chrono24...");
+            _logger.LogInformation("Testing connection to Chrono24 with Selenium...");
 
-            var response = await _httpClient.GetAsync(_baseUrl);
+            var driver = GetDriver();
+            driver.Navigate().GoToUrl(_baseUrl);
 
-            if (response.IsSuccessStatusCode)
-            {
-                _logger.LogInformation("Successfully connected to Chrono24");
-                return (true, $"Connection successful. Status: {response.StatusCode}");
-            }
+            // Wait a bit for page to load
+            await Task.Delay(2000);
 
-            _logger.LogWarning("Failed to connect to Chrono24. Status: {StatusCode}", response.StatusCode);
-            return (false, $"Connection failed. Status: {response.StatusCode}");
+            var title = driver.Title;
+            _logger.LogInformation("Successfully loaded Chrono24. Page title: {Title}", title);
+
+            return (true, $"Connection successful. Page loaded: {title}");
         }
         catch (Exception ex)
         {
@@ -81,7 +115,7 @@ public class Chrono24ScraperService : IChrono24ScraperService
 
         try
         {
-            _logger.LogInformation("Scraping {Brand} {Collection} (max {Max} watches)",
+            _logger.LogInformation("Scraping {Brand} {Collection} (max {Max} watches) with Selenium",
                 brandName, collectionName, maxWatches);
 
             // Construct Chrono24 search URL
@@ -90,8 +124,8 @@ public class Chrono24ScraperService : IChrono24ScraperService
 
             _logger.LogInformation("Search URL: {Url}", searchUrl);
 
-            // Fetch the page
-            var html = await FetchPageWithDelay(searchUrl);
+            // Fetch the page with Selenium
+            var html = await FetchPageWithSelenium(searchUrl);
 
             if (string.IsNullOrEmpty(html))
             {
@@ -124,14 +158,14 @@ public class Chrono24ScraperService : IChrono24ScraperService
 
         try
         {
-            _logger.LogInformation("Scraping all watches for brand: {Brand}", brandName);
+            _logger.LogInformation("Scraping all watches for brand: {Brand} with Selenium", brandName);
 
             // Build URL for brand page
             var brandUrl = BuildBrandUrl(brandName);
             _logger.LogInformation("Brand URL: {Url}", brandUrl);
 
             // Fetch the brand page
-            var html = await FetchPageWithDelay(brandUrl);
+            var html = await FetchPageWithSelenium(brandUrl);
 
             if (string.IsNullOrEmpty(html))
             {
@@ -173,28 +207,29 @@ public class Chrono24ScraperService : IChrono24ScraperService
         return $"{_baseUrl}/{normalizedBrand}/index.htm";
     }
 
-    private async Task<string> FetchPageWithDelay(string url)
+    private async Task<string> FetchPageWithSelenium(string url)
     {
         try
         {
             // Polite scraping: wait before making request
             await Task.Delay(_requestDelayMs);
 
-            _logger.LogDebug("Fetching: {Url}", url);
-            var response = await _httpClient.GetAsync(url);
+            _logger.LogDebug("Fetching with Selenium: {Url}", url);
 
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("HTTP {StatusCode} for URL: {Url}",
-                    response.StatusCode, url);
-                return string.Empty;
-            }
+            var driver = GetDriver();
+            driver.Navigate().GoToUrl(url);
 
-            return await response.Content.ReadAsStringAsync();
+            // Wait for page to load (wait for watch listings to appear)
+            await Task.Delay(3000); // Give extra time for JavaScript to render
+
+            var html = driver.PageSource;
+
+            _logger.LogDebug("Received {Length} characters of HTML", html.Length);
+            return html;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching page: {Url}", url);
+            _logger.LogError(ex, "Error fetching page with Selenium: {Url}", url);
             return string.Empty;
         }
     }
@@ -299,11 +334,10 @@ public class Chrono24ScraperService : IChrono24ScraperService
                 }
             }
 
-            // Extract reference number from the description (e.g., "16750" from the full text)
+            // Extract reference number from the description
             string? referenceNumber = null;
             if (!string.IsNullOrEmpty(fullDescription))
             {
-                // Try to find common Rolex reference patterns (5-6 digits, or patterns like 116610LN)
                 var refMatch = System.Text.RegularExpressions.Regex.Match(
                     fullDescription, @"\b(\d{4,6}[A-Z]*)\b");
                 if (refMatch.Success)
@@ -330,7 +364,6 @@ public class Chrono24ScraperService : IChrono24ScraperService
                 ImageUrl = imageUrl,
                 ReferenceNumber = referenceNumber,
                 SourceUrl = sourceUrl,
-                // Use the full description from Chrono24
                 Description = !string.IsNullOrEmpty(fullDescription)
                     ? CleanText(fullDescription)
                     : $"Luxury {modelName} timepiece from {brandName}",
@@ -358,4 +391,25 @@ public class Chrono24ScraperService : IChrono24ScraperService
     }
 
     #endregion
+
+    public void Dispose()
+    {
+        if (_driver != null)
+        {
+            try
+            {
+                _driver.Quit();
+                _driver.Dispose();
+                _logger.LogInformation("Chrome WebDriver disposed");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error disposing Chrome WebDriver");
+            }
+            finally
+            {
+                _driver = null;
+            }
+        }
+    }
 }

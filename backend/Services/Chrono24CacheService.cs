@@ -115,14 +115,35 @@ public class Chrono24CacheService
     }
 
     /// <summary>
-    /// Scrapes watches for all brands from the CSV file
+    /// Scrapes watches for all brands from the database
+    /// Holy Trinity (Patek, VC, AP): 5 collections × 12 watches = 60 watches each
+    /// Other brands: 3-4 collections with fewer watches
     /// </summary>
     public async Task<(bool success, string message, int watchesAdded)> ScrapeAllBrandsAsync(
-        int maxWatchesPerCollection = 40)
+        int maxWatchesPerBrand = 30)
     {
         try
         {
             _logger.LogInformation("Starting scrape for all brands");
+
+            // Holy Trinity brands - premium treatment with 5 collections, 12 watches each (60 total)
+            var holyTrinityBrands = new HashSet<string>
+            {
+                "Patek Philippe",
+                "Vacheron Constantin",
+                "Audemars Piguet"
+            };
+
+            // Collections to skip for brands that should have only 3 collections
+            var collectionsToSkip = new HashSet<string>
+            {
+                "Spezialist",           // Glashütte Original (keep 3: Senator, PanoMatic, SeaQ)
+                "QP à Équation",        // Greubel Forsey (keep 3: Double Tourbillon 30°, Tourbillon 24 Secondes, Balancier Convexe)
+                "Reine de Naples",      // Breguet (keep 3: Classique, Marine, Tradition)
+                "Ladybird",             // Blancpain (keep 3: Fifty Fathoms, Villeret, Air Command)
+                "Portofino",            // IWC (keep 3: Portugieser, Pilot's Watches, Ingenieur)
+                "Highlife"              // Frederique Constant (keep 3: Classics, Slimline, Manufacture)
+            };
 
             // Get all brands from database
             var brands = await _context.Brands.ToListAsync();
@@ -138,10 +159,52 @@ public class Chrono24CacheService
             {
                 _logger.LogInformation("Scraping brand: {Brand}", brand.Name);
 
-                // Get collections for this brand
+                // Get collections for this brand (excluding skipped ones)
                 var collections = await _context.Collections
-                    .Where(c => c.BrandId == brand.Id)
+                    .Where(c => c.BrandId == brand.Id && !collectionsToSkip.Contains(c.Name))
                     .ToListAsync();
+
+                if (!collections.Any())
+                {
+                    _logger.LogWarning("No collections found for brand {Brand}", brand.Name);
+                    continue;
+                }
+
+                // Determine watches per collection based on brand tier
+                int collectionCount = collections.Count;
+                int watchesPerCollection;
+                int targetWatches;
+
+                if (holyTrinityBrands.Contains(brand.Name))
+                {
+                    // Holy Trinity: 5 collections × 12 watches = 60 total
+                    // If they have more than 5 collections, limit to 5
+                    if (collectionCount > 5)
+                    {
+                        collections = collections.Take(5).ToList();
+                        collectionCount = 5;
+                    }
+                    watchesPerCollection = 12;
+                    targetWatches = collectionCount * 12;
+                    _logger.LogInformation("Holy Trinity brand {Brand}: {Count} collections × 12 watches = {Total} watches",
+                        brand.Name, collectionCount, targetWatches);
+                }
+                else
+                {
+                    // Other brands: fewer watches distributed across collections
+                    // Target ~20-25 watches for most brands
+                    targetWatches = 20;
+                    watchesPerCollection = targetWatches / collectionCount;
+
+                    // Ensure at least 5 watches per collection
+                    if (watchesPerCollection < 5)
+                    {
+                        watchesPerCollection = 5;
+                    }
+
+                    _logger.LogInformation("Brand {Brand}: {Count} collections × ~{Watches} watches = ~{Total} watches",
+                        brand.Name, collectionCount, watchesPerCollection, collectionCount * watchesPerCollection);
+                }
 
                 // Scrape each collection
                 foreach (var collection in collections)
@@ -151,7 +214,7 @@ public class Chrono24CacheService
                         var (success, message, watchesAdded) = await ScrapeAndCacheCollectionAsync(
                             brand.Name,
                             collection.Name,
-                            maxWatchesPerCollection);
+                            watchesPerCollection);
 
                         if (success)
                         {
@@ -211,6 +274,54 @@ public class Chrono24CacheService
             TotalCollections = totalCollections,
             WatchesByBrand = watchesByBrand
         };
+    }
+
+    /// <summary>
+    /// Clears all watches from database except the 9 showcase watches from CSV
+    /// Showcase watch IDs: 2, 4, 11, 13, 18, 24, 28, 30, 35
+    /// </summary>
+    public async Task<(bool success, string message, int deletedCount)> ClearAllWatchesAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Clearing all watches except showcase watches");
+
+            // IDs of the 9 showcase watches to keep (from DbInitializer)
+            var showcaseWatchIds = new HashSet<int> { 2, 4, 11, 13, 18, 24, 28, 30, 35 };
+
+            // Get all watches that are NOT showcase watches
+            var watchesToDelete = await _context.Watches
+                .Where(w => !showcaseWatchIds.Contains(w.Id))
+                .ToListAsync();
+
+            int deletedCount = watchesToDelete.Count;
+
+            if (deletedCount == 0)
+            {
+                return (true, "No watches to delete. Database already clean.", 0);
+            }
+
+            // Delete all price trends for these watches first (foreign key constraint)
+            var watchIdsToDelete = watchesToDelete.Select(w => w.Id).ToList();
+            var priceTrendsToDelete = await _context.PriceTrends
+                .Where(pt => watchIdsToDelete.Contains(pt.WatchId))
+                .ToListAsync();
+
+            _context.PriceTrends.RemoveRange(priceTrendsToDelete);
+            _context.Watches.RemoveRange(watchesToDelete);
+
+            await _context.SaveChangesAsync();
+
+            var successMessage = $"Successfully deleted {deletedCount} watches. Kept 9 showcase watches.";
+            _logger.LogInformation(successMessage);
+            return (true, successMessage, deletedCount);
+        }
+        catch (Exception ex)
+        {
+            var errorMessage = $"Error clearing watches: {ex.Message}";
+            _logger.LogError(ex, errorMessage);
+            return (false, errorMessage, 0);
+        }
     }
 
     #region Private Helper Methods

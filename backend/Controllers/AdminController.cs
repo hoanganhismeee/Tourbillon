@@ -148,19 +148,21 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Scrapes watches for ALL brands and collections from the database
+    /// Scrapes watches for ALL brands from the database
+    /// Holy Trinity (Patek Philippe, Vacheron Constantin, Audemars Piguet): 5 collections × 12 watches = 60 each
+    /// Other brands: 3-4 collections × ~5-7 watches = ~20-25 each
     /// This will take a long time - use with caution!
-    /// POST: api/admin/scrape-all?maxWatchesPerCollection=40
+    /// POST: api/admin/scrape-all
     /// </summary>
     [HttpPost("scrape-all")]
     public async Task<IActionResult> ScrapeAllBrands(
-        [FromQuery] int maxWatchesPerCollection = 40)
+        [FromQuery] int maxWatchesPerBrand = 30)
     {
-        _logger.LogInformation("Starting bulk scrape for all brands (max {Max} per collection)",
-            maxWatchesPerCollection);
+        _logger.LogInformation("Starting bulk scrape for all brands (max {Max} watches per brand)",
+            maxWatchesPerBrand);
 
         var (success, message, watchesAdded) = await _cacheService.ScrapeAllBrandsAsync(
-            maxWatchesPerCollection);
+            maxWatchesPerBrand);
 
         if (success)
         {
@@ -194,5 +196,37 @@ public class AdminController : ControllerBase
         var stats = await _cacheService.GetScrapeStatsAsync();
 
         return Ok(stats);
+    }
+
+    /// <summary>
+    /// Clears all watches from database except the 9 showcase watches
+    /// Use this to reset before scraping fresh data
+    /// DELETE: api/admin/clear-watches
+    /// </summary>
+    [HttpDelete("clear-watches")]
+    public async Task<IActionResult> ClearWatches()
+    {
+        _logger.LogInformation("Clearing all watches except showcase watches");
+
+        var (success, message, deletedCount) = await _cacheService.ClearAllWatchesAsync();
+
+        if (success)
+        {
+            return Ok(new
+            {
+                Success = true,
+                Message = message,
+                WatchesDeleted = deletedCount,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
+        return BadRequest(new
+        {
+            Success = false,
+            Message = message,
+            WatchesDeleted = deletedCount,
+            Timestamp = DateTime.UtcNow
+        });
     }
 }

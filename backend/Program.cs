@@ -52,8 +52,8 @@ builder.Services.Configure<backend.Services.SmtpOptions>(
 builder.Services.AddScoped<backend.Services.IEmailService, backend.Services.EmailService>();
 builder.Services.AddScoped<backend.Services.IPasswordResetService, backend.Services.PasswordResetService>();
 
-// Register Chrono24 scraper services
-builder.Services.AddHttpClient<IChrono24ScraperService, Chrono24ScraperService>();
+// Register Chrono24 scraper services (Selenium-based to bypass anti-bot protection)
+builder.Services.AddScoped<IChrono24ScraperService, Chrono24SeleniumScraperService>();
 builder.Services.AddScoped<Chrono24CacheService>();
 
 // Configures the application's cookie for handling authentication sessions.
