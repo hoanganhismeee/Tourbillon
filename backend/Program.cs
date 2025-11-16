@@ -52,10 +52,6 @@ builder.Services.Configure<backend.Services.SmtpOptions>(
 builder.Services.AddScoped<backend.Services.IEmailService, backend.Services.EmailService>();
 builder.Services.AddScoped<backend.Services.IPasswordResetService, backend.Services.PasswordResetService>();
 
-// Register Watch API services
-builder.Services.AddHttpClient<IWatchApiService, WatchApiService>();
-builder.Services.AddScoped<WatchApiCacheService>();
-
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
 {
@@ -161,30 +157,6 @@ using (var scope = app.Services.CreateScope())
 
     context.Database.Migrate(); // Apply pending migrations
     DbInitializer.Initialize(context); // Seed initial data (9 Holy Trinity showcase watches)
-
-    // Optional: Sync watches from The Watch API
-    // Uncomment the code below to automatically fetch watches from API on startup
-    // NOTE: This uses your daily API quota. Better to use the manual endpoint: POST /api/admin/sync-watches
-    /*
-    var watchCount = context.Watches.Count();
-    if (watchCount <= 9) // Only sync if we have just the showcase watches
-    {
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogInformation("Syncing watches from API...");
-
-        var cacheService = scope.ServiceProvider.GetRequiredService<WatchApiCacheService>();
-        var (success, message, added) = await cacheService.SyncWatchesFromApiAsync();
-
-        if (success)
-        {
-            logger.LogInformation("API sync successful: {Message}", message);
-        }
-        else
-        {
-            logger.LogWarning("API sync failed: {Message}", message);
-        }
-    }
-    */
 }
 
 app.Run();
