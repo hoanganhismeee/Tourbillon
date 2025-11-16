@@ -52,8 +52,12 @@ builder.Services.Configure<backend.Services.SmtpOptions>(
 builder.Services.AddScoped<backend.Services.IEmailService, backend.Services.EmailService>();
 builder.Services.AddScoped<backend.Services.IPasswordResetService, backend.Services.PasswordResetService>();
 
-// Register Chrono24 scraper services (Selenium-based to bypass anti-bot protection)
-builder.Services.AddScoped<IChrono24ScraperService, Chrono24SeleniumScraperService>();
+// Register currency converter and showcase watch mapping as singletons (stateless, thread-safe)
+builder.Services.AddSingleton<CurrencyConverter>();
+builder.Services.AddSingleton<backend.Configuration.ShowcaseWatchMapping>();
+
+// Register Chrono24 scraper services with HttpClient
+builder.Services.AddHttpClient<IChrono24ScraperService, Chrono24ScraperService>();
 builder.Services.AddScoped<Chrono24CacheService>();
 
 // Configures the application's cookie for handling authentication sessions.

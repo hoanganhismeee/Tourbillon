@@ -13,17 +13,20 @@ public class Chrono24ScraperService : IChrono24ScraperService
     private readonly HttpClient _httpClient;
     private readonly ILogger<Chrono24ScraperService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly CurrencyConverter _currencyConverter;
     private readonly int _requestDelayMs;
     private readonly string _baseUrl;
 
     public Chrono24ScraperService(
         HttpClient httpClient,
         ILogger<Chrono24ScraperService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        CurrencyConverter currencyConverter)
     {
         _httpClient = httpClient;
         _logger = logger;
         _configuration = configuration;
+        _currencyConverter = currencyConverter;
 
         // Configure HttpClient with realistic browser headers
         _httpClient.DefaultRequestHeaders.Add("User-Agent",
@@ -202,7 +205,7 @@ public class Chrono24ScraperService : IChrono24ScraperService
     private string BuildSearchUrl(string searchQuery)
     {
         var encodedQuery = HttpUtility.UrlEncode(searchQuery);
-        return $"{_baseUrl}/search/index.htm?query={encodedQuery}&dosearch=true&searchexplain=1&resultview=block";
+        return $"{_baseUrl}/search/index.htm?query={encodedQuery}&dosearch=true&usedOrNew=new&searchexplain=1&resultview=block";
     }
 
     private string BuildBrandUrl(string brandName)
@@ -213,7 +216,7 @@ public class Chrono24ScraperService : IChrono24ScraperService
             .Replace(".", "")
             .Replace("&", "and");
 
-        return $"{_baseUrl}/{normalizedBrand}/index.htm";
+        return $"{_baseUrl}/{normalizedBrand}/index.htm?dosearch=true&usedOrNew=new";
     }
 
     private async Task<string> FetchPageWithDelay(string url)
@@ -323,9 +326,12 @@ public class Chrono24ScraperService : IChrono24ScraperService
             // Combine model name and description for the watch name
             var name = !string.IsNullOrEmpty(fullDescription) ? fullDescription : modelName;
 
-            // Extract price (in the div with align-content-end)
+            // Extract price (in the div with align-content-end) and convert to AUD
             var priceNode = node.SelectSingleNode(".//div[contains(@class, 'align-content-end')]//p[contains(@class, 'text-bold')]");
-            var price = priceNode?.InnerText?.Trim() ?? "Price on request";
+            var priceString = priceNode?.InnerText?.Trim() ?? "Price on request";
+            
+            // Convert price to AUD
+            var price = ConvertPriceToAUD(priceString);
 
             // Extract image URL (first img tag with alt attribute)
             var imageNode = node.SelectSingleNode(".//img[@alt]");
@@ -398,6 +404,27 @@ public class Chrono24ScraperService : IChrono24ScraperService
         text = HttpUtility.HtmlDecode(text);
         text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");
         return text.Trim();
+    }
+
+    private string ConvertPriceToAUD(string priceString)
+    {
+        if (string.IsNullOrEmpty(priceString) ||
+            priceString.ToLower().Contains("request") ||
+            priceString.ToLower().Contains("contact"))
+        {
+            return "Price on request";
+        }
+
+        // Parse and convert price to AUD
+        decimal audPrice = _currencyConverter.ParseAndConvertToAUD(priceString);
+        
+        if (audPrice <= 0)
+        {
+            return "Price on request";
+        }
+
+        // Format price in AUD
+        return _currencyConverter.FormatPriceAUD(audPrice);
     }
 
     #endregion
