@@ -1,7 +1,14 @@
 # Tourbillon Web Scraping Guide
 
 ## Overview
-This guide provides step-by-step instructions for scraping watch data from Chrono24 for the Tourbillon e-commerce platform. All watches are scraped as **new/unworn** condition only.
+This guide provides step-by-step instructions for scraping watch data directly from **official luxury watch brand websites** (Patek Philippe, Vacheron Constantin, Audemars Piguet, etc.) for the Tourbillon e-commerce platform.
+
+## Why Official Brand Websites?
+✅ **Professional images** - High-quality Cloudinary CDN images
+✅ **Accurate data** - Direct from manufacturer, no duplicates
+✅ **Price on request** - Luxury aesthetic for haute horlogerie
+✅ **Comprehensive specs** - Dial, Case, Strap, Movement details in structured JSON
+✅ **No duplicates** - Clean reference number matching
 
 ## 🎯 **SHOWCASE WATCH IMAGE PRESERVATION**
 
@@ -31,74 +38,449 @@ These watches are seeded from CSV with curated images that will be **automatical
 
 **Example:**
 - CSV has: `"5227G-010 Automatic Date"` with image `PP5227G.png`
-- Chrono24 scrapes: `"Patek Philippe Calatrava 5227G-010 Full Set"`
-- System extracts `5227G` from both → **Match found** → Price updates, image preserved ✅
-
-## Important Notes
-- **Delays**: Wait 30-60 seconds between requests to avoid detection
-- **Manual Execution**: Scrape one brand at a time to appear less suspicious
-- **Currency**: All prices are automatically converted to AUD
-- **Condition Filter**: Only new/unworn watches are scraped (filter applied automatically)
-
-## Product Distribution Strategy
-
-### Holy Trinity Brands (35 products each)
-- **Patek Philippe** - 4 collections
-- **Vacheron Constantin** - 5 collections  
-- **Audemars Piguet** - 3 collections
-
-### Premium Brands (25 products each)
-- **F.P. Journe** - 3 collections
-- **Greubel Forsey** - 3 collections
-- **Breguet** - 3 collections
-- **Blancpain** - 3 collections
-- **IWC Schaffhausen** - 3 collections
-- **Frederique Constant** - 3 collections
-
-### Other Brands (25-35 products each)
-- **Jaeger-LeCoultre** - 4 collections
-- **A. Lange & Söhne** - 4 collections
-- **Glashütte Original** - 3 collections
-- **Rolex** - 4 collections
-- **Omega** - 3 collections
-- **Grand Seiko** - 3 collections
+- Official website scrapes: `"5227G-010"` (reference number only)
+- System extracts `5227G` from both → **Match found** → Price/specs update, image preserved ✅
 
 ---
 
-## Scraping Workflow
+## 🏗️ **SCRAPING ARCHITECTURE**
 
-### Step 1: Start with Patek Philippe (Holy Trinity)
+### **Universal BrandScraperService**
+
+The scraper uses a **single universal service** (`BrandScraperService.cs`) for all 15 brands. Each brand has a configuration defining its specific XPath selectors and collection URLs.
+
+**Key Files:**
+- `Services/BrandScraperService.cs` - Universal scraper (one service for all brands)
+- `Models/BrandScraperConfig.cs` - Brand-specific XPath configurations
+- `Models/WatchSpecs.cs` - Structured JSON specs (Dial, Case, Strap, Movement)
+- `Services/Chrono24CacheService.cs` - Database operations (with showcase preservation)
+
+### **How the Scraper Works**
+
+**Step 1: Product Card Scraping**
+- Fetches collection listing page (e.g., `patek.com/en/collection/calatrava/all-watches`)
+- Extracts: reference number, collection name, material, image URL, detail page link
+
+**Step 2: Detail Page Scraping**
+- Visits each watch's detail page
+- Extracts:
+  - **Price** (converted to AUD `$XX,XXX.00` format or "Price on request")
+  - **Comprehensive specs**:
+    - Dial: description, color, markers, hands
+    - Case: material, diameter, thickness, water resistance, crystal
+    - Strap: material, color, buckle
+    - Movement: caliber, type, complications, diameter, thickness, parts, jewels, power reserve, rotor, frequency, balance spring, hallmark
+  - **High-resolution images** from Cloudinary CDN (highest quality from srcset)
+
+**Step 3: Database Storage**
+- **Watch.Name** = Reference number only (e.g., "5227G-010")
+- **Watch.BrandId** / **Watch.CollectionId** = Separate fields
+- **Watch.Specs** = Structured JSON (see WatchSpecs model)
+- **Watch.Image** = Cloudinary URL (preserved for showcase watches)
+- **Watch.CurrentPrice** = "$XX,XXX.00" or "Price on request"
+
+**Step 4: Duplicate Prevention**
+- Base reference matching: "5227G" matches "5227G-010"
+- If showcase watch found: Updates price/specs, **PRESERVES image**
+- If duplicate found: Skips (logs warning)
+- If new watch: Creates with all data
+
+---
+
+## 🔌 **SCRAPING ENDPOINT**
+
+### **API Endpoint**
+```
+POST /api/admin/scrape-brand-official?brand={brandName}&collection={collectionName}&maxWatches={number}
+```
+
+### **Parameters**
+- `brand` - Brand name (must match database exactly, e.g., "Patek Philippe")
+- `collection` - Collection name (must match database, e.g., "Calatrava")
+- `maxWatches` - Maximum watches to scrape (default: 50)
+
+### **Example Usage**
+```bash
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Calatrava&maxWatches=10"
+```
+
+### **Response**
+```json
+{
+  "Success": true,
+  "Message": "Successfully cached 8 out of 10 watches",
+  "Brand": "Patek Philippe",
+  "Collection": "Calatrava",
+  "WatchesScraped": 10,
+  "WatchesAdded": 8,
+  "Timestamp": "2025-11-16T23:30:00Z"
+}
+```
+
+**Notes:**
+- `WatchesScraped` = Total watches fetched from website
+- `WatchesAdded` = New watches added (excludes duplicates and showcase watch updates)
+
+---
+
+## 📊 **STRUCTURED WATCH SPECIFICATIONS**
+
+Watches store comprehensive specs as structured JSON in the `Watch.Specs` field:
+
+```json
+{
+  "dial": {
+    "description": "Lacquered black, white gold applied faceted trapeze-style hour markers",
+    "color": "Black",
+    "markers": "White gold faceted trapeze-style",
+    "hands": "White gold faceted dauphine-style"
+  },
+  "case": {
+    "material": "White gold",
+    "diameter": "39 mm",
+    "thickness": "9.24 mm",
+    "waterResistance": "30m",
+    "crystal": "Sapphire",
+    "caseBack": "Sapphire crystal case back protected by dust cover"
+  },
+  "strap": {
+    "material": "Alligator leather with square scales",
+    "color": "Shiny black",
+    "buckle": "White gold prong buckle"
+  },
+  "movement": {
+    "caliber": "26-330 S C",
+    "type": "Automatic (Self-winding)",
+    "complications": ["Date in an aperture", "Sweep seconds"],
+    "diameter": "27 mm",
+    "thickness": "3.32 mm",
+    "parts": 212,
+    "jewels": 30,
+    "powerReserve": "35-45 hours",
+    "rotor": "21K gold central rotor",
+    "frequency": "28,800 semi-oscillations/hour (4 Hz)",
+    "balanceSpring": "Spiromax®",
+    "hallmark": "Patek Philippe Seal"
+  }
+}
+```
+
+**Note:** If a brand's website doesn't list certain fields, they are left blank/null.
+
+---
+
+## 📝 **IMPORTANT NOTES**
+- **Delays**: Wait 30 seconds between collections to avoid rate limiting
+- **Sequential Execution**: Scrape one collection at a time
+- **Currency**: All prices converted to AUD (format: `$XX,XXX.00`)
+- **Watch Naming**: Reference number only (e.g., "5227G-010", not "Patek Philippe Calatrava 5227G-010")
+- **Images**: Cloudinary URLs stored directly (no local download except showcase watches)
+
+## 📦 **PRODUCT DISTRIBUTION STRATEGY**
+
+### Holy Trinity Brands (35 products each)
+- **Patek Philippe** - 4 collections (Calatrava, Nautilus, Aquanaut, Grand Complications)
+- **Vacheron Constantin** - 5 collections (Patrimony, Overseas, Historiques, Métiers d'Art, Les Cabinotiers)
+- **Audemars Piguet** - 3 collections (Royal Oak, Royal Oak Offshore, Royal Oak Concept)
+
+### Premium Brands (25 products each)
+- **F.P.Journe** - 3 collections (Chronomètre Souverain, Octa, Tourbillon Souverain)
+- **Greubel Forsey** - 4 collections (Double Tourbillon 30°, Tourbillon 24 Secondes, Balancier Convexe, QP à Équation)
+- **Breguet** - 4 collections (Classique, Marine, Tradition, Reine de Naples)
+- **Blancpain** - 4 collections (Fifty Fathoms, Villeret, Air Command, Ladybird)
+- **IWC Schaffhausen** - 4 collections (Portugieser, Pilot's Watches, Ingenieur, Portofino)
+- **Frederique Constant** - 4 collections (Classics, Slimline, Manufacture, Highlife)
+
+### Other Brands (25-35 products each)
+- **Jaeger-LeCoultre** - 4 collections (Reverso, Master Ultra Thin, Polaris, Duomètre)
+- **A. Lange & Söhne** - 4 collections (Lange 1, Zeitwerk, Datograph, Saxonia)
+- **Glashütte Original** - 4 collections (Senator, PanoMatic, SeaQ, Spezialist)
+- **Rolex** - 5 collections (Submariner, Daytona, Datejust, GMT-Master II, Day-Date)
+- **Omega** - 4 collections (Speedmaster, Seamaster, Constellation, De Ville)
+- **Grand Seiko** - 4 collections (Heritage Collection, Evolution 9, Elegance Collection, Sport Collection)
+
+---
+
+## 🚀 **SCRAPING WORKFLOW**
+
+### 🔧 **CONFIGURED BRAND: Patek Philippe** (Ready to scrape)
 
 **Target: 35 watches across 4 collections (~9 per collection)**
 
-#### Collection 1: Calatrava (9 watches)
+#### Collection 1: Calatrava (~9 watches)
 ```bash
-curl -X POST "http://localhost:5248/api/admin/scrape-collection?brand=Patek%20Philippe&collection=Calatrava&maxWatches=9"
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Calatrava&maxWatches=9"
 ```
-*Wait 30-60 seconds*
+*Wait 30 seconds*
 
-#### Collection 2: Nautilus (9 watches)
+#### Collection 2: Nautilus (~9 watches)
 ```bash
-curl -X POST "http://localhost:5248/api/admin/scrape-collection?brand=Patek%20Philippe&collection=Nautilus&maxWatches=9"
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Nautilus&maxWatches=9"
 ```
-*Wait 30-60 seconds*
+*Wait 30 seconds*
 
-#### Collection 3: Aquanaut (9 watches)
+#### Collection 3: Aquanaut (~9 watches)
 ```bash
-curl -X POST "http://localhost:5248/api/admin/scrape-collection?brand=Patek%20Philippe&collection=Aquanaut&maxWatches=9"
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Aquanaut&maxWatches=9"
 ```
-*Wait 30-60 seconds*
+*Wait 30 seconds*
 
-#### Collection 4: Grand Complications (8 watches)
+#### Collection 4: Grand Complications (~8 watches)
 ```bash
-curl -X POST "http://localhost:5248/api/admin/scrape-collection?brand=Patek%20Philippe&collection=Grand%20Complications&maxWatches=8"
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Grand%20Complications&maxWatches=8"
 ```
 
 **Total: ~35 watches for Patek Philippe**
 
 ---
 
-### Step 2: Vacheron Constantin (Holy Trinity)
+### ⚙️ **UNCONFIGURED BRANDS** (Require configuration first)
+
+The following 14 brands need their configurations added to `BrandScraperService.InitializeBrandConfigs()` before scraping:
+
+1. **Vacheron Constantin** (Holy Trinity - 35 watches)
+2. **Audemars Piguet** (Holy Trinity - 35 watches)
+3. **Jaeger-LeCoultre** (30 watches)
+4. **A. Lange & Söhne** (30 watches)
+5. **Glashütte Original** (30 watches)
+6. **F.P.Journe** (25 watches)
+7. **Greubel Forsey** (25 watches)
+8. **Rolex** (30 watches)
+9. **Breguet** (25 watches)
+10. **Blancpain** (25 watches)
+11. **Omega** (30 watches)
+12. **Grand Seiko** (30 watches)
+13. **IWC Schaffhausen** (25 watches)
+14. **Frederique Constant** (25 watches)
+
+---
+
+## 🛠️ **ADDING NEW BRANDS**
+
+To add a new brand configuration (e.g., Vacheron Constantin):
+
+### Step 1: Inspect HTML Elements
+
+Visit the brand's official website and inspect the HTML:
+
+**Product Listing Page:**
+- Find the product card container selector
+- Locate reference number, collection name, material text
+- Find image element and detail page link
+
+**Detail Page:**
+- Locate price element
+- Find specs sections: Dial, Case, Strap, Movement
+- Note any special accordion/tab structures
+
+### Step 2: Add Configuration to BrandScraperService
+
+Edit `backend/Services/BrandScraperService.cs` in the `InitializeBrandConfigs()` method:
+
+```csharp
+_brandConfigs["Vacheron Constantin"] = new BrandScraperConfig
+{
+    BrandName = "Vacheron Constantin",
+    BaseUrl = "https://www.vacheron-constantin.com",
+    CollectionUrls = new Dictionary<string, string>
+    {
+        { "Patrimony", "/au/en/watches/all-collections/patrimony.html" },
+        { "Overseas", "/au/en/watches/all-collections/overseas.html" },
+        { "Historiques", "/au/en/watches/all-collections/historiques.html" },
+        { "Métiers d'Art", "/au/en/watches/all-collections/metiers-dart.html" },
+        { "Les Cabinotiers", "/au/en/watches/all-collections/les-cabinotiers.html" }
+    },
+    ProductCard = new ProductCardSelectors
+    {
+        CardContainer = "a[class*='product-card']",
+        ReferenceNumber = "h2[class*='ref']",
+        CollectionName = "h3[class*='collection']",
+        CaseMaterial = "p[class*='material']",
+        Image = "img[class*='product-image']",
+        DetailPageLink = "" // Card itself is link
+    },
+    DetailPage = new DetailPageSelectors
+    {
+        Price = "div[class*='price'] p",
+        ReferenceNumber = "h2[class*='title']",
+        CollectionName = "h3[class*='subtitle']",
+        DialSpecs = "div[data-section='dial']",
+        CaseSpecs = "div[data-section='case']",
+        StrapSpecs = "div[data-section='strap']",
+        MovementSpecs = "div[data-section='movement']"
+    },
+    RequiresJavaScript = true, // If site uses React/Vue
+    Currency = "AUD",
+    RequestDelayMs = 2000
+};
+```
+
+### Step 3: Test the Configuration
+
+```bash
+# Test with just 1-2 watches first
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Vacheron%20Constantin&collection=Overseas&maxWatches=2"
+```
+
+### Step 4: Verify Results
+
+Check the response JSON and database to ensure:
+- ✅ Reference numbers extracted correctly
+- ✅ Prices formatted correctly ($XX,XXX.00 or "Price on request")
+- ✅ Specs JSON populated with available fields
+- ✅ Images are Cloudinary URLs
+- ✅ No duplicates created
+
+### Step 5: Scale Up
+
+Once verified, scrape all collections for the brand:
+
+```bash
+# Vacheron Constantin - Patrimony (~7 watches)
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Vacheron%20Constantin&collection=Patrimony&maxWatches=7"
+```
+
+---
+
+## ✅ **VERIFICATION & TROUBLESHOOTING**
+
+### Check Scraping Stats
+
+```bash
+curl -X GET "http://localhost:5248/api/admin/scrape-stats"
+```
+
+**Expected Response:**
+```json
+{
+  "totalWatches": 44,
+  "watchesByBrand": [
+    {"brand": "Patek Philippe", "count": 35},
+    {"brand": "Vacheron Constantin", "count": 3},
+    {"brand": "Audemars Piguet", "count": 3}
+  ]
+}
+```
+
+### Clear Database (if needed)
+
+To remove all **scraped** watches (preserves the 9 showcase watches):
+
+```bash
+curl -X DELETE "http://localhost:5248/api/admin/clear-watches"
+```
+
+**Note**: Showcase watches (IDs 2, 4, 11, 13, 18, 24, 28, 30, 35) are always preserved with their curated images.
+
+### Verify Showcase Watch Preservation
+
+After scraping, check backend logs for:
+```
+Matched by reference number: 5227G - Existing: 5227G-010 Automatic Date, Scraped: 5227G-010
+Preserved curated image for showcase watch ID 2 (image: PP5227G.png)
+```
+
+This confirms curated images are being preserved! ✅
+
+### Expected Totals
+
+- **Total watches**: ~440-450 watches (including 9 showcase)
+- **Holy Trinity**: 105 watches (35 each × 3 brands)
+- **Premium brands**: 150 watches (25 each × 6 brands)
+- **Other brands**: ~185-195 watches
+
+---
+
+## 🚨 **TROUBLESHOOTING**
+
+### If scraping fails:
+1. Check if brand website is accessible
+2. Verify brand/collection names match database exactly (case-sensitive)
+3. Inspect HTML structure hasn't changed (XPath selectors may need updating)
+4. Check backend logs for detailed error messages
+5. Ensure backend was restarted after code changes
+
+### If prices seem wrong:
+- All prices are automatically converted to AUD with `.00` format
+- Exchange rates are hardcoded in `CurrencyConverter.cs`
+- "Price on request" is used when price element is missing or says "contact"
+
+### If showcase images aren't preserved:
+1. Check backend logs for "Matched by reference number" messages
+2. Verify the 9 showcase watches seeded correctly (IDs 2, 4, 11, 13, 18, 24, 28, 30, 35)
+3. Make sure reference numbers in CSV match scraped data (e.g., `5227G`, `5811/1G`)
+4. The system matches by extracting reference numbers - watch names don't need to match exactly
+
+### If duplicate watches appear:
+- The system uses base reference matching: "5227G" matches "5227G-010"
+- If duplicates occur, check `ExtractBaseReference()` in `Chrono24CacheService.cs`
+- Verify watch names from scraper contain clear reference numbers
+
+### If specs are missing:
+- Check that detail page XPath selectors are correct
+- Some brands may not provide all spec fields - blank fields are normal
+- Verify specs are being parsed correctly in `ExtractSpecs()` method
+
+---
+
+## 📚 **INITIAL SETUP** (First Time Only)
+
+Before scraping, ensure the database is properly seeded:
+
+1. **Start the backend** (auto-seeds brands, collections, and 9 showcase watches):
+```bash
+cd backend
+dotnet run
+```
+
+2. **Verify showcase watches loaded**:
+```bash
+curl -X GET "http://localhost:5248/api/admin/scrape-stats"
+```
+
+You should see:
+```json
+{
+  "totalWatches": 9,
+  "watchesByBrand": [
+    {"brand": "Patek Philippe", "count": 3},
+    {"brand": "Vacheron Constantin", "count": 3},
+    {"brand": "Audemars Piguet", "count": 3}
+  ]
+}
+```
+
+✅ **If you see 9 watches (3 per brand), you're ready to start scraping!**
+
+---
+
+## 🎯 **SUMMARY**
+
+**Current Status:**
+- ✅ Patek Philippe - CONFIGURED (ready to scrape)
+- ⚙️ 14 brands - NEED CONFIGURATION (send HTML elements to add)
+
+**Next Steps:**
+1. Scrape Patek Philippe collections (4 collections, ~35 watches)
+2. Send HTML elements for Vacheron Constantin
+3. Add VC configuration and test
+4. Repeat for remaining 13 brands
+
+**For Future Sessions:**
+- Reference this guide with `@backend/SCRAPING_GUIDE.md`
+- All scraper architecture and patterns are documented above
+- Just provide HTML elements, update configurations, and scrape!
+
+---
+
+### 📝 **OLD WORKFLOW (DEPRECATED - DO NOT USE)**
+
+The following sections document the legacy Chrono24 scraping workflow. **This is no longer used.** All scraping is now done from official brand websites.
+
+<details>
+<summary>Click to view old Chrono24 workflow (deprecated)</summary>
+
+### Step 2: Vacheron Constantin (Holy Trinity - DEPRECATED)
 
 **Target: 35 watches across 5 collections (~7 per collection)**
 

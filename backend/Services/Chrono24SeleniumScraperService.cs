@@ -358,8 +358,8 @@ public class Chrono24SeleniumScraperService : IChrono24ScraperService, IDisposab
             var descriptionNode = node.SelectSingleNode(".//p[contains(@class, 'text-ellipsis') and contains(@class, 'text-md')]");
             var fullDescription = descriptionNode?.InnerText?.Trim() ?? string.Empty;
 
-            // Combine model name and description for the watch name
-            var name = !string.IsNullOrEmpty(fullDescription) ? fullDescription : modelName;
+            // Use model name as the watch name for better duplicate detection
+            var name = modelName;
 
             // Extract price (in the div with align-content-end) and convert to AUD
             var priceNode = node.SelectSingleNode(".//div[contains(@class, 'align-content-end')]//p[contains(@class, 'text-bold')]");
@@ -383,18 +383,6 @@ public class Chrono24SeleniumScraperService : IChrono24ScraperService, IDisposab
                 }
             }
 
-            // Extract reference number from the description
-            string? referenceNumber = null;
-            if (!string.IsNullOrEmpty(fullDescription))
-            {
-                var refMatch = System.Text.RegularExpressions.Regex.Match(
-                    fullDescription, @"\b(\d{4,6}[A-Z]*)\b");
-                if (refMatch.Success)
-                {
-                    referenceNumber = refMatch.Groups[1].Value;
-                }
-            }
-
             // Extract source URL (link to detail page)
             var linkNode = node.SelectSingleNode(".//a[contains(@class, 'wt-listing-item-link')]");
             var sourceUrl = linkNode?.GetAttributeValue("href", string.Empty);
@@ -403,10 +391,49 @@ public class Chrono24SeleniumScraperService : IChrono24ScraperService, IDisposab
                 sourceUrl = _baseUrl + sourceUrl;
             }
 
+            // Extract reference number using multiple strategies (fastest to slowest)
+            string? referenceNumber = null;
+
+            // Strategy 1: Extract from URL (fastest, most reliable)
+            // URLs like: /patekphilippe/ref-5227g010.htm or /watch/patek-philippe-5212a-001.htm
+            if (!string.IsNullOrEmpty(sourceUrl))
+            {
+                referenceNumber = ExtractReferenceFromUrl(sourceUrl);
+                if (!string.IsNullOrEmpty(referenceNumber))
+                {
+                    _logger.LogDebug("Extracted reference from URL: {Ref}", referenceNumber);
+                }
+            }
+
+            // Strategy 2: Extract from full description (next best option)
+            if (string.IsNullOrEmpty(referenceNumber) && !string.IsNullOrEmpty(fullDescription))
+            {
+                referenceNumber = ExtractReferenceNumber(fullDescription);
+                if (!string.IsNullOrEmpty(referenceNumber))
+                {
+                    _logger.LogDebug("Extracted reference from description: {Ref}", referenceNumber);
+                }
+            }
+
+            // Strategy 3: Extract from model name
+            if (string.IsNullOrEmpty(referenceNumber))
+            {
+                referenceNumber = ExtractReferenceNumber(modelName);
+                if (!string.IsNullOrEmpty(referenceNumber))
+                {
+                    _logger.LogDebug("Extracted reference from model name: {Ref}", referenceNumber);
+                }
+            }
+
+            // Use reference number as name if available, otherwise use full description as fallback
+            var watchName = !string.IsNullOrEmpty(referenceNumber)
+                ? referenceNumber
+                : (!string.IsNullOrEmpty(fullDescription) ? fullDescription : modelName);
+
             // Create the DTO
             var watch = new ScrapedWatchDto
             {
-                Name = CleanText(name),
+                Name = CleanText(watchName),  // Reference number for best matching
                 BrandName = brandName,
                 CollectionName = collectionName,
                 CurrentPrice = CleanText(price),
@@ -414,8 +441,8 @@ public class Chrono24SeleniumScraperService : IChrono24ScraperService, IDisposab
                 ReferenceNumber = referenceNumber,
                 SourceUrl = sourceUrl,
                 Description = !string.IsNullOrEmpty(fullDescription)
-                    ? CleanText(fullDescription)
-                    : $"Luxury {modelName} timepiece from {brandName}",
+                    ? CleanText(fullDescription)  // Full description goes here
+                    : $"{modelName} - Luxury timepiece from {brandName}",
                 Specs = "Movement: Automatic; Case: Stainless Steel; Water Resistance: 100m"
             };
 
@@ -437,6 +464,100 @@ public class Chrono24SeleniumScraperService : IChrono24ScraperService, IDisposab
         text = HttpUtility.HtmlDecode(text);
         text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");
         return text.Trim();
+    }
+
+    private string ExtractReferenceNumber(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return string.Empty;
+
+        // Enhanced patterns for luxury watch reference numbers
+        var patterns = new[]
+        {
+            @"\b(\d{4,5}[A-Z]{0,2}[-/\.]\d{3}[A-Z]?)\b",  // 5227G-010, 5811/1G-001, 5212A-001
+            @"\b(\d{4,5}[A-Z]{1,2})\b",                    // 5303R, 16202ST, 6119G
+            @"\b([A-Z]{2}\d{4,5}[A-Z]?)\b",                // VC43175, AP16202
+            @"\b(\d{5})\b"                                  // Generic 5-digit ref
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(text, pattern);
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private string ExtractReferenceFromUrl(string url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return string.Empty;
+
+        try
+        {
+            // Chrono24 URLs often contain reference numbers in these formats:
+            // /patekphilippe/ref-5227g010.htm
+            // /watch/patek-philippe-5212a-001.htm
+            // /patekphilippe/calatrava-5227g-010.htm
+
+            // Extract the path part from URL
+            var uri = new Uri(url, UriKind.RelativeOrAbsolute);
+            var path = uri.IsAbsoluteUri ? uri.AbsolutePath : url;
+
+            // Remove .htm/.html extension
+            path = System.Text.RegularExpressions.Regex.Replace(path, @"\.(htm|html)$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            // Try patterns in order of specificity
+            var urlPatterns = new[]
+            {
+                @"/ref-(\d{4,5}[a-z]{0,2}[-/]?\d{0,3}[a-z]?)",     // /ref-5227g010 or /ref-5227g-010
+                @"[-/](\d{4,5}[a-z]{0,2}[-/]\d{3}[a-z]?)",         // -5227g-010 or /5212a-001
+                @"[-/](\d{4,5}[a-z]{1,2})(?:[-/]|$)",              // -5303r or /16202st
+            };
+
+            foreach (var pattern in urlPatterns)
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(path, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    // Normalize the extracted reference (e.g., "5227g010" -> "5227G-010")
+                    var rawRef = match.Groups[1].Value;
+                    return NormalizeReference(rawRef);
+                }
+            }
+
+            return string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error extracting reference from URL: {Url}", url);
+            return string.Empty;
+        }
+    }
+
+    private string NormalizeReference(string reference)
+    {
+        if (string.IsNullOrEmpty(reference))
+            return string.Empty;
+
+        // Convert to uppercase
+        reference = reference.ToUpper();
+
+        // Add hyphen if it's missing (e.g., "5227G010" -> "5227G-010")
+        // Pattern: 4-5 digits, 1-2 letters, then 3 digits
+        var normalizeMatch = System.Text.RegularExpressions.Regex.Match(
+            reference, @"^(\d{4,5}[A-Z]{1,2})(\d{3}[A-Z]?)$");
+
+        if (normalizeMatch.Success)
+        {
+            return $"{normalizeMatch.Groups[1].Value}-{normalizeMatch.Groups[2].Value}";
+        }
+
+        return reference;
     }
 
     private string ConvertPriceToAUD(string priceString)

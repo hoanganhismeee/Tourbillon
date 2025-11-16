@@ -59,6 +59,9 @@ builder.Services.AddSingleton<CurrencyConverter>();
 builder.Services.AddScoped<IChrono24ScraperService, Chrono24SeleniumScraperService>();
 builder.Services.AddScoped<Chrono24CacheService>();
 
+// Register brand-specific scraper service for official brand websites
+builder.Services.AddScoped<BrandScraperService>();
+
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
 {

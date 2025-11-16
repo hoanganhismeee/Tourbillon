@@ -114,6 +114,45 @@ public class Chrono24CacheService
     }
 
     /// <summary>
+    /// Caches a list of already-scraped watches to the database
+    /// Used by BrandScraperService to save watches from official brand websites
+    /// Includes duplicate checking and showcase watch preservation
+    /// </summary>
+    public async Task<(bool success, string message, int watchesAdded)> CacheScrapedWatchesAsync(
+        List<ScrapedWatchDto> scrapedWatches)
+    {
+        try
+        {
+            if (scrapedWatches == null || !scrapedWatches.Any())
+            {
+                return (false, "No watches provided to cache", 0);
+            }
+
+            _logger.LogInformation("Caching {Count} pre-scraped watches", scrapedWatches.Count);
+
+            // Process and save to database
+            int watchesAdded = 0;
+            foreach (var scrapedWatch in scrapedWatches)
+            {
+                var added = await ProcessScrapedWatchAsync(scrapedWatch);
+                if (added) watchesAdded++;
+            }
+
+            await _context.SaveChangesAsync();
+
+            var successMessage = $"Successfully cached {watchesAdded} out of {scrapedWatches.Count} watches";
+            _logger.LogInformation(successMessage);
+            return (true, successMessage, watchesAdded);
+        }
+        catch (Exception ex)
+        {
+            var errorMessage = $"Error caching watches: {ex.Message}";
+            _logger.LogError(ex, errorMessage);
+            return (false, errorMessage, 0);
+        }
+    }
+
+    /// <summary>
     /// Scrapes watches for all brands from the database
     /// Holy Trinity: 35 products each
     /// Premium brands: 25 products each
@@ -371,24 +410,32 @@ public class Chrono24CacheService
                     w.Name == scrapedWatch.Name &&
                     w.BrandId == brand.Id);
 
-            // If no exact match, try matching by reference number (for showcase watches)
+            // If no exact match, try matching by BASE reference number (for showcase watches)
+            // This allows "5227G" to match "5227G-010 Automatic Date"
             if (existingWatch == null)
             {
                 var refNumber = ExtractReferenceNumber(scrapedWatch.Name);
                 if (!string.IsNullOrEmpty(refNumber))
                 {
-                    // Look for existing watches from same brand that contain this reference number
+                    // Extract BASE reference for comparison (e.g., "5227G" from "5227G-010")
+                    var scrapedBaseRef = ExtractBaseReference(refNumber);
+
+                    // Look for existing watches from same brand that match the base reference
                     var allBrandWatches = await _context.Watches
                         .Where(w => w.BrandId == brand.Id)
                         .ToListAsync();
-                    
-                    existingWatch = allBrandWatches.FirstOrDefault(w => 
-                        ExtractReferenceNumber(w.Name) == refNumber);
-                    
+
+                    existingWatch = allBrandWatches.FirstOrDefault(w =>
+                    {
+                        var existingRef = ExtractReferenceNumber(w.Name);
+                        var existingBaseRef = ExtractBaseReference(existingRef);
+                        return !string.IsNullOrEmpty(existingBaseRef) && existingBaseRef == scrapedBaseRef;
+                    });
+
                     if (existingWatch != null)
                     {
-                        _logger.LogInformation("Matched by reference number: {RefNumber} - Existing: {ExistingName}, Scraped: {ScrapedName}", 
-                            refNumber, existingWatch.Name, scrapedWatch.Name);
+                        _logger.LogInformation("Matched by base reference: {BaseRef} - Existing: {ExistingName} ({ExistingRef}), Scraped: {ScrapedName} ({ScrapedRef})",
+                            scrapedBaseRef, existingWatch.Name, ExtractReferenceNumber(existingWatch.Name), scrapedWatch.Name, refNumber);
                     }
                 }
             }
@@ -560,6 +607,32 @@ public class Chrono24CacheService
         }
 
         return string.Empty;
+    }
+
+    /// <summary>
+    /// Extracts BASE reference number (before variant suffix) for matching
+    /// Examples:
+    ///   "5227G-010" -> "5227G"
+    ///   "5811/1G" -> "5811"
+    ///   "16202ST" -> "16202ST" (no suffix)
+    ///   "5303R" -> "5303R" (no suffix)
+    /// </summary>
+    private string ExtractBaseReference(string referenceNumber)
+    {
+        if (string.IsNullOrEmpty(referenceNumber))
+            return string.Empty;
+
+        // Remove variant suffix after dash or slash
+        // Pattern: Keep only the part before dash/slash
+        var baseMatch = System.Text.RegularExpressions.Regex.Match(
+            referenceNumber, @"^([^-/]+)");
+
+        if (baseMatch.Success)
+        {
+            return baseMatch.Groups[1].Value.ToUpper();
+        }
+
+        return referenceNumber.ToUpper();
     }
 
     #endregion

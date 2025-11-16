@@ -12,15 +12,18 @@ public class AdminController : ControllerBase
 {
     private readonly IChrono24ScraperService _scraperService;
     private readonly Chrono24CacheService _cacheService;
+    private readonly BrandScraperService _brandScraperService;
     private readonly ILogger<AdminController> _logger;
 
     public AdminController(
         IChrono24ScraperService scraperService,
         Chrono24CacheService cacheService,
+        BrandScraperService brandScraperService,
         ILogger<AdminController> logger)
     {
         _scraperService = scraperService;
         _cacheService = cacheService;
+        _brandScraperService = brandScraperService;
         _logger = logger;
     }
 
@@ -196,6 +199,89 @@ public class AdminController : ControllerBase
         var stats = await _cacheService.GetScrapeStatsAsync();
 
         return Ok(stats);
+    }
+
+    /// <summary>
+    /// Scrapes watches from official brand website (Patek Philippe, Vacheron Constantin, etc.)
+    /// POST: api/admin/scrape-brand-official?brand=Patek Philippe&collection=Calatrava&maxWatches=50
+    /// </summary>
+    [HttpPost("scrape-brand-official")]
+    public async Task<IActionResult> ScrapeBrandOfficial(
+        [FromQuery] string brand,
+        [FromQuery] string collection,
+        [FromQuery] int maxWatches = 50)
+    {
+        if (string.IsNullOrEmpty(brand) || string.IsNullOrEmpty(collection))
+        {
+            return BadRequest(new
+            {
+                Success = false,
+                Message = "Brand and collection parameters are required"
+            });
+        }
+
+        _logger.LogInformation("Scraping {Brand} - {Collection} from official website (max {Max} watches)",
+            brand, collection, maxWatches);
+
+        try
+        {
+            // Scrape from brand's official website
+            var scrapedWatches = await _brandScraperService.ScrapeCollectionAsync(
+                brand, collection, maxWatches);
+
+            if (scrapedWatches == null || scrapedWatches.Count == 0)
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    Message = $"No watches found for {brand} - {collection}",
+                    Brand = brand,
+                    Collection = collection,
+                    WatchesScraped = 0,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+
+            // Cache the scraped watches to database (with duplicate checking and showcase watch preservation)
+            var (success, message, watchesAdded) = await _cacheService.CacheScrapedWatchesAsync(scrapedWatches);
+
+            if (success)
+            {
+                return Ok(new
+                {
+                    Success = true,
+                    Message = message,
+                    Brand = brand,
+                    Collection = collection,
+                    WatchesScraped = scrapedWatches.Count,
+                    WatchesAdded = watchesAdded,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+
+            return BadRequest(new
+            {
+                Success = false,
+                Message = message,
+                Brand = brand,
+                Collection = collection,
+                WatchesScraped = scrapedWatches.Count,
+                WatchesAdded = watchesAdded,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error scraping {Brand} - {Collection} from official website", brand, collection);
+            return StatusCode(500, new
+            {
+                Success = false,
+                Message = $"Error scraping: {ex.Message}",
+                Brand = brand,
+                Collection = collection,
+                Timestamp = DateTime.UtcNow
+            });
+        }
     }
 
     /// <summary>
