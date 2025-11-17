@@ -240,24 +240,36 @@ curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audema
 
 ---
 
-## 📋 Current Status (November 2025)
+## 📋 All 15 Brands & Collections
 
-### Completed ✅
-| Brand | Collections | Watches | Status |
-|-------|---|---|---|
-| Patek Philippe | Calatrava, Nautilus, Aquanaut, Grand Complications | 35 | Configured + Scrapable |
-| Vacheron Constantin | Patrimony, Overseas, Historiques, Métiers d'Art, Les Cabinotiers | 20 (+ 3 showcase) | Configured + Scraped |
+### Holy Trinity (35 watches each)
+| # | Brand | Collections | Total |
+|---|-------|---|---|
+| 1 | **Patek Philippe** | Calatrava, Nautilus, Aquanaut, Grand Complications | 35 |
+| 2 | **Vacheron Constantin** | Patrimony, Overseas, Historiques, Métiers d'Art, Les Cabinotiers | 35 |
+| 3 | **Audemars Piguet** | Royal Oak, Royal Oak Offshore, Royal Oak Concept | 35 |
 
-### Total Database
-- **Showcase:** 9 watches (local images, fast loading)
-- **Scraped:** 20 watches (external CDN, working but slower)
-- **Grand Total:** 29 watches
+### Premium Brands (25-30 watches each)
+| # | Brand | Collections | Total |
+|---|-------|---|---|
+| 4 | **Rolex** | Submariner, Daytona, Datejust, GMT-Master II, Day-Date | 30 |
+| 5 | **Omega** | Speedmaster, Seamaster, Constellation, De Ville | 30 |
+| 6 | **Jaeger-LeCoultre** | Reverso, Master Ultra Thin, Polaris, Duomètre | 30 |
+| 7 | **A. Lange & Söhne** | Lange 1, Zeitwerk, Datograph, Saxonia | 30 |
+| 8 | **Glashütte Original** | Senator, PanoMatic, SeaQ, Spezialist | 30 |
+| 9 | **Grand Seiko** | Heritage, Evolution 9, Elegance, Sport Collection | 30 |
+| 10 | **Breguet** | Classique, Marine, Tradition, Reine de Naples | 25 |
+| 11 | **Blancpain** | Fifty Fathoms, Villeret, Air Command, Ladybird | 25 |
+| 12 | **IWC Schaffhausen** | Portugieser, Pilot's Watches, Ingenieur, Portofino | 25 |
+| 13 | **F.P.Journe** | Chronomètre Souverain, Octa, Tourbillon Souverain | 25 |
 
-### Next Steps (Priority Order)
-1. **Audemars Piguet** (completes Holy Trinity, 35 watches)
-2. **Rolex** (most recognized, 30-35 watches)
-3. **Omega** (competitor to Rolex, 30-35 watches)
-4. Remaining 10 brands...
+### Boutique/Specialized (25 watches each)
+| # | Brand | Collections | Total |
+|---|-------|---|---|
+| 14 | **Greubel Forsey** | Double Tourbillon 30°, Tourbillon 24 Secondes, Balancier Convexe, QP à Équation | 25 |
+| 15 | **Frederique Constant** | Classics, Slimline, Manufacture, Highlife | 25 |
+
+**Grand Total Target:** 440-450 watches across 15 brands
 
 ---
 
