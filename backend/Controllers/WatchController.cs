@@ -3,6 +3,7 @@
 using Microsoft.AspNetCore.Mvc;
 using backend.Database;
 using backend.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace backend.Controllers;
 
@@ -81,5 +82,46 @@ public class WatchController : ControllerBase
         _context.Watches.Remove(watch);
         _context.SaveChanges();
         return NoContent();
+    }
+
+    [HttpDelete("brand/{brandId}/scrape-test")]
+    public async Task<IActionResult> DeleteWatchesByBrandForScrapingAsync(int brandId)
+    {
+        try
+        {
+            // Showcase watch IDs to preserve (9 Holy Trinity watches)
+            var showcaseWatchIds = new HashSet<int> { 2, 4, 11, 13, 18, 24, 28, 30, 35 };
+
+            // Get watches for the brand (excluding showcase watches)
+            var watchesToDelete = await _context.Watches
+                .Where(w => w.BrandId == brandId && !showcaseWatchIds.Contains(w.Id))
+                .ToListAsync();
+
+            int deletedCount = watchesToDelete.Count;
+
+            if (deletedCount == 0)
+            {
+                return Ok(new { message = "No watches to delete for this brand.", deletedCount = 0 });
+            }
+
+            // Delete associated price trends first (foreign key constraint)
+            var watchIds = watchesToDelete.Select(w => w.Id).ToList();
+            var priceTrendsToDelete = await _context.PriceTrends
+                .Where(pt => watchIds.Contains(pt.WatchId))
+                .ToListAsync();
+
+            _context.PriceTrends.RemoveRange(priceTrendsToDelete);
+            _context.Watches.RemoveRange(watchesToDelete);
+            await _context.SaveChangesAsync();
+
+            return Ok(new {
+                message = $"Successfully deleted {deletedCount} watches for brand ID {brandId}. Ready to rescrape.",
+                deletedCount
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }

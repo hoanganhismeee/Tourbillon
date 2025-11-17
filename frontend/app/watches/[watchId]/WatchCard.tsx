@@ -32,14 +32,25 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
   const { currentPage } = useWatchesPage();
 
   const handleImageError = () => {
-    // One-time retry with explicit JPG + cache-busting to smooth over transient CDN hiccups
-    if (retryCount < 1) {
+    // Retry strategy: try 2 times with different approaches
+    if (retryCount === 0) {
+      // First retry: try direct URL (bypass Cloudinary optimization)
       setRetryCount(1);
+      if (watch.image.startsWith('http')) {
+        setImgSrc(watch.image);
+      } else {
+        setImgSrc(imageTransformations.showcase(watch.image) + `?r=${Date.now()}`);
+      }
+      return;
+    } else if (retryCount === 1) {
+      // Second retry: try with explicit format
+      setRetryCount(2);
       setImgSrc(
         imageTransformations.showcase(watch.image).replace('/f_auto', '/f_jpg') + `?r=${Date.now()}`
       );
       return;
     }
+    // All retries exhausted
     setImageError(true);
     setImageLoading(false);
   };

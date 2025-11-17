@@ -26,6 +26,12 @@ const normalizePublicId = (value: string): string => {
 // Quick URL detector
 const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value);
 
+// Check if URL is from a luxury watch brand (known to have CDN issues)
+const isWatchBrandUrl = (url: string): boolean => {
+  const watchBrands = ['vacheron-constantin.com', 'patek.com', 'audemarspiguet.com', 'jaeger-lecoultre.com'];
+  return watchBrands.some(brand => url.includes(brand));
+};
+
 // Utility function to generate optimized image URLs
 export const getOptimizedImageUrl = (
   publicId: string,
@@ -45,11 +51,17 @@ export const getOptimizedImageUrl = (
     gravity = 'auto'
   } = options;
 
+  // For external watch brand URLs, serve directly without Cloudinary Fetch (which times out)
+  // These CDNs have issues with the Cloudinary optimization proxy
+  if (isHttpUrl(publicId) && isWatchBrandUrl(publicId)) {
+    return publicId;
+  }
+
   // Build transformation string
   const transformations: string[] = [];
   // Always prefer device pixel ratio and automatic quality/format for performance
   transformations.push('dpr_auto', 'q_auto', 'f_auto');
-  
+
   if (width || height) {
     const size = [];
     if (width) size.push(`w_${width}`);
