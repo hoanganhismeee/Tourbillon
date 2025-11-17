@@ -91,6 +91,12 @@ public class DetailPageSelectors
     /// Example: "h3[class*='subtitle']" or "//h3[@class='collection']"
     /// </summary>
     public string CollectionName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Selector for product image on detail page
+    /// Example: "img[class*='product-image']" or "//img[@class='watch-img']"
+    /// </summary>
+    public string Image { get; set; } = string.Empty;
 }
 
 /// <summary>

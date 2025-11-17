@@ -66,6 +66,7 @@ public class BrandScraperService : IDisposable
                 Price = "//div[contains(@class, 'product-price_product-price')]//p",
                 ReferenceNumber = "//h2[contains(@class, 'product-technical-section_title')]",
                 CollectionName = "//h3[contains(@class, 'product-technical-section_subtitle')]",
+                Image = "//img[contains(@class, 'product-media_image')]",
                 DialSpecs = "//h3[contains(@class, 'accordion-title') and contains(text(), 'Dial')]/ancestor::div[contains(@class, 'accordion-item')]//div[contains(@class, 'accordion_content__')]",
                 CaseSpecs = "//h3[contains(@class, 'accordion-title') and contains(text(), 'Case')]/ancestor::div[contains(@class, 'accordion-item')]//div[contains(@class, 'accordion_content__')]",
                 StrapSpecs = "//h3[contains(@class, 'accordion-title') and contains(text(), 'Strap')]/ancestor::div[contains(@class, 'accordion-item')]//div[contains(@class, 'accordion_content__')]",
@@ -76,7 +77,46 @@ public class BrandScraperService : IDisposable
             RequestDelayMs = 2000
         };
 
-        // Add more brands as needed (Vacheron Constantin, Audemars Piguet, etc.)
+        // Vacheron Constantin configuration
+        _brandConfigs["Vacheron Constantin"] = new BrandScraperConfig
+        {
+            BrandName = "Vacheron Constantin",
+            BaseUrl = "https://www.vacheron-constantin.com",
+            CollectionUrls = new Dictionary<string, string>
+            {
+                { "Patrimony", "/au/en/watches/all-collections/patrimony.html" },
+                { "Overseas", "/au/en/watches/all-collections/overseas.html" },
+                { "Historiques", "/au/en/watches/all-collections/historiques.html" },
+                { "Métiers d'Art", "/au/en/watches/all-collections/metiers-dart.html" },
+                { "Les Cabinotiers", "/au/en/watches/all-collections/les-cabinotiers.html" }
+            },
+            ProductCard = new ProductCardSelectors
+            {
+                // XPath selectors for VC product cards - extract detail page URL
+                CardContainer = "//a[contains(@class, 'vac-absolute-link')]"
+            },
+            DetailPage = new DetailPageSelectors
+            {
+                // XPath selectors for Vacheron Constantin detail page
+                Price = "//p[contains(@class, 'vac-details-block__price')]",
+                ReferenceNumber = "//p[contains(@class, 'vac-details-block__reference')]",
+                CollectionName = "//p[contains(@class, 'vac-details-block__collection')]",
+                Image = "//img[contains(@class, 'lazyautosizes') and @itemprop='image']",
+                // Watch tab specs - Dial description
+                DialSpecs = "//div[@id='vac-tabcontent-0']//li[.//span[contains(text(), 'Dial description')]]//span[not(contains(@class, 'vac-text-gold'))]",
+                // Watch tab specs - Case fields (Diameter, Thickness, Water-resistance, etc.)
+                CaseSpecs = "//div[@id='vac-tabcontent-0']//ul[@class='vac-specification__list']",
+                // Watch tab specs - Strap/Bracelet fields (Material of the bracelets and Buckle type)
+                StrapSpecs = "//div[@id='vac-tabcontent-0']//li[.//span[contains(text(), 'Material of the bracelets') or contains(text(), 'Buckle type')]]",
+                // Movement specs - SKIP (use Caliber tab only if needed)
+                MovementSpecs = "//div[@id='vac-tabcontent-1']//ul[@class='vac-specification__list']"
+            },
+            RequiresJavaScript = true, // VC site uses dynamic content
+            Currency = "AUD",
+            RequestDelayMs = 2000
+        };
+
+        // Add more brands as needed (Audemars Piguet, etc.)
     }
 
     /// <summary>
@@ -198,40 +238,55 @@ public class BrandScraperService : IDisposable
                 }
 
                 // Extract reference number from card (if available)
-                var refNode = cardNode.SelectSingleNode(config.ProductCard.ReferenceNumber);
-                var referenceNumber = refNode?.InnerText?.Trim() ?? string.Empty;
+                var referenceNumber = string.Empty;
+                if (!string.IsNullOrEmpty(config.ProductCard.ReferenceNumber))
+                {
+                    var refNode = cardNode.SelectSingleNode(config.ProductCard.ReferenceNumber);
+                    referenceNumber = refNode?.InnerText?.Trim() ?? string.Empty;
+                }
 
                 // Extract collection name from card
-                var collectionNode = cardNode.SelectSingleNode(config.ProductCard.CollectionName);
-                var collectionName = collectionNode?.InnerText?.Trim() ?? string.Empty;
+                var collectionName = string.Empty;
+                if (!string.IsNullOrEmpty(config.ProductCard.CollectionName))
+                {
+                    var collectionNode = cardNode.SelectSingleNode(config.ProductCard.CollectionName);
+                    collectionName = collectionNode?.InnerText?.Trim() ?? string.Empty;
+                }
 
                 // Extract material from card
-                var materialNode = cardNode.SelectSingleNode(config.ProductCard.CaseMaterial);
-                var material = materialNode?.InnerText?.Trim() ?? string.Empty;
+                var material = string.Empty;
+                if (!string.IsNullOrEmpty(config.ProductCard.CaseMaterial))
+                {
+                    var materialNode = cardNode.SelectSingleNode(config.ProductCard.CaseMaterial);
+                    material = materialNode?.InnerText?.Trim() ?? string.Empty;
+                }
 
                 // Extract image URL
-                var imageNode = cardNode.SelectSingleNode(config.ProductCard.Image);
                 var imageUrl = string.Empty;
-                if (imageNode != null)
+                if (!string.IsNullOrEmpty(config.ProductCard.Image))
                 {
-                    // Get highest resolution from srcset
-                    var srcset = imageNode.GetAttributeValue("srcset", string.Empty);
-                    if (!string.IsNullOrEmpty(srcset))
+                    var imageNode = cardNode.SelectSingleNode(config.ProductCard.Image);
+                    if (imageNode != null)
                     {
-                        // Take the last (highest resolution) URL from srcset
-                        var urls = srcset.Split(',');
-                        if (urls.Length > 0)
+                        // Get highest resolution from srcset
+                        var srcset = imageNode.GetAttributeValue("srcset", string.Empty);
+                        if (!string.IsNullOrEmpty(srcset))
                         {
-                            var lastUrl = urls[urls.Length - 1].Trim().Split(' ')[0];
-                            imageUrl = lastUrl.StartsWith("http") ? lastUrl : config.BaseUrl + lastUrl;
+                            // Take the last (highest resolution) URL from srcset
+                            var urls = srcset.Split(',');
+                            if (urls.Length > 0)
+                            {
+                                var lastUrl = urls[urls.Length - 1].Trim().Split(' ')[0];
+                                imageUrl = lastUrl.StartsWith("http") ? lastUrl : config.BaseUrl + lastUrl;
+                            }
                         }
-                    }
-                    else
-                    {
-                        imageUrl = imageNode.GetAttributeValue("src", string.Empty);
-                        if (!string.IsNullOrEmpty(imageUrl) && !imageUrl.StartsWith("http"))
+                        else
                         {
-                            imageUrl = config.BaseUrl + imageUrl;
+                            imageUrl = imageNode.GetAttributeValue("src", string.Empty);
+                            if (!string.IsNullOrEmpty(imageUrl) && !imageUrl.StartsWith("http"))
+                            {
+                                imageUrl = config.BaseUrl + imageUrl;
+                            }
                         }
                     }
                 }
@@ -281,6 +336,8 @@ public class BrandScraperService : IDisposable
             var refNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.ReferenceNumber);
             var referenceNumber = refNode?.InnerText?.Trim() ?? cardInfo.ReferenceNumber;
             referenceNumber = CleanText(referenceNumber);
+            // Extract just the reference part (before dimensions like "42.5 mm Titanium")
+            referenceNumber = ExtractReferenceNumber(referenceNumber);
 
             // Extract collection name (use card info as fallback)
             var collectionNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.CollectionName);
@@ -291,8 +348,41 @@ public class BrandScraperService : IDisposable
             var priceNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.Price);
             var priceText = priceNode?.InnerText?.Trim() ?? "Price on request";
             var price = ParseAndConvertPrice(priceText, config.Currency);
-            
+
             _logger.LogInformation("Extracted price for {Reference}: {Price}", referenceNumber, price);
+
+            // Extract image URL from detail page (if available, otherwise use card image)
+            var imageUrl = cardInfo.ImageUrl;
+            if (!string.IsNullOrEmpty(config.DetailPage.Image))
+            {
+                var imageNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.Image);
+                if (imageNode != null)
+                {
+                    var src = imageNode.GetAttributeValue("src", string.Empty);
+                    if (string.IsNullOrEmpty(src))
+                    {
+                        src = imageNode.GetAttributeValue("data-src", string.Empty);
+                    }
+
+                    if (!string.IsNullOrEmpty(src))
+                    {
+                        imageUrl = src.StartsWith("http") ? src : config.BaseUrl + src;
+                        _logger.LogInformation("Extracted image URL from detail page: {Url}", imageUrl);
+                    }
+                }
+            }
+
+            // Download external images locally to avoid Cloudinary Fetch timeouts
+            // Store just the filename in the database (like showcase watches do)
+            if (!string.IsNullOrEmpty(imageUrl) && imageUrl.StartsWith("http"))
+            {
+                var downloadedFilename = await DownloadImageLocallyAsync(imageUrl, config.BrandName, referenceNumber);
+                if (!string.IsNullOrEmpty(downloadedFilename))
+                {
+                    imageUrl = downloadedFilename;
+                    _logger.LogInformation("Downloaded image locally: {Filename}", downloadedFilename);
+                }
+            }
 
             // Extract comprehensive specs
             var specs = ExtractSpecs(doc, config);
@@ -311,7 +401,7 @@ public class BrandScraperService : IDisposable
                 CurrentPrice = price,
                 Description = $"{config.BrandName} {collectionName} {referenceNumber}",
                 Specs = specsJson,
-                ImageUrl = cardInfo.ImageUrl,
+                ImageUrl = imageUrl,
                 ReferenceNumber = referenceNumber,
                 SourceUrl = cardInfo.DetailUrl
             };
@@ -619,7 +709,23 @@ public class BrandScraperService : IDisposable
             {
                 try
                 {
-                    // Find all closed accordion buttons and click them
+                    // Try to click VC tabs (Caliber tab) if present
+                    try
+                    {
+                        var caliberTab = _driver.FindElements(By.XPath("//button[@id='vac-tab-1' or contains(@class, 'vac-tabs__tab')][@aria-selected='false']"));
+                        if (caliberTab.Count > 0)
+                        {
+                            caliberTab[0].Click();
+                            await Task.Delay(500);
+                            _logger.LogInformation("Clicked Caliber tab for VC");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Could not click Caliber tab");
+                    }
+
+                    // Find all closed accordion buttons and click them (for Patek Philippe)
                     var accordionButtons = _driver.FindElements(By.XPath("//button[contains(@class, 'accordion_trigger__') and @data-state='closed']"));
                     _logger.LogInformation("Found {Count} closed accordion sections", accordionButtons.Count);
                     
@@ -710,6 +816,107 @@ public class BrandScraperService : IDisposable
         text = System.Net.WebUtility.HtmlDecode(text);
         text = Regex.Replace(text, @"\s+", " ");
         return text.Trim();
+    }
+
+    /// <summary>
+    /// Extracts reference number from full text (removes dimensions like "42.5 mm Titanium")
+    /// Examples:
+    ///   "6000V/210T-H032 42.5 mm Titanium" -> "6000V/210T-H032"
+    ///   "1410U/000G-H017 39 mm White Gold" -> "1410U/000G-H017"
+    /// </summary>
+    private string ExtractReferenceNumber(string fullText)
+    {
+        if (string.IsNullOrEmpty(fullText))
+            return string.Empty;
+
+        // Match reference number pattern (alphanumeric with slashes, hyphens)
+        // Examples: 6000V/210T-H032, 1410U/000G-H017, 5500V/12A-B145
+        var match = Regex.Match(fullText, @"^([A-Z0-9]+/[A-Z0-9]+-[A-Z0-9]+)");
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+
+        // Fallback: return the part before the first digit followed by "mm"
+        var dimMatch = Regex.Match(fullText, @"^(.*?)\s+\d+\s*mm");
+        if (dimMatch.Success)
+        {
+            return dimMatch.Groups[1].Value.Trim();
+        }
+
+        // If no pattern matches, return as is
+        return fullText;
+    }
+
+    /// <summary>
+    /// Downloads an image from a URL and saves it locally to the Images directory.
+    /// Returns the filename (without extension) for local storage in the database.
+    /// This ensures images load quickly from localhost instead of timing out trying to fetch external URLs.
+    /// </summary>
+    private async Task<string> DownloadImageLocallyAsync(string imageUrl, string brandName, string referenceNumber)
+    {
+        if (string.IsNullOrEmpty(imageUrl))
+            return string.Empty;
+
+        try
+        {
+            // Create Images directory if it doesn't exist
+            var imagesDir = Path.Combine(Directory.GetCurrentDirectory(), "Images");
+            if (!Directory.Exists(imagesDir))
+            {
+                Directory.CreateDirectory(imagesDir);
+                _logger.LogInformation("Created Images directory at: {Path}", imagesDir);
+            }
+
+            // Generate unique filename using brand name + reference number + timestamp
+            var sanitizedRef = Regex.Replace(referenceNumber, @"[^a-zA-Z0-9_\-]", "");
+            var sanitizedBrand = Regex.Replace(brandName, @"[^a-zA-Z0-9_\-]", "");
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var filename = $"{sanitizedBrand}_{sanitizedRef}_{timestamp}";
+
+            // Download the image
+            using (var httpClient = new HttpClient())
+            {
+                httpClient.Timeout = TimeSpan.FromSeconds(30);
+                // Add User-Agent header to avoid being blocked by CDN/server
+                httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+                httpClient.DefaultRequestHeaders.Add("Referer", "https://www.vacheron-constantin.com/");
+
+                var response = await httpClient.GetAsync(imageUrl);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Failed to download image from {Url}. Status: {Status}", imageUrl, response.StatusCode);
+                    return string.Empty;
+                }
+
+                var contentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
+                var extension = contentType switch
+                {
+                    "image/jpeg" => ".jpg",
+                    "image/jpg" => ".jpg",
+                    "image/png" => ".png",
+                    "image/webp" => ".webp",
+                    "image/gif" => ".gif",
+                    _ => ".jpg" // Default to jpg
+                };
+
+                var fullFilename = filename + extension;
+                var filePath = Path.Combine(imagesDir, fullFilename);
+
+                // Save the image
+                var imageContent = await response.Content.ReadAsByteArrayAsync();
+                await File.WriteAllBytesAsync(filePath, imageContent);
+
+                _logger.LogInformation("Downloaded image to {Path}", fullFilename);
+                return fullFilename;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error downloading image from {Url}", imageUrl);
+            return string.Empty;
+        }
     }
 
     public void Dispose()

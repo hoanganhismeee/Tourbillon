@@ -3,6 +3,7 @@
 
 using backend.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace backend.Controllers;
 
@@ -314,5 +315,106 @@ public class AdminController : ControllerBase
             WatchesDeleted = deletedCount,
             Timestamp = DateTime.UtcNow
         });
+    }
+
+    /// <summary>
+    /// Caches external images locally and updates database with local paths
+    /// POST: api/admin/cache-images?brandId=2
+    /// This eliminates 404 errors from external CDNs by downloading images once
+    /// </summary>
+    [HttpPost("cache-images")]
+    public async Task<IActionResult> CacheImagesLocally([FromQuery] int brandId)
+    {
+        _logger.LogInformation("Starting image caching for brand ID {BrandId}", brandId);
+
+        try
+        {
+            // Create Images directory if it doesn't exist
+            var imagesDir = Path.Combine(Directory.GetCurrentDirectory(), "Images");
+            if (!Directory.Exists(imagesDir))
+            {
+                Directory.CreateDirectory(imagesDir);
+            }
+
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+            int successCount = 0;
+            int failureCount = 0;
+
+            // Get all watches for the brand that have external URLs (starting with http)
+            var context = HttpContext.RequestServices.GetRequiredService<backend.Database.TourbillonContext>();
+            var watchesToCache = await context.Watches
+                .Where(w => w.BrandId == brandId && w.Image.StartsWith("http"))
+                .ToListAsync();
+
+            _logger.LogInformation("Found {Count} watches with external URLs for brand {BrandId}", watchesToCache.Count.ToString(), brandId.ToString());
+
+            foreach (var watch in watchesToCache)
+            {
+                try
+                {
+                    // Strip transformation parameters from URL (e.g., .transform.vacdetail.png -> .png)
+                    string imageUrl = watch.Image;
+                    if (imageUrl.Contains(".transform."))
+                    {
+                        imageUrl = System.Text.RegularExpressions.Regex.Replace(imageUrl, @"\.transform\.[^.]+(\.\w+)$", "$1");
+                    }
+
+                    // Download image
+                    var imageResponse = await httpClient.GetAsync(imageUrl);
+                    if (!imageResponse.IsSuccessStatusCode)
+                    {
+                        _logger.LogWarning("Failed to download image for watch {WatchId} from {Url}: {StatusCode}",
+                            watch.Id, imageUrl, imageResponse.StatusCode);
+                        failureCount++;
+                        continue;
+                    }
+
+                    // Save locally with unique filename
+                    var imageBytes = await imageResponse.Content.ReadAsByteArrayAsync();
+                    var extension = Path.GetExtension(new Uri(imageUrl).LocalPath) ?? ".png";
+                    var localFilename = $"VC_{watch.Id}_{Path.GetFileNameWithoutExtension(watch.Name).Replace("/", "_")}{extension}";
+                    var localPath = Path.Combine(imagesDir, localFilename);
+
+                    await System.IO.File.WriteAllBytesAsync(localPath, imageBytes);
+
+                    // Update database with local filename
+                    watch.Image = localFilename;
+                    context.Watches.Update(watch);
+
+                    _logger.LogInformation("Cached image for watch {WatchId}: {Filename}", watch.Id, localFilename);
+                    successCount++;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error caching image for watch {WatchId}", watch.Id);
+                    failureCount++;
+                }
+            }
+
+            // Save all changes to database
+            await context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                Success = true,
+                Message = $"Image caching completed for brand {brandId}",
+                TotalWatches = watchesToCache.Count,
+                CachedCount = successCount,
+                FailedCount = failureCount,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in image caching process");
+            return StatusCode(500, new
+            {
+                Success = false,
+                Message = $"Error caching images: {ex.Message}",
+                Timestamp = DateTime.UtcNow
+            });
+        }
     }
 }
