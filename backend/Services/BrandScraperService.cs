@@ -17,15 +17,18 @@ public class BrandScraperService : IDisposable
 {
     private readonly ILogger<BrandScraperService> _logger;
     private readonly CurrencyConverter _currencyConverter;
+    private readonly ICloudinaryService _cloudinaryService;
     private readonly Dictionary<string, BrandScraperConfig> _brandConfigs;
     private IWebDriver? _driver;
 
     public BrandScraperService(
         ILogger<BrandScraperService> logger,
-        CurrencyConverter currencyConverter)
+        CurrencyConverter currencyConverter,
+        ICloudinaryService cloudinaryService)
     {
         _logger = logger;
         _currencyConverter = currencyConverter;
+        _cloudinaryService = cloudinaryService;
         _brandConfigs = new Dictionary<string, BrandScraperConfig>();
 
         // Initialize brand configurations
@@ -849,9 +852,8 @@ public class BrandScraperService : IDisposable
     }
 
     /// <summary>
-    /// Downloads an image from a URL and saves it locally to the Images directory.
-    /// Returns the filename (without extension) for local storage in the database.
-    /// This ensures images load quickly from localhost instead of timing out trying to fetch external URLs.
+    /// Uploads an image from a URL to Cloudinary CDN
+    /// Returns the public_id for database storage
     /// </summary>
     private async Task<string> DownloadImageLocallyAsync(string imageUrl, string brandName, string referenceNumber)
     {
@@ -860,61 +862,26 @@ public class BrandScraperService : IDisposable
 
         try
         {
-            // Create Images directory if it doesn't exist
-            var imagesDir = Path.Combine(Directory.GetCurrentDirectory(), "Images");
-            if (!Directory.Exists(imagesDir))
-            {
-                Directory.CreateDirectory(imagesDir);
-                _logger.LogInformation("Created Images directory at: {Path}", imagesDir);
-            }
-
-            // Generate unique filename using brand name + reference number + timestamp
+            // Sanitize brand name and reference number for Cloudinary public_id
             var sanitizedRef = Regex.Replace(referenceNumber, @"[^a-zA-Z0-9_\-]", "");
             var sanitizedBrand = Regex.Replace(brandName, @"[^a-zA-Z0-9_\-]", "");
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var filename = $"{sanitizedBrand}_{sanitizedRef}_{timestamp}";
+            var publicId = $"{sanitizedBrand}_{sanitizedRef}";
 
-            // Download the image
-            using (var httpClient = new HttpClient())
+            // Upload to Cloudinary (method name is DownloadImageLocallyAsync for backward compatibility)
+            var cloudinaryPublicId = await _cloudinaryService.UploadImageFromUrlAsync(imageUrl, publicId, "watches");
+
+            if (!string.IsNullOrEmpty(cloudinaryPublicId))
             {
-                httpClient.Timeout = TimeSpan.FromSeconds(30);
-                // Add User-Agent header to avoid being blocked by CDN/server
-                httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
-                httpClient.DefaultRequestHeaders.Add("Referer", "https://www.vacheron-constantin.com/");
-
-                var response = await httpClient.GetAsync(imageUrl);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogWarning("Failed to download image from {Url}. Status: {Status}", imageUrl, response.StatusCode);
-                    return string.Empty;
-                }
-
-                var contentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
-                var extension = contentType switch
-                {
-                    "image/jpeg" => ".jpg",
-                    "image/jpg" => ".jpg",
-                    "image/png" => ".png",
-                    "image/webp" => ".webp",
-                    "image/gif" => ".gif",
-                    _ => ".jpg" // Default to jpg
-                };
-
-                var fullFilename = filename + extension;
-                var filePath = Path.Combine(imagesDir, fullFilename);
-
-                // Save the image
-                var imageContent = await response.Content.ReadAsByteArrayAsync();
-                await File.WriteAllBytesAsync(filePath, imageContent);
-
-                _logger.LogInformation("Downloaded image to {Path}", fullFilename);
-                return fullFilename;
+                _logger.LogInformation("Uploaded image to Cloudinary: {PublicId}", cloudinaryPublicId);
+                return cloudinaryPublicId; // Return public_id (e.g., "watches/PatekPhilippe_5227G010")
             }
+
+            _logger.LogWarning("Failed to upload image to Cloudinary from {Url}", imageUrl);
+            return string.Empty;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error downloading image from {Url}", imageUrl);
+            _logger.LogWarning(ex, "Error uploading image to Cloudinary from {Url}", imageUrl);
             return string.Empty;
         }
     }
