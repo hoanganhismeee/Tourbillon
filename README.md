@@ -40,23 +40,23 @@ Follow these instructions to get a copy of the project up and running on your lo
     ```
 
 2.  **Navigate to the backend directory:**
-    ```bash
+    ```cmd
     cd backend
     ```
 
 3.  **Restore dependencies:**
-    ```bash
+    ```cmd
     dotnet restore
     ```
 
 4.  **Apply database migrations:**
     This will create the database and tables based on the existing migration files.
-    ```bash
+    ```cmd
     dotnet ef database update
     ```
 
 5.  **Run the backend server:**
-    ```bash
+    ```cmd
     dotnet run
     ```
 
@@ -65,17 +65,17 @@ Follow these instructions to get a copy of the project up and running on your lo
 ### Frontend Setup
 
 1.  **Navigate to the frontend directory:**
-    ```bash
+    ```cmd
     cd frontend
     ```
 
 2.  **Install dependencies:**
-    ```bash
+    ```cmd
     npm install
     ```
 
 3.  **Run the frontend development server:**
-    ```bash
+    ```cmd
     npm run dev
     ```
 

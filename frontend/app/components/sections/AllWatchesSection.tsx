@@ -6,6 +6,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { fetchWatches, fetchCollections, Watch, Collection, Brand } from '@/lib/api';
 import { imageTransformations, getOptimizedImageUrl } from '@/lib/cloudinary';
 import Image from 'next/image';
@@ -58,50 +59,78 @@ const WatchCard = ({ watch, brands, collections, isPriority = false }: {
     }
   };
 
+  const router = useRouter();
+  
+  const handleBrandClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    router.push(`/brands/${watch.brandId}`);
+  };
+  
+  const handleCollectionClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (watch.collectionId) {
+      router.push(`/collections/${watch.collectionId}`);
+    }
+  };
+
   return (
-    <Link
-      key={watch.id}
-      href={`/watches/${watch.id}`}
-      onClick={handleWatchClick} // Save navigation state when clicked
-      className="group block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10"
-    >
-      {/* Watch image with Cloudinary optimization */}
-      <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10 overflow-hidden">
-         {watch.image ? (
-           <Image
-             src={src}
-             alt={watch.name}
-             width={400}
-             height={400}
-             sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"
-             className="w-full h-full object-cover rounded-xl"
-             // Prioritize just the first row to improve LCP without overfetching
-             priority={isPriority}
-             fetchPriority={isPriority ? 'high' as const : 'auto'}
-             placeholder="blur"
-             blurDataURL={getOptimizedImageUrl(watch.image, { width: 16, height: 16, quality: 1, crop: 'fill', format: 'jpg' })}
-             onError={handleImgError}
-           />
-         ) : (
-          <span className="text-white/60 text-xs font-light">{watch.name}</span>
-        )}
-      </div>
+    <div className="group block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10">
+      {/* Watch image with Cloudinary optimization - Clickable to watch details */}
+      <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
+        <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10 overflow-hidden cursor-pointer">
+          {watch.image ? (
+            <Image
+              src={src}
+              alt={watch.name}
+              width={400}
+              height={400}
+              sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"
+              className="w-full h-full object-cover rounded-xl"
+              // Prioritize just the first row to improve LCP without overfetching
+              priority={isPriority}
+              fetchPriority={isPriority ? 'high' as const : 'auto'}
+              placeholder="blur"
+              blurDataURL={getOptimizedImageUrl(watch.image, { width: 16, height: 16, quality: 1, crop: 'fill', format: 'jpg' })}
+              onError={handleImgError}
+            />
+          ) : (
+            <span className="text-white/60 text-xs font-light">{watch.name}</span>
+          )}
+        </div>
+      </Link>
+      
       {/* Watch information - brand, collection, model, price */}
       <div className="space-y-2">
-        <p className="text-xs text-white/60 font-inter font-light uppercase tracking-wide">
+        {/* Brand name - clickable link to brand page */}
+        <button
+          onClick={handleBrandClick}
+          className="text-xs text-white/60 hover:text-white/90 font-inter font-light uppercase tracking-wide transition-colors cursor-pointer bg-transparent border-none p-0 text-left"
+        >
           {brands.find(b => b.id === watch.brandId)?.name || 'Unknown Brand'}
-        </p>
-        <p className="text-xs text-white/50 font-inter font-light">
-          {collections.find(c => c.id === watch.collectionId)?.name || ''}
-        </p>
-        <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate">
-          {watch.name}
-        </h3>
+        </button>
+        
+        {/* Collection name - clickable link to collection page */}
+        {watch.collectionId && collections.find(c => c.id === watch.collectionId) && (
+          <button
+            onClick={handleCollectionClick}
+            className="block text-xs text-white/50 hover:text-white/80 font-inter font-light transition-colors cursor-pointer bg-transparent border-none p-0 text-left"
+          >
+            {collections.find(c => c.id === watch.collectionId)?.name}
+          </button>
+        )}
+        
+        {/* Watch name - clickable link to watch details */}
+        <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
+          <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate cursor-pointer">
+            {watch.name}
+          </h3>
+        </Link>
+        
         <p className="text-lg text-[#f0e6d2] font-inter font-semibold">
           {watch.currentPrice === 0 ? 'Price on Request' : `$${watch.currentPrice.toLocaleString()}`}
         </p>
       </div>
-    </Link>
+    </div>
   );
 };
 

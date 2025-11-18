@@ -1,5 +1,4 @@
-// Chrono24 cache service
-// Handles database operations for scraped watch data
+// Watch cache service - handles database operations for scraped watch data from any source
 
 using backend.Database;
 using backend.DTOs;
@@ -8,109 +7,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace backend.Services;
 
-public class Chrono24CacheService
+public class WatchCacheService
 {
     private readonly TourbillonContext _context;
-    private readonly IChrono24ScraperService _scraperService;
-    private readonly ILogger<Chrono24CacheService> _logger;
+    private readonly ILogger<WatchCacheService> _logger;
 
-    public Chrono24CacheService(
+    public WatchCacheService(
         TourbillonContext context,
-        IChrono24ScraperService scraperService,
-        ILogger<Chrono24CacheService> logger)
+        ILogger<WatchCacheService> logger)
     {
         _context = context;
-        _scraperService = scraperService;
         _logger = logger;
-    }
-
-    /// Scrapes and caches watches for a specific brand and collection
-
-    public async Task<(bool success, string message, int watchesAdded)> ScrapeAndCacheCollectionAsync(
-        string brandName,
-        string collectionName,
-        int maxWatches = 40)
-    {
-        try
-        {
-            _logger.LogInformation("Starting scrape for {Brand} - {Collection}",
-                brandName, collectionName);
-
-            // Scrape watches from Chrono24
-            var scrapedWatches = await _scraperService.ScrapeWatchesByCollectionAsync(
-                brandName, collectionName, maxWatches);
-
-            if (!scrapedWatches.Any())
-            {
-                var message = $"No watches found for {brandName} - {collectionName}";
-                _logger.LogWarning(message);
-                return (false, message, 0);
-            }
-
-            // Process and save to database
-            int watchesAdded = 0;
-            foreach (var scrapedWatch in scrapedWatches)
-            {
-                var added = await ProcessScrapedWatchAsync(scrapedWatch);
-                if (added) watchesAdded++;
-            }
-
-            await _context.SaveChangesAsync();
-
-            var successMessage = $"Successfully scraped and cached {watchesAdded} watches for {brandName} - {collectionName}";
-            _logger.LogInformation(successMessage);
-            return (true, successMessage, watchesAdded);
-        }
-        catch (Exception ex)
-        {
-            var errorMessage = $"Error scraping {brandName} - {collectionName}: {ex.Message}";
-            _logger.LogError(ex, errorMessage);
-            return (false, errorMessage, 0);
-        }
-    }
-
-    /// <summary>
-    /// Scrapes and caches watches for an entire brand
-    /// </summary>
-    public async Task<(bool success, string message, int watchesAdded)> ScrapeAndCacheBrandAsync(
-        string brandName,
-        int maxWatchesPerCollection = 40)
-    {
-        try
-        {
-            _logger.LogInformation("Starting scrape for brand: {Brand}", brandName);
-
-            // Scrape watches from Chrono24
-            var scrapedWatches = await _scraperService.ScrapeWatchesByBrandAsync(
-                brandName, maxWatchesPerCollection);
-
-            if (!scrapedWatches.Any())
-            {
-                var message = $"No watches found for brand {brandName}";
-                _logger.LogWarning(message);
-                return (false, message, 0);
-            }
-
-            // Process and save to database
-            int watchesAdded = 0;
-            foreach (var scrapedWatch in scrapedWatches)
-            {
-                var added = await ProcessScrapedWatchAsync(scrapedWatch);
-                if (added) watchesAdded++;
-            }
-
-            await _context.SaveChangesAsync();
-
-            var successMessage = $"Successfully scraped and cached {watchesAdded} watches for {brandName}";
-            _logger.LogInformation(successMessage);
-            return (true, successMessage, watchesAdded);
-        }
-        catch (Exception ex)
-        {
-            var errorMessage = $"Error scraping brand {brandName}: {ex.Message}";
-            _logger.LogError(ex, errorMessage);
-            return (false, errorMessage, 0);
-        }
     }
 
     /// <summary>
@@ -153,156 +60,7 @@ public class Chrono24CacheService
     }
 
     /// <summary>
-    /// Scrapes watches for all brands from the database
-    /// Holy Trinity: 35 products each
-    /// Premium brands: 25 products each
-    /// Other brands: 25-35 products each
-    /// </summary>
-    public async Task<(bool success, string message, int watchesAdded)> ScrapeAllBrandsAsync(
-        int maxWatchesPerBrand = 30)
-    {
-        try
-        {
-            _logger.LogInformation("Starting scrape for all brands");
-
-            // Holy Trinity brands - 35 products each
-            var holyTrinityBrands = new HashSet<string>
-            {
-                "Patek Philippe",
-                "Vacheron Constantin",
-                "Audemars Piguet"
-            };
-
-            // Premium brands - 25 products each
-            var premiumBrands = new HashSet<string>
-            {
-                "F.P.Journe",
-                "Greubel Forsey",
-                "Breguet",
-                "Blancpain",
-                "IWC Schaffhausen",
-                "Frederique Constant"
-            };
-
-            // Collections to skip for brands that should have only 3 collections
-            var collectionsToSkip = new HashSet<string>
-            {
-                "Spezialist",           // Glashütte Original
-                "QP à Équation",        // Greubel Forsey
-                "Reine de Naples",      // Breguet
-                "Ladybird",             // Blancpain
-                "Portofino",            // IWC
-                "Highlife"              // Frederique Constant
-            };
-
-            // Get all brands from database
-            var brands = await _context.Brands.ToListAsync();
-
-            if (!brands.Any())
-            {
-                return (false, "No brands found in database", 0);
-            }
-
-            int totalWatchesAdded = 0;
-
-            foreach (var brand in brands)
-            {
-                _logger.LogInformation("Scraping brand: {Brand}", brand.Name);
-
-                // Get collections for this brand (excluding skipped ones)
-                var collections = await _context.Collections
-                    .Where(c => c.BrandId == brand.Id && !collectionsToSkip.Contains(c.Name))
-                    .ToListAsync();
-
-                if (!collections.Any())
-                {
-                    _logger.LogWarning("No collections found for brand {Brand}", brand.Name);
-                    continue;
-                }
-
-                // Determine watches per collection based on brand tier
-                int collectionCount = collections.Count;
-                int watchesPerCollection;
-                int targetWatches;
-
-                if (holyTrinityBrands.Contains(brand.Name))
-                {
-                    // Holy Trinity: 35 products total
-                    targetWatches = 35;
-                    watchesPerCollection = targetWatches / collectionCount;
-                    if (watchesPerCollection < 8)
-                    {
-                        watchesPerCollection = 8;
-                    }
-                    _logger.LogInformation("Holy Trinity brand {Brand}: {Count} collections × ~{Watches} watches = ~{Total} watches",
-                        brand.Name, collectionCount, watchesPerCollection, targetWatches);
-                }
-                else if (premiumBrands.Contains(brand.Name))
-                {
-                    // Premium brands: 25 products total
-                    targetWatches = 25;
-                    watchesPerCollection = targetWatches / collectionCount;
-                    if (watchesPerCollection < 7)
-                    {
-                        watchesPerCollection = 7;
-                    }
-                    _logger.LogInformation("Premium brand {Brand}: {Count} collections × ~{Watches} watches = ~{Total} watches",
-                        brand.Name, collectionCount, watchesPerCollection, targetWatches);
-                }
-                else
-                {
-                    // Other brands: 25-35 products
-                    targetWatches = 30;
-                    watchesPerCollection = targetWatches / collectionCount;
-                    if (watchesPerCollection < 6)
-                    {
-                        watchesPerCollection = 6;
-                    }
-                    _logger.LogInformation("Brand {Brand}: {Count} collections × ~{Watches} watches = ~{Total} watches",
-                        brand.Name, collectionCount, watchesPerCollection, targetWatches);
-                }
-
-                // Scrape each collection
-                foreach (var collection in collections)
-                {
-                    try
-                    {
-                        var (success, message, watchesAdded) = await ScrapeAndCacheCollectionAsync(
-                            brand.Name,
-                            collection.Name,
-                            watchesPerCollection);
-
-                        if (success)
-                        {
-                            totalWatchesAdded += watchesAdded;
-                        }
-
-                        // Polite scraping: delay between collections
-                        await Task.Delay(2000);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error scraping {Brand} - {Collection}",
-                            brand.Name, collection.Name);
-                        // Continue with next collection
-                    }
-                }
-            }
-
-            var successMessage = $"Completed scraping all brands. Total watches added: {totalWatchesAdded}";
-            _logger.LogInformation(successMessage);
-            return (true, successMessage, totalWatchesAdded);
-        }
-        catch (Exception ex)
-        {
-            var errorMessage = $"Error during bulk scraping: {ex.Message}";
-            _logger.LogError(ex, errorMessage);
-            return (false, errorMessage, 0);
-        }
-    }
-
-    /// <summary>
-    /// Returns the count of cached (scraped) watches
+    /// Returns the count of cached watches
     /// </summary>
     public async Task<int> GetCachedWatchCountAsync()
     {
@@ -382,7 +140,6 @@ public class Chrono24CacheService
     }
 
     #region Private Helper Methods
-
 
     private async Task<bool> ProcessScrapedWatchAsync(ScrapedWatchDto scrapedWatch)
     {
@@ -637,3 +394,4 @@ public class Chrono24CacheService
 
     #endregion
 }
+

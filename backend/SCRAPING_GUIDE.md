@@ -1,5 +1,5 @@
 # Tourbillon Web Scraping Guide
-
+window cmd
 **Last Updated:** November 2025
 **Configured Brands:** Patek Philippe ✅, Vacheron Constantin ✅
 **Remaining:** 13 brands (Audemars Piguet, Rolex, Omega, etc.)
@@ -9,17 +9,17 @@
 ## Quick Start
 
 **Scrape a brand immediately:**
-```bash
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Calatrava&maxWatches=9"
+```cmd
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%%20Philippe&collection=Calatrava&maxWatches=9"
 ```
 
 **Check stats:**
-```bash
+```cmd
 curl "http://localhost:5248/api/admin/scrape-stats"
 ```
 
 **Clear scraped watches (preserves 9 showcase):**
-```bash
+```cmd
 curl -X DELETE "http://localhost:5248/api/admin/clear-watches"
 ```
 
@@ -30,36 +30,39 @@ curl -X DELETE "http://localhost:5248/api/admin/clear-watches"
 ### Core Components
 - **BrandScraperService.cs** - Universal scraper (all brands use same code)
 - **BrandScraperConfig.cs** - Brand-specific XPath selectors
-- **Chrono24CacheService.cs** - Database operations + duplicate prevention
+- **WatchCacheService.cs** - Database operations + duplicate prevention
 - **WatchSpecs.cs** - Structured JSON for specs (Dial, Case, Strap, Movement)
+- **CloudinaryService.cs** - Automatic image upload to Cloudinary CDN
 
-### Scraping Flow
-1. **Product Listing** → Extract reference number, collection, image URL
+### Scraping Flow (Official Brand Websites)
+1. **Product Listing** → Extract reference number, collection, image URL from brand's website
 2. **Detail Page** → Extract price, comprehensive specs, high-res image
-3. **Database** → Save with duplicate prevention + showcase preservation
-4. **Frontend** → Display with appropriate image loading strategy
+3. **Cloudinary Upload** → Automatically upload images to Cloudinary CDN
+4. **Database** → Save with duplicate prevention + showcase preservation
+5. **Frontend** → Display with Cloudinary-optimized images
 
 ---
 
 ## 🖼️ Image Handling Strategy
 
-### Three Tiers (By Brand Type)
+### Two Tiers (By Watch Type)
 
 | Tier | Image Location | Load Speed | Use Case | Status |
 |------|---|---|---|---|
 | **Local** | `/backend/Images/*.png` | ⚡ Fast | 9 showcase watches | ✅ Working |
-| **External CDN** | Luxury brand domain | 🐢 Slow | Scraped watches | ✅ Working |
-| **Cloudinary** | Optimized proxy | ⚡ Fast | Future migration | 📋 Setup ready |
+| **Cloudinary CDN** | Cloudinary optimized | ⚡ Fast | All scraped watches | ✅ Working |
 
-### Why External CDN? (Not Cached Locally)
+### Cloudinary Integration
 
-**Problem:** Vacheron's CDN blocks server-to-server requests
-**Evidence:** All backend image downloads timeout (30+ seconds)
-**Solution:** Let browser fetch directly from brand CDN (browsers aren't blocked)
+**How it works:**
+- When scraping, images from official brand websites are automatically uploaded to Cloudinary
+- BrandScraperService uses CloudinaryService to upload images and store Cloudinary public_ids
+- Database stores Cloudinary public_ids (e.g., `"watches/PatekPhilippe_5227G010"`)
+- Frontend displays optimized images from Cloudinary with responsive transformations
 
 **Result:**
-- Showcase watches (3 Vacheron): `"image":"VC6000V.webp"` → Local, fast ✅
-- Scraped watches (20 Vacheron): `"image":"https://www.vacheron-constantin.com/dam/..."` → External, slow but works ✅
+- Showcase watches (9 watches): `"image":"PP5227G.png"` → Local, fast ✅
+- Scraped watches (all others): `"image":"watches/PatekPhilippe_5227G010"` → Cloudinary, fast ✅
 
 ### Frontend Configuration
 
@@ -114,43 +117,43 @@ These 9 watches have **curated local images** that are automatically preserved d
 ## 🚀 Scraping Workflow
 
 ### Step 1: Verify Backend is Running
-```bash
+```cmd
 cd backend
 dotnet run
-# Should see: "Now listening on: http://localhost:5248"
+REM Should see: "Now listening on: http://localhost:5248"
 ```
 
 ### Step 2: Check Showcase Watches Seeded
-```bash
+```cmd
 curl "http://localhost:5248/api/admin/scrape-stats"
-# Response should show 9 watches (3 per brand)
+REM Response should show 9 watches (3 per brand)
 ```
 
 ### Step 3: Scrape a Brand
 
 **Example: Patek Philippe (4 collections, ~9 watches each)**
 
-```bash
-# Collection 1 - Calatrava
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Calatrava&maxWatches=9"
-sleep 30
+```cmd
+REM Collection 1 - Calatrava
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%%20Philippe&collection=Calatrava&maxWatches=9"
+timeout /t 30 /nobreak
 
-# Collection 2 - Nautilus
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Nautilus&maxWatches=9"
-sleep 30
+REM Collection 2 - Nautilus
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%%20Philippe&collection=Nautilus&maxWatches=9"
+timeout /t 30 /nobreak
 
-# Collection 3 - Aquanaut
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Aquanaut&maxWatches=9"
-sleep 30
+REM Collection 3 - Aquanaut
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%%20Philippe&collection=Aquanaut&maxWatches=9"
+timeout /t 30 /nobreak
 
-# Collection 4 - Grand Complications
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Grand%20Complications&maxWatches=8"
+REM Collection 4 - Grand Complications
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%%20Philippe&collection=Grand%%20Complications&maxWatches=8"
 ```
 
 ### Step 4: Verify Results
-```bash
+```cmd
 curl "http://localhost:5248/api/admin/scrape-stats"
-# Check total watch count increased correctly
+REM Check total watch count increased correctly
 ```
 
 ---
@@ -223,8 +226,8 @@ _brandConfigs["Audemars Piguet"] = new BrandScraperConfig
 ```
 
 **3. Test with 1-2 watches first:**
-```bash
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audemars%20Piguet&collection=Royal%20Oak&maxWatches=2"
+```cmd
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audemars%%20Piguet&collection=Royal%%20Oak&maxWatches=2"
 ```
 
 **4. Check response:**
@@ -234,8 +237,8 @@ curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audema
 - Confirm images are stored as full URLs
 
 **5. Scale up once verified:**
-```bash
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audemars%20Piguet&collection=Royal%20Oak&maxWatches=10"
+```cmd
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audemars%%20Piguet&collection=Royal%%20Oak&maxWatches=10"
 ```
 
 ---
@@ -404,9 +407,9 @@ public class Watch
 ---
 
 **Questions?** Check backend logs:
-```bash
-# Terminal shows detailed scraping logs
-# Look for: "Extracted", "Error", "Preserved", "Matched by reference"
+```cmd
+REM Terminal shows detailed scraping logs
+REM Look for: "Extracted", "Error", "Preserved", "Matched by reference"
 ```
 
 **For Future Maintainers:**

@@ -55,9 +55,11 @@ builder.Services.AddScoped<backend.Services.IPasswordResetService, backend.Servi
 // Register currency converter and showcase watch mapping as singletons (stateless, thread-safe)
 builder.Services.AddSingleton<CurrencyConverter>();
 
-// Register Chrono24 scraper services (Selenium-based to bypass anti-bot protection)
-builder.Services.AddScoped<IChrono24ScraperService, Chrono24SeleniumScraperService>();
-builder.Services.AddScoped<Chrono24CacheService>();
+// Register Cloudinary service for image uploads
+builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
+
+// Register watch cache service for database operations
+builder.Services.AddScoped<WatchCacheService>();
 
 // Register brand-specific scraper service for official brand websites
 builder.Services.AddScoped<BrandScraperService>();
