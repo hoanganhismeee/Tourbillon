@@ -16,9 +16,7 @@ public class CurrencyConverter
         { "CNY", 0.21m }    // 1 CNY = 0.21 AUD
     };
 
-    /// <summary>
     /// Detects currency symbol from price string and returns currency code
-    /// </summary>
     public string DetectCurrency(string priceString)
     {
         if (string.IsNullOrEmpty(priceString))
@@ -42,9 +40,7 @@ public class CurrencyConverter
         return "USD";
     }
 
-    /// <summary>
     /// Converts amount from specified currency to AUD
-    /// </summary>
     public decimal ConvertToAUD(decimal amount, string fromCurrency)
     {
         if (string.IsNullOrEmpty(fromCurrency))
@@ -69,9 +65,7 @@ public class CurrencyConverter
         return Math.Round(audAmount, 0);
     }
 
-    /// <summary>
     /// Formats price in AUD with thousands separator and .00 decimal
-    /// </summary>
     public string FormatPriceAUD(decimal price)
     {
         if (price <= 0)
@@ -84,9 +78,7 @@ public class CurrencyConverter
         return $"${roundedPrice:N0}.00";
     }
 
-    /// <summary>
     /// Parses price string, detects currency, converts to AUD, and returns decimal value
-    /// </summary>
     public decimal ParseAndConvertToAUD(string priceString)
     {
         if (string.IsNullOrEmpty(priceString) ||

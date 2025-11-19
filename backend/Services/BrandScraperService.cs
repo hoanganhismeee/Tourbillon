@@ -35,9 +35,7 @@ public class BrandScraperService : IDisposable
         InitializeBrandConfigs();
     }
 
-    /// <summary>
     /// Initialize configurations for all supported brands
-    /// </summary>
     private void InitializeBrandConfigs()
     {
         // Patek Philippe configuration
@@ -122,9 +120,7 @@ public class BrandScraperService : IDisposable
         // Add more brands as needed (Audemars Piguet, etc.)
     }
 
-    /// <summary>
     /// Scrapes watches for a specific brand and collection
-    /// </summary>
     public async Task<List<ScrapedWatchDto>> ScrapeCollectionAsync(
         string brandName,
         string collectionName,
@@ -205,10 +201,8 @@ public class BrandScraperService : IDisposable
         }
     }
 
-    /// <summary>
     /// Parses product cards from listing page HTML
     /// Returns list of detail page URLs and basic info
-    /// </summary>
     private List<ProductCardInfo> ParseProductCards(string html, BrandScraperConfig config)
     {
         var cards = new List<ProductCardInfo>();
@@ -312,9 +306,7 @@ public class BrandScraperService : IDisposable
         return cards;
     }
 
-    /// <summary>
     /// Scrapes detailed information from a watch's detail page
-    /// </summary>
     private async Task<ScrapedWatchDto?> ScrapeWatchDetailAsync(
         ProductCardInfo cardInfo,
         BrandScraperConfig config)
@@ -418,9 +410,7 @@ public class BrandScraperService : IDisposable
         }
     }
 
-    /// <summary>
     /// Extracts structured specs from detail page
-    /// </summary>
     private WatchSpecs ExtractSpecs(HtmlDocument doc, BrandScraperConfig config)
     {
         var specs = new WatchSpecs();
@@ -467,9 +457,7 @@ public class BrandScraperService : IDisposable
         return specs;
     }
 
-    /// <summary>
     /// Parses dial specifications from text
-    /// </summary>
     private DialSpecs ParseDialSpecs(string text)
     {
         var dial = new DialSpecs { Description = CleanText(text) };
@@ -484,9 +472,7 @@ public class BrandScraperService : IDisposable
         return dial;
     }
 
-    /// <summary>
     /// Parses case specifications from text
-    /// </summary>
     private CaseSpecs ParseCaseSpecs(string text)
     {
         var caseSpecs = new CaseSpecs();
@@ -528,9 +514,7 @@ public class BrandScraperService : IDisposable
         return caseSpecs;
     }
 
-    /// <summary>
     /// Parses strap/bracelet specifications from text
-    /// </summary>
     private StrapSpecs ParseStrapSpecs(string text)
     {
         var strap = new StrapSpecs();
@@ -559,9 +543,7 @@ public class BrandScraperService : IDisposable
         return strap;
     }
 
-    /// <summary>
     /// Parses movement specifications from text
-    /// </summary>
     private MovementSpecs ParseMovementSpecs(string text)
     {
         var movement = new MovementSpecs();
@@ -647,10 +629,8 @@ public class BrandScraperService : IDisposable
         return movement;
     }
 
-    /// <summary>
     /// Parses price string and converts to AUD decimal
     /// Returns formatted string like "$73,200.00" or "Price on request"
-    /// </summary>
     private string ParseAndConvertPrice(string priceText, string currency)
     {
         if (string.IsNullOrEmpty(priceText) ||
@@ -686,9 +666,7 @@ public class BrandScraperService : IDisposable
         return "Price on request";
     }
 
-    /// <summary>
     /// Fetches page content using Selenium (for JavaScript-heavy sites)
-    /// </summary>
     private async Task<string> FetchWithSeleniumAsync(string url, bool expandAccordions = false)
     {
         try
@@ -765,9 +743,7 @@ public class BrandScraperService : IDisposable
         }
     }
 
-    /// <summary>
     /// Fetches page content using HttpClient (for static sites)
-    /// </summary>
     private async Task<string> FetchWithHttpClientAsync(string url)
     {
         try
@@ -783,9 +759,7 @@ public class BrandScraperService : IDisposable
         }
     }
 
-    /// <summary>
     /// Initializes Selenium Chrome WebDriver
-    /// </summary>
     private void InitializeSeleniumDriver()
     {
         try
@@ -808,9 +782,7 @@ public class BrandScraperService : IDisposable
         }
     }
 
-    /// <summary>
     /// Cleans and normalizes text
-    /// </summary>
     private string CleanText(string text)
     {
         if (string.IsNullOrEmpty(text))
@@ -821,12 +793,10 @@ public class BrandScraperService : IDisposable
         return text.Trim();
     }
 
-    /// <summary>
     /// Extracts reference number from full text (removes dimensions like "42.5 mm Titanium")
     /// Examples:
     ///   "6000V/210T-H032 42.5 mm Titanium" -> "6000V/210T-H032"
     ///   "1410U/000G-H017 39 mm White Gold" -> "1410U/000G-H017"
-    /// </summary>
     private string ExtractReferenceNumber(string fullText)
     {
         if (string.IsNullOrEmpty(fullText))
@@ -851,10 +821,8 @@ public class BrandScraperService : IDisposable
         return fullText;
     }
 
-    /// <summary>
     /// Uploads an image from a URL to Cloudinary CDN
     /// Returns the public_id for database storage
-    /// </summary>
     private async Task<string> DownloadImageLocallyAsync(string imageUrl, string brandName, string referenceNumber)
     {
         if (string.IsNullOrEmpty(imageUrl))
@@ -907,9 +875,7 @@ public class BrandScraperService : IDisposable
     }
 }
 
-/// <summary>
 /// Helper class for storing product card information
-/// </summary>
 internal class ProductCardInfo
 {
     public string DetailUrl { get; set; } = string.Empty;

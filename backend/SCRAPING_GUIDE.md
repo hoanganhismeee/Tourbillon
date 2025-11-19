@@ -1,6 +1,5 @@
 # Tourbillon Web Scraping Guide
 window cmd
-**Last Updated:** November 2025
 **Configured Brands:** Patek Philippe ✅, Vacheron Constantin ✅
 **Remaining:** 13 brands (Audemars Piguet, Rolex, Omega, etc.)
 
@@ -23,6 +22,11 @@ curl "http://localhost:5248/api/admin/scrape-stats"
 curl -X DELETE "http://localhost:5248/api/admin/clear-watches"
 ```
 
+**Clear specific brand only (for testing/retry):**
+```cmd
+curl -X DELETE "http://localhost:5248/api/admin/clear-watches?brandId=2"
+```
+
 ---
 
 ## 🎯 Architecture Overview
@@ -37,9 +41,9 @@ curl -X DELETE "http://localhost:5248/api/admin/clear-watches"
 ### Scraping Flow (Official Brand Websites)
 1. **Product Listing** → Extract reference number, collection, image URL from brand's website
 2. **Detail Page** → Extract price, comprehensive specs, high-res image
-3. **Cloudinary Upload** → Automatically upload images to Cloudinary CDN
-4. **Database** → Save with duplicate prevention + showcase preservation
-5. **Frontend** → Display with Cloudinary-optimized images
+3. **Cloudinary Upload** → Automatically upload & convert images to PNG format
+4. **Database (PostgreSQL)** → Save Cloudinary URLs + duplicate prevention + showcase preservation
+5. **Frontend** → Display images directly from Cloudinary CDN
 
 ---
 
@@ -55,14 +59,16 @@ curl -X DELETE "http://localhost:5248/api/admin/clear-watches"
 ### Cloudinary Integration
 
 **How it works:**
-- When scraping, images from official brand websites are automatically uploaded to Cloudinary
-- BrandScraperService uses CloudinaryService to upload images and store Cloudinary public_ids
-- Database stores Cloudinary public_ids (e.g., `"watches/PatekPhilippe_5227G010"`)
-- Frontend displays optimized images from Cloudinary with responsive transformations
+1. **Download** - Images from brand websites downloaded during scraping
+2. **Convert** - Images automatically converted to PNG format (faster load times)
+3. **Upload** - PNG stored in Cloudinary CDN (permanent, independent from brand websites)
+4. **Store** - PostgreSQL saves only the Cloudinary public_id reference
+5. **Display** - Frontend retrieves images from Cloudinary (never accesses brand sites again)
 
 **Result:**
-- Showcase watches (9 watches): `"image":"PP5227G.png"` → Local, fast ✅
-- Scraped watches (all others): `"image":"watches/PatekPhilippe_5227G010"` → Cloudinary, fast ✅
+- Showcase watches (9): Local files, instant ✅
+- Scraped watches (all others): Cloudinary PNG, fast + independent ✅
+- If brand website changes/blocks scraping → No impact (images already cached) ✅
 
 ### Frontend Configuration
 
@@ -373,6 +379,23 @@ public class Watch
 - **Target:** 400-450 total watches across 15 brands
 - **Current:** 29 watches (6% complete)
 - **Holy Trinity Progress:** 2/3 complete (Patek ✅, Vacheron ✅, Audemars 🔧)
+
+---
+
+## 🔮 Future Roadmap (After 15 Brands Complete)
+
+### Phase 1: Database Migration (From CSV to PostgreSQL)
+**When:** After all 15 brands are scraped (~450 watches)
+- Remove dependency on `/backend/Data/brands.csv` and `/backend/Data/collections.csv`
+- Move all brand/collection definitions to PostgreSQL
+- Admin UI to manage brands & collections directly (no more manual CSV edits)
+
+### Phase 2: Cloud Storage & CDN
+**When:** Phase 1 complete
+- Upload all watch images from Cloudinary → Amazon S3
+- Configure S3 + CloudFront CDN for faster global delivery
+- Leverage professional infrastructure (caching, compression, auto-scaling)
+- **Outcome:** Strongest practical experience in industry-standard tools
 
 ---
 

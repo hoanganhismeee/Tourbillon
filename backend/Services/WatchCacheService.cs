@@ -20,11 +20,9 @@ public class WatchCacheService
         _logger = logger;
     }
 
-    /// <summary>
     /// Caches a list of already-scraped watches to the database
     /// Used by BrandScraperService to save watches from official brand websites
     /// Includes duplicate checking and showcase watch preservation
-    /// </summary>
     public async Task<(bool success, string message, int watchesAdded)> CacheScrapedWatchesAsync(
         List<ScrapedWatchDto> scrapedWatches)
     {
@@ -59,17 +57,13 @@ public class WatchCacheService
         }
     }
 
-    /// <summary>
     /// Returns the count of cached watches
-    /// </summary>
     public async Task<int> GetCachedWatchCountAsync()
     {
         return await _context.Watches.CountAsync();
     }
 
-    /// <summary>
     /// Gets statistics about scraped data
-    /// </summary>
     public async Task<object> GetScrapeStatsAsync()
     {
         var totalWatches = await _context.Watches.CountAsync();
@@ -91,29 +85,40 @@ public class WatchCacheService
     }
 
 
-    /// <summary>
-    /// Clears all watches from database except the 9 showcase watches from CSV
-    /// Showcase watch IDs: 2, 4, 11, 13, 18, 24, 28, 30, 35
-    /// </summary>
-    public async Task<(bool success, string message, int deletedCount)> ClearAllWatchesAsync()
+    /// Clears watches from database with optional brand filtering
+    /// If brandId is provided, clears only that brand's scraped watches (preserves showcase watches)
+    /// If brandId is null, clears all watches except the 9 showcase watches from CSV
+    public async Task<(bool success, string message, int deletedCount)> ClearAllWatchesAsync(int? brandId = null)
     {
         try
         {
-            _logger.LogInformation("Clearing all watches except showcase watches");
-
             // IDs of the 9 showcase watches to keep (from DbInitializer)
             var showcaseWatchIds = new HashSet<int> { 2, 4, 11, 13, 18, 24, 28, 30, 35 };
 
-            // Get all watches that are NOT showcase watches
-            var watchesToDelete = await _context.Watches
-                .Where(w => !showcaseWatchIds.Contains(w.Id))
-                .ToListAsync();
+            IQueryable<Watch> query = _context.Watches
+                .Where(w => !showcaseWatchIds.Contains(w.Id));
+
+            if (brandId.HasValue)
+            {
+                _logger.LogInformation("Clearing all scraped watches for brand ID {BrandId}", brandId);
+                query = query.Where(w => w.BrandId == brandId.Value);
+            }
+            else
+            {
+                _logger.LogInformation("Clearing all watches except showcase watches");
+            }
+
+            // Get all watches matching the criteria
+            var watchesToDelete = await query.ToListAsync();
 
             int deletedCount = watchesToDelete.Count;
 
             if (deletedCount == 0)
             {
-                return (true, "No watches to delete. Database already clean.", 0);
+                var message = brandId.HasValue
+                    ? $"No watches to delete for brand ID {brandId}. Already clean."
+                    : "No watches to delete. Database already clean.";
+                return (true, message, 0);
             }
 
             // Delete all price trends for these watches first (foreign key constraint)
@@ -127,7 +132,9 @@ public class WatchCacheService
 
             await _context.SaveChangesAsync();
 
-            var successMessage = $"Successfully deleted {deletedCount} watches. Kept 9 showcase watches.";
+            var successMessage = brandId.HasValue
+                ? $"Successfully deleted {deletedCount} watches for brand ID {brandId}. Kept 9 showcase watches."
+                : $"Successfully deleted {deletedCount} watches. Kept 9 showcase watches.";
             _logger.LogInformation(successMessage);
             return (true, successMessage, deletedCount);
         }
@@ -336,10 +343,8 @@ public class WatchCacheService
         }
     }
 
-    /// <summary>
     /// Extracts reference number from watch name for matching
     /// Examples: "5227G-010", "5811/1G", "16202ST", "5303R"
-    /// </summary>
     private string ExtractReferenceNumber(string watchName)
     {
         if (string.IsNullOrEmpty(watchName))
@@ -366,14 +371,12 @@ public class WatchCacheService
         return string.Empty;
     }
 
-    /// <summary>
     /// Extracts BASE reference number (before variant suffix) for matching
     /// Examples:
     ///   "5227G-010" -> "5227G"
     ///   "5811/1G" -> "5811"
     ///   "16202ST" -> "16202ST" (no suffix)
     ///   "5303R" -> "5303R" (no suffix)
-    /// </summary>
     private string ExtractBaseReference(string referenceNumber)
     {
         if (string.IsNullOrEmpty(referenceNumber))

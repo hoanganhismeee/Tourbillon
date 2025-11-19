@@ -25,10 +25,8 @@ public class AdminController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>
     /// Gets statistics about scraped watch data
     /// GET: api/admin/scrape-stats
-    /// </summary>
     [HttpGet("scrape-stats")]
     public async Task<IActionResult> GetScrapeStats()
     {
@@ -39,10 +37,8 @@ public class AdminController : ControllerBase
         return Ok(stats);
     }
 
-    /// <summary>
     /// Scrapes watches from official brand website (Patek Philippe, Vacheron Constantin, etc.)
     /// POST: api/admin/scrape-brand-official?brand=Patek Philippe&collection=Calatrava&maxWatches=50
-    /// </summary>
     [HttpPost("scrape-brand-official")]
     public async Task<IActionResult> ScrapeBrandOfficial(
         [FromQuery] string brand,
@@ -122,17 +118,25 @@ public class AdminController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Clears all watches from database except the 9 showcase watches
+    /// Clears watches from database with optional brand filtering
+    /// If brandId is provided: deletes only that brand's scraped watches (preserves showcase watches)
+    /// If no brandId: deletes all watches except the 9 showcase watches
     /// Use this to reset before scraping fresh data
     /// DELETE: api/admin/clear-watches
-    /// </summary>
+    /// DELETE: api/admin/clear-watches?brandId=2
     [HttpDelete("clear-watches")]
-    public async Task<IActionResult> ClearWatches()
+    public async Task<IActionResult> ClearWatches([FromQuery] int? brandId = null)
     {
-        _logger.LogInformation("Clearing all watches except showcase watches");
+        if (brandId.HasValue)
+        {
+            _logger.LogInformation("Clearing all scraped watches for brand ID {BrandId}", brandId);
+        }
+        else
+        {
+            _logger.LogInformation("Clearing all watches except showcase watches");
+        }
 
-        var (success, message, deletedCount) = await _cacheService.ClearAllWatchesAsync();
+        var (success, message, deletedCount) = await _cacheService.ClearAllWatchesAsync(brandId);
 
         if (success)
         {
@@ -140,6 +144,7 @@ public class AdminController : ControllerBase
             {
                 Success = true,
                 Message = message,
+                BrandId = brandId,
                 WatchesDeleted = deletedCount,
                 Timestamp = DateTime.UtcNow
             });
@@ -149,16 +154,15 @@ public class AdminController : ControllerBase
         {
             Success = false,
             Message = message,
+            BrandId = brandId,
             WatchesDeleted = deletedCount,
             Timestamp = DateTime.UtcNow
         });
     }
 
-    /// <summary>
     /// Caches external images locally and updates database with local paths
     /// POST: api/admin/cache-images?brandId=2
     /// This eliminates 404 errors from external CDNs by downloading images once
-    /// </summary>
     [HttpPost("cache-images")]
     public async Task<IActionResult> CacheImagesLocally([FromQuery] int brandId)
     {
