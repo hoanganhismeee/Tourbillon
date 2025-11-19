@@ -176,10 +176,8 @@ namespace backend.Database
             SeedWatchesFromCsv(context);
         }
 
-        /// <summary>
         /// Resets the PostgreSQL auto-increment sequence for Watch IDs
         /// This prevents ID conflicts when inserting new scraped watches
-        /// </summary>
         private static void ResetWatchIdSequence(TourbillonContext context, int startValue)
         {
             try

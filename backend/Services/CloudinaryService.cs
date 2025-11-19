@@ -4,25 +4,19 @@ using Microsoft.Extensions.Options;
 
 namespace backend.Services;
 
-/// <summary>
 /// Interface for Cloudinary image upload operations
-/// </summary>
 public interface ICloudinaryService
 {
-    /// <summary>
     /// Uploads an image from a URL to Cloudinary
-    /// </summary>
-    /// <param name="imageUrl">Full URL of the image to download and upload</param>
-    /// <param name="publicId">Cloudinary public_id (filename without extension)</param>
-    /// <param name="folder">Cloudinary folder path (e.g., "watches")</param>
-    /// <returns>Public ID of the uploaded image on success, empty string on failure</returns>
+    /// Params: imageUrl - Full URL of the image to download and upload
+    /// publicId - Cloudinary public_id (filename without extension)
+    /// folder - Cloudinary folder path (e.g., "watches")
+    /// Returns: Public ID of the uploaded image on success, empty string on failure
     Task<string> UploadImageFromUrlAsync(string imageUrl, string publicId, string folder = "watches");
 }
 
-/// <summary>
 /// Cloudinary image upload service
 /// Handles uploading scraped watch images to Cloudinary CDN
-/// </summary>
 public class CloudinaryService : ICloudinaryService
 {
     private readonly Cloudinary _cloudinary;
@@ -49,10 +43,8 @@ public class CloudinaryService : ICloudinaryService
         _logger.LogInformation("Cloudinary service initialized for cloud: {CloudName}", cloudName);
     }
 
-    /// <summary>
     /// Uploads an image from a URL to Cloudinary
     /// Downloads the image content and uploads it with the specified public_id
-    /// </summary>
     public async Task<string> UploadImageFromUrlAsync(string imageUrl, string publicId, string folder = "watches")
     {
         if (string.IsNullOrEmpty(imageUrl) || string.IsNullOrEmpty(publicId))
