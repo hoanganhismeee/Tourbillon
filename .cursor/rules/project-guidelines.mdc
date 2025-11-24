@@ -1,0 +1,36 @@
+---
+description: Always-on Tourbillon coding standards and workflows
+alwaysApply: true
+globs:
+---
+
+# Tourbillon Persistent Rules
+
+## Comments
+- Limit inline comments to 1-3 per file unless the user explicitly asks for more.
+- Add a brief (1-3 line) header comment at the top of every file or class describing its purpose.
+
+## Design Principles
+- Apply SOLID principles in new or refactored code.
+- When highlighting notable logic or UX features, mention the relevant SOLID principles first.
+- Follow DRY (Don't Repeat Yourself): Avoid duplicated logic; extract repeated code into functions, services, helpers, or components.
+- Follow KISS (Keep It Simple, Stupid): Prefer the simplest solution that works; avoid overengineering or unnecessary abstractions.
+- Follow YAGNI (You Aren't Gonna Need It): Don't write features or abstractions "just in case"; implement things only when required.
+- Follow Separation of Concerns (SoC): Each module should handle one responsibility area (very useful for React components, Python modules, .NET services).
+
+## Scraping / Backend Tasks
+- When providing scrape commands, include all target collections for the brand in a single command with `timeout /t 5 /nobreak` pauses between each collection call.
+- Scrape full collection sizes; no need for reduced/test counts because problematic data can be wiped by brand ID later.
+
+## Naming & Assets
+- Watch image filenames follow `brand+model.png` (e.g., `PP6119G.png`).
+- Collection images use the collection name (e.g., `reverso.png`).
+- Brand images use the brand name (e.g., `patekphillipe.png`).
+
+## Documentation & Config Files
+- Add or adjust scraping selectors in `backend/Configuration/brand-configs.json` and capture raw HTML snippets in `backend/Pending_Brands_Config.md`.
+- Mention these files in summaries whenever they are used so future contributors stay aligned.
+
+## Communication
+- Default to concise, professional language.
+- Call out open assumptions or follow-up questions explicitly.
