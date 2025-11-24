@@ -1,0 +1,153 @@
+[
+  {
+    "BrandName": "Patek Philippe",
+    "BaseUrl": "https://www.patek.com",
+    "CollectionUrls": {
+      "Calatrava": "/en/collection/calatrava/all-watches",
+      "Nautilus": "/en/collection/nautilus/all-watches",
+      "Aquanaut": "/en/collection/aquanaut/all-watches",
+      "Complications": "/en/collection/complications/all-watches",
+      "Grand Complications": "/en/collection/grand-complications/all-watches"
+    },
+    "ProductCard": {
+      "CardContainer": "//a[contains(@class, 'editorial-card')]",
+      "ReferenceNumber": ".//h2",
+      "CollectionName": ".//h3",
+      "CaseMaterial": ".//p[position()=last()]",
+      "Image": ".//img[contains(@class, 'editorial-card_image')]",
+      "DetailPageLink": ""
+    },
+    "DetailPage": {
+      "Price": "//div[contains(@class, 'product-price_product-price')]//p",
+      "ReferenceNumber": "//h2[contains(@class, 'product-technical-section_title')]",
+      "CollectionName": "//h3[contains(@class, 'product-technical-section_subtitle')]",
+      "Image": "//img[contains(@class, 'product-media_image')]",
+      "DialSpecs": "//h3[contains(@class, 'accordion-title') and contains(text(), 'Dial')]/ancestor::div[contains(@class, 'accordion-item')]//div[contains(@class, 'accordion_content__')]",
+      "CaseSpecs": "//h3[contains(@class, 'accordion-title') and contains(text(), 'Case')]/ancestor::div[contains(@class, 'accordion-item')]//div[contains(@class, 'accordion_content__')]",
+      "StrapSpecs": "//h3[contains(@class, 'accordion-title') and contains(text(), 'Strap')]/ancestor::div[contains(@class, 'accordion-item')]//div[contains(@class, 'accordion_content__')]",
+      "MovementSpecs": "//h3[contains(@class, 'accordion-title') and contains(text(), 'Movement')]/ancestor::div[contains(@class, 'accordion-item')]//div[contains(@class, 'accordion_content__')]"
+    },
+    "RequiresJavaScript": true,
+    "Currency": "AUD",
+    "RequestDelayMs": 2000
+  },
+  {
+    "BrandName": "Vacheron Constantin",
+    "BaseUrl": "https://www.vacheron-constantin.com",
+    "CollectionUrls": {
+      "Patrimony": "/au/en/watches/all-collections/patrimony.html",
+      "Overseas": "/au/en/watches/all-collections/overseas.html",
+      "Historiques": "/au/en/watches/all-collections/historiques.html",
+      "Métiers d'Art": "/au/en/watches/all-collections/metiers-dart.html",
+      "Les Cabinotiers": "/au/en/watches/all-collections/les-cabinotiers.html"
+    },
+    "ProductCard": {
+      "CardContainer": "//a[contains(@class, 'vac-absolute-link')]"
+    },
+    "DetailPage": {
+      "Price": "//p[contains(@class, 'vac-details-block__price')]",
+      "ReferenceNumber": "//p[contains(@class, 'vac-details-block__reference')]",
+      "CollectionName": "//p[contains(@class, 'vac-details-block__collection')]",
+      "Image": "//img[contains(@class, 'lazyautosizes') and @itemprop='image']",
+      "DialSpecs": "//div[@id='vac-tabcontent-0']//li[.//span[contains(text(), 'Dial description')]]//span[not(contains(@class, 'vac-text-gold'))]",
+      "CaseSpecs": "//div[@id='vac-tabcontent-0']//ul[@class='vac-specification__list']",
+      "StrapSpecs": "//div[@id='vac-tabcontent-0']//li[.//span[contains(text(), 'Material of the bracelets') or contains(text(), 'Buckle type')]]",
+      "MovementSpecs": "//div[@id='vac-tabcontent-1']//ul[@class='vac-specification__list']"
+    },
+    "RequiresJavaScript": true,
+    "Currency": "AUD",
+    "RequestDelayMs": 2000
+  },
+  {
+    "BrandName": "Audemars Piguet",
+    "BaseUrl": "https://www.audemarspiguet.com",
+    "CollectionUrls": {
+      "Royal Oak": "/com/en/collections/royal-oak-collection.html",
+      "Royal Oak Offshore": "/com/en/collections/royal-oak-offshore-collection.html",
+      "Royal Oak Concept": "/com/en/collections/royal-oak-concept-collection.html"
+    },
+    "ProductCard": {
+      "CardContainer": "//a[contains(@class, 'ap-product-card__wrapper')]",
+      "ReferenceNumber": ".//div[contains(@class, 'ap-product-card__reference')]",
+      "CollectionName": ".//h4[contains(@class, 'ap-product-card__title')]//b",
+      "Image": ".//img[contains(@class, 'lazyload') or contains(@class, 'lazyloaded')]",
+      "DetailPageLink": "@href"
+    },
+    "DetailPage": {
+      "Price": "//div[contains(@class, 'ap-productinfo__price')]",
+      "ReferenceNumber": "//span[contains(@class, 'js-reveal-effect-line')][1]",
+      "CollectionName": "//h2[contains(@class, 'title-1')]/text()[1]",
+      "Image": "//img[contains(@class, 'lazyautosizes') or contains(@class, 'lazyloaded')]",
+      "DialSpecs": "//h3[contains(@class, 'ap-specifications__subtitle') and contains(text(), 'Dial')]/ancestor::div[contains(@class, 'ap-specifications__cell')]//div[contains(@class, 'ap-specifications__text')]",
+      "CaseSpecs": "//h3[contains(@class, 'ap-specifications__subtitle') and contains(text(), 'Case')]/ancestor::div[contains(@class, 'ap-specifications__cell')]//ul[contains(@class, 'ap-specifications__list')]",
+      "StrapSpecs": "//h3[contains(@class, 'ap-specifications__subtitle') and contains(text(), 'Bracelet')]/ancestor::div[contains(@class, 'ap-specifications__cell')]//div[contains(@class, 'ap-specifications__text')]",
+      "MovementSpecs": "//h3[contains(@class, 'ap-specifications__subtitle') and contains(text(), 'Movement')]/ancestor::div[contains(@class, 'ap-specifications__cell')]//ul[contains(@class, 'ap-specifications__list')]"
+    },
+    "RequiresJavaScript": true,
+    "Currency": "AUD",
+    "RequestDelayMs": 2000
+  },
+  {
+    "BrandName": "Jaeger-LeCoultre",
+    "BaseUrl": "https://www.jaeger-lecoultre.com",
+    "CollectionUrls": {
+      "Reverso": "/au-en/watches/reverso",
+      "Master Ultra Thin": "/au-en/watches/master-ultra-thin",
+      "Polaris": "/au-en/watches/polaris",
+      "Duomètre": "/au-en/watches/duometre",
+      "Duometre": "/au-en/watches/duometre"
+    },
+    "ProductCard": {
+      "CardContainer": "//div[contains(@class, 'product-card') and @data-cy='mixed-grid-item']",
+      "ReferenceNumber": "@itemid",
+      "CollectionName": "@collection",
+      "CaseMaterial": ".//div[contains(@class, 'product-card__specs')]",
+      "Image": ".//div[contains(@class, 'product-card__picture')]//img",
+      "DetailPageLink": ".//a[contains(@class, 'product-card__link')]/@href"
+    },
+    "DetailPage": {
+      "Price": "//span[@data-price='value']",
+      "ReferenceNumber": "(//div[contains(@class, 'technical-details-panel__detail-title') and contains(text(), 'Reference')]/following-sibling::li)[1]",
+      "CollectionName": "",
+      "Image": "//div[contains(@class, 'product-page-details__media')]//img",
+      "DialSpecs": "//div[@id='product-accordion-tab-feature']",
+      "CaseSpecs": "//div[@id='product-accordion-tab-feature']",
+      "StrapSpecs": "//div[@id='product-accordion-tab-straps-and-buckles']",
+      "MovementSpecs": "//div[@id='product-accordion-tab-movement']"
+    },
+    "RequiresJavaScript": true,
+    "Currency": "AUD",
+    "RequestDelayMs": 2000
+  },
+  {
+    "BrandName": "A. Lange & Söhne",
+    "BaseUrl": "https://www.alange-soehne.com",
+    "CollectionUrls": {
+      "Lange 1": "/au-en/timepieces/lange-1",
+      "Zeitwerk": "/au-en/timepieces/zeitwerk",
+      "Datograph": "/au-en/timepieces/datograph",
+      "Saxonia": "/au-en/timepieces/saxonia"
+    },
+    "ProductCard": {
+      "CardContainer": "//div[contains(@class, 'product-card') and @collection]",
+      "ReferenceNumber": ".//div[contains(@class, 'product-card__ref')]",
+      "CollectionName": ".//div[contains(@class, 'product-card__collection')]",
+      "CaseMaterial": ".//div[contains(@class, 'product-card__description')]",
+      "Image": ".//div[contains(@class, 'product-card__picture')]//img",
+      "DetailPageLink": ".//a[contains(@class, 'product-card__link')]/@href"
+    },
+    "DetailPage": {
+      "Price": "//div[contains(@class, 'product-price')]//span[contains(@class, 'product-price__value')]",
+      "ReferenceNumber": "(//div[contains(@class, 'technical-details-panel__detail-title') and contains(text(), 'Reference')]/following-sibling::li)[1]",
+      "CollectionName": "//div[contains(@class, 'panel__content')]//div[contains(@class, 'product-card__name')]",
+      "Image": "//div[contains(@class, 'picture')]//img",
+      "DialSpecs": "//div[@class='technical-details-panel__block-title' and contains(text(), 'Model Details')]/following-sibling::div[1]",
+      "CaseSpecs": "//div[@class='technical-details-panel__block-title' and contains(text(), 'Case')]/following-sibling::ul[1]",
+      "StrapSpecs": "//div[@class='technical-details-panel__block-title' and contains(text(), 'Strap')]/following-sibling::ul[1]",
+      "MovementSpecs": "//div[@class='technical-details-panel__block-title' and contains(text(), 'Movement')]/following-sibling::ul[1]"
+    },
+    "RequiresJavaScript": true,
+    "Currency": "AUD",
+    "RequestDelayMs": 2000
+  }
+]

@@ -11,13 +11,16 @@ public class WatchCacheService
 {
     private readonly TourbillonContext _context;
     private readonly ILogger<WatchCacheService> _logger;
+    private readonly ICloudinaryService _cloudinaryService;
 
     public WatchCacheService(
         TourbillonContext context,
-        ILogger<WatchCacheService> logger)
+        ILogger<WatchCacheService> logger,
+        ICloudinaryService cloudinaryService)
     {
         _context = context;
         _logger = logger;
+        _cloudinaryService = cloudinaryService;
     }
 
     /// Caches a list of already-scraped watches to the database
@@ -120,6 +123,24 @@ public class WatchCacheService
                     : "No watches to delete. Database already clean.";
                 return (true, message, 0);
             }
+
+            // Clean up Cloudinary images first (before database deletion)
+            int imagesDeleted = 0;
+            foreach (var watch in watchesToDelete)
+            {
+                // Only delete if image is a Cloudinary public_id (starts with "watches/")
+                if (!string.IsNullOrEmpty(watch.Image) && watch.Image.StartsWith("watches/"))
+                {
+                    var deleted = await _cloudinaryService.DeleteImageAsync(watch.Image);
+                    if (deleted)
+                    {
+                        imagesDeleted++;
+                    }
+                }
+            }
+
+            _logger.LogInformation("Deleted {ImagesDeleted} images from Cloudinary out of {TotalWatches} watches", 
+                imagesDeleted, deletedCount);
 
             // Delete all price trends for these watches first (foreign key constraint)
             var watchIdsToDelete = watchesToDelete.Select(w => w.Id).ToList();

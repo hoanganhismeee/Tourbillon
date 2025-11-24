@@ -166,4 +166,9 @@ public class WatchSpecs
     /// Movement specifications
     [JsonPropertyName("movement")]
     public MovementSpecs? Movement { get; set; }
+
+    /// Additional brand-specific specifications
+    /// Captures extra details that don't fit standard categories (e.g. VC's "Recto/Verso" details)
+    [JsonPropertyName("additional")]
+    public Dictionary<string, string>? Additional { get; set; }
 }

@@ -13,6 +13,11 @@ public interface ICloudinaryService
     /// folder - Cloudinary folder path (e.g., "watches")
     /// Returns: Public ID of the uploaded image on success, empty string on failure
     Task<string> UploadImageFromUrlAsync(string imageUrl, string publicId, string folder = "watches");
+
+    /// Deletes an image from Cloudinary
+    /// Params: publicId - Cloudinary public_id (e.g., "watches/PatekPhilippe_5227G010")
+    /// Returns: True if deletion was successful, false otherwise
+    Task<bool> DeleteImageAsync(string publicId);
 }
 
 /// Cloudinary image upload service
@@ -96,6 +101,42 @@ public class CloudinaryService : ICloudinaryService
         {
             _logger.LogError(ex, "Error uploading image to Cloudinary from {Url}", imageUrl);
             return string.Empty;
+        }
+    }
+
+    /// Deletes an image from Cloudinary by public_id
+    public async Task<bool> DeleteImageAsync(string publicId)
+    {
+        if (string.IsNullOrEmpty(publicId))
+        {
+            _logger.LogWarning("Cannot delete image: publicId is null or empty");
+            return false;
+        }
+
+        try
+        {
+            var deletionParams = new DeletionParams(publicId)
+            {
+                ResourceType = ResourceType.Image
+            };
+
+            var result = await _cloudinary.DestroyAsync(deletionParams);
+
+            if (result.Result == "ok" || result.Result == "not found")
+            {
+                _logger.LogInformation("Successfully deleted image from Cloudinary: {PublicId} (Result: {Result})", 
+                    publicId, result.Result);
+                return true;
+            }
+
+            _logger.LogWarning("Failed to delete image from Cloudinary: {PublicId}. Result: {Result}", 
+                publicId, result.Result);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting image from Cloudinary: {PublicId}", publicId);
+            return false;
         }
     }
 }

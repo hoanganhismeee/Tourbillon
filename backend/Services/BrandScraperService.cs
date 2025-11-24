@@ -31,93 +31,57 @@ public class BrandScraperService : IDisposable
         _cloudinaryService = cloudinaryService;
         _brandConfigs = new Dictionary<string, BrandScraperConfig>();
 
-        // Initialize brand configurations
-        InitializeBrandConfigs();
+        // Load brand configurations from JSON file
+        LoadBrandConfigs();
     }
 
-    /// Initialize configurations for all supported brands
-    private void InitializeBrandConfigs()
+    /// Load configurations from JSON file
+    private void LoadBrandConfigs()
     {
-        // Patek Philippe configuration
-        _brandConfigs["Patek Philippe"] = new BrandScraperConfig
+        try
         {
-            BrandName = "Patek Philippe",
-            BaseUrl = "https://www.patek.com",
-            CollectionUrls = new Dictionary<string, string>
+            var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Configuration", "brand-configs.json");
+            
+            // Fallback to source directory if running in development and file not copied to output
+            if (!File.Exists(configPath))
             {
-                { "Calatrava", "/en/collection/calatrava/all-watches" },
-                { "Nautilus", "/en/collection/nautilus/all-watches" },
-                { "Aquanaut", "/en/collection/aquanaut/all-watches" },
-                { "Complications", "/en/collection/complications/all-watches" },
-                { "Grand Complications", "/en/collection/grand-complications/all-watches" }
-            },
-            ProductCard = new ProductCardSelectors
-            {
-                // XPath selectors
-                CardContainer = "//a[contains(@class, 'editorial-card')]",
-                ReferenceNumber = ".//h2", // Will be extracted from text
-                CollectionName = ".//h3", // Collection name in card
-                CaseMaterial = ".//p[position()=last()]", // Material text below reference
-                Image = ".//img[contains(@class, 'editorial-card_image')]",
-                DetailPageLink = "" // Card itself is a link
-            },
-            DetailPage = new DetailPageSelectors
-            {
-                // XPath selectors for Patek Philippe detail page (updated based on actual HTML structure)
-                Price = "//div[contains(@class, 'product-price_product-price')]//p",
-                ReferenceNumber = "//h2[contains(@class, 'product-technical-section_title')]",
-                CollectionName = "//h3[contains(@class, 'product-technical-section_subtitle')]",
-                Image = "//img[contains(@class, 'product-media_image')]",
-                DialSpecs = "//h3[contains(@class, 'accordion-title') and contains(text(), 'Dial')]/ancestor::div[contains(@class, 'accordion-item')]//div[contains(@class, 'accordion_content__')]",
-                CaseSpecs = "//h3[contains(@class, 'accordion-title') and contains(text(), 'Case')]/ancestor::div[contains(@class, 'accordion-item')]//div[contains(@class, 'accordion_content__')]",
-                StrapSpecs = "//h3[contains(@class, 'accordion-title') and contains(text(), 'Strap')]/ancestor::div[contains(@class, 'accordion-item')]//div[contains(@class, 'accordion_content__')]",
-                MovementSpecs = "//h3[contains(@class, 'accordion-title') and contains(text(), 'Movement')]/ancestor::div[contains(@class, 'accordion-item')]//div[contains(@class, 'accordion_content__')]"
-            },
-            RequiresJavaScript = true, // Patek site uses React
-            Currency = "AUD",
-            RequestDelayMs = 2000
-        };
+                configPath = Path.Combine(Directory.GetCurrentDirectory(), "Configuration", "brand-configs.json");
+            }
 
-        // Vacheron Constantin configuration
-        _brandConfigs["Vacheron Constantin"] = new BrandScraperConfig
+            if (!File.Exists(configPath))
+            {
+                _logger.LogError("Brand configuration file not found at {Path}", configPath);
+                return;
+            }
+
+            var json = File.ReadAllText(configPath);
+            var configs = JsonSerializer.Deserialize<List<BrandScraperConfig>>(json);
+
+            if (configs != null)
+            {
+                foreach (var config in configs)
+                {
+                    _brandConfigs[config.BrandName] = config;
+                }
+
+                // ASCII-friendly aliases
+                if (_brandConfigs.ContainsKey("Jaeger-LeCoultre"))
+                {
+                    _brandConfigs["Jaeger LeCoultre"] = _brandConfigs["Jaeger-LeCoultre"];
+                }
+                if (_brandConfigs.ContainsKey("A. Lange & Söhne"))
+                {
+                    _brandConfigs["A. Lange & Sohne"] = _brandConfigs["A. Lange & Söhne"];
+                    _brandConfigs["A. Lange and Sohne"] = _brandConfigs["A. Lange & Söhne"];
+                }
+
+                _logger.LogInformation("Loaded {Count} brand configurations", configs.Count);
+            }
+        }
+        catch (Exception ex)
         {
-            BrandName = "Vacheron Constantin",
-            BaseUrl = "https://www.vacheron-constantin.com",
-            CollectionUrls = new Dictionary<string, string>
-            {
-                { "Patrimony", "/au/en/watches/all-collections/patrimony.html" },
-                { "Overseas", "/au/en/watches/all-collections/overseas.html" },
-                { "Historiques", "/au/en/watches/all-collections/historiques.html" },
-                { "Métiers d'Art", "/au/en/watches/all-collections/metiers-dart.html" },
-                { "Les Cabinotiers", "/au/en/watches/all-collections/les-cabinotiers.html" }
-            },
-            ProductCard = new ProductCardSelectors
-            {
-                // XPath selectors for VC product cards - extract detail page URL
-                CardContainer = "//a[contains(@class, 'vac-absolute-link')]"
-            },
-            DetailPage = new DetailPageSelectors
-            {
-                // XPath selectors for Vacheron Constantin detail page
-                Price = "//p[contains(@class, 'vac-details-block__price')]",
-                ReferenceNumber = "//p[contains(@class, 'vac-details-block__reference')]",
-                CollectionName = "//p[contains(@class, 'vac-details-block__collection')]",
-                Image = "//img[contains(@class, 'lazyautosizes') and @itemprop='image']",
-                // Watch tab specs - Dial description
-                DialSpecs = "//div[@id='vac-tabcontent-0']//li[.//span[contains(text(), 'Dial description')]]//span[not(contains(@class, 'vac-text-gold'))]",
-                // Watch tab specs - Case fields (Diameter, Thickness, Water-resistance, etc.)
-                CaseSpecs = "//div[@id='vac-tabcontent-0']//ul[@class='vac-specification__list']",
-                // Watch tab specs - Strap/Bracelet fields (Material of the bracelets and Buckle type)
-                StrapSpecs = "//div[@id='vac-tabcontent-0']//li[.//span[contains(text(), 'Material of the bracelets') or contains(text(), 'Buckle type')]]",
-                // Movement specs - SKIP (use Caliber tab only if needed)
-                MovementSpecs = "//div[@id='vac-tabcontent-1']//ul[@class='vac-specification__list']"
-            },
-            RequiresJavaScript = true, // VC site uses dynamic content
-            Currency = "AUD",
-            RequestDelayMs = 2000
-        };
-
-        // Add more brands as needed (Audemars Piguet, etc.)
+            _logger.LogError(ex, "Error loading brand configurations");
+        }
     }
 
     /// Scrapes watches for a specific brand and collection
@@ -226,6 +190,10 @@ public class BrandScraperService : IDisposable
                 var detailUrl = cardNode.GetAttributeValue("href", string.Empty);
                 if (string.IsNullOrEmpty(detailUrl))
                 {
+                    detailUrl = ResolveDetailLink(cardNode, config.ProductCard.DetailPageLink);
+                }
+                if (string.IsNullOrEmpty(detailUrl))
+                {
                     continue;
                 }
 
@@ -238,16 +206,34 @@ public class BrandScraperService : IDisposable
                 var referenceNumber = string.Empty;
                 if (!string.IsNullOrEmpty(config.ProductCard.ReferenceNumber))
                 {
-                    var refNode = cardNode.SelectSingleNode(config.ProductCard.ReferenceNumber);
-                    referenceNumber = refNode?.InnerText?.Trim() ?? string.Empty;
+                    // Handle attribute selectors (e.g., @itemid for JLC)
+                    if (config.ProductCard.ReferenceNumber.StartsWith("@"))
+                    {
+                        var attributeName = config.ProductCard.ReferenceNumber.TrimStart('@');
+                        referenceNumber = cardNode.GetAttributeValue(attributeName, string.Empty);
+                    }
+                    else
+                    {
+                        var refNode = cardNode.SelectSingleNode(config.ProductCard.ReferenceNumber);
+                        referenceNumber = refNode?.InnerText?.Trim() ?? string.Empty;
+                    }
                 }
 
                 // Extract collection name from card
                 var collectionName = string.Empty;
                 if (!string.IsNullOrEmpty(config.ProductCard.CollectionName))
                 {
-                    var collectionNode = cardNode.SelectSingleNode(config.ProductCard.CollectionName);
-                    collectionName = collectionNode?.InnerText?.Trim() ?? string.Empty;
+                    // Handle attribute selectors (e.g., @collection for JLC)
+                    if (config.ProductCard.CollectionName.StartsWith("@"))
+                    {
+                        var attributeName = config.ProductCard.CollectionName.TrimStart('@');
+                        collectionName = cardNode.GetAttributeValue(attributeName, string.Empty);
+                    }
+                    else
+                    {
+                        var collectionNode = cardNode.SelectSingleNode(config.ProductCard.CollectionName);
+                        collectionName = collectionNode?.InnerText?.Trim() ?? string.Empty;
+                    }
                 }
 
                 // Extract material from card
@@ -265,26 +251,7 @@ public class BrandScraperService : IDisposable
                     var imageNode = cardNode.SelectSingleNode(config.ProductCard.Image);
                     if (imageNode != null)
                     {
-                        // Get highest resolution from srcset
-                        var srcset = imageNode.GetAttributeValue("srcset", string.Empty);
-                        if (!string.IsNullOrEmpty(srcset))
-                        {
-                            // Take the last (highest resolution) URL from srcset
-                            var urls = srcset.Split(',');
-                            if (urls.Length > 0)
-                            {
-                                var lastUrl = urls[urls.Length - 1].Trim().Split(' ')[0];
-                                imageUrl = lastUrl.StartsWith("http") ? lastUrl : config.BaseUrl + lastUrl;
-                            }
-                        }
-                        else
-                        {
-                            imageUrl = imageNode.GetAttributeValue("src", string.Empty);
-                            if (!string.IsNullOrEmpty(imageUrl) && !imageUrl.StartsWith("http"))
-                            {
-                                imageUrl = config.BaseUrl + imageUrl;
-                            }
-                        }
+                        imageUrl = ExtractImageUrl(imageNode, config.BaseUrl);
                     }
                 }
 
@@ -304,6 +271,48 @@ public class BrandScraperService : IDisposable
         }
 
         return cards;
+    }
+
+    private string ResolveDetailLink(HtmlNode cardNode, string detailPageLinkSelector)
+    {
+        if (string.IsNullOrEmpty(detailPageLinkSelector))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            if (detailPageLinkSelector.StartsWith("@"))
+            {
+                var attributeName = detailPageLinkSelector.TrimStart('@');
+                return cardNode.GetAttributeValue(attributeName, string.Empty);
+            }
+
+            var detailNode = cardNode.SelectSingleNode(detailPageLinkSelector);
+            if (detailNode == null)
+            {
+                return string.Empty;
+            }
+
+            var href = detailNode.GetAttributeValue("href", string.Empty);
+            if (!string.IsNullOrEmpty(href))
+            {
+                return href.Trim();
+            }
+
+            var src = detailNode.GetAttributeValue("src", string.Empty);
+            if (!string.IsNullOrEmpty(src))
+            {
+                return src.Trim();
+            }
+
+            return detailNode.InnerText.Trim();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve detail link for node");
+            return string.Empty;
+        }
     }
 
     /// Scrapes detailed information from a watch's detail page
@@ -328,19 +337,31 @@ public class BrandScraperService : IDisposable
             doc.LoadHtml(html);
 
             // Extract reference number (use card info as fallback)
-            var refNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.ReferenceNumber);
+            HtmlNode? refNode = null;
+            if (!string.IsNullOrEmpty(config.DetailPage.ReferenceNumber))
+            {
+                refNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.ReferenceNumber);
+            }
             var referenceNumber = refNode?.InnerText?.Trim() ?? cardInfo.ReferenceNumber;
             referenceNumber = CleanText(referenceNumber);
             // Extract just the reference part (before dimensions like "42.5 mm Titanium")
             referenceNumber = ExtractReferenceNumber(referenceNumber);
 
             // Extract collection name (use card info as fallback)
-            var collectionNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.CollectionName);
+            HtmlNode? collectionNode = null;
+            if (!string.IsNullOrEmpty(config.DetailPage.CollectionName))
+            {
+                collectionNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.CollectionName);
+            }
             var collectionName = collectionNode?.InnerText?.Trim() ?? cardInfo.CollectionName;
             collectionName = CleanText(collectionName);
 
             // Extract price
-            var priceNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.Price);
+            HtmlNode? priceNode = null;
+            if (!string.IsNullOrEmpty(config.DetailPage.Price))
+            {
+                priceNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.Price);
+            }
             var priceText = priceNode?.InnerText?.Trim() ?? "Price on request";
             var price = ParseAndConvertPrice(priceText, config.Currency);
 
@@ -353,15 +374,10 @@ public class BrandScraperService : IDisposable
                 var imageNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.Image);
                 if (imageNode != null)
                 {
-                    var src = imageNode.GetAttributeValue("src", string.Empty);
-                    if (string.IsNullOrEmpty(src))
+                    var extractedUrl = ExtractImageUrl(imageNode, config.BaseUrl);
+                    if (!string.IsNullOrEmpty(extractedUrl))
                     {
-                        src = imageNode.GetAttributeValue("data-src", string.Empty);
-                    }
-
-                    if (!string.IsNullOrEmpty(src))
-                    {
-                        imageUrl = src.StartsWith("http") ? src : config.BaseUrl + src;
+                        imageUrl = extractedUrl;
                         _logger.LogInformation("Extracted image URL from detail page: {Url}", imageUrl);
                     }
                 }
@@ -410,43 +426,64 @@ public class BrandScraperService : IDisposable
         }
     }
 
-    /// Extracts structured specs from detail page
+    /// Extracts structured specs from detail page with flexible additional specs capture
     private WatchSpecs ExtractSpecs(HtmlDocument doc, BrandScraperConfig config)
     {
         var specs = new WatchSpecs();
 
         try
         {
-            // Extract Dial specs (selectors already have // prefix)
-            var dialNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.DialSpecs);
-            if (dialNode != null)
+            // Extract standard specs using configured selectors
+            // Extract Dial specs
+            if (!string.IsNullOrEmpty(config.DetailPage.DialSpecs))
             {
-                specs.Dial = ParseDialSpecs(dialNode.InnerText);
-                _logger.LogInformation("Extracted Dial specs");
+                var dialNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.DialSpecs);
+                if (dialNode != null)
+                {
+                    specs.Dial = ParseDialSpecs(dialNode.InnerText);
+                    _logger.LogInformation("Extracted Dial specs");
+                }
             }
 
             // Extract Case specs
-            var caseNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.CaseSpecs);
-            if (caseNode != null)
+            if (!string.IsNullOrEmpty(config.DetailPage.CaseSpecs))
             {
-                specs.Case = ParseCaseSpecs(caseNode.InnerText);
-                _logger.LogInformation("Extracted Case specs");
+                var caseNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.CaseSpecs);
+                if (caseNode != null)
+                {
+                    specs.Case = ParseCaseSpecs(caseNode.InnerText);
+                    _logger.LogInformation("Extracted Case specs");
+                }
             }
 
             // Extract Strap specs
-            var strapNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.StrapSpecs);
-            if (strapNode != null)
+            if (!string.IsNullOrEmpty(config.DetailPage.StrapSpecs))
             {
-                specs.Strap = ParseStrapSpecs(strapNode.InnerText);
-                _logger.LogInformation("Extracted Strap specs");
+                var strapNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.StrapSpecs);
+                if (strapNode != null)
+                {
+                    specs.Strap = ParseStrapSpecs(strapNode.InnerText);
+                    _logger.LogInformation("Extracted Strap specs");
+                }
             }
 
             // Extract Movement specs
-            var movementNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.MovementSpecs);
-            if (movementNode != null)
+            if (!string.IsNullOrEmpty(config.DetailPage.MovementSpecs))
             {
-                specs.Movement = ParseMovementSpecs(movementNode.InnerText);
-                _logger.LogInformation("Extracted Movement specs");
+                var movementNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.MovementSpecs);
+                if (movementNode != null)
+                {
+                    specs.Movement = ParseMovementSpecs(movementNode.InnerText);
+                    _logger.LogInformation("Extracted Movement specs");
+                }
+            }
+
+            // Extract additional brand-specific specs (VC's recto/verso, brand-specific features, etc.)
+            var additionalSpecs = ExtractAdditionalSpecs(doc, config);
+            if (additionalSpecs != null && additionalSpecs.Count > 0)
+            {
+                specs.Additional = additionalSpecs;
+                _logger.LogInformation("Extracted {Count} additional spec sections", additionalSpecs.Count);
             }
         }
         catch (Exception ex)
@@ -457,35 +494,129 @@ public class BrandScraperService : IDisposable
         return specs;
     }
 
+    /// Extracts additional brand-specific specs not covered by standard categories
+    private Dictionary<string, string>? ExtractAdditionalSpecs(HtmlDocument doc, BrandScraperConfig config)
+    {
+        var additional = new Dictionary<string, string>();
+
+        try
+        {
+            // Look for common patterns: accordion sections, detail panels, feature sections
+            // Pattern 1: VC/JLC style - sections with titles and content
+            var sectionTitles = doc.DocumentNode.SelectNodes("//div[contains(@class, 'technical-details')]//div[contains(@class, 'block-title') or contains(@class, 'detail-title')]");
+            if (sectionTitles != null)
+            {
+                foreach (var titleNode in sectionTitles)
+                {
+                    var title = CleanText(titleNode.InnerText);
+                    
+                    // Skip already captured standard sections
+                    if (title.Contains("Dial", StringComparison.OrdinalIgnoreCase) ||
+                        title.Contains("Case", StringComparison.OrdinalIgnoreCase) ||
+                        title.Contains("Strap", StringComparison.OrdinalIgnoreCase) ||
+                        title.Contains("Movement", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    // Get content (typically in following sibling)
+                    var contentNode = titleNode.SelectSingleNode("./following-sibling::*[1]");
+                    if (contentNode != null)
+                    {
+                        var content = CleanText(contentNode.InnerText);
+                        if (!string.IsNullOrEmpty(content) && content.Length > 3)
+                        {
+                            additional[title] = content;
+                        }
+                    }
+                }
+            }
+
+            // Pattern 2: AP style - accordion tabs with IDs
+            var accordionTabs = doc.DocumentNode.SelectNodes("//div[starts-with(@id, 'product-accordion-tab-')]");
+            if (accordionTabs != null)
+            {
+                foreach (var tab in accordionTabs)
+                {
+                    var tabId = tab.GetAttributeValue("id", string.Empty);
+                    
+                    // Skip already processed standard sections
+                    if (tabId.Contains("dial", StringComparison.OrdinalIgnoreCase) ||
+                        tabId.Contains("case", StringComparison.OrdinalIgnoreCase) ||
+                        tabId.Contains("strap", StringComparison.OrdinalIgnoreCase) ||
+                        tabId.Contains("movement", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    // Extract readable name from ID
+                    var sectionName = tabId.Replace("product-accordion-tab-", "")
+                        .Replace("-", " ")
+                        .Replace("_", " ");
+                    
+                    // Capitalize first letter of each word
+                    sectionName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(sectionName);
+
+                    var content = CleanText(tab.InnerText);
+                    if (!string.IsNullOrEmpty(content) && content.Length > 3)
+                    {
+                        additional[sectionName] = content;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error extracting additional specs");
+        }
+
+        return additional.Count > 0 ? additional : null;
+    }
+
     /// Parses dial specifications from text
     private DialSpecs ParseDialSpecs(string text)
     {
         var dial = new DialSpecs { Description = CleanText(text) };
 
         // Extract color (common patterns - expanded list)
-        var colorMatch = Regex.Match(text, @"(sunburst\s+brown|black|white|blue|silver|grey|gray|champagne|salmon|brown|green|red)", RegexOptions.IgnoreCase);
+        var colorMatch = Regex.Match(text, @"(sunburst\s+brown|black|white|blue|silver|grey|gray|champagne|salmon|brown|green|red|charcoal|slate)", RegexOptions.IgnoreCase);
         if (colorMatch.Success)
         {
             dial.Color = colorMatch.Groups[1].Value;
+        }
+
+        // Extract markers
+        var markersMatch = Regex.Match(text, @"(?:hour markers?|indices)[:\s]*([^\n]+)", RegexOptions.IgnoreCase);
+        if (markersMatch.Success)
+        {
+            dial.Markers = markersMatch.Groups[1].Value.Trim();
+        }
+
+        // Extract hands
+        var handsMatch = Regex.Match(text, @"(?:hands?)[:\s]*([^\n]+)", RegexOptions.IgnoreCase);
+        if (handsMatch.Success)
+        {
+            dial.Hands = handsMatch.Groups[1].Value.Trim();
         }
 
         return dial;
     }
 
     /// Parses case specifications from text
+    /// Handles both generic format and AP's detailed list format
     private CaseSpecs ParseCaseSpecs(string text)
     {
         var caseSpecs = new CaseSpecs();
 
-        // Extract material
-        var materialMatch = Regex.Match(text, @"(white gold|yellow gold|rose gold|platinum|stainless steel|titanium)", RegexOptions.IgnoreCase);
+        // Extract material (multiple patterns)
+        var materialMatch = Regex.Match(text, @"(white gold|yellow gold|rose gold|platinum|stainless steel|titanium|ceramic|gold)", RegexOptions.IgnoreCase);
         if (materialMatch.Success)
         {
             caseSpecs.Material = materialMatch.Groups[1].Value;
         }
 
-        // Extract diameter
-        var diameterMatch = Regex.Match(text, @"Diameter[:\s]+(\d+(?:\.\d+)?\s*mm)", RegexOptions.IgnoreCase);
+        // Extract diameter (multiple patterns)
+        var diameterMatch = Regex.Match(text, @"(?:Size|Diameter)[:\s]+(\d+(?:\.\d+)?\s*mm)", RegexOptions.IgnoreCase);
         if (diameterMatch.Success)
         {
             caseSpecs.Diameter = diameterMatch.Groups[1].Value;
@@ -498,8 +629,9 @@ public class BrandScraperService : IDisposable
             caseSpecs.Thickness = thicknessMatch.Groups[1].Value;
         }
 
-        // Extract water resistance
-        var waterMatch = Regex.Match(text, @"Water[- ]resistant[:\s]+to[:\s]+(\d+\s*m)", RegexOptions.IgnoreCase);
+        // Extract water resistance (multiple patterns)
+        // Pattern 1: "Water Resistance 20 m" or "Water resistance to 30m"
+        var waterMatch = Regex.Match(text, @"Water[- ](?:Resistance|resistant)[:\s]+(?:to\s+)?(\d+\s*(?:m|meters|ATM|atm))", RegexOptions.IgnoreCase);
         if (waterMatch.Success)
         {
             caseSpecs.WaterResistance = waterMatch.Groups[1].Value;
@@ -511,52 +643,93 @@ public class BrandScraperService : IDisposable
             caseSpecs.Crystal = "Sapphire";
         }
 
+        // Extract case back
+        var caseBackMatch = Regex.Match(text, @"Case back[:\s]+([^\n]+)", RegexOptions.IgnoreCase);
+        if (caseBackMatch.Success)
+        {
+            caseSpecs.CaseBack = caseBackMatch.Groups[1].Value.Trim();
+        }
+
         return caseSpecs;
     }
 
     /// Parses strap/bracelet specifications from text
+    /// Handles leather, rubber, and metal bracelet descriptions
     private StrapSpecs ParseStrapSpecs(string text)
     {
         var strap = new StrapSpecs();
 
-        // Extract material
-        var materialMatch = Regex.Match(text, @"(Alligator leather|Calfskin|Rubber|Stainless steel bracelet)", RegexOptions.IgnoreCase);
+        // Extract material (expanded list for AP and other brands)
+        var materialMatch = Regex.Match(text, @"(Alligator leather|Calfskin|Rubber|Stainless steel bracelet|ceramic bracelet|white gold bracelet|yellow gold bracelet|rose gold bracelet|black ceramic bracelet)", RegexOptions.IgnoreCase);
         if (materialMatch.Success)
         {
             strap.Material = materialMatch.Groups[1].Value;
         }
+        else
+        {
+            // Fallback: try simpler patterns
+            if (text.Contains("ceramic", StringComparison.OrdinalIgnoreCase))
+                strap.Material = "Ceramic bracelet";
+            else if (text.Contains("leather", StringComparison.OrdinalIgnoreCase))
+                strap.Material = "Leather strap";
+            else if (text.Contains("rubber", StringComparison.OrdinalIgnoreCase))
+                strap.Material = "Rubber strap";
+            else if (text.Contains("bracelet", StringComparison.OrdinalIgnoreCase))
+                strap.Material = "Metal bracelet";
+        }
 
         // Extract color
-        var colorMatch = Regex.Match(text, @"(black|brown|blue|navy|beige|tan)", RegexOptions.IgnoreCase);
+        var colorMatch = Regex.Match(text, @"(black|brown|blue|navy|beige|tan|white|grey|gray|red|green)", RegexOptions.IgnoreCase);
         if (colorMatch.Success)
         {
             strap.Color = colorMatch.Groups[1].Value;
         }
 
-        // Extract buckle
-        var buckleMatch = Regex.Match(text, @"(white gold|yellow gold|rose gold|platinum|steel).*?(buckle|clasp|prong)", RegexOptions.IgnoreCase);
+        // Extract buckle/clasp
+        var buckleMatch = Regex.Match(text, @"(?:clasp|buckle|prong)[:\s]*([^\n]+)", RegexOptions.IgnoreCase);
         if (buckleMatch.Success)
         {
-            strap.Buckle = buckleMatch.Value;
+            strap.Buckle = buckleMatch.Groups[1].Value.Trim();
+        }
+        else
+        {
+            // Fallback: look for material + clasp pattern
+            var fallbackMatch = Regex.Match(text, @"(white gold|yellow gold|rose gold|platinum|steel|gold).*?(buckle|clasp|prong)", RegexOptions.IgnoreCase);
+            if (fallbackMatch.Success)
+            {
+                strap.Buckle = fallbackMatch.Value;
+            }
         }
 
         return strap;
     }
 
     /// Parses movement specifications from text
+    /// Handles both generic text format and AP's detailed list-based specs
     private MovementSpecs ParseMovementSpecs(string text)
     {
         var movement = new MovementSpecs();
 
-        // Extract caliber (first line or pattern)
-        var caliberMatch = Regex.Match(text, @"(\d+[-\s]*\w+[-\s]*\w*[-\s]*\w*)");
+        // Extract caliber (multiple patterns for different brands)
+        // Pattern 1: "Calibre 2885" or "Calibre 26-330"
+        var caliberMatch = Regex.Match(text, @"Calibre[:\s]+([A-Z0-9\-\.]+)", RegexOptions.IgnoreCase);
         if (caliberMatch.Success)
         {
             movement.Caliber = caliberMatch.Groups[1].Value.Trim();
         }
+        // Pattern 2: Generic number-letter pattern (fallback)
+        else
+        {
+            var genericMatch = Regex.Match(text, @"^(?:Calibre\s+)?(\d+[-\s]*\w+[-\s]*\w*)", RegexOptions.IgnoreCase);
+            if (genericMatch.Success)
+            {
+                movement.Caliber = genericMatch.Groups[1].Value.Trim();
+            }
+        }
 
-        // Extract type
+        // Extract mechanism/type
         if (text.Contains("Self-winding", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("Selfwinding", StringComparison.OrdinalIgnoreCase) ||
             text.Contains("Automatic", StringComparison.OrdinalIgnoreCase))
         {
             movement.Type = "Automatic (Self-winding)";
@@ -570,8 +743,12 @@ public class BrandScraperService : IDisposable
             movement.Type = "Quartz";
         }
 
-        // Extract diameter
-        var diameterMatch = Regex.Match(text, @"Diameter[:\s]+(\d+(?:\.\d+)?\s*mm)", RegexOptions.IgnoreCase);
+        // Extract diameter (movement diameter)
+        var diameterMatch = Regex.Match(text, @"Total diameter[:\s]+(\d+(?:\.\d+)?\s*mm)", RegexOptions.IgnoreCase);
+        if (!diameterMatch.Success)
+        {
+            diameterMatch = Regex.Match(text, @"Diameter[:\s]+(\d+(?:\.\d+)?\s*mm)", RegexOptions.IgnoreCase);
+        }
         if (diameterMatch.Success)
         {
             movement.Diameter = diameterMatch.Groups[1].Value;
@@ -599,31 +776,61 @@ public class BrandScraperService : IDisposable
         }
 
         // Extract power reserve
-        var powerMatch = Regex.Match(text, @"Power reserve[:\s]+([^\n\.]+)", RegexOptions.IgnoreCase);
+        var powerMatch = Regex.Match(text, @"Power reserve[:\s]+([^\n]+?)(?:Number of|$)", RegexOptions.IgnoreCase);
         if (powerMatch.Success)
         {
             movement.PowerReserve = powerMatch.Groups[1].Value.Trim();
         }
 
-        // Extract frequency
-        var frequencyMatch = Regex.Match(text, @"(\d+[,\d]+.*?(?:semi-oscillations|vibrations).*?(?:\d+\s*Hz))", RegexOptions.IgnoreCase);
+        // Extract frequency (multiple patterns)
+        // Pattern 1: "28,800 semi-oscillations/hour (4 Hz)" or "2.75 hz 19800 vph"
+        var frequencyMatch = Regex.Match(text, @"Frequency[:\s]+([^\n]+?)(?:Total diameter|$)", RegexOptions.IgnoreCase);
+        if (!frequencyMatch.Success)
+        {
+            frequencyMatch = Regex.Match(text, @"(\d+[,\d]+\s*(?:semi-oscillations|vibrations|vph).*?(?:\d+(?:\.\d+)?\s*H?z)?)", RegexOptions.IgnoreCase);
+        }
         if (frequencyMatch.Success)
         {
-            movement.Frequency = frequencyMatch.Groups[1].Value;
+            movement.Frequency = frequencyMatch.Groups[1].Value.Trim();
         }
 
-        // Extract complications
-        var complications = new List<string>();
-        if (text.Contains("Date", StringComparison.OrdinalIgnoreCase))
-            complications.Add("Date");
-        if (text.Contains("Chronograph", StringComparison.OrdinalIgnoreCase))
-            complications.Add("Chronograph");
-        if (text.Contains("Power reserve", StringComparison.OrdinalIgnoreCase))
-            complications.Add("Power reserve indicator");
-
-        if (complications.Count > 0)
+        // Extract functions/complications (AP uses "Functions" in specs)
+        var functionsMatch = Regex.Match(text, @"Functions[:\s]+([^\n]+?)(?:Number of jewels|Mechanism|$)", RegexOptions.IgnoreCase);
+        if (functionsMatch.Success)
         {
-            movement.Complications = complications;
+            var functionsText = functionsMatch.Groups[1].Value.Trim();
+            var functions = functionsText.Split(',')
+                .Select(f => f.Trim())
+                .Where(f => !string.IsNullOrEmpty(f))
+                .ToList();
+
+            if (functions.Count > 0)
+            {
+                movement.Complications = functions;
+            }
+        }
+
+        // Fallback: extract common complications from text
+        if (movement.Complications == null || movement.Complications.Count == 0)
+        {
+            var complications = new List<string>();
+            if (text.Contains("Date", StringComparison.OrdinalIgnoreCase))
+                complications.Add("Date");
+            if (text.Contains("Chronograph", StringComparison.OrdinalIgnoreCase))
+                complications.Add("Chronograph");
+            if (text.Contains("Power reserve", StringComparison.OrdinalIgnoreCase))
+                complications.Add("Power reserve indicator");
+            if (text.Contains("Perpetual calendar", StringComparison.OrdinalIgnoreCase))
+                complications.Add("Perpetual calendar");
+            if (text.Contains("Minute repeater", StringComparison.OrdinalIgnoreCase))
+                complications.Add("Minute repeater");
+            if (text.Contains("Tourbillon", StringComparison.OrdinalIgnoreCase))
+                complications.Add("Tourbillon");
+
+            if (complications.Count > 0)
+            {
+                movement.Complications = complications;
+            }
         }
 
         return movement;
@@ -680,10 +887,47 @@ public class BrandScraperService : IDisposable
 
             // Wait for page to load
             var wait = new WebDriverWait(_driver, TimeSpan.FromSeconds(10));
-            wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState").Equals("complete"));
+            wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState")?.ToString() == "complete");
 
             // Additional wait for dynamic content
             await Task.Delay(3000);
+
+            // Dismiss cookie dialogs if present (before interacting with page)
+            try
+            {
+                // Try multiple common cookie dialog selectors
+                var cookieSelectors = new[]
+                {
+                    "//button[@id='CybotCookiebotDialogBodyButtonAccept']", // Cookiebot Accept button
+                    "//button[@id='CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll']", // Cookiebot Allow All
+                    "//button[contains(@class, 'cookie') and contains(text(), 'Accept')]", // Generic cookie accept
+                    "//button[contains(@class, 'cookie') and contains(text(), 'Allow')]", // Generic cookie allow
+                    "//a[@id='CybotCookiebotDialogBodyButtonDecline']" // Cookiebot Decline
+                };
+
+                foreach (var selector in cookieSelectors)
+                {
+                    try
+                    {
+                        var cookieButton = _driver.FindElements(By.XPath(selector));
+                        if (cookieButton.Count > 0 && cookieButton[0].Displayed)
+                        {
+                            cookieButton[0].Click();
+                            await Task.Delay(1000); // Wait for dialog to close
+                            _logger.LogInformation("Dismissed cookie dialog using selector: {Selector}", selector);
+                            break; // Exit after first successful dismissal
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Continue to next selector
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not dismiss cookie dialog (non-fatal)");
+            }
 
             // For detail pages, expand all accordion sections if needed
             if (expandAccordions)
@@ -797,28 +1041,100 @@ public class BrandScraperService : IDisposable
     /// Examples:
     ///   "6000V/210T-H032 42.5 mm Titanium" -> "6000V/210T-H032"
     ///   "1410U/000G-H017 39 mm White Gold" -> "1410U/000G-H017"
+    ///   "Ref. 26238CE.OO.1300CE.02" -> "26238CE.OO.1300CE.02"
     private string ExtractReferenceNumber(string fullText)
     {
         if (string.IsNullOrEmpty(fullText))
             return string.Empty;
 
-        // Match reference number pattern (alphanumeric with slashes, hyphens)
+        // Strip "Ref. " prefix (common in AP and other brands)
+        var cleanedText = fullText.Trim();
+        if (cleanedText.StartsWith("Ref.", StringComparison.OrdinalIgnoreCase))
+        {
+            cleanedText = cleanedText.Substring(4).Trim();
+        }
+
+        // Strip "mixed-grid-product-" prefix (JLC/ALS itemid format)
+        if (cleanedText.StartsWith("mixed-grid-product-", StringComparison.OrdinalIgnoreCase))
+        {
+            cleanedText = cleanedText.Substring("mixed-grid-product-".Length).Trim();
+        }
+
+        // Match reference number pattern with dots (for AP: 26238CE.OO.1300CE.02)
+        // Examples: 26238CE.OO.1300CE.02, 26470ER.OO.1220ER.01
+        var dotMatch = Regex.Match(cleanedText, @"^([A-Z0-9]+(?:\.[A-Z0-9]+)*(?:-[A-Z0-9]+)?)");
+        if (dotMatch.Success && !cleanedText.Contains("mm"))
+        {
+            return dotMatch.Groups[1].Value;
+        }
+
+        // Match reference number pattern (alphanumeric with slashes, hyphens for VC/Patek)
         // Examples: 6000V/210T-H032, 1410U/000G-H017, 5500V/12A-B145
-        var match = Regex.Match(fullText, @"^([A-Z0-9]+/[A-Z0-9]+-[A-Z0-9]+)");
+        var match = Regex.Match(cleanedText, @"^([A-Z0-9]+/[A-Z0-9]+-[A-Z0-9]+)");
         if (match.Success)
         {
             return match.Groups[1].Value;
         }
 
         // Fallback: return the part before the first digit followed by "mm"
-        var dimMatch = Regex.Match(fullText, @"^(.*?)\s+\d+\s*mm");
+        var dimMatch = Regex.Match(cleanedText, @"^(.*?)\s+\d+\s*mm");
         if (dimMatch.Success)
         {
             return dimMatch.Groups[1].Value.Trim();
         }
 
-        // If no pattern matches, return as is
-        return fullText;
+        // If no pattern matches, return cleaned text (with Ref. removed)
+        return cleanedText;
+    }
+
+    /// Extracts image URL from an HTML node, handling lazy-loading and data URIs
+    private string ExtractImageUrl(HtmlNode imageNode, string baseUrl)
+    {
+        if (imageNode == null)
+            return string.Empty;
+
+        // Priority order: data-srcset > data-src > srcset > src
+        // Skip data: URIs (inline SVG placeholders)
+        
+        // 1. Check data-srcset (lazy-loaded responsive images)
+        var dataSrcset = imageNode.GetAttributeValue("data-srcset", string.Empty);
+        if (!string.IsNullOrEmpty(dataSrcset) && !dataSrcset.StartsWith("data:"))
+        {
+            var urls = dataSrcset.Split(',');
+            if (urls.Length > 0)
+            {
+                var lastUrl = urls[urls.Length - 1].Trim().Split(' ')[0];
+                return lastUrl.StartsWith("http") ? lastUrl : baseUrl + lastUrl;
+            }
+        }
+
+        // 2. Check data-src (lazy-loaded single image)
+        var dataSrc = imageNode.GetAttributeValue("data-src", string.Empty);
+        if (!string.IsNullOrEmpty(dataSrc) && !dataSrc.StartsWith("data:"))
+        {
+            return dataSrc.StartsWith("http") ? dataSrc : baseUrl + dataSrc;
+        }
+
+        // 3. Check srcset (responsive images)
+        var srcset = imageNode.GetAttributeValue("srcset", string.Empty);
+        if (!string.IsNullOrEmpty(srcset) && !srcset.StartsWith("data:"))
+        {
+            var urls = srcset.Split(',');
+            if (urls.Length > 0)
+            {
+                var lastUrl = urls[urls.Length - 1].Trim().Split(' ')[0];
+                return lastUrl.StartsWith("http") ? lastUrl : baseUrl + lastUrl;
+            }
+        }
+
+        // 4. Check src (standard image)
+        var src = imageNode.GetAttributeValue("src", string.Empty);
+        if (!string.IsNullOrEmpty(src) && !src.StartsWith("data:"))
+        {
+            return src.StartsWith("http") ? src : baseUrl + src;
+        }
+
+        return string.Empty;
     }
 
     /// Uploads an image from a URL to Cloudinary CDN
