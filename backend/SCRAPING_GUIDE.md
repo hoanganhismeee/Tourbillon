@@ -1,7 +1,30 @@
 # Tourbillon Web Scraping Guide
 window cmd
-**Configured Brands:** Patek Philippe ✅, Vacheron Constantin ✅
-**Remaining:** 13 brands (Audemars Piguet, Rolex, Omega, etc.)
+**Configured Brands:** Patek Philippe ✅, Vacheron Constantin ✅, Audemars Piguet ✅, Jaeger-LeCoultre ✅, A. Lange & Söhne ✅
+**Remaining:** 10 brands (Rolex, Omega, etc.)
+**Note:** Use `+` for spaces in brand/collection names (e.g., `Audemars+Piguet`), not `%20` - prevents "Brand configuration not found" errors, if html contains redundant text like discover more, contact seller, exclude that, follow previous brands like patek's scrape structure
+**Collection Targets:** Treat the listed watch counts as goals—if an official collection exposes fewer pieces, capture everything available and move on. (e.g if I need 7 watches per collection, but a collection only have 4, then it's fine)
+When produce a scrape cmd command, show me brand all in one cmd, with 5s rest between each collection, we dont need to test out with small amount because we can easily delete brand by id number later if the result is bad. 
+
+---
+
+## 🆕 Recent Improvements
+
+### JSON Configuration (v1.3)
+- **Centralized Config**: All brand scraping settings are now in `backend/Configuration/brand-configs.json`.
+- **No Recompilation**: Add new brands by editing the JSON file without touching C# code.
+- **Template Support**: Use `backend/Pending_Brands_Config.md` to gather HTML elements before configuring.
+
+### Image Scraping (v1.2)
+- **Lazy-loading support**: Automatically detects and extracts from `data-src`, `data-srcset`, `srcset`, and `src` attributes
+- **Data URI filtering**: Skips inline SVG placeholders (`data:image/svg+xml`) that cause upload failures
+- **Priority order**: data-srcset → data-src → srcset → src (ensures highest quality images)
+
+### Flexible Specs Extraction (v1.2)
+- **Additional specs capture**: Automatically discovers and extracts brand-specific spec sections beyond the standard 4 (Dial, Case, Strap, Movement)
+- **Pattern detection**: Handles VC's "Recto/Verso" details, AP's accordion sections, JLC's feature panels, etc.
+- **Adaptive parsing**: Captures extra details following each brand's unique HTML structure
+- **JSON storage**: All additional specs stored in `specs.additional` dictionary for frontend display
 
 ---
 
@@ -9,7 +32,7 @@ window cmd
 
 **Scrape a brand immediately:**
 ```cmd
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%%20Philippe&collection=Calatrava&maxWatches=9"
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Calatrava&maxWatches=9"
 ```
 
 **Check stats:**
@@ -24,7 +47,32 @@ curl -X DELETE "http://localhost:5248/api/admin/clear-watches"
 
 **Clear specific brand only (for testing/retry):**
 ```cmd
-curl -X DELETE "http://localhost:5248/api/admin/clear-watches?brandId=2"
+curl -X DELETE "http://localhost:5248/api/admin/clear-watches?brandId="
+```
+
+**Patek Philippe (brandId 1, ~35 watches total):**
+```cmd
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek+Philippe&collection=Calatrava&maxWatches=9" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek+Philippe&collection=Nautilus&maxWatches=9" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek+Philippe&collection=Aquanaut&maxWatches=9" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek+Philippe&collection=Grand+Complications&maxWatches=8" && timeout /t 5 /nobreak && curl "http://localhost:5248/api/admin/scrape-stats"
+```
+
+**Vacheron Constantin (brandId 2, ~35 watches total):**
+```cmd
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Vacheron+Constantin&collection=Patrimony&maxWatches=7" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Vacheron+Constantin&collection=Overseas&maxWatches=7" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Vacheron+Constantin&collection=Historiques&maxWatches=7" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Vacheron+Constantin&collection=Metiers+d+Art&maxWatches=7" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Vacheron+Constantin&collection=Les+Cabinotiers&maxWatches=7" && timeout /t 5 /nobreak && curl "http://localhost:5248/api/admin/scrape-stats"
+```
+
+**Audemars Piguet (brandId 3, ~35 watches total):**
+```cmd
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audemars+Piguet&collection=Royal+Oak&maxWatches=12" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audemars+Piguet&collection=Royal+Oak+Offshore&maxWatches=12" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audemars+Piguet&collection=Royal+Oak+Concept&maxWatches=11" && timeout /t 5 /nobreak && curl "http://localhost:5248/api/admin/scrape-stats"
+```
+
+**Jaeger-LeCoultre (brandId 4, ~30 watches total):**
+```cmd
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Jaeger-LeCoultre&collection=Reverso&maxWatches=8" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Jaeger-LeCoultre&collection=Master+Ultra+Thin&maxWatches=8" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Jaeger-LeCoultre&collection=Polaris&maxWatches=7" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Jaeger-LeCoultre&collection=Duometre&maxWatches=7" && timeout /t 5 /nobreak && curl "http://localhost:5248/api/admin/scrape-stats"
+```
+
+**A. Lange & Söhne (brandId 5, ~29 watches total):**
+```cmd
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=A.+Lange+and+Sohne&collection=Lange+1&maxWatches=8" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=A.+Lange+and+Sohne&collection=Zeitwerk&maxWatches=7" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=A.+Lange+and+Sohne&collection=Datograph&maxWatches=7" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=A.+Lange+and+Sohne&collection=Saxonia&maxWatches=7" && timeout /t 5 /nobreak && curl "http://localhost:5248/api/admin/scrape-stats"
 ```
 
 ---
@@ -33,7 +81,7 @@ curl -X DELETE "http://localhost:5248/api/admin/clear-watches?brandId=2"
 
 ### Core Components
 - **BrandScraperService.cs** - Universal scraper (all brands use same code)
-- **BrandScraperConfig.cs** - Brand-specific XPath selectors
+- **brand-configs.json** - JSON configuration for all brands
 - **WatchCacheService.cs** - Database operations + duplicate prevention
 - **WatchSpecs.cs** - Structured JSON for specs (Dial, Case, Strap, Movement)
 - **CloudinaryService.cs** - Automatic image upload to Cloudinary CDN
@@ -122,12 +170,6 @@ These 9 watches have **curated local images** that are automatically preserved d
 
 ## 🚀 Scraping Workflow
 
-### Step 1: Verify Backend is Running
-```cmd
-cd backend
-dotnet run
-REM Should see: "Now listening on: http://localhost:5248"
-```
 
 ### Step 2: Check Showcase Watches Seeded
 ```cmd
@@ -141,19 +183,9 @@ REM Response should show 9 watches (3 per brand)
 
 ```cmd
 REM Collection 1 - Calatrava
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%%20Philippe&collection=Calatrava&maxWatches=9"
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%20Philippe&collection=Calatrava&maxWatches=9"
 timeout /t 30 /nobreak
 
-REM Collection 2 - Nautilus
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%%20Philippe&collection=Nautilus&maxWatches=9"
-timeout /t 30 /nobreak
-
-REM Collection 3 - Aquanaut
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%%20Philippe&collection=Aquanaut&maxWatches=9"
-timeout /t 30 /nobreak
-
-REM Collection 4 - Grand Complications
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Patek%%20Philippe&collection=Grand%%20Complications&maxWatches=8"
 ```
 
 ### Step 4: Verify Results
@@ -164,88 +196,49 @@ REM Check total watch count increased correctly
 
 ---
 
-## 🔧 Adding a New Brand (13 Remaining)
+## 🔧 Adding a New Brand (10 Remaining)
 
-### Required Brands
-1. Audemars Piguet (Holy Trinity)
-2. Rolex
-3. Omega
-4. Jaeger-LeCoultre
-5. Grand Seiko
-6. A. Lange & Söhne
-7. Glashütte Original
-8. IWC Schaffhausen
-9. Breguet
-10. Blancpain
-11. F.P.Journe
-12. Greubel Forsey
-13. Frederique Constant
+### Configuration Steps using JSON
 
-### Configuration Steps
+1. **Gather HTML Data:**
+   - Open `backend/Pending_Brands_Config.md`.
+   - Visit the brand's website and inspect the Product Card and Detail Page.
+   - Paste the HTML and URLs into the template for reference.
 
-**1. Open the brand's website and inspect HTML elements:**
+2. **Determine Selectors:**
+   - Identify unique classes, IDs, or attributes for:
+     - **Card Container:** The element wrapping each watch on the listing page.
+     - **Reference Number:** Unique model ID.
+     - **Price:** Current price.
+     - **Specs:** Dial, Case, Strap, Movement details.
 
-Example (Audemars Piguet):
-- Visit: `https://www.audemarspiguet.com`
-- Right-click → Inspect → Find:
-  - Product card container
-  - Reference number selector
-  - Image selector
-  - Detail page URL pattern
+3. **Add to JSON Config:**
+   - Open `backend/Configuration/brand-configs.json`.
+   - Append a new object to the array:
+   ```json
+   {
+     "BrandName": "Rolex",
+     "BaseUrl": "https://www.rolex.com",
+     "CollectionUrls": {
+       "Submariner": "/en/watches/submariner",
+       "Daytona": "/en/watches/cosmograph-daytona"
+     },
+     "ProductCard": {
+       "CardContainer": "//div[@class='sc-product-card']",
+       "ReferenceNumber": ".//span[@class='sc-ref']"
+     },
+     "DetailPage": {
+       "Price": "//span[@class='price']"
+     },
+     "RequiresJavaScript": true,
+     "Currency": "USD",
+     "RequestDelayMs": 2000
+   }
+   ```
 
-**2. Add to `BrandScraperService.cs` InitializeBrandConfigs():**
-
-```csharp
-_brandConfigs["Audemars Piguet"] = new BrandScraperConfig
-{
-    BrandName = "Audemars Piguet",
-    BaseUrl = "https://www.audemarspiguet.com",
-    CollectionUrls = new Dictionary<string, string>
-    {
-        { "Royal Oak", "/en/watch/royal-oak/" },
-        { "Royal Oak Offshore", "/en/watch/royal-oak-offshore/" },
-        { "Royal Oak Concept", "/en/watch/royal-oak-concept/" }
-    },
-    ProductCard = new ProductCardSelectors
-    {
-        CardContainer = "a[class*='watch-card']",
-        ReferenceNumber = "h3[class*='model']",
-        CollectionName = "p[class*='collection']",
-        CaseMaterial = "span[class*='material']",
-        Image = "img[class*='watch-image']",
-        DetailPageLink = ""
-    },
-    DetailPage = new DetailPageSelectors
-    {
-        Price = "div[class*='price'] span",
-        ReferenceNumber = "h1[class*='model']",
-        CollectionName = "p[class*='collection']",
-        DialSpecs = "div[data-section='dial']",
-        CaseSpecs = "div[data-section='case']",
-        StrapSpecs = "div[data-section='strap']",
-        MovementSpecs = "div[data-section='movement']"
-    },
-    RequiresJavaScript = true,
-    Currency = "AUD",
-    RequestDelayMs = 2000
-};
-```
-
-**3. Test with 1-2 watches first:**
-```cmd
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audemars%%20Piguet&collection=Royal%%20Oak&maxWatches=2"
-```
-
-**4. Check response:**
-- Verify reference numbers extracted correctly
-- Check prices formatted as `$XX,XXX.00` or `Price on request`
-- Ensure specs JSON populated
-- Confirm images are stored as full URLs
-
-**5. Scale up once verified:**
-```cmd
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audemars%%20Piguet&collection=Royal%%20Oak&maxWatches=10"
-```
+4. **Test:**
+   - Run the scraper for one collection.
+   - Verify data in the database or logs.
 
 ---
 
@@ -264,9 +257,9 @@ curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audema
 | 4 | **Rolex** | Submariner, Daytona, Datejust, GMT-Master II, Day-Date | 30 |
 | 5 | **Omega** | Speedmaster, Seamaster, Constellation, De Ville | 30 |
 | 6 | **Jaeger-LeCoultre** | Reverso, Master Ultra Thin, Polaris, Duomètre | 30 |
-| 7 | **A. Lange & Söhne** | Lange 1, Zeitwerk, Datograph, Saxonia | 30 |
-| 8 | **Glashütte Original** | Senator, PanoMatic, SeaQ, Spezialist | 30 |
-| 9 | **Grand Seiko** | Heritage, Evolution 9, Elegance, Sport Collection | 30 |
+| 7 | **A. Lange & Söhne** | Lange 1, Zeitwerk, Datograph, Saxonia | 29 |
+| 8 | **Glashütte Original** | Senator, PanoMatic, SeaQ, Spezialist | 28 |
+| 9 | **Grand Seiko** | Heritage, Evolution 9, Elegance, Sport Collection | 28 |
 | 10 | **Breguet** | Classique, Marine, Tradition, Reine de Naples | 25 |
 | 11 | **Blancpain** | Fifty Fathoms, Villeret, Air Command, Ladybird | 25 |
 | 12 | **IWC Schaffhausen** | Portugieser, Pilot's Watches, Ingenieur, Portofino | 25 |
@@ -279,37 +272,6 @@ curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audema
 | 15 | **Frederique Constant** | Classics, Slimline, Manufacture, Highlife | 25 |
 
 **Grand Total Target:** 440-450 watches across 15 brands
-
----
-
-## ⚠️ Common Issues & Solutions
-
-### **Watches aren't loading on frontend**
-- Check `next.config.ts` has brand domain in `remotePatterns`
-- Verify `cloudinary.ts` includes brand in `watchBrands` array
-- Ensure backend is running on `http://localhost:5248`
-
-### **Scraping fails with "No watches found"**
-- Brand/collection names must match database exactly (case-sensitive)
-- Check brand's website - collection URL may have changed
-- Verify XPath selectors still work (website HTML might have been updated)
-
-### **Prices show "Price on request"**
-- This is intentional for luxury watches that don't show prices on website
-- System falls back to "Price on request" when price element missing
-- User can manually update price in database if available
-
-### **Duplicate watches appearing**
-- System matches by base reference number (e.g., `5227G` = `5227G-010`)
-- Check `ExtractBaseReference()` in `Chrono24CacheService.cs`
-- Clear and rescrape if needed: `DELETE /api/admin/clear-watches`
-
-### **Showcase watch image got overwritten**
-- This shouldn't happen - the system preserves images for IDs: 2, 4, 11, 13, 18, 24, 28, 30, 35
-- Check backend logs for: `"Preserved curated image for showcase watch ID X"`
-- If missing, restore from database backup or re-upload to `/Images/`
-
----
 
 ## 🗂️ Database Schema
 
@@ -405,6 +367,7 @@ public class Watch
 |------|---------|
 | `Controllers/AdminController.cs` | Scraping endpoints (POST scrape-brand-official, DELETE clear-watches) |
 | `Services/BrandScraperService.cs` | Universal scraper logic + brand configurations |
+| `Configuration/brand-configs.json` | JSON configuration for all brands |
 | `Services/Chrono24CacheService.cs` | Database operations, duplicate prevention, showcase preservation |
 | `Models/BrandScraperConfig.cs` | XPath selector definitions for each brand |
 | `Models/WatchSpecs.cs` | Structured specs JSON schema |
@@ -418,7 +381,7 @@ public class Watch
 
 - [ ] Verify backend running: `dotnet run` in `/backend`
 - [ ] Check showcase watches seeded: 9 total watches
-- [ ] Configure new brand in `BrandScraperService.cs`
+- [ ] Configure new brand in `backend/Configuration/brand-configs.json`
 - [ ] Test with 1-2 watches first
 - [ ] Verify reference numbers, prices, specs extracted
 - [ ] Verify images are URLs (external or local)
