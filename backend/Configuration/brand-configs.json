@@ -98,18 +98,18 @@
       "Duometre": "/au-en/watches/duometre"
     },
     "ProductCard": {
-      "CardContainer": "//div[contains(@class, 'product-card') and @data-cy='mixed-grid-item']",
-      "ReferenceNumber": "@itemid",
-      "CollectionName": "@collection",
+      "CardContainer": "//a[contains(@class, 'product-card__link')]",
+      "ReferenceNumber": "",
+      "CollectionName": ".//h5[contains(@class, 'product-card__collection')]",
       "CaseMaterial": ".//div[contains(@class, 'product-card__specs')]",
-      "Image": ".//div[contains(@class, 'product-card__picture')]//img",
-      "DetailPageLink": ".//a[contains(@class, 'product-card__link')]/@href"
+      "Image": ".//img[contains(@class, 'lazyload') or contains(@class, 'lazyloaded')]",
+      "DetailPageLink": "@href"
     },
     "DetailPage": {
-      "Price": "//span[@data-price='value']",
-      "ReferenceNumber": "(//div[contains(@class, 'technical-details-panel__detail-title') and contains(text(), 'Reference')]/following-sibling::li)[1]",
-      "CollectionName": "",
-      "Image": "//div[contains(@class, 'product-page-details__media')]//img",
+      "Price": "//div[contains(@class, 'product-page-details__title-price-wrapper')]//span[@data-price='value']",
+      "ReferenceNumber": "//a[@data-product-reference]/@data-product-reference",
+      "CollectionName": "//h1[contains(@class, 'product-page-details__title')]",
+      "Image": "//button[contains(@class, 'lightbox-trigger')]//img",
       "DialSpecs": "//div[@id='product-accordion-tab-feature']",
       "CaseSpecs": "//div[@id='product-accordion-tab-feature']",
       "StrapSpecs": "//div[@id='product-accordion-tab-straps-and-buckles']",

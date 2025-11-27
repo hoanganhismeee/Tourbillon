@@ -134,8 +134,27 @@ public class BrandScraperService : IDisposable
             var scrapedWatches = new List<ScrapedWatchDto>();
             var count = 0;
 
-            foreach (var card in productCards.Take(maxWatches))
+            foreach (var card in productCards)
             {
+                if (count >= maxWatches) break;
+
+                // JLC Filter: strict filtering to avoid mismatched collections
+                if (config.BrandName == "Jaeger-LeCoultre" && 
+                    !string.IsNullOrEmpty(collectionName) && 
+                    !string.IsNullOrEmpty(card.CollectionName))
+                {
+                    // Check both directions: "Master" matches "Master Ultra Thin" and vice versa
+                    var cardMatch = card.CollectionName.IndexOf(collectionName, StringComparison.OrdinalIgnoreCase) >= 0;
+                    var reqMatch = collectionName.IndexOf(card.CollectionName, StringComparison.OrdinalIgnoreCase) >= 0;
+                    
+                    if (!cardMatch && !reqMatch)
+                    {
+                        _logger.LogInformation("Skipping JLC watch {Ref}: Collection mismatch ('{CardColl}' vs '{ReqColl}')", 
+                             card.ReferenceNumber, card.CollectionName, collectionName);
+                        continue;
+                    }
+                }
+
                 try
                 {
                     var watch = await ScrapeWatchDetailAsync(card, config);
@@ -235,6 +254,16 @@ public class BrandScraperService : IDisposable
                         collectionName = collectionNode?.InnerText?.Trim() ?? string.Empty;
                     }
                 }
+                
+                // Parse collection name for JLC (e.g., "Reverso Tribute" -> "Reverso")
+                if (config.BrandName == "Jaeger-LeCoultre" && !string.IsNullOrEmpty(collectionName))
+                {
+                    var parts = collectionName.Split(' ');
+                    if (parts.Length > 0)
+                    {
+                        collectionName = parts[0];
+                    }
+                }
 
                 // Extract material from card
                 var material = string.Empty;
@@ -252,6 +281,21 @@ public class BrandScraperService : IDisposable
                     if (imageNode != null)
                     {
                         imageUrl = ExtractImageUrl(imageNode, config.BaseUrl);
+                    }
+                }
+
+                // Note: JLC watch cards don't have collection names in HTML - we extract from detail page
+                // Only skip cards that are clearly not watches (straps, accessories)
+                if (config.BrandName == "Jaeger-LeCoultre")
+                {
+                    // Skip straps/accessories (they have collection names like "Fagliano Collection", "Rubber", etc.)
+                    if (!string.IsNullOrEmpty(collectionName) && 
+                        (collectionName.Contains("Collection", StringComparison.OrdinalIgnoreCase) ||
+                         collectionName.Contains("Leather", StringComparison.OrdinalIgnoreCase) ||
+                         collectionName.Contains("Rubber", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        _logger.LogInformation("Skipping JLC accessory: {Collection} - {Url}", collectionName, detailUrl);
+                        continue;
                     }
                 }
 
@@ -337,12 +381,49 @@ public class BrandScraperService : IDisposable
             doc.LoadHtml(html);
 
             // Extract reference number (use card info as fallback)
-            HtmlNode? refNode = null;
-            if (!string.IsNullOrEmpty(config.DetailPage.ReferenceNumber))
+            var referenceNumber = string.Empty;
+            
+            // Priority 1: Extract from URL for JLC (pattern: -q389848j -> Q389848J)
+            if (config.BrandName == "Jaeger-LeCoultre" && !string.IsNullOrEmpty(cardInfo.DetailUrl))
             {
-                refNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.ReferenceNumber);
+                var urlMatch = Regex.Match(cardInfo.DetailUrl, @"-(q[a-z0-9]+)", RegexOptions.IgnoreCase);
+                if (urlMatch.Success)
+                {
+                    referenceNumber = urlMatch.Groups[1].Value.ToUpper();
+                }
             }
-            var referenceNumber = refNode?.InnerText?.Trim() ?? cardInfo.ReferenceNumber;
+            
+            // Priority 2: Try XPath selector if URL extraction failed
+            if (string.IsNullOrEmpty(referenceNumber) && !string.IsNullOrEmpty(config.DetailPage.ReferenceNumber))
+            {
+                HtmlNode? refNode = null;
+                
+                // Handle attribute selectors (e.g., /@data-product-reference for JLC)
+                if (config.DetailPage.ReferenceNumber.Contains("/@"))
+                {
+                    var parts = config.DetailPage.ReferenceNumber.Split(new[] { "/@" }, StringSplitOptions.None);
+                    if (parts.Length == 2)
+                    {
+                        var xpath = parts[0];
+                        var attributeName = parts[1];
+                        refNode = doc.DocumentNode.SelectSingleNode(xpath);
+                        if (refNode != null)
+                        {
+                            referenceNumber = refNode.GetAttributeValue(attributeName, string.Empty);
+                        }
+                    }
+                }
+                else
+                {
+                    refNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.ReferenceNumber);
+                    if (refNode != null)
+                    {
+                        referenceNumber = refNode.InnerText?.Trim() ?? string.Empty;
+                    }
+                }
+            }
+            
+            referenceNumber = referenceNumber ?? cardInfo.ReferenceNumber;
             referenceNumber = CleanText(referenceNumber);
             // Extract just the reference part (before dimensions like "42.5 mm Titanium")
             referenceNumber = ExtractReferenceNumber(referenceNumber);
@@ -355,6 +436,56 @@ public class BrandScraperService : IDisposable
             }
             var collectionName = collectionNode?.InnerText?.Trim() ?? cardInfo.CollectionName;
             collectionName = CleanText(collectionName);
+            
+            // Parse collection name for JLC - match against known collections
+            // Map variants (with/without accents) to canonical database names
+            if (config.BrandName == "Jaeger-LeCoultre")
+            {
+                _logger.LogInformation("JLC Collection Parse - Detail: '{Detail}', Card: '{Card}'", collectionName, cardInfo.CollectionName);
+
+                // Canonical names matching the database (collections.csv)
+                var collectionMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    { "Master Ultra Thin", "Master Ultra Thin" },
+                    { "Master", "Master Ultra Thin" },  // Partial match fallback
+                    { "Reverso", "Reverso" },
+                    { "Polaris", "Polaris" },
+                    { "Duomètre", "Duomètre" },  // With accent (database canonical)
+                    { "Duometre", "Duomètre" },  // Without accent -> maps to accented version
+                    { "Duometre Chronograph", "Duomètre" }
+                };
+                
+                // Try to find a matching collection
+                string? matchedCollection = null;
+                var searchTexts = new[] { collectionName, cardInfo.CollectionName };
+                
+                foreach (var searchText in searchTexts)
+                {
+                    if (string.IsNullOrEmpty(searchText)) continue;
+                    
+                    // Try exact key match first
+                    foreach (var mapping in collectionMappings)
+                    {
+                        if (searchText.IndexOf(mapping.Key, StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            matchedCollection = mapping.Value;
+                            _logger.LogInformation("JLC Collection matched: '{Search}' -> '{Canonical}'", searchText, matchedCollection);
+                            break;
+                        }
+                    }
+                    if (matchedCollection != null) break;
+                }
+
+                if (matchedCollection != null)
+                {
+                    collectionName = matchedCollection;
+                }
+                else if (!string.IsNullOrEmpty(collectionName))
+                {
+                    // Fallback: if no known collection matches, log warning
+                    _logger.LogWarning("JLC Collection not matched: '{Collection}' - using as-is", collectionName);
+                }
+            }
 
             // Extract price
             HtmlNode? priceNode = null;
@@ -363,6 +494,7 @@ public class BrandScraperService : IDisposable
                 priceNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.Price);
             }
             var priceText = priceNode?.InnerText?.Trim() ?? "Price on request";
+            _logger.LogInformation("Raw price text extracted: '{PriceText}' for {Reference}", priceText, referenceNumber);
             var price = ParseAndConvertPrice(priceText, config.Currency);
 
             _logger.LogInformation("Extracted price for {Reference}: {Price}", referenceNumber, price);
@@ -378,8 +510,12 @@ public class BrandScraperService : IDisposable
                     if (!string.IsNullOrEmpty(extractedUrl))
                     {
                         imageUrl = extractedUrl;
-                        _logger.LogInformation("Extracted image URL from detail page: {Url}", imageUrl);
+                        _logger.LogInformation("Using detail page image: {Url}", imageUrl);
                     }
+                }
+                else if (string.IsNullOrEmpty(cardInfo.ImageUrl))
+                {
+                    _logger.LogWarning("No image found on card or detail page for: {Url}", cardInfo.DetailUrl);
                 }
             }
 
@@ -393,6 +529,14 @@ public class BrandScraperService : IDisposable
                     imageUrl = downloadedFilename;
                     _logger.LogInformation("Downloaded image locally: {Filename}", downloadedFilename);
                 }
+            }
+
+            // For JLC, images are REQUIRED - skip if both card and detail page failed
+            if (config.BrandName == "Jaeger-LeCoultre" && string.IsNullOrEmpty(imageUrl))
+            {
+                _logger.LogWarning("Skipping JLC watch (no image after card + detail page): Ref={Ref}, URL={Url}", 
+                    referenceNumber, cardInfo.DetailUrl);
+                return null; // This will skip the watch
             }
 
             // Extract comprehensive specs
@@ -1058,6 +1202,13 @@ public class BrandScraperService : IDisposable
         if (cleanedText.StartsWith("mixed-grid-product-", StringComparison.OrdinalIgnoreCase))
         {
             cleanedText = cleanedText.Substring("mixed-grid-product-".Length).Trim();
+        }
+
+        // Match JLC pattern (Q followed by alphanumeric: Q389848J, Q389257J)
+        var jlcMatch = Regex.Match(cleanedText, @"^(Q[A-Z0-9]+)", RegexOptions.IgnoreCase);
+        if (jlcMatch.Success)
+        {
+            return jlcMatch.Groups[1].Value.ToUpper();
         }
 
         // Match reference number pattern with dots (for AP: 26238CE.OO.1300CE.02)

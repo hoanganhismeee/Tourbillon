@@ -198,6 +198,8 @@ REM Check total watch count increased correctly
 
 ## 🔧 Adding a New Brand (10 Remaining)
 
+**📌 IMPORTANT:** Before starting, read the "📝 Best Practices for Brand Configuration" section below to avoid common pitfalls like missing images or collection names.
+
 ### Configuration Steps using JSON
 
 1. **Gather HTML Data:**
@@ -239,6 +241,68 @@ REM Check total watch count increased correctly
 4. **Test:**
    - Run the scraper for one collection.
    - Verify data in the database or logs.
+
+---
+
+## 📝 Best Practices for Brand Configuration
+
+### Lesson from JLC: Comprehensive Element Collection
+
+**Before configuring any new brand:**
+
+1. **Collect ALL collection examples** in `Brands_Scrape_Config.md`:
+   - Don't just grab one product card—inspect 3-5 from EACH collection
+   - Check if collection names vary (e.g., "Reverso" vs "Reverso Tribute")
+   - Verify images load consistently across products
+   - Note any products without images or collection names
+
+2. **Document edge cases:**
+   - Products with "Price on request" instead of numeric prices
+   - Products using lazy-loading for images (`data-src`, `data-srcset`)
+   - Sub-collections that need parsing (e.g., "Master Ultra Thin Moon" → "Master Ultra Thin")
+   - Products that appear on wrong collection pages
+
+3. **Quality-First Validation:**
+   - Configure scraper to SKIP products missing required fields
+   - Required fields: Collection name, Image URL, Reference number
+   - Log skipped products for debugging, but don't save incomplete data
+   - Better to have 25 perfect watches than 30 watches with 5 broken ones
+
+### Configuration Checklist
+
+Before adding a brand to `brand-configs.json`:
+
+- [ ] Collected HTML for 3+ products from EACH collection
+- [ ] Verified collection name selector works across all collections
+- [ ] Verified image selector handles lazy-loading (data-src, data-srcset, srcset, src)
+- [ ] Checked for sub-collection naming patterns
+- [ ] Tested reference number extraction (URL patterns, HTML attributes, text content)
+- [ ] Documented any edge cases in `Brands_Scrape_Config.md`
+
+### Common Pitfalls
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Missing collection names | Selector targets sub-collection variants | Parse first word or use broader selector |
+| Missing images | Lazy-loading not handled | Check data-src/data-srcset before src |
+| Wrong collection products | Brand website cross-links collections | Add validation to skip mismatched collections |
+| Empty price fields | "Price on request" not handled | Regex should check for "request"/"contact" keywords |
+| **0 watches for multi-word collections** | Card shows "Master" but request is "Master Ultra Thin" - one-way match fails | Check BOTH directions: `card.Contains(request) OR request.Contains(card)` |
+
+### Debug Commands
+
+When testing a new brand configuration:
+
+```cmd
+REM Test with 2 watches first
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=BRAND&collection=COLLECTION&maxWatches=2"
+
+REM Check backend logs for "Skipping" messages
+REM Look for: missing collection, missing image, failed extraction
+
+REM If issues found, update selectors and retry
+curl -X DELETE "http://localhost:5248/api/admin/clear-watches?brandId=X"
+```
 
 ---
 
