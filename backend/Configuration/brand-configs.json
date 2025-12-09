@@ -129,18 +129,18 @@
       "Saxonia": "/au-en/timepieces/saxonia"
     },
     "ProductCard": {
-      "CardContainer": "//div[contains(@class, 'product-card') and @collection]",
-      "ReferenceNumber": ".//div[contains(@class, 'product-card__ref')]",
+      "CardContainer": "//div[contains(@class, 'product-card') and not(contains(@class, 'product-card--no-action'))]",
+      "ReferenceNumber": ".//div[contains(@class, 'product-card__name')]",
       "CollectionName": ".//div[contains(@class, 'product-card__collection')]",
-      "CaseMaterial": ".//div[contains(@class, 'product-card__description')]",
+      "CaseMaterial": "",
       "Image": ".//div[contains(@class, 'product-card__picture')]//img",
       "DetailPageLink": ".//a[contains(@class, 'product-card__link')]/@href"
     },
     "DetailPage": {
       "Price": "//div[contains(@class, 'product-price')]//span[contains(@class, 'product-price__value')]",
-      "ReferenceNumber": "(//div[contains(@class, 'technical-details-panel__detail-title') and contains(text(), 'Reference')]/following-sibling::li)[1]",
+      "ReferenceNumber": "//div[contains(@class, 'product-card__ref')]",
       "CollectionName": "//div[contains(@class, 'panel__content')]//div[contains(@class, 'product-card__name')]",
-      "Image": "//div[contains(@class, 'picture')]//img",
+      "Image": "",
       "DialSpecs": "//div[@class='technical-details-panel__block-title' and contains(text(), 'Model Details')]/following-sibling::div[1]",
       "CaseSpecs": "//div[@class='technical-details-panel__block-title' and contains(text(), 'Case')]/following-sibling::ul[1]",
       "StrapSpecs": "//div[@class='technical-details-panel__block-title' and contains(text(), 'Strap')]/following-sibling::ul[1]",

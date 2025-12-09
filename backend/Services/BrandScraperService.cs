@@ -349,6 +349,14 @@ public class BrandScraperService : IDisposable
                     {
                         var refNode = cardNode.SelectSingleNode(config.ProductCard.ReferenceNumber);
                         referenceNumber = refNode?.InnerText?.Trim() ?? string.Empty;
+
+                        // Debug logging for ALS
+                        if (config.BrandName == "A. Lange & Söhne" && string.IsNullOrEmpty(referenceNumber))
+                        {
+                            _logger.LogWarning("ALS: Reference number selector '{Selector}' returned empty. Card HTML: {Html}",
+                                config.ProductCard.ReferenceNumber,
+                                cardNode.OuterHtml.Substring(0, Math.Min(500, cardNode.OuterHtml.Length)));
+                        }
                     }
                 }
 
@@ -403,7 +411,7 @@ public class BrandScraperService : IDisposable
                 if (config.BrandName == "Jaeger-LeCoultre")
                 {
                     // Skip straps/accessories (they have collection names like "Fagliano Collection", "Rubber", etc.)
-                    if (!string.IsNullOrEmpty(collectionName) && 
+                    if (!string.IsNullOrEmpty(collectionName) &&
                         (collectionName.Contains("Collection", StringComparison.OrdinalIgnoreCase) ||
                          collectionName.Contains("Leather", StringComparison.OrdinalIgnoreCase) ||
                          collectionName.Contains("Rubber", StringComparison.OrdinalIgnoreCase)))
@@ -413,13 +421,47 @@ public class BrandScraperService : IDisposable
                     }
                 }
 
+                // For ALS (A. Lange & Söhne), extract variant info from .product-card__collection div
+                // This stores text like "in 750 pink gold" to be included in the product description
+                string? variantInfo = null;
+                if (config.BrandName == "A. Lange & Söhne")
+                {
+                    var variantNode = cardNode.SelectSingleNode(".//div[contains(@class, 'product-card__collection')]");
+                    if (variantNode != null)
+                    {
+                        variantInfo = CleanText(variantNode.InnerText?.Trim() ?? string.Empty);
+                        if (!string.IsNullOrEmpty(variantInfo))
+                        {
+                            _logger.LogInformation("Captured ALS variant info: {Variant}", variantInfo);
+                        }
+                    }
+                }
+
+                var cleanedRefNumber = CleanText(referenceNumber);
+
+                // Skip cards without reference numbers - these aren't real product cards
+                if (string.IsNullOrEmpty(cleanedRefNumber))
+                {
+                    if (config.BrandName == "A. Lange & Söhne")
+                    {
+                        _logger.LogWarning("ALS: Skipping card - no reference number found. DetailUrl: {DetailUrl}", detailUrl);
+                    }
+                    continue;
+                }
+
+                if (config.BrandName == "A. Lange & Söhne")
+                {
+                    _logger.LogInformation("ALS: Found reference number '{RefNumber}' - DetailUrl: {DetailUrl}", cleanedRefNumber, detailUrl);
+                }
+
                 cards.Add(new ProductCardInfo
                 {
                     DetailUrl = detailUrl,
-                    ReferenceNumber = CleanText(referenceNumber),
+                    ReferenceNumber = cleanedRefNumber,
                     CollectionName = CleanText(collectionName),
                     CaseMaterial = CleanText(material),
-                    ImageUrl = imageUrl
+                    ImageUrl = imageUrl,
+                    VariantInfo = variantInfo
                 });
             }
             catch (Exception ex)
@@ -538,10 +580,20 @@ public class BrandScraperService : IDisposable
                 }
             }
             
-            referenceNumber = referenceNumber ?? cardInfo.ReferenceNumber;
+            // Use cardInfo as fallback if detail page selector returned nothing
+            if (string.IsNullOrEmpty(referenceNumber))
+            {
+                referenceNumber = cardInfo.ReferenceNumber;
+            }
             referenceNumber = CleanText(referenceNumber);
             // Extract just the reference part (before dimensions like "42.5 mm Titanium")
             referenceNumber = ExtractReferenceNumber(referenceNumber);
+
+            if (config.BrandName == "A. Lange & Söhne")
+            {
+                _logger.LogInformation("ALS: After processing - referenceNumber='{RefNum}', cardInfo.ReferenceNumber='{CardRef}'",
+                    referenceNumber, cardInfo.ReferenceNumber);
+            }
 
             // Extract collection name (use card info as fallback)
             HtmlNode? collectionNode = null;
@@ -663,13 +715,20 @@ public class BrandScraperService : IDisposable
             });
 
             // Create DTO
+            // For ALS, include variant info in the description (e.g., "in 750 pink gold")
+            var descriptionParts = new List<string> { config.BrandName, collectionName, referenceNumber };
+            if (!string.IsNullOrEmpty(cardInfo.VariantInfo))
+            {
+                descriptionParts.Add(cardInfo.VariantInfo);
+            }
+
             var watch = new ScrapedWatchDto
             {
                 Name = referenceNumber, // Use reference number as name
                 BrandName = config.BrandName,
                 CollectionName = collectionName,
                 CurrentPrice = price,
-                Description = $"{config.BrandName} {collectionName} {referenceNumber}",
+                Description = string.Join(" ", descriptionParts),
                 Specs = specsJson,
                 ImageUrl = imageUrl,
                 ReferenceNumber = referenceNumber,
@@ -1452,6 +1511,7 @@ internal class ProductCardInfo
     public string CollectionName { get; set; } = string.Empty;
     public string CaseMaterial { get; set; } = string.Empty;
     public string ImageUrl { get; set; } = string.Empty;
+    public string? VariantInfo { get; set; } // For ALS: stores variant text like "in 750 pink gold"
 }
 
 /// Result of scraping a single brand/collection
