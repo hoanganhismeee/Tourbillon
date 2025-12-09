@@ -19,7 +19,6 @@ public class BrandScraperService : IDisposable
     private readonly CurrencyConverter _currencyConverter;
     private readonly ICloudinaryService _cloudinaryService;
     private readonly Dictionary<string, BrandScraperConfig> _brandConfigs;
-    private IWebDriver? _driver;
 
     public BrandScraperService(
         ILogger<BrandScraperService> logger,
@@ -84,11 +83,13 @@ public class BrandScraperService : IDisposable
         }
     }
 
-    /// Scrapes watches for a specific brand and collection
+    /// Scrapes watches for a specific brand and collection with optional timeout
     public async Task<List<ScrapedWatchDto>> ScrapeCollectionAsync(
         string brandName,
         string collectionName,
-        int maxWatches = 50)
+        int maxWatches = 50,
+        int timeoutSeconds = 300,
+        CancellationToken cancellationToken = default)
     {
         if (!_brandConfigs.ContainsKey(brandName))
         {
@@ -104,20 +105,29 @@ public class BrandScraperService : IDisposable
         }
 
         var collectionUrl = config.BaseUrl + config.CollectionUrls[collectionName];
-        _logger.LogInformation("Scraping {Brand} - {Collection} from {Url}",
-            brandName, collectionName, collectionUrl);
+        _logger.LogInformation("Scraping {Brand} - {Collection} from {Url} (timeout: {Timeout}s)",
+            brandName, collectionName, collectionUrl, timeoutSeconds);
+
+        // Create CancellationToken with timeout if not already provided
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        IWebDriver? driver = null;
 
         try
         {
-            // Initialize Selenium if needed
-            if (config.RequiresJavaScript && _driver == null)
+            // Initialize Selenium driver for this brand only (local instance)
+            if (config.RequiresJavaScript)
             {
-                InitializeSeleniumDriver();
+                driver = InitializeSeleniumDriver();
             }
+
+            // Check for cancellation before starting
+            linkedCts.Token.ThrowIfCancellationRequested();
 
             // Fetch the listing page
             var htmlContent = config.RequiresJavaScript
-                ? await FetchWithSeleniumAsync(collectionUrl)
+                ? await FetchWithSeleniumAsync(collectionUrl, driver)
                 : await FetchWithHttpClientAsync(collectionUrl);
 
             if (string.IsNullOrEmpty(htmlContent))
@@ -157,7 +167,7 @@ public class BrandScraperService : IDisposable
 
                 try
                 {
-                    var watch = await ScrapeWatchDetailAsync(card, config);
+                    var watch = await ScrapeWatchDetailAsync(card, config, driver);
                     if (watch != null)
                     {
                         scrapedWatches.Add(watch);
@@ -177,11 +187,115 @@ public class BrandScraperService : IDisposable
 
             return scrapedWatches;
         }
+        catch (OperationCanceledException)
+        {
+            _logger.LogError("Scraping {Brand} - {Collection} timed out after {Timeout}s",
+                brandName, collectionName, timeoutSeconds);
+            return new List<ScrapedWatchDto>();
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error scraping collection {Collection}", collectionName);
             return new List<ScrapedWatchDto>();
         }
+        finally
+        {
+            // Always dispose driver for this brand
+            if (driver != null)
+            {
+                try
+                {
+                    driver.Quit();
+                    driver.Dispose();
+                    _logger.LogInformation("Disposed Selenium driver for {Brand}", brandName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error disposing Selenium WebDriver for {Brand}", brandName);
+                }
+            }
+        }
+    }
+
+    /// Scrapes multiple brands with error isolation - safe for 12+ brands
+    /// Each brand is independently scraped with its own timeout and driver
+    /// If one brand fails, others continue normally
+    public async Task<List<BrandScrapeResult>> ScrapeMultipleBrandsAsync(
+        List<(string BrandName, string CollectionName, int MaxWatches)> brandsToScrape,
+        int timeoutSecondsPerBrand = 300)
+    {
+        var results = new List<BrandScrapeResult>();
+
+        _logger.LogInformation("Starting scrape of {Count} brands with {Timeout}s timeout per brand",
+            brandsToScrape.Count, timeoutSecondsPerBrand);
+
+        foreach (var (brandName, collectionName, maxWatches) in brandsToScrape)
+        {
+            try
+            {
+                _logger.LogInformation("Scraping brand {BrandName} - {CollectionName}", brandName, collectionName);
+
+                // Create cancellation token with timeout for this brand
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSecondsPerBrand));
+
+                // Scrape this brand with timeout
+                var scrapedWatches = await ScrapeCollectionAsync(
+                    brandName,
+                    collectionName,
+                    maxWatches,
+                    timeoutSecondsPerBrand,
+                    cts.Token);
+
+                var result = new BrandScrapeResult
+                {
+                    BrandName = brandName,
+                    CollectionName = collectionName,
+                    WatchesScraped = scrapedWatches.Count,
+                    Success = true,
+                    Message = $"Successfully scraped {scrapedWatches.Count} watches"
+                };
+
+                results.Add(result);
+                _logger.LogInformation("Completed {BrandName}: {Count} watches scraped",
+                    brandName, scrapedWatches.Count);
+            }
+            catch (OperationCanceledException)
+            {
+                var result = new BrandScrapeResult
+                {
+                    BrandName = brandName,
+                    CollectionName = collectionName,
+                    Success = false,
+                    Message = $"Scraping timed out after {timeoutSecondsPerBrand}s",
+                    ErrorMessage = "TIMEOUT"
+                };
+
+                results.Add(result);
+                _logger.LogError("Scraping {BrandName} timed out after {Timeout}s, continuing with next brand",
+                    brandName, timeoutSecondsPerBrand);
+            }
+            catch (Exception ex)
+            {
+                var result = new BrandScrapeResult
+                {
+                    BrandName = brandName,
+                    CollectionName = collectionName,
+                    Success = false,
+                    Message = $"Error scraping {brandName}: {ex.Message}",
+                    ErrorMessage = ex.Message
+                };
+
+                results.Add(result);
+                _logger.LogError(ex, "Error scraping {BrandName}, continuing with next brand", brandName);
+            }
+        }
+
+        _logger.LogInformation("Completed scraping {Count} brands. Success: {SuccessCount}, Failed: {FailedCount}",
+            brandsToScrape.Count,
+            results.Count(r => r.Success),
+            results.Count(r => !r.Success));
+
+        return results;
     }
 
     /// Parses product cards from listing page HTML
@@ -362,13 +476,14 @@ public class BrandScraperService : IDisposable
     /// Scrapes detailed information from a watch's detail page
     private async Task<ScrapedWatchDto?> ScrapeWatchDetailAsync(
         ProductCardInfo cardInfo,
-        BrandScraperConfig config)
+        BrandScraperConfig config,
+        IWebDriver? driver = null)
     {
         try
         {
             // Fetch detail page (with accordion expansion for JS-rendered pages)
             var html = config.RequiresJavaScript
-                ? await FetchWithSeleniumAsync(cardInfo.DetailUrl, expandAccordions: true)
+                ? await FetchWithSeleniumAsync(cardInfo.DetailUrl, driver, expandAccordions: true)
                 : await FetchWithHttpClientAsync(cardInfo.DetailUrl);
 
             if (string.IsNullOrEmpty(html))
@@ -1018,19 +1133,19 @@ public class BrandScraperService : IDisposable
     }
 
     /// Fetches page content using Selenium (for JavaScript-heavy sites)
-    private async Task<string> FetchWithSeleniumAsync(string url, bool expandAccordions = false)
+    private async Task<string> FetchWithSeleniumAsync(string url, IWebDriver? driver = null, bool expandAccordions = false)
     {
         try
         {
-            if (_driver == null)
+            if (driver == null)
             {
-                InitializeSeleniumDriver();
+                return string.Empty; // Driver should be provided from ScrapeCollectionAsync
             }
 
-            _driver!.Navigate().GoToUrl(url);
+            driver.Navigate().GoToUrl(url);
 
             // Wait for page to load
-            var wait = new WebDriverWait(_driver, TimeSpan.FromSeconds(10));
+            var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(10));
             wait.Until(d => ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState")?.ToString() == "complete");
 
             // Additional wait for dynamic content
@@ -1053,7 +1168,7 @@ public class BrandScraperService : IDisposable
                 {
                     try
                     {
-                        var cookieButton = _driver.FindElements(By.XPath(selector));
+                        var cookieButton = driver.FindElements(By.XPath(selector));
                         if (cookieButton.Count > 0 && cookieButton[0].Displayed)
                         {
                             cookieButton[0].Click();
@@ -1081,7 +1196,7 @@ public class BrandScraperService : IDisposable
                     // Try to click VC tabs (Caliber tab) if present
                     try
                     {
-                        var caliberTab = _driver.FindElements(By.XPath("//button[@id='vac-tab-1' or contains(@class, 'vac-tabs__tab')][@aria-selected='false']"));
+                        var caliberTab = driver.FindElements(By.XPath("//button[@id='vac-tab-1' or contains(@class, 'vac-tabs__tab')][@aria-selected='false']"));
                         if (caliberTab.Count > 0)
                         {
                             caliberTab[0].Click();
@@ -1095,7 +1210,7 @@ public class BrandScraperService : IDisposable
                     }
 
                     // Find all closed accordion buttons and click them (for Patek Philippe)
-                    var accordionButtons = _driver.FindElements(By.XPath("//button[contains(@class, 'accordion_trigger__') and @data-state='closed']"));
+                    var accordionButtons = driver.FindElements(By.XPath("//button[contains(@class, 'accordion_trigger__') and @data-state='closed']"));
                     _logger.LogInformation("Found {Count} closed accordion sections", accordionButtons.Count);
                     
                     foreach (var button in accordionButtons)
@@ -1122,7 +1237,7 @@ public class BrandScraperService : IDisposable
                 }
             }
 
-            return _driver.PageSource;
+            return driver.PageSource;
         }
         catch (Exception ex)
         {
@@ -1147,8 +1262,8 @@ public class BrandScraperService : IDisposable
         }
     }
 
-    /// Initializes Selenium Chrome WebDriver
-    private void InitializeSeleniumDriver()
+    /// Initializes Selenium Chrome WebDriver and returns the instance
+    private IWebDriver InitializeSeleniumDriver()
     {
         try
         {
@@ -1160,8 +1275,9 @@ public class BrandScraperService : IDisposable
             options.AddArgument("--window-size=1920,1080");
             options.AddArgument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-            _driver = new ChromeDriver(options);
+            var driver = new ChromeDriver(options);
             _logger.LogInformation("Selenium Chrome WebDriver initialized");
+            return driver;
         }
         catch (Exception ex)
         {
@@ -1323,22 +1439,8 @@ public class BrandScraperService : IDisposable
 
     public void Dispose()
     {
-        if (_driver != null)
-        {
-            try
-            {
-                _driver.Quit();
-                _driver.Dispose();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Error disposing Selenium WebDriver");
-            }
-            finally
-            {
-                _driver = null;
-            }
-        }
+        // Drivers are now disposed immediately after each brand is scraped
+        // in the finally block of ScrapeCollectionAsync
     }
 }
 
@@ -1350,4 +1452,17 @@ internal class ProductCardInfo
     public string CollectionName { get; set; } = string.Empty;
     public string CaseMaterial { get; set; } = string.Empty;
     public string ImageUrl { get; set; } = string.Empty;
+}
+
+/// Result of scraping a single brand/collection
+public class BrandScrapeResult
+{
+    public string BrandName { get; set; } = string.Empty;
+    public string CollectionName { get; set; } = string.Empty;
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public int WatchesScraped { get; set; }
+    public int WatchesAdded { get; set; }
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public string? ErrorMessage { get; set; }
 }
