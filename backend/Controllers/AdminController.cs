@@ -118,6 +118,92 @@ public class AdminController : ControllerBase
         }
     }
 
+    /// Scrapes multiple brands with error isolation - safe for 12+ brands
+    /// POST: api/admin/scrape-multiple
+    /// Body: { "brands": [{"brandName": "Patek Philippe", "collectionName": "Calatrava", "maxWatches": 50}, ...] }
+    [HttpPost("scrape-multiple")]
+    public async Task<IActionResult> ScrapeMultipleBrands(
+        [FromBody] ScrapeMultipleBrandsRequest request,
+        [FromQuery] int timeoutSecondsPerBrand = 300)
+    {
+        if (request?.Brands == null || request.Brands.Count == 0)
+        {
+            return BadRequest(new
+            {
+                Success = false,
+                Message = "At least one brand must be specified",
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
+        _logger.LogInformation("Starting multi-brand scrape for {Count} brands with {Timeout}s timeout per brand",
+            request.Brands.Count, timeoutSecondsPerBrand);
+
+        try
+        {
+            // Convert request to format expected by service
+            var brandsToScrape = request.Brands
+                .Select(b => (b.BrandName, b.CollectionName, b.MaxWatches))
+                .ToList();
+
+            // Scrape all brands with error isolation
+            var scrapeResults = await _brandScraperService.ScrapeMultipleBrandsAsync(
+                brandsToScrape, timeoutSecondsPerBrand);
+
+            // Cache successful scrapes to database
+            var cacheResults = new List<object>();
+            foreach (var scrapeResult in scrapeResults.Where(r => r.Success && r.WatchesScraped > 0))
+            {
+                // Get the watches that were just scraped for this brand
+                var brandRequest = request.Brands.FirstOrDefault(b => b.BrandName == scrapeResult.BrandName);
+                if (brandRequest == null) continue;
+
+                var watches = await _brandScraperService.ScrapeCollectionAsync(
+                    scrapeResult.BrandName,
+                    scrapeResult.CollectionName,
+                    brandRequest.MaxWatches);
+
+                var (cacheSuccess, cacheMessage, watchesAdded) = await _cacheService.CacheScrapedWatchesAsync(watches);
+
+                cacheResults.Add(new
+                {
+                    BrandName = scrapeResult.BrandName,
+                    CollectionName = scrapeResult.CollectionName,
+                    CacheSuccess = cacheSuccess,
+                    WatchesAdded = watchesAdded,
+                    CacheMessage = cacheMessage
+                });
+
+                scrapeResult.WatchesAdded = watchesAdded;
+            }
+
+            var successCount = scrapeResults.Count(r => r.Success);
+            var failedCount = scrapeResults.Count(r => !r.Success);
+
+            return Ok(new
+            {
+                Success = true,
+                Message = $"Scraping completed: {successCount} succeeded, {failedCount} failed",
+                TotalBrands = request.Brands.Count,
+                SuccessCount = successCount,
+                FailedCount = failedCount,
+                Results = scrapeResults,
+                CacheResults = cacheResults,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in multi-brand scraping");
+            return StatusCode(500, new
+            {
+                Success = false,
+                Message = $"Error scraping multiple brands: {ex.Message}",
+                Timestamp = DateTime.UtcNow
+            });
+        }
+    }
+
     /// Clears watches from database with optional brand filtering
     /// If brandId is provided: deletes only that brand's scraped watches (preserves showcase watches)
     /// If no brandId: deletes all watches except the 9 showcase watches
@@ -258,4 +344,18 @@ public class AdminController : ControllerBase
             });
         }
     }
+}
+
+/// Request DTO for scraping multiple brands
+public class ScrapeMultipleBrandsRequest
+{
+    public List<BrandScrapeRequest> Brands { get; set; } = new();
+}
+
+/// Individual brand scrape request
+public class BrandScrapeRequest
+{
+    public string BrandName { get; set; } = string.Empty;
+    public string CollectionName { get; set; } = string.Empty;
+    public int MaxWatches { get; set; } = 50;
 }
