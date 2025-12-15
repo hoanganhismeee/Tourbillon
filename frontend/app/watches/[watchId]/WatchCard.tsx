@@ -22,7 +22,7 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [collection, setCollection] = useState<Collection | null>(null);
-  const [imgSrc, setImgSrc] = useState<string>(imageTransformations.showcase(watch.image));
+  const [imgSrc, setImgSrc] = useState<string>(watch.imageUrl || imageTransformations.showcase(watch.image));
   const [retryCount, setRetryCount] = useState<number>(0);
   const router = useRouter();
   
@@ -34,20 +34,15 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
   const handleImageError = () => {
     // Retry strategy: try 2 times with different approaches
     if (retryCount === 0) {
-      // First retry: try direct URL (bypass Cloudinary optimization)
+      // First retry: add cache-busting query param to force reload
       setRetryCount(1);
-      if (watch.image.startsWith('http')) {
-        setImgSrc(watch.image);
-      } else {
-        setImgSrc(imageTransformations.showcase(watch.image) + `?r=${Date.now()}`);
-      }
+      setImgSrc((watch.imageUrl || imageTransformations.showcase(watch.image)) + `?r=${Date.now()}`);
       return;
     } else if (retryCount === 1) {
       // Second retry: try with explicit format
       setRetryCount(2);
-      setImgSrc(
-        imageTransformations.showcase(watch.image).replace('/f_auto', '/f_jpg') + `?r=${Date.now()}`
-      );
+      const baseUrl = watch.imageUrl || imageTransformations.showcase(watch.image);
+      setImgSrc(baseUrl.replace('/f_auto', '/f_jpg') + `?r=${Date.now()}`);
       return;
     }
     // All retries exhausted

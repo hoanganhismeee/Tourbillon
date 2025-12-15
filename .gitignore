@@ -408,3 +408,5 @@ appsettings.Development.json
 appsettings.Production.json
 appsettings.*.json
 !appsettings.example.json
+cookies.txt
+cookies.txt;

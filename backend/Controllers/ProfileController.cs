@@ -2,6 +2,7 @@
 // It follows Single Responsibility Principle by focusing only on profile concerns.
 using backend.Models;
 using backend.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,6 +10,7 @@ namespace backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class ProfileController : ControllerBase
 {
     private readonly UserManager<User> _userManager;

@@ -65,6 +65,10 @@ const WatchDetailPage = () => {
                     }
                     const data = await fetchWatchById(numericWatchId);
                     setWatch(data);
+                    // Set the image URL when watch data is loaded
+                    if (data?.imageUrl) {
+                        setImgSrc(data.imageUrl);
+                    }
                 } catch (err) {
                     setError('Failed to fetch watch details. Please try again later.');
                     console.error(err);
@@ -78,7 +82,7 @@ const WatchDetailPage = () => {
         // One-time retry with explicit JPG and cache-busting to mitigate transient failures
         if (watch && retryCount < 1) {
             setRetryCount(1);
-            const fallback = imageTransformations.detail(watch.image) + `?r=${Date.now()}`;
+            const fallback = (watch.imageUrl || imageTransformations.detail(watch.image)) + `?r=${Date.now()}`;
             setImgSrc(fallback.replace('/f_auto', '/f_jpg')); // coarse switch to JPG if URL contains f_auto
             return;
         }
@@ -196,7 +200,7 @@ const WatchDetailPage = () => {
                                     
                                     {/* Actual image with Cloudinary optimization */}
                                     <Image
-                                      src={imgSrc || imageTransformations.detail(watch.image)}
+                                      src={imgSrc || watch.imageUrl || imageTransformations.detail(watch.image)}
                                       alt={watch.name}
                                       width={1200}
                                       height={1200}

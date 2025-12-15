@@ -3,6 +3,7 @@
 using backend.Models;
 using backend.Services;
 using backend.DTOs;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,17 +14,23 @@ namespace backend.Controllers;
 public class AuthenticationController : ControllerBase
 {
     private readonly SignInManager<User> _signInManager;
+    private readonly UserManager<User> _userManager;
+    private readonly RoleManager<IdentityRole<int>> _roleManager;
     private readonly IUserRegistrationService _userRegistrationService;
     private readonly IPasswordResetService _passwordResetService;
     private readonly ILogger<AuthenticationController> _logger;
 
     public AuthenticationController(
         SignInManager<User> signInManager,
+        UserManager<User> userManager,
+        RoleManager<IdentityRole<int>> roleManager,
         IUserRegistrationService userRegistrationService,
         IPasswordResetService passwordResetService,
         ILogger<AuthenticationController> logger)
     {
         _signInManager = signInManager;
+        _userManager = userManager;
+        _roleManager = roleManager;
         _userRegistrationService = userRegistrationService;
         _passwordResetService = passwordResetService;
         _logger = logger;
@@ -158,6 +165,67 @@ public class AuthenticationController : ControllerBase
         {
             _logger.LogError(ex, "Unexpected error in ResetPassword");
             return StatusCode(500, new { Message = "An error occurred. Please try again later." });
+        }
+    }
+
+    // POST: api/authentication/setup-first-admin
+    // Initial setup endpoint to promote the first authenticated user to Admin role
+    // Only works if no admins exist yet (one-time setup)
+    // After first admin is assigned, this endpoint returns an error
+    [HttpPost("setup-first-admin")]
+    [Authorize]
+    public async Task<IActionResult> SetupFirstAdmin()
+    {
+        try
+        {
+            // Check if Admin role exists
+            var adminRoleExists = await _roleManager.RoleExistsAsync("Admin");
+            if (!adminRoleExists)
+            {
+                return BadRequest(new { Message = "Admin role has not been created yet. Please try again later." });
+            }
+
+            // Check if any admin users already exist
+            var adminRole = await _roleManager.FindByNameAsync("Admin");
+            var adminUsersCount = (await _userManager.GetUsersInRoleAsync("Admin")).Count;
+
+            if (adminUsersCount > 0)
+            {
+                return BadRequest(new
+                {
+                    Message = "Admin already exists. For security reasons, only the first user can use this endpoint."
+                });
+            }
+
+            // Get the current authenticated user
+            var currentUser = await _userManager.GetUserAsync(User);
+            if (currentUser == null)
+            {
+                return Unauthorized(new { Message = "User not found" });
+            }
+
+            // Assign Admin role to current user
+            var result = await _userManager.AddToRoleAsync(currentUser, "Admin");
+            if (result.Succeeded)
+            {
+                _logger.LogInformation("User {Email} has been promoted to Admin role during initial setup", currentUser.Email);
+                return Ok(new
+                {
+                    Success = true,
+                    Message = $"Successfully promoted {currentUser.Email} to Admin role",
+                    Email = currentUser.Email,
+                    Role = "Admin"
+                });
+            }
+
+            var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+            _logger.LogError("Failed to promote user {Email} to Admin: {Errors}", currentUser.Email, errors);
+            return BadRequest(new { Message = $"Failed to assign Admin role: {errors}" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in SetupFirstAdmin");
+            return StatusCode(500, new { Message = $"Error during admin setup: {ex.Message}" });
         }
     }
 

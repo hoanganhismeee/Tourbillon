@@ -41,7 +41,7 @@ const WatchCard = ({ watch, brands, collections, isPriority = false }: {
   };
 
   // Local retry state for handling intermittent Cloudinary/optimizer hiccups
-  const [src, setSrc] = useState<string>(imageTransformations.card(watch.image));
+  const [src, setSrc] = useState<string>(watch.imageUrl || imageTransformations.card(watch.image));
   const [retryCount, setRetryCount] = useState<number>(0);
 
   const handleImgError = () => {

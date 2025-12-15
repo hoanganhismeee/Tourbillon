@@ -318,7 +318,32 @@ DELETE /api/account     // Delete account
 **Key Lesson:**
 Every controller/action handling user data needs authorization checks. Default to DENY, explicitly ALLOW.
 
-**Status:** ✓ TO BE IMPLEMENTED
+**Status:** ✓ FIXED
+
+**Implementation Details:**
+- AdminController now has `[Authorize(Roles = "Admin")]` attribute
+- Created RoleManagementService for managing user roles
+- RoleManager configured in Program.cs for role operations
+- Added authorization policy "RequireAdminRole" in Program.cs
+- Admin role automatically seeded on startup via DbInitializer.EnsureAdminRoleAsync()
+- ProfileController and AccountController now have `[Authorize]` attribute
+- All protected endpoints now require authentication
+- Created `POST /api/authentication/setup-first-admin` endpoint for initial admin assignment
+
+**How to Assign Admin Role (One-Time Setup):**
+1. Register account: `POST /api/authentication/register`
+2. Login: `POST /api/authentication/login`
+3. Call setup endpoint: `POST /api/authentication/setup-first-admin` (requires auth)
+4. This endpoint ONLY works if no admins exist yet (security feature)
+5. After assigned, no one else can use this endpoint
+
+**Using in Postman:**
+1. Register and login (cookies saved automatically)
+2. New POST request to `http://localhost:5248/api/authentication/setup-first-admin`
+3. Send - Postman uses saved session cookie
+4. Response: `{"success": true, "message": "Successfully promoted hoanganh31012005@gmail.com to Admin role"}`
+
+After this, you can access all `/api/admin/*` endpoints!
 
 ---
 
@@ -491,7 +516,7 @@ Never leave debug/test code in production. Use preprocessor directives or remove
 | # | Issue | Severity | Status |
 |---|-------|----------|--------|
 | 1 | Exposed API Keys | CRITICAL | ✓ FIXED |
-| 2 | Unprotected Admin Endpoints | CRITICAL | ⏳ TODO |
+| 2 | Unprotected Admin Endpoints | CRITICAL | ✓ FIXED |
 | 3 | SQL Injection | CRITICAL | ⏳ TODO |
 | 4 | Weak Random Generation | CRITICAL | ⏳ TODO |
 | 5 | No Brute Force Protection | HIGH | ⏳ TODO |
