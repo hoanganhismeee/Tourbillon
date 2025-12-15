@@ -303,6 +303,8 @@ public class BrandScraperService : IDisposable
     private List<ProductCardInfo> ParseProductCards(string html, BrandScraperConfig config)
     {
         var cards = new List<ProductCardInfo>();
+        var seenReferences = new HashSet<string>(); // Track seen reference numbers to avoid duplicates
+        var seenDetailUrls = new HashSet<string>(); // Track seen detail URLs (for ALS where ref numbers are empty on cards)
         var doc = new HtmlDocument();
         doc.LoadHtml(html);
 
@@ -387,6 +389,35 @@ public class BrandScraperService : IDisposable
                     }
                 }
 
+                // Parse collection name for ALS (e.g., "LANGE 1 DAYMATIC" -> "Lange 1", "LANGEMATIK PERPETUAL" -> "Langematik")
+                if (config.BrandName == "A. Lange & Söhne" && !string.IsNullOrEmpty(collectionName))
+                {
+                    var parts = collectionName.Split(' ');
+                    if (parts.Length >= 2 && parts[1].All(char.IsDigit))
+                    {
+                        // "LANGE 1" pattern - keep first two words
+                        collectionName = $"{parts[0]} {parts[1]}";
+                    }
+                    else if (parts.Length > 0)
+                    {
+                        // "ZEITWERK", "SAXONIA", "LANGEMATIK" patterns - just first word
+                        collectionName = parts[0];
+                    }
+
+                    // Normalize case to match database (title case: "Lange 1", "Zeitwerk", "Saxonia")
+                    collectionName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(collectionName.ToLower());
+                }
+
+                // Map ALS sub-collections to main collections
+                if (config.BrandName == "A. Lange & Söhne")
+                {
+                    if (collectionName.Contains("Langematik", StringComparison.OrdinalIgnoreCase))
+                    {
+                        collectionName = "Saxonia";
+                        _logger.LogInformation("ALS: Mapping Langematik to Saxonia collection");
+                    }
+                }
+
                 // Extract material from card
                 var material = string.Empty;
                 if (!string.IsNullOrEmpty(config.ProductCard.CaseMaterial))
@@ -440,13 +471,33 @@ public class BrandScraperService : IDisposable
                 var cleanedRefNumber = CleanText(referenceNumber);
 
                 // Skip cards without reference numbers - these aren't real product cards
-                if (string.IsNullOrEmpty(cleanedRefNumber))
+                // EXCEPTION: ALS cards don't have reference numbers on the cards - they're only on detail pages
+                if (string.IsNullOrEmpty(cleanedRefNumber) && config.BrandName != "A. Lange & Söhne")
                 {
-                    if (config.BrandName == "A. Lange & Söhne")
-                    {
-                        _logger.LogWarning("ALS: Skipping card - no reference number found. DetailUrl: {DetailUrl}", detailUrl);
-                    }
                     continue;
+                }
+
+                // For ALS, skip duplicate detail URLs (product cards can appear twice in DOM)
+                if (config.BrandName == "A. Lange & Söhne")
+                {
+                    if (seenDetailUrls.Contains(detailUrl))
+                    {
+                        _logger.LogInformation("ALS: Skipping duplicate detail URL: {DetailUrl}", detailUrl);
+                        continue;
+                    }
+                    seenDetailUrls.Add(detailUrl);
+                }
+
+                // Skip duplicate reference numbers (e.g., ALS variants: same watch in different materials)
+                // For ALS, we'll also check duplicates based on detail URL (above)
+                if (!string.IsNullOrEmpty(cleanedRefNumber))
+                {
+                    if (seenReferences.Contains(cleanedRefNumber))
+                    {
+                        _logger.LogInformation("Skipping duplicate reference number: {RefNumber} (variant already scraped)", cleanedRefNumber);
+                        continue;
+                    }
+                    seenReferences.Add(cleanedRefNumber);
                 }
 
                 if (config.BrandName == "A. Lange & Söhne")
@@ -537,9 +588,9 @@ public class BrandScraperService : IDisposable
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
 
-            // Extract reference number (use card info as fallback)
+            // NEW: Extract reference number FIRST (before specs page navigation, as it's on Level 2)
             var referenceNumber = string.Empty;
-            
+
             // Priority 1: Extract from URL for JLC (pattern: -q389848j -> Q389848J)
             if (config.BrandName == "Jaeger-LeCoultre" && !string.IsNullOrEmpty(cardInfo.DetailUrl))
             {
@@ -549,12 +600,12 @@ public class BrandScraperService : IDisposable
                     referenceNumber = urlMatch.Groups[1].Value.ToUpper();
                 }
             }
-            
+
             // Priority 2: Try XPath selector if URL extraction failed
             if (string.IsNullOrEmpty(referenceNumber) && !string.IsNullOrEmpty(config.DetailPage.ReferenceNumber))
             {
                 HtmlNode? refNode = null;
-                
+
                 // Handle attribute selectors (e.g., /@data-product-reference for JLC)
                 if (config.DetailPage.ReferenceNumber.Contains("/@"))
                 {
@@ -579,7 +630,7 @@ public class BrandScraperService : IDisposable
                     }
                 }
             }
-            
+
             // Use cardInfo as fallback if detail page selector returned nothing
             if (string.IsNullOrEmpty(referenceNumber))
             {
@@ -591,17 +642,113 @@ public class BrandScraperService : IDisposable
 
             if (config.BrandName == "A. Lange & Söhne")
             {
-                _logger.LogInformation("ALS: After processing - referenceNumber='{RefNum}', cardInfo.ReferenceNumber='{CardRef}'",
-                    referenceNumber, cardInfo.ReferenceNumber);
+                _logger.LogInformation("ALS: Extracted referenceNumber='{RefNum}' from Level 2 page",
+                    referenceNumber);
+
+                // For ALS, skip this detail page if reference number is empty
+                // (indicates it's a category page, not a product detail page)
+                if (string.IsNullOrEmpty(referenceNumber))
+                {
+                    _logger.LogWarning("ALS: Skipping page without proper product structure: {Url}", cardInfo.DetailUrl);
+                    return null;
+                }
             }
 
-            // Extract collection name (use card info as fallback)
-            HtmlNode? collectionNode = null;
-            if (!string.IsNullOrEmpty(config.DetailPage.CollectionName))
+            // NEW: Extract model name and subtitle BEFORE navigating to specs page (for ALS 3-level navigation)
+            var modelName = string.Empty;
+            var subtitle = string.Empty;
+            if (config.BrandName == "A. Lange & Söhne")
             {
-                collectionNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.CollectionName);
+                // Extract model name from Level 2 page
+                if (!string.IsNullOrEmpty(config.DetailPage.ModelName))
+                {
+                    var modelNameNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.ModelName);
+                    modelName = modelNameNode?.InnerText?.Trim() ?? string.Empty;
+                }
+
+                // Extract subtitle from Level 2 page (can be attribute or XPath)
+                if (!string.IsNullOrEmpty(config.DetailPage.Subtitle))
+                {
+                    if (config.DetailPage.Subtitle.StartsWith("@"))
+                    {
+                        var attrName = config.DetailPage.Subtitle.TrimStart('@');
+                        var containerNode = doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'single-push')]");
+                        subtitle = containerNode?.GetAttributeValue(attrName, string.Empty) ?? string.Empty;
+                    }
+                    else
+                    {
+                        var subtitleNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.Subtitle);
+                        subtitle = subtitleNode?.InnerText?.Trim() ?? string.Empty;
+                    }
+                }
+
+                _logger.LogInformation("ALS: Extracted ModelName='{ModelName}', Subtitle='{Subtitle}'", modelName, subtitle);
             }
-            var collectionName = collectionNode?.InnerText?.Trim() ?? cardInfo.CollectionName;
+
+            // NEW: If SpecsPageLink is configured, navigate to final specs page (3-level navigation for brands like ALS)
+            if (!string.IsNullOrEmpty(config.DetailPage.SpecsPageLink))
+            {
+                var specsLinkNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.SpecsPageLink);
+                if (specsLinkNode != null)
+                {
+                    var specsUrl = specsLinkNode.GetAttributeValue("href", string.Empty);
+                    if (!string.IsNullOrEmpty(specsUrl))
+                    {
+                        // Make absolute URL
+                        if (!specsUrl.StartsWith("http"))
+                        {
+                            specsUrl = config.BaseUrl + specsUrl;
+                        }
+
+                        // Fetch final specs page
+                        var specsHtml = config.RequiresJavaScript
+                            ? await FetchWithSeleniumAsync(specsUrl, driver, expandAccordions: true)
+                            : await FetchWithHttpClientAsync(specsUrl);
+
+                        if (!string.IsNullOrEmpty(specsHtml))
+                        {
+                            // Update doc to specs page for spec extraction
+                            doc.LoadHtml(specsHtml);
+                            _logger.LogInformation("ALS: Navigated to specs page: {SpecsUrl}", specsUrl);
+                        }
+                    }
+                }
+            }
+
+            // Extract collection name
+            var collectionName = string.Empty;
+
+            // For ALS, extract collection from URL path (more reliable than HTML parsing)
+            // URL pattern: /au-en/timepieces/{collection}/{product-slug}
+            if (config.BrandName == "A. Lange & Söhne" && !string.IsNullOrEmpty(cardInfo.DetailUrl))
+            {
+                var urlMatch = Regex.Match(cardInfo.DetailUrl, @"/timepieces/([^/]+)/");
+                if (urlMatch.Success)
+                {
+                    var collectionSlug = urlMatch.Groups[1].Value; // e.g., "lange-1", "zeitwerk", "saxonia"
+                    // Convert URL slug to database collection name
+                    collectionName = collectionSlug switch
+                    {
+                        "lange-1" => "Lange 1",
+                        "zeitwerk" => "Zeitwerk",
+                        "saxonia" => "Saxonia",
+                        _ => string.Empty
+                    };
+                    _logger.LogInformation("ALS: Extracted collection '{Collection}' from URL: {Url}", collectionName, cardInfo.DetailUrl);
+                }
+            }
+
+            // Fallback: Try HTML selector
+            if (string.IsNullOrEmpty(collectionName))
+            {
+                HtmlNode? collectionNode = null;
+                if (!string.IsNullOrEmpty(config.DetailPage.CollectionName))
+                {
+                    collectionNode = doc.DocumentNode.SelectSingleNode(config.DetailPage.CollectionName);
+                }
+                collectionName = collectionNode?.InnerText?.Trim() ?? cardInfo.CollectionName;
+            }
+
             collectionName = CleanText(collectionName);
             
             // Parse collection name for JLC - match against known collections
@@ -698,11 +845,11 @@ public class BrandScraperService : IDisposable
                 }
             }
 
-            // For JLC, images are REQUIRED - skip if both card and detail page failed
-            if (config.BrandName == "Jaeger-LeCoultre" && string.IsNullOrEmpty(imageUrl))
+            // For JLC and ALS, images are REQUIRED - skip if both card and detail page failed
+            if ((config.BrandName == "Jaeger-LeCoultre" || config.BrandName == "A. Lange & Söhne") && string.IsNullOrEmpty(imageUrl))
             {
-                _logger.LogWarning("Skipping JLC watch (no image after card + detail page): Ref={Ref}, URL={Url}", 
-                    referenceNumber, cardInfo.DetailUrl);
+                _logger.LogWarning("Skipping {Brand} watch (no image after card + detail page): Ref={Ref}, URL={Url}",
+                    config.BrandName, referenceNumber, cardInfo.DetailUrl);
                 return null; // This will skip the watch
             }
 
@@ -715,11 +862,25 @@ public class BrandScraperService : IDisposable
             });
 
             // Create DTO
-            // For ALS, include variant info in the description (e.g., "in 750 pink gold")
-            var descriptionParts = new List<string> { config.BrandName, collectionName, referenceNumber };
-            if (!string.IsNullOrEmpty(cardInfo.VariantInfo))
+            // Construct description based on brand
+            string description;
+            if (config.BrandName == "A. Lange & Söhne" && !string.IsNullOrEmpty(modelName))
             {
-                descriptionParts.Add(cardInfo.VariantInfo);
+                // For ALS, use model name + subtitle (e.g., "LANGEMATIK PERPETUAL in 750 pink gold")
+                description = string.IsNullOrEmpty(subtitle)
+                    ? modelName
+                    : $"{modelName} {subtitle}";
+                _logger.LogInformation("ALS Watch Description: {Description}", description);
+            }
+            else
+            {
+                // For other brands, use the standard format
+                var descriptionParts = new List<string> { config.BrandName, collectionName, referenceNumber };
+                if (!string.IsNullOrEmpty(cardInfo.VariantInfo))
+                {
+                    descriptionParts.Add(cardInfo.VariantInfo);
+                }
+                description = string.Join(" ", descriptionParts);
             }
 
             var watch = new ScrapedWatchDto
@@ -728,7 +889,7 @@ public class BrandScraperService : IDisposable
                 BrandName = config.BrandName,
                 CollectionName = collectionName,
                 CurrentPrice = price,
-                Description = string.Join(" ", descriptionParts),
+                Description = description,
                 Specs = specsJson,
                 ImageUrl = imageUrl,
                 ReferenceNumber = referenceNumber,

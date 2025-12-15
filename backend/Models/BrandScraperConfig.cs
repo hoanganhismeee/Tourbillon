@@ -65,6 +65,19 @@ public class DetailPageSelectors
     /// Selector for product image on detail page
     /// Example: "img[class*='product-image']" or "//img[@class='watch-img']"
     public string Image { get; set; } = string.Empty;
+
+    /// Selector for link to final specs page (3-level navigation, e.g., for A. Lange & Söhne)
+    /// Example: "//a[@class='cta-button']/@href" - used to navigate from intermediate detail page to final specs page
+    public string? SpecsPageLink { get; set; }
+
+    /// Selector for model name (for Watch.Description, e.g., A. Lange & Söhne)
+    /// Example: "//h2[@class='model-name']"
+    public string? ModelName { get; set; }
+
+    /// Selector for subtitle/variant information (for Watch.Description, e.g., A. Lange & Söhne)
+    /// Can be an attribute selector (e.g., "@subtitle") or XPath selector
+    /// Example: "@subtitle" or "//div[@class='variant-info']"
+    public string? Subtitle { get; set; }
 }
 
 /// Complete configuration for scraping a luxury watch brand's official website
