@@ -70,9 +70,9 @@ curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Audema
 curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Jaeger-LeCoultre&collection=Reverso&maxWatches=8" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Jaeger-LeCoultre&collection=Master+Ultra+Thin&maxWatches=8" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Jaeger-LeCoultre&collection=Polaris&maxWatches=7" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=Jaeger-LeCoultre&collection=Duometre&maxWatches=7" && timeout /t 5 /nobreak && curl "http://localhost:5248/api/admin/scrape-stats"
 ```
 
-**A. Lange & Söhne (brandId 5, ~29 watches total):**
+**A. Lange & Söhne (brandId 5, ~32 watches total - 3-level navigation):**
 ```cmd
-curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=A.+Lange+and+Sohne&collection=Lange+1&maxWatches=8" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=A.+Lange+and+Sohne&collection=Zeitwerk&maxWatches=7" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=A.+Lange+and+Sohne&collection=Datograph&maxWatches=7" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=A.+Lange+and+Sohne&collection=Saxonia&maxWatches=7" && timeout /t 5 /nobreak && curl "http://localhost:5248/api/admin/scrape-stats"
+curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=A.+Lange+and+Sohne&collection=Lange+1&maxWatches=10" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=A.+Lange+and+Sohne&collection=Zeitwerk&maxWatches=8" && timeout /t 5 /nobreak && curl -X POST "http://localhost:5248/api/admin/scrape-brand-official?brand=A.+Lange+and+Sohne&collection=Saxonia&maxWatches=14" && timeout /t 5 /nobreak && curl "http://localhost:5248/api/admin/scrape-stats"
 ```
 
 ---
@@ -303,6 +303,248 @@ REM Look for: missing collection, missing image, failed extraction
 REM If issues found, update selectors and retry
 curl -X DELETE "http://localhost:5248/api/admin/clear-watches?brandId=X"
 ```
+
+---
+
+## 🔬 ALS Case Study: Multi-Level Navigation Pattern
+
+### The Challenge: 3-Level Page Navigation
+
+**A. Lange & Söhne (ALS)** was the first brand requiring **3-level navigation**, unlike the standard 2-level (listing → detail) pattern used by other brands.
+
+#### Page Structure
+```
+Level 1: Listing Page
+  /au-en/timepieces/lange-1
+  → Contains product cards with links to Level 2
+
+Level 2: Intermediate Detail Page
+  /au-en/timepieces/lange-1/lange-1-daymatic
+  → Contains: Reference number, Model name, Subtitle
+  → Contains: Link to Level 3 specs page
+  → Does NOT contain: Technical specifications
+
+Level 3: Final Specs Page
+  /au-en/timepieces/lange-1/lange-1-daymatic-honeygold/lange-1-daymatic-honeygold-in-750-honeygold-320-050
+  → Contains: Technical specifications (case, movement, etc.)
+  → Does NOT contain: Reference number or model name
+```
+
+### 🚨 The Critical Mistake
+
+**Initial Implementation:** Extract all data after navigating to specs page
+
+```csharp
+// ❌ WRONG ORDER - This will fail
+var html = FetchDetailPage(level2Url);
+doc.LoadHtml(html);
+
+// Try to extract reference number
+var refNum = doc.SelectSingleNode("//h3//span").InnerText;  // ❌ This selector exists on Level 2, not Level 3!
+
+// Then navigate to specs
+var specsLink = doc.SelectSingleNode(config.DetailPage.SpecsPageLink).GetAttribute("href");
+var specsHtml = FetchDetailPage(specsUrl);
+doc.LoadHtml(specsHtml);  // ❌ doc is now Level 3 - ref number is gone!
+
+// Try to extract specs
+var caseSpecs = doc.SelectSingleNode("//technical-details...").InnerText;
+```
+
+**Result:**
+- ❌ Reference numbers empty (selector doesn't exist on Level 3)
+- ❌ Duplicate watches (DOM rendering artifacts)
+- ❌ Collection extraction unreliable (parsing HTML variants failed)
+
+### ✅ The Solution: Extract Before Navigation
+
+**Corrected Implementation:** Extract data from each level BEFORE navigating to next level
+
+```csharp
+// ✅ CORRECT ORDER - Extract from Level 2 FIRST
+var html = FetchDetailPage(level2Url);
+doc.LoadHtml(html);
+
+// Extract EVERYTHING available on Level 2 immediately
+var referenceNumber = doc.SelectSingleNode(config.DetailPage.ReferenceNumber)?.InnerText?.Trim() ?? "";
+var modelName = doc.SelectSingleNode(config.DetailPage.ModelName)?.InnerText?.Trim() ?? "";
+var subtitle = doc.DocumentNode.SelectSingleNode("//div[@data-cy='single-push']")?.GetAttributeValue("subtitle", "");
+
+// NOW navigate to specs (Level 3)
+var specsUrl = BuildSpecsUrl(doc, baseUrl);  // Extract from Level 2 before navigating
+doc.LoadHtml(FetchDetailPage(specsUrl));
+
+// Extract specs from Level 3
+var caseSpecs = doc.SelectSingleNode("//technical-details...").InnerText;
+
+// Save with data extracted from correct levels
+SaveWatch(referenceNumber, modelName, subtitle, caseSpecs);
+```
+
+**Key Insight:** When navigating between pages, the document object (`HtmlDocument`) is replaced. Any selectors that exist on the previous page become invalid after `LoadHtml()` is called with new content.
+
+### 🎯 Lessons for Future Brands
+
+#### 1. **Inspect Multi-Level Navigation Early**
+Before writing code, manually trace through all pages:
+- [ ] Are reference numbers visible on Level 1? Level 2? Level 3?
+- [ ] Where is each required field located?
+- [ ] Do some fields exist on intermediate pages that won't appear on final pages?
+- **Action:** Document page structure in `Brands_Scrape_Config.md` BEFORE coding
+
+#### 2. **Use Configuration to Signal Multi-Level Navigation**
+Added three new optional properties to detect multi-level patterns:
+
+```csharp
+public class DetailPageSelectors
+{
+    public string? SpecsPageLink { get; set; }    // Link from Level 2 → Level 3
+    public string? ModelName { get; set; }        // Exists on Level 2 only
+    public string? Subtitle { get; set; }         // Exists on Level 2 only
+}
+```
+
+**Pattern Recognition:** If `SpecsPageLink` is configured, the scraper knows to:
+1. Extract model name + subtitle from Level 2
+2. Navigate to Level 3
+3. Extract specs from Level 3
+
+#### 3. **Prefer URL-Based Collection Extraction Over HTML Parsing**
+
+**Why URL patterns are more reliable:**
+
+```csharp
+// ❌ HTML-based (fails for variants)
+var collectionName = doc.SelectSingleNode("//h3[@class='collection']").InnerText;
+// Returns: "LANGE 1 DAYMATIC" (variant), not "Lange 1" (database name)
+// Requires complex parsing logic
+
+// ✅ URL-based (always accurate)
+var urlMatch = Regex.Match(url, @"/timepieces/([^/]+)/");
+if (urlMatch.Success)
+{
+    var collectionSlug = urlMatch.Groups[1].Value;  // "lange-1"
+    var collectionName = collectionSlug switch
+    {
+        "lange-1" => "Lange 1",
+        "zeitwerk" => "Zeitwerk",
+        "saxonia" => "Saxonia",
+        _ => ""
+    };
+}
+```
+
+**Advantage:** URL slugs are controlled by the brand (they don't change), whereas HTML text varies (LANGE 1, LANGE 1 DAYMATIC, LANGE 1 DAYMATIC HONEYGOLD, etc.).
+
+#### 4. **Handle DOM Duplication**
+
+Product cards can appear twice in the rendered HTML (Selenium rendering artifact):
+
+```csharp
+var seenDetailUrls = new HashSet<string>();
+
+foreach (var productCard in doc.SelectNodes(config.ProductCard.CardContainer))
+{
+    var detailUrl = ExtractUrl(productCard);
+
+    // Skip if we've already processed this URL
+    if (seenDetailUrls.Contains(detailUrl))
+    {
+        _logger.LogWarning("Skipping duplicate detail URL: {Url}", detailUrl);
+        continue;
+    }
+
+    seenDetailUrls.Add(detailUrl);
+    // Process product...
+}
+```
+
+**Why URL deduplication is better than reference number:**
+- Product cards don't always contain reference numbers
+- URL is always unique per product
+- Catches DOM rendering artifacts early (before database operations)
+
+#### 5. **Extract from HTML Attributes, Not Just Text Content**
+
+ALS uses HTML attributes for variant information:
+
+```html
+<div class="single-push" collection="LANGE 1" subtitle="in 750 HONEYGOLD®">
+  <!-- Content here -->
+</div>
+```
+
+**Configuration approach:**
+```json
+{
+  "CollectionName": "//div[contains(@class, 'single-push')]/@collection",
+  "Subtitle": "@subtitle"
+}
+```
+
+**Parser logic:**
+```csharp
+if (config.DetailPage.Subtitle.StartsWith("@"))
+{
+    var attrName = config.DetailPage.Subtitle.TrimStart('@');
+    var containerNode = doc.DocumentNode.SelectSingleNode("//div[@data-cy='single-push']");
+    var subtitleText = containerNode?.GetAttributeValue(attrName, "") ?? "";
+}
+```
+
+### 📊 Configuration Template for Multi-Level Brands
+
+When you encounter a brand with 3+ page levels:
+
+```json
+{
+  "BrandName": "New Brand",
+  "BaseUrl": "https://example.com",
+  "CollectionUrls": { },
+  "ProductCard": {
+    "CardContainer": "//selector/to/card",
+    "ReferenceNumber": "",  // Empty if not on listing page
+    "CollectionName": "",   // Empty if not on listing page
+    "DetailPageLink": ".//a[href]/@href"
+  },
+  "DetailPage": {
+    "ReferenceNumber": "//h3//span",           // Level 2
+    "ModelName": "//h2",                       // Level 2
+    "Subtitle": "@subtitle-attribute",        // Level 2
+    "SpecsPageLink": "//a[@class='btn']/@href",  // NEW: Link to Level 3
+    "Price": "//span[@class='price']",        // Level 2
+    "Image": "//img[1]",                      // Level 2 or Level 3
+    "CaseSpecs": "//div[@class='specs']//li"  // Level 3
+  },
+  "RequiresJavaScript": true,
+  "Currency": "USD"
+}
+```
+
+### 🔍 Testing Checklist for Multi-Level Brands
+
+After implementation:
+
+- [ ] **Reference Numbers Not Empty**: Verify scraper extracts from correct level
+- [ ] **No Duplicates**: Check deduplication logic catches DOM artifacts
+- [ ] **Collection Names Match Database**: Test URL extraction + mapping for all collections
+- [ ] **Images Present**: Verify image extraction from correct level (often the final level)
+- [ ] **Specs Complete**: Test that specs from final level are captured correctly
+- [ ] **All Levels Navigate Correctly**: Check backend logs for navigation confirmation
+
+### 📝 Real Numbers: ALS Scraping Results
+
+**Before fixes:**
+- 0 watches scraped (reference numbers empty)
+
+**After execution order fix:**
+- 2 duplicate watches (same reference number)
+
+**After URL deduplication + collection extraction:**
+- ~32 unique watches across 3 collections ✅
+- All reference numbers present ✅
+- Collections correctly mapped ✅
+- Images from Level 3 specs page ✅
 
 ---
 
