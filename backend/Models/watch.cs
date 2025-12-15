@@ -17,6 +17,28 @@ public class Watch
     public Collection? Collection { get; set; } //null! because it will alway be filled
 
     // Navigation properties
-    
+
     public ICollection<PriceTrend>? PriceHistory { get; set; } = new List<PriceTrend>();
+
+    /// Returns the complete image URL for Cloudinary images
+    /// If Image is already a full URL (starts with http), returns it as-is
+    /// If Image is a Cloudinary public ID, builds the complete Cloudinary URL
+    public string? GetImageUrl(string? cloudName = "dcd9lcdoj")
+    {
+        if (string.IsNullOrEmpty(Image))
+            return null;
+
+        // If it's already a full URL, return as-is
+        if (Image.StartsWith("http://") || Image.StartsWith("https://"))
+            return Image;
+
+        // If it looks like a Cloudinary public ID (contains / or matches watch pattern), build full URL
+        if (Image.Contains("/") || Image.StartsWith("watches/"))
+        {
+            return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_400,h_400,c_fill,g_auto/{Image}";
+        }
+
+        // Otherwise assume it's a filename that needs the watches/ prefix and full URL
+        return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_600,h_600,c_fill,g_auto/{Image}";
+    }
 }

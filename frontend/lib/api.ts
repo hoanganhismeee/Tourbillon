@@ -38,6 +38,7 @@ export interface Watch {
   name: string;
   description: string;
   image: string;
+  imageUrl?: string;
   currentPrice: number;
   brandId: number;
   collectionId: number | null;

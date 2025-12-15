@@ -19,27 +19,37 @@ public class WatchController : ControllerBase
     }
 
     [HttpGet]
-    public IActionResult GetAllWatches() => Ok(_context.Watches.ToList()); // Return all watch from database
+    public IActionResult GetAllWatches()
+    {
+        var watches = _context.Watches.ToList();
+        var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
+        return Ok(watchDtos);
+    }
 
     [HttpGet("{id}")]
     public IActionResult GetWatch(int id) // Return a specific watch from database from id
     {
         var watch = _context.Watches.Find(id);
-        return watch == null ? NotFound() : Ok(watch);
+        if (watch == null) return NotFound();
+
+        var watchDto = WatchDto.FromWatch(watch);
+        return Ok(watchDto);
     }
 
     [HttpGet("collection/{collectionId}")]
     public IActionResult GetByCollection(int collectionId) // Returns all watches from a specific collection by its collection ID.
     {
         var watches = _context.Watches.Where(w => w.CollectionId == collectionId).ToList();
-        return Ok(watches);
+        var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
+        return Ok(watchDtos);
     }
 
     [HttpGet("brand/{brandId}")]
     public IActionResult GetByBrand(int brandId) // Returns all watches for a specific brand by its brand ID.
     {
         var watches = _context.Watches.Where(w => w.BrandId == brandId).ToList();
-        return Ok(watches);
+        var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
+        return Ok(watchDtos);
     }
 
     [HttpPost]

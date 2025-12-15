@@ -31,7 +31,15 @@ builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
     options.Password.RequireUppercase = true;
     options.Password.RequireLowercase = false;
 })
-.AddEntityFrameworkStores<TourbillonContext>(); // Links Identity to the Entity Framework data store.
+.AddEntityFrameworkStores<TourbillonContext>() // Links Identity to the Entity Framework data store.
+.AddRoleManager<RoleManager<IdentityRole<int>>>(); // Enable role management
+
+// Configure authorization policies
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("RequireAdminRole", policy =>
+        policy.RequireRole("Admin"));
+});
 
 // Register secure password change service
 builder.Services.AddScoped<IPasswordChangeService, PasswordChangeService>();
@@ -51,6 +59,9 @@ builder.Services.Configure<backend.Services.SmtpOptions>(
 // Register email and password reset services
 builder.Services.AddScoped<backend.Services.IEmailService, backend.Services.EmailService>();
 builder.Services.AddScoped<backend.Services.IPasswordResetService, backend.Services.PasswordResetService>();
+
+// Register role management service for managing user roles
+builder.Services.AddScoped<IRoleManagementService, RoleManagementService>();
 
 // Register currency converter and showcase watch mapping as singletons (stateless, thread-safe)
 builder.Services.AddSingleton<CurrencyConverter>();
@@ -169,6 +180,9 @@ using (var scope = app.Services.CreateScope())
 
     context.Database.Migrate(); // Apply pending migrations
     DbInitializer.Initialize(context); // Seed initial data (9 Holy Trinity showcase watches)
+
+    // Ensure Admin role exists
+    await DbInitializer.EnsureAdminRoleAsync(scope.ServiceProvider);
 }
 
 app.Run();
