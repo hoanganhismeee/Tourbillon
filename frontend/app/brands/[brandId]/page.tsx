@@ -16,11 +16,12 @@ import Link from 'next/link';
 
 // A reusable component for displaying a single collection card.
 const CollectionCard = ({ collection }: { collection: Collection }) => {
+    const [imgError, setImgError] = useState(false);
     return (
         <Link href={`/collections/${collection.id}`} className="block">
             <div className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-4 transition-all duration-300 hover:border-white/30 hover:scale-105 cursor-pointer">
                 <div className="w-full h-40 bg-black/30 rounded-lg mb-4 flex items-center justify-center">
-                    {collection.image ? (
+                    {collection.image && !imgError ? (
                         <Image
                           src={imageTransformations.thumbnail(collection.image)}
                           alt={collection.name}
@@ -29,9 +30,10 @@ const CollectionCard = ({ collection }: { collection: Collection }) => {
                           sizes="(min-width: 1024px) 300px, 50vw"
                           className="h-full w-auto object-contain rounded"
                           loading="lazy"
+                          onError={() => setImgError(true)}
                         />
                     ) : (
-                        <span className="text-white/30">Image</span>
+                        <span className="text-white/30 text-sm font-playfair">{collection.name}</span>
                     )}
                 </div>
                 <h3 className="text-lg font-semibold text-[#f0e6d2] group-hover:text-white transition-colors mb-2">{collection.name}</h3>
@@ -51,6 +53,7 @@ const BrandPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [logoSrc, setLogoSrc] = useState<string>('');
+  const [logoError, setLogoError] = useState(false);
 
   useEffect(() => {
     if (!brandId) return;
@@ -108,10 +111,9 @@ const BrandPage = () => {
         <header className="text-center mb-8">
           
             {/* Brand Logo */}
-            {brand.image && (
+            {brand.image && !logoError ? (
               <div className="flex justify-center mb-10">
                 <Image
-                  // Use computed fallback so we never pass an empty src on first paint
                   src={logoSrc || imageTransformations.logo(brand.image)}
                   alt={`${brand.name} logo`}
                   width={800}
@@ -119,13 +121,13 @@ const BrandPage = () => {
                   sizes="(min-width: 1024px) 600px, 80vw"
                   className="h-32 md:h-48 lg:h-56 w-auto object-contain"
                   priority
-                  onError={() => {
-                    if (!brand?.image) return;
-                    // If Cloudinary image fails, set to empty to show placeholder
-                    setLogoSrc('');
-                  }}
+                  onError={() => setLogoError(true)}
                 />
               </div>
+            ) : (
+              <h1 className="text-5xl md:text-6xl lg:text-7xl font-playfair font-bold text-[#f0e6d2] mb-10">
+                {brand.name}
+              </h1>
             )}
 
            {/* White line separator between logo and description */}

@@ -75,6 +75,12 @@ builder.Services.AddScoped<WatchCacheService>();
 // Register brand-specific scraper service for official brand websites
 builder.Services.AddScoped<BrandScraperService>();
 
+// Register Claude API service for LLM-powered watch data extraction
+builder.Services.AddHttpClient<IClaudeApiService, ClaudeApiService>();
+
+// Register sitemap-driven scraper service (Selenium + Claude API, no per-brand XPath config needed)
+builder.Services.AddScoped<SitemapScraperService>();
+
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
 {

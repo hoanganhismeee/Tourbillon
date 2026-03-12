@@ -24,6 +24,7 @@ const CollectionPage = () => {
   const [brand, setBrand] = useState<Brand | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
     if (!collectionId) return;
@@ -94,7 +95,7 @@ const CollectionPage = () => {
       <ScrollFade>
         <header className="text-center mb-12">
           <div className="mb-6">
-            {collection.image && (
+            {collection.image && !imgError ? (
               <div className="w-32 h-32 mx-auto mb-6 bg-black/30 rounded-full flex items-center justify-center">
                 <Image
                   src={imageTransformations.thumbnail(collection.image)}
@@ -103,9 +104,10 @@ const CollectionPage = () => {
                   height={96}
                   sizes="96px"
                   className="w-24 h-24 object-contain rounded-full"
+                  onError={() => setImgError(true)}
                 />
               </div>
-            )}
+            ) : null}
           </div>
           <h1 className="text-4xl md:text-5xl font-playfair font-bold mb-4 text-[#f0e6d2]">
             {collection.name}
