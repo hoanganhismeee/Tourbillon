@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
       'www.vacheron-constantin.com',
       'www.patek.com',
       'www.audemarspiguet.com',
+      'www.glashuette-original.com',
+      'service.glashuette-original.com',
     ],
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [
@@ -18,6 +20,9 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'www.vacheron-constantin.com', pathname: '/dam/**' },
       { protocol: 'https', hostname: 'www.patek.com', pathname: '/**' },
       { protocol: 'https', hostname: 'www.audemarspiguet.com', pathname: '/**' },
+      { protocol: 'https', hostname: 'dynamicmedia.audemarspiguet.com', pathname: '/**' },
+      { protocol: 'https', hostname: 'www.glashuette-original.com', pathname: '/app/uploads/**' },
+      { protocol: 'https', hostname: 'service.glashuette-original.com', pathname: '/storage/**' },
     ],
     // Increase timeout for external CDN image optimization (default 60s, now 120s)
     minimumCacheTTL: 60,

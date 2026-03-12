@@ -1,6 +1,7 @@
 // Admin controller for watch data management
 // Provides endpoints for scraping and data management from official brand websites
 
+using backend.DTOs;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,15 +16,18 @@ public class AdminController : ControllerBase
 {
     private readonly WatchCacheService _cacheService;
     private readonly BrandScraperService _brandScraperService;
+    private readonly SitemapScraperService _sitemapScraperService;
     private readonly ILogger<AdminController> _logger;
 
     public AdminController(
         WatchCacheService cacheService,
         BrandScraperService brandScraperService,
+        SitemapScraperService sitemapScraperService,
         ILogger<AdminController> logger)
     {
         _cacheService = cacheService;
         _brandScraperService = brandScraperService;
+        _sitemapScraperService = sitemapScraperService;
         _logger = logger;
     }
 
@@ -41,6 +45,7 @@ public class AdminController : ControllerBase
 
     /// Scrapes watches from official brand website (Patek Philippe, Vacheron Constantin, etc.)
     /// POST: api/admin/scrape-brand-official?brand=Patek Philippe&collection=Calatrava&maxWatches=50
+    [AllowAnonymous] // TODO: Remove after testing - temporarily bypass auth
     [HttpPost("scrape-brand-official")]
     public async Task<IActionResult> ScrapeBrandOfficial(
         [FromQuery] string brand,
@@ -206,12 +211,132 @@ public class AdminController : ControllerBase
         }
     }
 
+    /// Scrapes a single watch from any URL using Selenium + Claude API
+    /// POST: api/admin/scrape-url?url=https://www.glashuette-original.com/en/watches/senator/...&brand=Glashütte Original
+    [AllowAnonymous] // TODO: Remove after testing - temporarily bypass auth
+    [HttpPost("scrape-url")]
+    public async Task<IActionResult> ScrapeUrl(
+        [FromQuery] string url,
+        [FromQuery] string brand)
+    {
+        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(brand))
+        {
+            return BadRequest(new { Success = false, Message = "Both url and brand parameters are required" });
+        }
+
+        _logger.LogInformation("Single URL scrape: {Brand} - {Url}", brand, url);
+
+        try
+        {
+            var watch = await _sitemapScraperService.ScrapeFromUrlAsync(url, brand);
+            if (watch == null)
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    Message = $"Failed to extract watch data from {url}",
+                    Brand = brand,
+                    Url = url
+                });
+            }
+
+            var (success, message, watchesAdded) = await _cacheService.CacheScrapedWatchesAsync(new List<ScrapedWatchDto> { watch });
+
+            return Ok(new
+            {
+                Success = success,
+                Message = message,
+                Brand = brand,
+                WatchName = watch.Name,
+                ReferenceNumber = watch.ReferenceNumber,
+                Collection = watch.CollectionName,
+                Price = watch.CurrentPrice,
+                WatchesAdded = watchesAdded,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error scraping URL {Url}", url);
+            return StatusCode(500, new
+            {
+                Success = false,
+                Message = $"Error scraping: {ex.Message}",
+                Url = url,
+                Brand = brand,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+    }
+
+    /// Scrapes watches using sitemap-driven discovery with Claude API (no XPath config needed)
+    /// POST: api/admin/scrape-sitemap?brand=Glashütte Original&sitemapUrl=https://www.glashuette-original.com/en/sitemap.xml&collection=Senator&maxWatches=5
+    [AllowAnonymous] // TODO: Remove after testing - temporarily bypass auth
+    [HttpPost("scrape-sitemap")]
+    public async Task<IActionResult> ScrapeSitemap(
+        [FromQuery] string brand,
+        [FromQuery] string sitemapUrl,
+        [FromQuery] string? collection = null,
+        [FromQuery] int maxWatches = 50)
+    {
+        if (string.IsNullOrEmpty(brand) || string.IsNullOrEmpty(sitemapUrl))
+        {
+            return BadRequest(new { Success = false, Message = "Both brand and sitemapUrl parameters are required" });
+        }
+
+        _logger.LogInformation("Sitemap scrape: {Brand} - {Collection} (max {Max})",
+            brand, collection ?? "ALL", maxWatches);
+
+        try
+        {
+            var scrapedWatches = await _sitemapScraperService.ScrapeFromSitemapAsync(
+                brand, sitemapUrl, collection, maxWatches);
+
+            if (scrapedWatches.Count == 0)
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    Message = $"No watches found for {brand} - {collection ?? "ALL"}",
+                    Brand = brand,
+                    Collection = collection,
+                    WatchesScraped = 0
+                });
+            }
+
+            var (success, message, watchesAdded) = await _cacheService.CacheScrapedWatchesAsync(scrapedWatches);
+
+            return Ok(new
+            {
+                Success = success,
+                Message = message,
+                Brand = brand,
+                Collection = collection ?? "ALL",
+                WatchesScraped = scrapedWatches.Count,
+                WatchesAdded = watchesAdded,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in sitemap scrape for {Brand}", brand);
+            return StatusCode(500, new
+            {
+                Success = false,
+                Message = $"Error scraping: {ex.Message}",
+                Brand = brand,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+    }
+
     /// Clears watches from database with optional brand filtering
     /// If brandId is provided: deletes only that brand's scraped watches (preserves showcase watches)
     /// If no brandId: deletes all watches except the 9 showcase watches
     /// Use this to reset before scraping fresh data
     /// DELETE: api/admin/clear-watches
     /// DELETE: api/admin/clear-watches?brandId=2
+    [AllowAnonymous] // TODO: Remove after testing
     [HttpDelete("clear-watches")]
     public async Task<IActionResult> ClearWatches([FromQuery] int? brandId = null)
     {

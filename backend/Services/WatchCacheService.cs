@@ -227,29 +227,23 @@ public class WatchCacheService
 
             if (existingWatch != null)
             {
-                _logger.LogDebug("Watch already exists: {Name}", scrapedWatch.Name);
-
-                // IDs of the 9 showcase watches with curated images
+                // IDs of the 9 showcase watches - DO NOT TOUCH anything (name, description, image, price, specs)
                 var showcaseWatchIds = new HashSet<int> { 2, 4, 11, 13, 18, 24, 28, 30, 35 };
 
-                // Update price
+                if (showcaseWatchIds.Contains(existingWatch.Id))
+                {
+                    _logger.LogInformation("Skipping showcase watch ID {Id}: {Name} - fully protected",
+                        existingWatch.Id, existingWatch.Name);
+                    return false;
+                }
+
+                _logger.LogDebug("Watch already exists: {Name}", scrapedWatch.Name);
+
+                // Update price and image for non-showcase watches
                 UpdateWatchPrice(existingWatch, scrapedWatch.CurrentPrice);
-                
-                // Update image only if not a showcase watch
                 if (!string.IsNullOrEmpty(scrapedWatch.ImageUrl))
                 {
-                    // Check if this is a showcase watch by ID
-                    if (showcaseWatchIds.Contains(existingWatch.Id))
-                    {
-                        _logger.LogInformation("Preserved curated image for showcase watch ID {Id}: {Name} (image: {Image})", 
-                            existingWatch.Id, scrapedWatch.Name, existingWatch.Image);
-                        // Don't update image for showcase watches - keep curated image from CSV
-                    }
-                    else
-                    {
-                        // Update image for regular watches
-                        existingWatch.Image = scrapedWatch.ImageUrl;
-                    }
+                    existingWatch.Image = scrapedWatch.ImageUrl;
                 }
 
                 return false;
@@ -296,8 +290,30 @@ public class WatchCacheService
             return brand;
         }
 
+        // Fallback: normalize diacritics (e.g., "Glashutte" matches "Glashütte", "Sohne" matches "Söhne")
+        var normalizedInput = RemoveDiacritics(brandName.ToLower());
+        var allBrands = await _context.Brands.ToListAsync();
+        brand = allBrands.FirstOrDefault(b => RemoveDiacritics(b.Name.ToLower()) == normalizedInput);
+
+        if (brand != null)
+        {
+            return brand;
+        }
+
         _logger.LogWarning("Brand not found in database: {Brand}. Should exist from CSV.", brandName);
         return null;
+    }
+
+    private static string RemoveDiacritics(string text)
+    {
+        var normalized = text.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in normalized)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        }
+        return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
     }
 
     private async Task<Collection?> GetOrCreateCollectionAsync(string collectionName, int brandId)

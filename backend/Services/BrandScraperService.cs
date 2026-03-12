@@ -883,13 +883,31 @@ public class BrandScraperService : IDisposable
                 description = string.Join(" ", descriptionParts);
             }
 
+            // Build name: "{Ref} {Variant}" to match card display style
+            // For ALS, use modelName; for others, use collectionName as variant since we don't have a separate model name
+            string watchName;
+            if (config.BrandName == "A. Lange & Söhne" && !string.IsNullOrEmpty(modelName))
+            {
+                // ALS has model name from detail page (e.g., "LANGE 1 DAYMATIC" -> strip collection -> "DAYMATIC")
+                var variant = modelName;
+                // Strip collection prefix if present
+                if (!string.IsNullOrEmpty(collectionName) && variant.StartsWith(collectionName, StringComparison.OrdinalIgnoreCase))
+                    variant = variant[collectionName.Length..].TrimStart();
+                watchName = string.IsNullOrWhiteSpace(variant) ? referenceNumber : $"{referenceNumber} {variant}";
+            }
+            else
+            {
+                // Other brands: just use ref number (collection shown separately on card)
+                watchName = referenceNumber;
+            }
+
             var watch = new ScrapedWatchDto
             {
-                Name = referenceNumber, // Use reference number as name
+                Name = watchName,
                 BrandName = config.BrandName,
                 CollectionName = collectionName,
                 CurrentPrice = price,
-                Description = description,
+                Description = config.BrandName,
                 Specs = specsJson,
                 ImageUrl = imageUrl,
                 ReferenceNumber = referenceNumber,
@@ -957,13 +975,7 @@ public class BrandScraperService : IDisposable
                 }
             }
 
-            // Extract additional brand-specific specs (VC's recto/verso, brand-specific features, etc.)
-            var additionalSpecs = ExtractAdditionalSpecs(doc, config);
-            if (additionalSpecs != null && additionalSpecs.Count > 0)
-            {
-                specs.Additional = additionalSpecs;
-                _logger.LogInformation("Extracted {Count} additional spec sections", additionalSpecs.Count);
-            }
+            // Additional specs extraction removed - standardized specs model no longer includes Additional field
         }
         catch (Exception ex)
         {
@@ -1055,7 +1067,7 @@ public class BrandScraperService : IDisposable
     /// Parses dial specifications from text
     private DialSpecs ParseDialSpecs(string text)
     {
-        var dial = new DialSpecs { Description = CleanText(text) };
+        var dial = new DialSpecs();
 
         // Extract color (common patterns - expanded list)
         var colorMatch = Regex.Match(text, @"(sunburst\s+brown|black|white|blue|silver|grey|gray|champagne|salmon|brown|green|red|charcoal|slate)", RegexOptions.IgnoreCase);
@@ -1068,7 +1080,7 @@ public class BrandScraperService : IDisposable
         var markersMatch = Regex.Match(text, @"(?:hour markers?|indices)[:\s]*([^\n]+)", RegexOptions.IgnoreCase);
         if (markersMatch.Success)
         {
-            dial.Markers = markersMatch.Groups[1].Value.Trim();
+            dial.Indices = markersMatch.Groups[1].Value.Trim();
         }
 
         // Extract hands
@@ -1222,30 +1234,7 @@ public class BrandScraperService : IDisposable
             movement.Type = "Quartz";
         }
 
-        // Extract diameter (movement diameter)
-        var diameterMatch = Regex.Match(text, @"Total diameter[:\s]+(\d+(?:\.\d+)?\s*mm)", RegexOptions.IgnoreCase);
-        if (!diameterMatch.Success)
-        {
-            diameterMatch = Regex.Match(text, @"Diameter[:\s]+(\d+(?:\.\d+)?\s*mm)", RegexOptions.IgnoreCase);
-        }
-        if (diameterMatch.Success)
-        {
-            movement.Diameter = diameterMatch.Groups[1].Value;
-        }
-
-        // Extract thickness
-        var thicknessMatch = Regex.Match(text, @"Thickness[:\s]+(\d+(?:\.\d+)?\s*mm)", RegexOptions.IgnoreCase);
-        if (thicknessMatch.Success)
-        {
-            movement.Thickness = thicknessMatch.Groups[1].Value;
-        }
-
-        // Extract parts
-        var partsMatch = Regex.Match(text, @"Number of parts[:\s]+(\d+)", RegexOptions.IgnoreCase);
-        if (partsMatch.Success && int.TryParse(partsMatch.Groups[1].Value, out var parts))
-        {
-            movement.Parts = parts;
-        }
+        // Movement diameter/thickness/parts removed from standardized specs
 
         // Extract jewels
         var jewelsMatch = Regex.Match(text, @"Number of jewels[:\s]+(\d+)", RegexOptions.IgnoreCase);
@@ -1285,12 +1274,12 @@ public class BrandScraperService : IDisposable
 
             if (functions.Count > 0)
             {
-                movement.Complications = functions;
+                movement.Functions = functions;
             }
         }
 
         // Fallback: extract common complications from text
-        if (movement.Complications == null || movement.Complications.Count == 0)
+        if (movement.Functions == null || movement.Functions.Count == 0)
         {
             var complications = new List<string>();
             if (text.Contains("Date", StringComparison.OrdinalIgnoreCase))
@@ -1308,7 +1297,7 @@ public class BrandScraperService : IDisposable
 
             if (complications.Count > 0)
             {
-                movement.Complications = complications;
+                movement.Functions = complications;
             }
         }
 
