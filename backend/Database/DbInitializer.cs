@@ -69,7 +69,7 @@ namespace backend.Database
         public static void SeedWatchesFromCsv(TourbillonContext context)
         {
             // Only seed the 9 showcase watches from CSV
-            var showcaseWatchIds = new HashSet<int> { 2, 4, 11, 13, 18, 24, 28, 30, 35 };
+            var showcaseWatchIds = new HashSet<int> { 1, 2, 3, 32, 33, 34, 57, 58, 59 };
 
             var csvPath = Path.Combine("Data", "watches.csv");
             if (!File.Exists(csvPath))
@@ -130,8 +130,8 @@ namespace backend.Database
                         Console.WriteLine($"Seeded {seededCount} showcase watches from CSV");
 
                         // Reset the PostgreSQL sequence to avoid ID conflicts when scraping new watches
-                        // The highest showcase watch ID is 35, so we start the sequence from 36
-                        ResetWatchIdSequence(context, 36);
+                        // The highest showcase watch ID is 59, so we start the sequence from 60
+                        ResetWatchIdSequence(context, 60);
                     }
                     else
                     {

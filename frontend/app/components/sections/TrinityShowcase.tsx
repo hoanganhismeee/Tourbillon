@@ -21,8 +21,8 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
         const fetchWatches = async () => {
             try {
                 if (brand.id === 1) {
-                    // For Patek Philippe (brand.id === 1), fetch specific watch IDs: 2, 4, 11
-                    const watchIds = [2, 4, 11];
+                    // For Patek Philippe (brand.id === 1), fetch specific watch IDs: 1, 2, 3
+                    const watchIds = [1, 2, 3];
                     console.log('Fetching Patek Philippe watches with IDs:', watchIds);
                     const watchPromises = watchIds.map(id => fetchWatchById(id));
                     const watchResults = await Promise.allSettled(watchPromises);
@@ -42,8 +42,8 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
                     console.log('Final watches array for Patek Philippe:', successfulWatches);
                     setWatches(successfulWatches);
                 } else if (brand.id === 2) {
-                    // For Vacheron Constantin (brand.id === 2), fetch specific watch IDs: 13, 18, 24
-                    const watchIds = [13, 18, 24];
+                    // For Vacheron Constantin (brand.id === 2), fetch specific watch IDs: 32, 33, 34
+                    const watchIds = [32, 33, 34];
                     console.log('Fetching Vacheron Constantin watches with IDs:', watchIds);
                     const watchPromises = watchIds.map(id => fetchWatchById(id));
                     const watchResults = await Promise.allSettled(watchPromises);
@@ -61,8 +61,8 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
                     
                     setWatches(successfulWatches);
                 } else if (brand.id === 3) {
-                    // For Audemars Piguet (brand.id === 3), fetch specific watch IDs: 28, 30, 35
-                    const watchIds = [28, 30, 35];
+                    // For Audemars Piguet (brand.id === 3), fetch specific watch IDs: 57, 58, 59
+                    const watchIds = [57, 58, 59];
                     console.log('Fetching Audemars Piguet watches with IDs:', watchIds);
                     const watchPromises = watchIds.map(id => fetchWatchById(id));
                     const watchResults = await Promise.allSettled(watchPromises);

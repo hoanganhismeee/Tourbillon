@@ -100,7 +100,7 @@ public class WatchController : ControllerBase
         try
         {
             // Showcase watch IDs to preserve (9 Holy Trinity watches)
-            var showcaseWatchIds = new HashSet<int> { 2, 4, 11, 13, 18, 24, 28, 30, 35 };
+            var showcaseWatchIds = new HashSet<int> { 1, 2, 3, 32, 33, 34, 57, 58, 59 };
 
             // Get watches for the brand (excluding showcase watches)
             var watchesToDelete = await _context.Watches
