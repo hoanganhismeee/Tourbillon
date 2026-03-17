@@ -19,6 +19,9 @@ public class WatchPageData
     /// Primary product image URL
     public string? ImageUrl { get; set; }
 
+    /// 2-3 sentence product description covering the watch's character and key highlights
+    public string? Description { get; set; }
+
     /// Structured watch specifications
     public WatchSpecs? Specs { get; set; }
 }

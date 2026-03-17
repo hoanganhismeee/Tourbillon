@@ -500,7 +500,7 @@ public class SitemapScraperService
                 BrandName = brandName,
                 CollectionName = collectionName,
                 CurrentPrice = watchData.Price ?? "Price on request",
-                Description = brandName,
+                Description = watchData.Description ?? string.Empty,
                 Specs = specsJson,
                 ImageUrl = imageUrl,
                 ReferenceNumber = watchData.ReferenceNumber,

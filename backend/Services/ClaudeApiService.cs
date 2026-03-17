@@ -296,6 +296,7 @@ Return ONLY valid JSON (no markdown fences, no explanation) with this exact stru
 {{
   ""referenceNumber"": ""string or null"",
   ""watchName"": ""string or null"",
+  ""description"": ""string or null"",
   ""price"": ""string or null"",
   ""imageUrl"": ""string or null"",
   ""specs"": {{
@@ -332,6 +333,7 @@ Return ONLY valid JSON (no markdown fences, no explanation) with this exact stru
 Rules:
 - watchName: the model name (e.g. ""Senator Excellence"", ""Royal Oak Selfwinding""). NOT just the reference number.
 - referenceNumber: the full reference (e.g. ""1-36-01-02-05-61"", ""15500ST.OO.1220ST.01"").
+- description: 2-3 sentences drawn from the page's marketing copy or editorial text describing this specific watch's character, design highlights, and what makes it notable. Do NOT use the brand name alone. If no descriptive text exists on the page, return null.
 - imageUrl: the MAIN product image (front-facing hero shot of the watch). Look for:
   1. og:image meta tag
   2. The first/largest product image with the watch face visible (often in a hero section)
