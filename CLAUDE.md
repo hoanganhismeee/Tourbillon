@@ -56,7 +56,7 @@ EF Core with Npgsql. Migrations live in `backend/Migrations/`. Connection string
 - **Services/** — Business logic. Key services: `SitemapScraperService` (Selenium + Claude AI pipeline), `ClaudeApiService` (LLM extraction), `WatchCacheService` (DB insert with duplicate checking), `CloudinaryService`.
 - **Models/** — EF Core entities. `Watch.Name` = reference number, `Watch.Description` = brand subtitle, `Watch.Specs` = JSON string serialized as `WatchSpecs`.
 - **Database/DbInitializer.cs** — Seeds 9 "Holy Trinity" showcase watches (PP Nautilus, VC Overseas, AP Royal Oak) on startup. These are preserved during scrape-clear operations.
-- **Data/** — `brands.csv` (15 brands) and `collections.csv` (~60 collections) loaded at startup.
+- **Data/** — `brands.csv` (13 brands) and `collections.csv` (~51 collections) loaded at startup.
 
 ### Frontend Structure
 - **lib/api.ts** — Centralized API client with 100+ exported functions. All backend calls go through here.

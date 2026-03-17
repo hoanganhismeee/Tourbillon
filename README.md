@@ -28,8 +28,8 @@ Tourbillon is a full-stack e-commerce platform for luxury watches, built with a 
 
 ## Core Features
 
-- **Luxury Brand Showcase**: 15 brands including Patek Philippe, Vacheron Constantin, Audemars Piguet, and more with full heritage descriptions.
-- **Collection Filtering**: Organized by brand collections (~60 collections) for intuitive navigation.
+- **Luxury Brand Showcase**: 13 brands including Patek Philippe, Vacheron Constantin, Audemars Piguet, and more with full heritage descriptions.
+- **Collection Filtering**: Organized by brand collections (~51 collections) for intuitive navigation.
 - **Watch Product Pages**: Minimal product display with pricing and detailed spec tables (Dial, Case, Movement, Strap).
 - **AI-Powered Scraping**: Selenium renders brand pages, Claude Haiku extracts structured watch data — no per-brand XPath maintenance needed.
 - **Authentication**: ASP.NET Identity with HttpOnly cookie sessions and role-based admin access.
