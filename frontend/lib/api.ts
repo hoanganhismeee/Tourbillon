@@ -1,7 +1,7 @@
 // This file serves as a centralized API layer for the frontend.
 // It contains all the functions responsible for making requests to the backend API,
 // creating a reusable and maintainable way to manage data fetching.
-const API_BASE_URL = 'http://localhost:5248/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5248/api';
 
 // Small helper to avoid hanging requests in dev when backend is down
 // Aborts the request after the given timeout (default 10s)

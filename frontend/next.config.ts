@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   images: {
     domains: [
       'res.cloudinary.com',
@@ -16,6 +17,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: 'https', hostname: 'res.cloudinary.com' },
       { protocol: 'http', hostname: 'localhost', port: '5248', pathname: '/images/**' },
+      { protocol: 'http', hostname: 'backend', port: '8080', pathname: '/images/**' },
       { protocol: 'https', hostname: '1000logos.net', pathname: '/**' },
       // Luxury watch brand CDNs for external image URLs
       { protocol: 'https', hostname: 'www.vacheron-constantin.com', pathname: '/dam/**' },
