@@ -30,50 +30,49 @@
   --dark-brown: #1e1512;
 }
 
-@media (prefers-color-scheme: dark) {
-  .logo-text { 
-    color: var(--cream-gold); 
-    text-shadow: 0 0 15px rgba(240, 230, 210, 0.4);
-  }
-  .brand-name { color: var(--cream-gold); }
-  .text-white { color: var(--white); }
 
-  a {
-    text-decoration: none;
-    color: inherit;
-  }
+.logo-text { 
+  color: var(--cream-gold); 
+  text-shadow: 0 0 15px rgba(240, 230, 210, 0.4);
+}
+.brand-name { color: var(--cream-gold); }
+.text-white { color: var(--white); }
 
-  html {
-    background: linear-gradient(135deg, #1e1512 0%, #2a211c 50%, #3b2f26 100%);
-    min-height: 100vh;
-    scroll-behavior: smooth;
-  }
+a {
+  text-decoration: none;
+  color: inherit;
+}
 
-  body {
-    color: var(--white);
-    margin-top: 3rem;
-    overflow-x: hidden;
-  }
+html {
+  background: linear-gradient(135deg, #1e1512 0%, #2a211c 50%, #3b2f26 100%);
+  min-height: 100vh;
+  scroll-behavior: smooth;
+}
 
-  /* Ensure scroll animations work properly */
-  * {
-    box-sizing: border-box;
-  }
+body {
+  color: var(--white);
+  margin-top: 3rem;
+  overflow-x: hidden;
+}
 
-  /* Prevent container overflow from breaking animations */
-  .container {
-    overflow: visible;
-  }
+/* Ensure scroll animations work properly */
+* {
+  box-sizing: border-box;
+}
 
-  /* Improve animation performance */
-  [data-framer-motion] {
-    will-change: opacity, transform;
-    backface-visibility: hidden;
-    transform: translateZ(0);
-  }
+/* Prevent container overflow from breaking animations */
+.container {
+  overflow: visible;
+}
 
-  /* Ensure grid items animate properly */
-  .grid > * {
-    transform: translateZ(0);
-  }
+/* Improve animation performance */
+[data-framer-motion] {
+  will-change: opacity, transform;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* Ensure grid items animate properly */
+.grid > * {
+  transform: translateZ(0);
 }

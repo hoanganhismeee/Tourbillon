@@ -290,10 +290,10 @@ public class WatchCacheService
             return brand;
         }
 
-        // Fallback: normalize diacritics (e.g., "Glashutte" matches "Glashütte", "Sohne" matches "Söhne")
-        var normalizedInput = RemoveDiacritics(brandName.ToLower());
+        // Fallback: normalize diacritics and spacing (e.g., "Glashutte" matches "Glashütte", "F.P. Journe" matches "F.P.Journe")
+        var normalizedInput = NormalizeBrandName(brandName);
         var allBrands = await _context.Brands.ToListAsync();
-        brand = allBrands.FirstOrDefault(b => RemoveDiacritics(b.Name.ToLower()) == normalizedInput);
+        brand = allBrands.FirstOrDefault(b => NormalizeBrandName(b.Name) == normalizedInput);
 
         if (brand != null)
         {
@@ -314,6 +314,15 @@ public class WatchCacheService
                 sb.Append(c);
         }
         return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
+    }
+
+    /// Normalizes brand name by removing diacritics and collapsing spaces/punctuation
+    /// So "F.P. Journe" matches "F.P.Journe", "A. Lange & Söhne" matches "A. Lange & Sohne"
+    private static string NormalizeBrandName(string name)
+    {
+        var noDiacritics = RemoveDiacritics(name.ToLower());
+        // Collapse all whitespace so "F.P. Journe" and "F.P.Journe" both become "f.p.journe"
+        return System.Text.RegularExpressions.Regex.Replace(noDiacritics, @"\s+", "");
     }
 
     private async Task<Collection?> GetOrCreateCollectionAsync(string collectionName, int brandId)

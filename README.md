@@ -1,37 +1,73 @@
 # Tourbillon - Luxury Watch E-Commerce
 
-Tourbillon is a full-stack e-commerce portfolio project focused on luxury watches, designed to reflect a refined, old money aesthetic. The project features a Next.js frontend styled with soft brown and beige tones to evoke a classic and timeless atmosphere, paired with an ASP.NET Core backend powered by Entity Framework Core and PostgreSQL for clean and maintainable data management.
+Tourbillon is a full-stack e-commerce platform for luxury watches, built with a refined old-money aesthetic. It features AI-powered web scraping to automatically catalog watches from brand websites, a Next.js frontend styled with soft brown and beige tones, and an ASP.NET Core backend with PostgreSQL.
+
+## Architecture
+
+```
+                         ┌──────────────┐
+                         │   Frontend   │
+                         │   Next.js    │
+                         │  (Vercel /   │
+                         │  Amplify)    │
+                         └──────┬───────┘
+                                │
+                         ┌──────▼───────┐        ┌──────────────┐
+                         │   Backend    │◄──────►│  AI Service  │
+                         │  .NET 8 API  │        │  (Python /   │
+                         │  (Docker)    │        │   Claude)    │
+                         └──────┬───────┘        └──────────────┘
+                                │
+                   ┌────────────┼────────────┐
+                   │            │            │
+            ┌──────▼──┐  ┌─────▼─────┐ ┌────▼─────┐
+            │PostgreSQL│  │ Amazon S3 │ │ Claude   │
+            │          │  │ (Images)  │ │ Haiku API│
+            └──────────┘  └───────────┘ └──────────┘
+```
 
 ## Core Features
 
--   **Luxury Brand Showcase**: Brands like Rolex, Omega, and Patek Philippe with full heritage descriptions.
--   **Collection Filtering**: Organized by brand collections (e.g., Submariner, Speedmaster) for easier navigation.
--   **Watch Product Pages**: Clean, minimal product display with live pricing and specs.
--   **Price Trend Tracking**: Backend includes price history per watch for future data visualization.
--   **Authentication System**: Login/register feature using a simple user model.
+- **Luxury Brand Showcase**: 15 brands including Patek Philippe, Vacheron Constantin, Audemars Piguet, and more with full heritage descriptions.
+- **Collection Filtering**: Organized by brand collections (~60 collections) for intuitive navigation.
+- **Watch Product Pages**: Minimal product display with pricing and detailed spec tables (Dial, Case, Movement, Strap).
+- **AI-Powered Scraping**: Selenium renders brand pages, Claude Haiku extracts structured watch data — no per-brand XPath maintenance needed.
+- **Authentication**: ASP.NET Identity with HttpOnly cookie sessions and role-based admin access.
+- **Price Tracking**: Backend supports price history per watch for future data visualization.
 
 ## Tech Stack
 
-| Area       | Technology                                           |
-| :--------- | :--------------------------------------------------- |
-| **Frontend** | Next.js (React), Tailwind CSS (brown classic theme)  |
-| **Backend**  | ASP.NET Core Web API (.NET 8), Entity Framework Core |
-| **Database** | PostgreSQL with pgAdmin4/Neon                             |
+| Layer          | Technology                                              |
+| :------------- | :------------------------------------------------------ |
+| **Frontend**   | Next.js 15 (App Router), Tailwind CSS, Framer Motion    |
+| **Backend**    | ASP.NET Core Web API (.NET 8), Entity Framework Core    |
+| **Database**   | PostgreSQL (Npgsql)                                     |
+| **AI/Scraping**| Claude Haiku API, Selenium WebDriver, HtmlAgilityPack   |
+| **Images**     | Cloudinary (migrating to Amazon S3)                     |
+| **Auth**       | ASP.NET Identity, HttpOnly cookies, role-based access    |
+
+## Planned Infrastructure
+
+| Component         | Target                                              |
+| :---------------- | :-------------------------------------------------- |
+| **Backend + AI**  | Docker containers                                   |
+| **Frontend**      | Vercel or AWS Amplify                                |
+| **Orchestration** | Kubernetes                                          |
+| **Image Storage** | Amazon S3 (replacing Cloudinary)                    |
+| **AI Chatbot**    | Self-hosted or third-party API integration           |
+| **IaC**           | Terraform                                           |
 
 ## Getting Started
 
-Follow these instructions to get a copy of the project up and running on your local machine for development and testing purposes.
-
 ### Prerequisites
 
--   [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
--   [Node.js](https://nodejs.org/) (v20.x or later)
--   [PostgreSQL](https://www.postgresql.org/download/)
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [Node.js](https://nodejs.org/) (v20.x or later)
+- [PostgreSQL](https://www.postgresql.org/download/)
 
 ### Backend Setup
 
-1.  **Configure the database connection:**
-    Open `backend/appsettings.json` and update the `DefaultConnection` string with your PostgreSQL credentials.
+1. **Configure the database connection** in `backend/appsettings.json`:
 
     ```json
     "ConnectionStrings": {
@@ -39,51 +75,55 @@ Follow these instructions to get a copy of the project up and running on your lo
     }
     ```
 
-2.  **Navigate to the backend directory:**
-    ```cmd
+2. **Set secrets** (API keys are stored via .NET user-secrets, never in source):
+
+    ```bash
     cd backend
+    dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-..."
+    dotnet user-secrets set "CloudinarySettings:ApiSecret" "..."
     ```
 
-3.  **Restore dependencies:**
-    ```cmd
+3. **Restore, migrate, and run:**
+
+    ```bash
+    cd backend
     dotnet restore
-    ```
-
-4.  **Apply database migrations:**
-    This will create the database and tables based on the existing migration files.
-    ```cmd
     dotnet ef database update
-    ```
-
-5.  **Run the backend server:**
-    ```cmd
     dotnet run
     ```
 
-    The backend API will be running at `http://localhost:5000`.
+    The API runs at `http://localhost:5248` with Swagger UI.
 
 ### Frontend Setup
 
-1.  **Navigate to the frontend directory:**
-    ```cmd
-    cd frontend
-    ```
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-2.  **Install dependencies:**
-    ```cmd
-    npm install
-    ```
+Open [http://localhost:3000](http://localhost:3000) to view the app.
 
-3.  **Run the frontend development server:**
-    ```cmd
-    npm run dev
-    ```
+## Project Structure
 
-    Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+```
+Tourbillon/
+├── backend/              # .NET 8 Web API
+│   ├── Controllers/      # REST endpoints (Watch, Brand, Collection, Admin)
+│   ├── Services/         # Business logic (scraping, Claude AI, Cloudinary, caching)
+│   ├── Models/           # EF Core entities
+│   ├── Migrations/       # Database migrations
+│   └── Data/             # Brand/collection seed CSVs
+├── frontend/             # Next.js 15 (App Router)
+│   ├── app/              # Pages, layouts, route handlers
+│   ├── lib/              # API client, utilities
+│   └── public/           # Static assets
+└── ai-service/           # Python AI service (Flask)
+```
 
 ## Project Purpose
 
--   Demonstrates clean architecture for a scalable e-commerce application.
--   Focuses on clear data relationships: Brands → Collections → Watches.
--   Showcases a refined user experience reflecting a luxury retail feel.
--   Serves as a complete full-stack project suitable for a portfolio to showcase to employers. 
+- Demonstrates clean architecture for a scalable e-commerce application.
+- Explores AI integration for automated data collection and future conversational features.
+- Focuses on clear data relationships: Brands -> Collections -> Watches.
+- Showcases a refined user experience reflecting a luxury retail aesthetic.

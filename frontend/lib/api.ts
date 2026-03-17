@@ -348,4 +348,64 @@ export const resetPassword = async (data: ResetPasswordData) => {
         throw new Error(errorMessage);
     }
     return response.json();
-}; 
+};
+
+// Admin Watch API Functions
+export const adminFetchWatches = async (): Promise<Watch[]> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/admin/watches`, { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error('Failed to fetch admin watches');
+  }
+  return response.json();
+};
+
+export const adminFetchWatchById = async (id: number): Promise<Watch> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/admin/watches/${id}`, { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch admin watch with id: ${id}`);
+  }
+  return response.json();
+};
+
+export interface UpdateWatchDto {
+  name: string;
+  description: string;
+  currentPrice: number;
+  image: string;
+  collectionId: number | null;
+  specs: string;
+}
+
+export const adminUpdateWatch = async (id: number, data: UpdateWatchDto): Promise<{ success: boolean; message: string; watch?: Watch }> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/admin/watches/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    credentials: 'include'
+  });
+  if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || errorData.Message || 'Failed to update watch');
+  }
+  return response.json();
+};
+
+export const adminUploadWatchImage = async (file: File, slug?: string): Promise<{ success: boolean; publicId: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (slug) {
+    formData.append('slug', slug);
+  }
+
+  // We intentionally do not use fetchWithTimeout here since uploads can be slow
+  const response = await fetch(`${API_BASE_URL}/admin/watches/upload-image`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include'
+  });
+  if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || errorData.Message || 'Failed to upload image');
+  }
+  return response.json();
+};

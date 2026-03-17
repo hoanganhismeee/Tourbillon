@@ -15,6 +15,9 @@ public interface IClaudeApiService
 {
     /// Extracts structured watch data from a product page's HTML
     Task<WatchPageData?> ExtractWatchPageDataAsync(string html, string url, CancellationToken ct = default);
+
+    /// Extracts product page URLs from a collection listing page's HTML
+    Task<List<string>> ExtractProductUrlsFromListingAsync(string html, string listingUrl, string brandName, CancellationToken ct = default);
 }
 
 public class ClaudeApiService : IClaudeApiService
@@ -107,6 +110,93 @@ public class ClaudeApiService : IClaudeApiService
         {
             _logger.LogError(ex, "Error calling Claude API for {Url}", url);
             return null;
+        }
+    }
+
+    public async Task<List<string>> ExtractProductUrlsFromListingAsync(
+        string html, string listingUrl, string brandName, CancellationToken ct = default)
+    {
+        try
+        {
+            var cleanedHtml = PreprocessHtml(html);
+            _logger.LogInformation("Preprocessed listing HTML: {OriginalSize}KB -> {CleanedSize}KB for {Url}",
+                html.Length / 1024, cleanedHtml.Length / 1024, listingUrl);
+
+            var model = _configuration["Anthropic:Model"] ?? "claude-haiku-4-5-20251001";
+
+            var prompt = $@"You are a URL extractor for luxury watch websites. Given the HTML of a collection/catalog listing page for {brandName}, extract all individual watch product page URLs.
+
+Return ONLY a JSON array of absolute URLs, one per watch product page. Example:
+[""https://www.brand.com/watches/model-1"", ""https://www.brand.com/watches/model-2""]
+
+Rules:
+- Only include URLs that lead to individual watch product/detail pages (NOT category pages, NOT filters, NOT accessories)
+- URLs should be complete absolute URLs starting with https://
+- If you see relative URLs, prepend the base domain from: {listingUrl}
+- Do NOT include duplicate URLs
+- Do NOT include pagination links, sort/filter links, or navigation links
+- If you cannot find any product URLs, return an empty array: []
+
+Page URL: {listingUrl}
+
+HTML content:
+{cleanedHtml}";
+
+            var requestBody = new
+            {
+                model = model,
+                max_tokens = 4000,
+                messages = new[]
+                {
+                    new { role = "user", content = prompt }
+                }
+            };
+
+            var json = JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync("v1/messages", content, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogError("Claude API error for URL extraction {StatusCode}: {Body}", response.StatusCode, errorBody);
+                return new List<string>();
+            }
+
+            var responseJson = await response.Content.ReadAsStringAsync(ct);
+
+            // Parse Claude response to get the text content
+            using var doc = JsonDocument.Parse(responseJson);
+            var root = doc.RootElement;
+            var contentArray = root.GetProperty("content");
+            var textContent = "";
+            foreach (var item in contentArray.EnumerateArray())
+            {
+                if (item.GetProperty("type").GetString() == "text")
+                {
+                    textContent = item.GetProperty("text").GetString() ?? "";
+                    break;
+                }
+            }
+
+            // Clean markdown fences
+            textContent = textContent.Trim();
+            if (textContent.StartsWith("```"))
+            {
+                textContent = Regex.Replace(textContent, @"^```\w*\n?", "");
+                textContent = Regex.Replace(textContent, @"\n?```$", "");
+                textContent = textContent.Trim();
+            }
+
+            var urls = JsonSerializer.Deserialize<List<string>>(textContent, JsonOptions);
+            _logger.LogInformation("Claude extracted {Count} product URLs from listing page", urls?.Count ?? 0);
+            return urls ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error extracting product URLs from listing page {Url}", listingUrl);
+            return new List<string>();
         }
     }
 

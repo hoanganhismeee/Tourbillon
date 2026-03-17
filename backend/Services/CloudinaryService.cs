@@ -18,6 +18,9 @@ public interface ICloudinaryService
     /// Params: publicId - Cloudinary public_id (e.g., "watches/PatekPhilippe_5227G010")
     /// Returns: True if deletion was successful, false otherwise
     Task<bool> DeleteImageAsync(string publicId);
+
+    /// Uploads an image from a stream to Cloudinary directly
+    Task<string> UploadImageAsync(Stream imageStream, string filename, string folder = "watches");
 }
 
 /// Cloudinary image upload service
@@ -137,6 +140,41 @@ public class CloudinaryService : ICloudinaryService
         {
             _logger.LogError(ex, "Error deleting image from Cloudinary: {PublicId}", publicId);
             return false;
+        }
+    }
+
+    /// Uploads an image from a stream to Cloudinary
+    public async Task<string> UploadImageAsync(Stream imageStream, string filename, string folder = "watches")
+    {
+        try
+        {
+            var publicId = Path.GetFileNameWithoutExtension(filename);
+            var fullPublicId = string.IsNullOrEmpty(folder) ? publicId : $"{folder}/{publicId}";
+            
+            var uploadParams = new ImageUploadParams
+            {
+                File = new FileDescription(filename, imageStream),
+                PublicId = fullPublicId,
+                UseFilename = false,
+                UniqueFilename = false,
+                Overwrite = true
+            };
+
+            var uploadResult = await _cloudinary.UploadAsync(uploadParams);
+
+            if (uploadResult.Error != null)
+            {
+                _logger.LogError("Cloudinary stream upload failed: {Error}", uploadResult.Error.Message);
+                return string.Empty;
+            }
+
+            _logger.LogInformation("Successfully uploaded stream image to Cloudinary: {PublicId}", fullPublicId);
+            return fullPublicId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading stream image to Cloudinary");
+            return string.Empty;
         }
     }
 }
