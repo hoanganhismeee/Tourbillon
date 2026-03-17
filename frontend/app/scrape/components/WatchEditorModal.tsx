@@ -162,10 +162,20 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
         );
     }
 
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            const tag = (e.target as HTMLElement).tagName;
+            if (tag !== 'TEXTAREA' && !saving && !pendingFile) {
+                handleSave();
+            }
+        }
+    };
+
     return (
         <div
             className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm overflow-y-auto"
             onPaste={handlePaste}
+            onKeyDown={handleKeyDown}
             tabIndex={0}
             onClick={onClose}
         >

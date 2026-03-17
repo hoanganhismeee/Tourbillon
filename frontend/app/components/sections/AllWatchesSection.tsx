@@ -179,7 +179,7 @@ const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
         
         // Filter out Trinity Showcase watches and shuffle only if not already shuffled in this session
         if (watchesData && watchesData.length > 0) {
-          const trinityWatchIds = [2, 4, 11, 13, 18, 24, 28, 30, 35]; // Patek, VC, AP specific showcase watches
+          const trinityWatchIds = [1, 2, 3, 32, 33, 34, 57, 58, 59]; // Patek (1-3), VC (32-34), AP (57-59) showcase watches
           const filtered = watchesData.filter(watch => !trinityWatchIds.includes(watch.id));
           
           if (!hasShuffledWatches) {
