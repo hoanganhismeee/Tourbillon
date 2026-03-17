@@ -8,7 +8,7 @@ export async function GET(request: Request) {
     const results: string[] = [];
     
     try {
-        const url = 'http://localhost:5248/api/watch';
+        const url = `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:5248/api'}/watch`;
         const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, cache: 'no-store' });
         const data = await res.json();
         

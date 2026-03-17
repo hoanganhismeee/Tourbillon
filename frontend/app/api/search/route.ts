@@ -1,7 +1,7 @@
 // Next.js API route to proxy search requests to the backend
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = 'http://localhost:5248/api';
+const BACKEND_URL = process.env.BACKEND_INTERNAL_URL || 'http://localhost:5248/api';
 
 export async function GET(request: NextRequest) {
   try {
