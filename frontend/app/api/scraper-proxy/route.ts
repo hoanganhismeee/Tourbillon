@@ -2,11 +2,10 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function GET(request: Request) {
-    const { searchParams } = new URL(request.url);
-    const action = searchParams.get('action');
     const results: string[] = [];
-    
+
     try {
         const url = `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:5248/api'}/watch`;
         const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, cache: 'no-store' });
@@ -16,8 +15,8 @@ export async function GET(request: Request) {
         
         results.push(`Found ${gfWatches.length} GF watches.`);
         return NextResponse.json({ success: true, results, watches: gfWatches });
-    } catch (e: any) {
-        results.push('Error: ' + e.message);
+    } catch (e: unknown) {
+        results.push('Error: ' + (e instanceof Error ? e.message : String(e)));
         return NextResponse.json({ success: false, results });
     }
 }

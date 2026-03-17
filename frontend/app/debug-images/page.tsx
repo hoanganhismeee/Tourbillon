@@ -1,7 +1,6 @@
 'use client';
 
-import { imageTransformations, testCloudinaryConnection } from '@/lib/cloudinary';
-import Image from 'next/image';
+import { testCloudinaryConnection } from '@/lib/cloudinary';
 
 export default function DebugImagesPage() {
   const cloudinaryStatus = testCloudinaryConnection();
@@ -74,8 +73,8 @@ export default function DebugImagesPage() {
         <h3 className="font-semibold mb-2">Instructions:</h3>
         <ol className="list-decimal list-inside space-y-1 text-sm">
           <li>Click on each brand logo URL above</li>
-          <li>If you see the image, that's the correct public ID format</li>
-          <li>If you get a 404 or 400 error, that format doesn't work</li>
+          <li>If you see the image, that&apos;s the correct public ID format</li>
+          <li>If you get a 404 or 400 error, that format doesn&apos;t work</li>
           <li>Once you find the working format, we can update the code</li>
         </ol>
       </div>

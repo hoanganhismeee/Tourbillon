@@ -7,8 +7,7 @@ import { WatchesPageProvider } from "@/contexts/WatchesPageContext";
 import { NavigationProvider } from "@/contexts/NavigationContext";
 import "./globals.css";
 import NavBar from "./components/layout/NavBar";
-import { AnimatePresence } from "framer-motion";
-import MotionMain from "./scrollMotion/MotionMain";
+import AnimatedLayout from "./scrollMotion/AnimatedLayout";
 
 const playfairDisplay = Playfair_Display({
   variable: "--font-playfair-display",
@@ -50,14 +49,9 @@ export default function RootLayout({
           <WatchesPageProvider>
             <NavigationProvider>
               <NavBar />
-              <AnimatePresence mode="wait">
-                <MotionMain
-                  className="relative z-10 pt-[50px]"
-                  key={typeof window !== 'undefined' ? window.location.pathname : ''}
-                >
+              <AnimatedLayout>
                   {children}
-                </MotionMain>
-              </AnimatePresence>
+              </AnimatedLayout>
             </NavigationProvider>
           </WatchesPageProvider>
         </AuthProvider>

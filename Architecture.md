@@ -199,7 +199,16 @@ Once all brands are scraped, the scraping services (`SitemapScraperService`, `Cl
 
 ## Current vs Future Architecture Comparison
 
-### Current State
+### Current State (Dockerized)
+
+```
+  docker compose up --build
+        |
+        +---> [db]           postgres:16-bookworm    :5432
+        +---> [backend]      .NET 8 + Chromium       :5248 -> :8080
+        +---> [frontend]     Node 20 + Next.js 15    :3000
+        +---> [ai-service]   Python 3.12 + Flask     :5000
+```
 
 ```
   [Browser]
@@ -212,12 +221,16 @@ Once all brands are scraped, the scraping services (`SitemapScraperService`, `Cl
                    [PostgreSQL]             [Cloudinary]
 ```
 
-- **Hosting**: Local development only (localhost)
-- **Frontend**: Next.js dev server on port 3000
-- **Backend**: .NET 8 Kestrel on port 5248
-- **AI**: Claude Haiku called directly from backend via HttpClient (temporary, for scraping)
+- **Orchestration**: Docker Compose (`docker-compose.yml` at project root)
+- **All images**: Debian Bookworm-based (glibc needed for Chrome, AI/ML libraries)
+- **Frontend**: Next.js standalone output, `NEXT_PUBLIC_API_URL` env var (build-time), `BACKEND_INTERNAL_URL` for server-side routes (runtime)
+- **Backend**: .NET 8 Kestrel on container port 8080, mapped to host 5248. Chromium + ChromeDriver installed for Selenium scraping.
+- **Database**: PostgreSQL 16, data persisted in `pgdata` Docker volume. Auto-migrated on backend startup.
+- **AI Service**: Flask stub with `/health` endpoint. Debian-based for future PyTorch/ML dependencies.
+- **Secrets**: `.env` file at project root (gitignored), template in `.env.example`
+- **CORS**: Configurable via `ALLOWED_ORIGINS` env var (defaults to `http://localhost:3000`)
+- **Workflow**: `docker compose up --build` to start, `docker compose down` to stop, `docker compose down -v` to also wipe database
 - **Images**: Cloudinary (upload from URL or stream, store public IDs)
-- **Database**: Local PostgreSQL
 - **Caching**: None
 - **CDN**: None (Cloudinary handles edge delivery)
 - **IaC**: None
@@ -277,7 +290,7 @@ Once all brands are scraped, the scraping services (`SitemapScraperService`, `Cl
 | Phase | Change | What Moves | Replaces |
 |-------|--------|------------|----------|
 | **0. CI/CD** | GitHub Actions pipeline | Build, test, lint on every PR. Deploy on merge to main | Manual builds and deploys |
-| **1. Dockerize** | Containerize backend + AI service | .NET API + Flask service into Docker images. Add `docker-compose.yml` for local multi-container dev | Local `dotnet run` |
+| **1. Dockerize** | Containerize backend + AI service | .NET API + Flask service into Docker images. `docker-compose.yml` for local multi-container dev. **DONE** | Local `dotnet run` |
 | **2. Deploy Frontend** | Host on Vercel or AWS Amplify | Next.js with SSR/ISR | Local `npm run dev` |
 | **3. Redis** | Add caching layer | Watch/brand/collection responses cached. Session storage. Rate limiting | Direct DB queries on every request |
 | **4. S3 + CloudFront** | Move image storage to AWS | All watch images, upload pipeline, CDN delivery | Cloudinary |
