@@ -390,6 +390,40 @@ export const adminUpdateWatch = async (id: number, data: UpdateWatchDto): Promis
   return response.json();
 };
 
+export interface CreateWatchDto {
+  name: string;
+  description: string;
+  currentPrice: number;
+  image: string;
+  brandId: number;
+  collectionId: number | null;
+  specs: string;
+}
+
+export const adminCreateWatch = async (data: CreateWatchDto): Promise<{ success: boolean; message: string; watch?: Watch }> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/admin/watches`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    credentials: 'include'
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || errorData.Message || 'Failed to create watch');
+  }
+  return response.json();
+};
+
+export const deleteWatch = async (id: number): Promise<void> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/watch/${id}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  });
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Failed to delete watch ${id}`);
+  }
+};
+
 export const adminUploadWatchImage = async (file: File, slug?: string): Promise<{ success: boolean; publicId: string }> => {
   const formData = new FormData();
   formData.append('file', file);

@@ -839,6 +839,58 @@ public class AdminController : ControllerBase
         }
     }
 
+    /// Creates a new watch from the admin editor
+    /// POST: api/admin/watches
+    [HttpPost("watches")]
+    public async Task<IActionResult> AdminCreateWatch([FromBody] CreateWatchDto dto)
+    {
+        try
+        {
+            var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+
+            if (dto.CurrentPrice < 0)
+                return BadRequest(new { Message = "Price cannot be negative" });
+
+            var brandExists = await context.Brands.AnyAsync(b => b.Id == dto.BrandId);
+            if (!brandExists)
+                return BadRequest(new { Message = "Brand not found" });
+
+            if (dto.CollectionId.HasValue)
+            {
+                var collectionExists = await context.Collections.AnyAsync(c => c.Id == dto.CollectionId.Value && c.BrandId == dto.BrandId);
+                if (!collectionExists)
+                    return BadRequest(new { Message = "Collection does not exist for this brand" });
+            }
+
+            if (!string.IsNullOrEmpty(dto.Specs))
+            {
+                try { JsonDocument.Parse(dto.Specs); }
+                catch { return BadRequest(new { Message = "Invalid Specs JSON format" }); }
+            }
+
+            var watch = new Watch
+            {
+                Name = dto.Name,
+                Description = dto.Description,
+                CurrentPrice = dto.CurrentPrice,
+                Image = dto.Image,
+                BrandId = dto.BrandId,
+                CollectionId = dto.CollectionId,
+                Specs = dto.Specs
+            };
+
+            context.Watches.Add(watch);
+            await context.SaveChangesAsync();
+
+            return Ok(new { Success = true, Message = "Watch created successfully", Watch = watch });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating watch");
+            return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
     /// Uploads an image to Cloudinary and returns the public ID
     /// POST: api/admin/watches/upload-image
     [HttpPost("watches/upload-image")]

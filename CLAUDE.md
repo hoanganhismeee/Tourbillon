@@ -46,6 +46,19 @@ npm run build        # Full build + type-check (use for validation)
 npm run lint
 ```
 
+### Docker (dev workflow)
+Frontend is intentionally excluded from `docker-compose.yml` — it runs locally for instant HMR. Only `db`, `backend`, and `ai-service` are containerized.
+
+```bash
+# Terminal 1 — backend + db
+docker compose up
+
+# Terminal 2 — frontend with hot reload
+cd frontend && npm run dev
+```
+
+For production deployment, add the frontend service back to the compose file and build with `--build`.
+
 ### Database
 EF Core with Npgsql. Migrations live in `backend/Migrations/`. Connection string in `appsettings.json` → `ConnectionStrings.DefaultConnection`.
 
