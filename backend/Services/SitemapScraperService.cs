@@ -1045,7 +1045,10 @@ public class SitemapScraperService
             options.AddArgument("--window-size=1920,1080");
             options.AddArgument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-            var driver = new ChromeDriver(options);
+            var driverPath = Environment.GetEnvironmentVariable("CHROMEDRIVER_PATH");
+            var driver = string.IsNullOrEmpty(driverPath)
+                ? new ChromeDriver(options)
+                : new ChromeDriver(driverPath, options);
             _logger.LogInformation("Selenium Chrome WebDriver initialized");
             return driver;
         }

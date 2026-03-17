@@ -259,8 +259,8 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
             if (result.success && result.publicId) {
                 setImagePublicId(result.publicId);
             }
-        } catch (err: any) {
-            setUploadError(err.message || 'Image upload failed');
+        } catch (err: unknown) {
+            setUploadError(err instanceof Error ? err.message : 'Image upload failed');
         } finally {
             setUploadingImage(false);
         }
@@ -303,8 +303,8 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
             if (result.success && result.publicId) {
                 setImagePublicId(result.publicId);
             }
-        } catch (err: any) {
-            setUploadError(err.message || 'Image upload failed');
+        } catch (err: unknown) {
+            setUploadError(err instanceof Error ? err.message : 'Image upload failed');
         } finally {
             setUploadingImage(false);
         }
@@ -324,8 +324,8 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
             };
             await adminUpdateWatch(watch.id, data);
             onSave();
-        } catch (err: any) {
-            setSaveError(err.message || 'Failed to save watch');
+        } catch (err: unknown) {
+            setSaveError(err instanceof Error ? err.message : 'Failed to save watch');
             setSaving(false);
         }
     };

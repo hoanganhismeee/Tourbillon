@@ -404,6 +404,9 @@ FodyWeavers.xsd
 # Python venv
 ai-service/venv/
 
+# Docker environment secrets
+.env
+
 # appsettings files with sensitive data
 appsettings.json
 appsettings.Development.json

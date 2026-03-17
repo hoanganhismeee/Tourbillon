@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { adminFetchWatches, fetchBrands, fetchCollections, Watch, Brand, Collection } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
-import Image from 'next/image';
 import WatchEditorModal from './components/WatchEditorModal';
 
 export default function ScrapeAdminPage() {
