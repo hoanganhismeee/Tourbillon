@@ -2,7 +2,7 @@
 // Accepts EITHER a Cloudinary public_id (recommended) OR a direct image URL.
 // If a URL is provided, we use Cloudinary "fetch" to normalize, crop, and optimize on the fly.
 
-const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dcd9lcdoj';
 const CLOUDINARY_UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
 // Test function to verify Cloudinary connection
@@ -48,7 +48,7 @@ export const getOptimizedImageUrl = (
     width,
     height,
     crop = 'fill',
-    gravity = 'auto'
+    gravity = 'center'
   } = options;
 
   // For external watch brand URLs, serve directly without Cloudinary Fetch (which times out)

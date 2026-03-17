@@ -20,7 +20,7 @@ export default function StaggeredFade({
   className = "",
   staggerDelay = 0.1, // delay between items
   duration = 0.6, // duration of the animation
-  threshold = 0.1, // animation starts when 10% of the element is visible
+  threshold = 0, // animation starts immediately when intersecting
   triggerOnce = true // animation only plays once
 }: StaggeredFadeProps) {
   const { ref, inView } = useInView({

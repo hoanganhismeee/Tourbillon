@@ -4,7 +4,9 @@
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
 .claude/settings.local.json
-
+.claude
+.cursor
+.cursor\rules
 # User-specific files
 *.rsuser
 *.suo
