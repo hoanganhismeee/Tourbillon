@@ -122,16 +122,16 @@ const CustomCursor = () => {
 
   useEffect(() => {
     if (cursor === 'default') {
-      document.documentElement.style.cursor = '';
+      document.documentElement.classList.remove('custom-cursor');
       return;
     }
-    document.documentElement.style.cursor = 'none';
+    document.documentElement.classList.add('custom-cursor');
     const show = () => setVisible(true);
     const hide = () => setVisible(false);
     document.addEventListener('mouseenter', show);
     document.addEventListener('mouseleave', hide);
     return () => {
-      document.documentElement.style.cursor = '';
+      document.documentElement.classList.remove('custom-cursor');
       document.removeEventListener('mouseenter', show);
       document.removeEventListener('mouseleave', hide);
     };
