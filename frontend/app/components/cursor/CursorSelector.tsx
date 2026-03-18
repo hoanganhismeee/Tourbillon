@@ -2,27 +2,17 @@
 // Lets user preview and select a watch-themed cursor
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCursor, CURSOR_OPTIONS, CursorStyle } from '@/contexts/CursorContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// Mini preview icons for each cursor (16×16)
+// Mini preview icons for each cursor (14×14)
 const CursorPreview = ({ id }: { id: CursorStyle }) => {
   switch (id) {
     case 'default':
       return (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M2 2l9 4.5-4 1.5-2 5L2 2z" fill="currentColor" fillOpacity="0.7" stroke="currentColor" strokeWidth="0.5"/>
-        </svg>
-      );
-    case 'crown':
-      return (
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <rect x="3" y="5" width="8" height="5" rx="1.2" stroke="currentColor" strokeWidth="1"/>
-          <line x1="5.5" y1="5" x2="5.5" y2="10" stroke="currentColor" strokeWidth="0.6" strokeOpacity="0.6"/>
-          <line x1="7" y1="5" x2="7" y2="10" stroke="currentColor" strokeWidth="0.6" strokeOpacity="0.6"/>
-          <line x1="8.5" y1="5" x2="8.5" y2="10" stroke="currentColor" strokeWidth="0.6" strokeOpacity="0.6"/>
-          <rect x="11" y="6.5" width="2" height="2" rx="0.5" fill="currentColor" fillOpacity="0.5"/>
         </svg>
       );
     case 'tourbillon':
@@ -51,9 +41,60 @@ const CursorPreview = ({ id }: { id: CursorStyle }) => {
     case 'lumed':
       return (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <circle cx="7" cy="7" r="5" fill="rgba(173,216,130,0.1)" stroke="rgba(173,216,130,0.4)" strokeWidth="0.8"/>
-          <circle cx="7" cy="7" r="2.5" fill="rgba(180,230,140,0.7)"/>
-          <circle cx="6" cy="6" r="0.8" fill="rgba(220,255,200,0.8)"/>
+          <circle cx="7" cy="7" r="5" fill="rgba(240,200,100,0.08)" stroke="rgba(240,210,120,0.45)" strokeWidth="0.8"/>
+          <circle cx="7" cy="7" r="2.5" fill="rgba(245,218,128,0.75)"/>
+          <circle cx="6" cy="6" r="0.8" fill="rgba(255,242,200,0.8)"/>
+        </svg>
+      );
+    case 'hand':
+      return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 1.5L7.7 8.5H6.3Z" fill="currentColor" fillOpacity="0.85"/>
+          <path d="M7 8.5L8.5 11H5.5Z" fill="currentColor" fillOpacity="0.4"/>
+          <circle cx="7" cy="3.2" r="0.8" fill="rgba(245,218,128,0.9)"/>
+          <circle cx="7" cy="8.5" r="1.6" stroke="currentColor" strokeWidth="0.6" strokeOpacity="0.5" fill="none"/>
+        </svg>
+      );
+    case 'bezel':
+      return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="0.8" strokeOpacity="0.65" fill="none"/>
+          <rect x="6" y="0.5" width="2" height="2.5" rx="0.5" fill="currentColor" fillOpacity="0.8"/>
+          <rect x="11.5" y="6" width="2" height="2" rx="0.4" fill="currentColor" fillOpacity="0.3"/>
+          <rect x="0.5" y="6" width="2" height="2" rx="0.4" fill="currentColor" fillOpacity="0.3"/>
+          <circle cx="7" cy="7" r="1" fill="currentColor" fillOpacity="0.5"/>
+        </svg>
+      );
+    case 'compass':
+      return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 1.5L8.2 6.5L7 7L5.8 6.5Z" fill="currentColor"/>
+          <path d="M12.5 7L7.5 8.2L7 7L7.5 5.8Z" fill="currentColor" fillOpacity="0.35"/>
+          <path d="M7 12.5L5.8 7.5L7 7L8.2 7.5Z" fill="currentColor" fillOpacity="0.25"/>
+          <path d="M1.5 7L6.5 5.8L7 7L6.5 8.2Z" fill="currentColor" fillOpacity="0.55"/>
+          <circle cx="7" cy="7" r="1" fill="currentColor"/>
+        </svg>
+      );
+    case 'sapphire':
+      return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <polygon points="7,1 12,3.75 12,9.25 7,12 2,9.25 2,3.75"
+            stroke="currentColor" strokeWidth="0.7" fill="none" strokeOpacity="0.7"/>
+          <line x1="7" y1="1" x2="7" y2="6.5" stroke="currentColor" strokeWidth="0.4" strokeOpacity="0.5"/>
+          <line x1="12" y1="3.75" x2="7" y2="6.5" stroke="currentColor" strokeWidth="0.4" strokeOpacity="0.5"/>
+          <line x1="2" y1="3.75" x2="7" y2="6.5" stroke="currentColor" strokeWidth="0.4" strokeOpacity="0.5"/>
+          <circle cx="7" cy="6.5" r="1" fill="currentColor" fillOpacity="0.85"/>
+        </svg>
+      );
+    case 'rotor':
+      return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 7 L1 7 A6 6 0 0 1 13 7 Z"
+            fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="0.7"/>
+          <path d="M1 7 A6 6 0 0 1 13 7"
+            stroke="currentColor" strokeWidth="2" strokeOpacity="0.5" fill="none" strokeLinecap="round"/>
+          <circle cx="7" cy="7" r="1.5" stroke="currentColor" strokeWidth="0.6" fill="none"/>
+          <circle cx="7" cy="7" r="0.6" fill="currentColor"/>
         </svg>
       );
   }
@@ -62,9 +103,21 @@ const CursorPreview = ({ id }: { id: CursorStyle }) => {
 const CursorSelector = () => {
   const { cursor, setCursor } = useCursor();
   const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
 
   return (
-    <div className="fixed bottom-8 left-8 z-50 select-none">
+    <div ref={containerRef} className="fixed bottom-8 left-8 z-50 select-none">
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -86,8 +139,15 @@ const CursorSelector = () => {
                 </span>
               </div>
 
-              {/* Options list */}
-              <div className="py-2">
+              {/* Scrollable options list — shows 5, scroll for more */}
+              <div
+                className="py-2 overflow-y-auto"
+                style={{
+                  maxHeight: '258px',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'rgba(191,166,138,0.25) transparent',
+                }}
+              >
                 {CURSOR_OPTIONS.map((option) => {
                   const isActive = cursor === option.id;
                   return (

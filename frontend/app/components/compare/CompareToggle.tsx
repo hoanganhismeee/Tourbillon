@@ -62,8 +62,8 @@ const CompareToggle = ({ watch, variant = 'icon', className = '' }: CompareToggl
         active
           ? 'bg-[#f0e6d2]/20 text-[#f0e6d2] shadow-[0_0_10px_rgba(240,230,210,0.2)] border border-[#f0e6d2]/20'
           : disabled
-            ? 'text-white/15 cursor-not-allowed bg-black/20'
-            : 'text-white/35 hover:text-white/70 hover:bg-black/40 bg-black/20 border border-white/5 hover:border-white/15'
+            ? 'text-white/15 cursor-not-allowed bg-black/40'
+            : 'text-white/55 hover:text-white/90 hover:bg-black/60 bg-black/40 border border-white/15 hover:border-white/35'
       } ${className}`}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill={active ? '#f0e6d2' : 'none'} fillOpacity={active ? 0.15 : 0} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
