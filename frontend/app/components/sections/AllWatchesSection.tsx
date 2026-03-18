@@ -76,34 +76,35 @@ const WatchCard = ({ watch, brands, collections, isPriority = false }: {
 
   return (
     <div className="group relative block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10">
-      {/* Compare toggle — top-right, visible on hover */}
-      <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-        <CompareToggle watch={watch} />
-      </div>
-
       {/* Watch image with Cloudinary optimization - Clickable to watch details */}
-      <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
-        <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10 overflow-hidden cursor-pointer">
-          {watch.image ? (
-            <Image
-              src={src}
-              alt={watch.name}
-              width={400}
-              height={400}
-              sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"
-              className="w-full h-full object-cover rounded-xl"
-              // Prioritize just the first row to improve LCP without overfetching
-              priority={isPriority}
-              fetchPriority={isPriority ? 'high' as const : 'auto'}
-              placeholder="blur"
-              blurDataURL={getOptimizedImageUrl(watch.image, { width: 16, height: 16, quality: 1, crop: 'fill', format: 'jpg' })}
-              onError={handleImgError}
-            />
-          ) : (
-            <span className="text-white/60 text-xs font-light">{watch.name}</span>
-          )}
+      <div className="relative mb-4">
+        <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
+          <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl flex items-center justify-center border border-white/10 overflow-hidden cursor-pointer">
+            {watch.image ? (
+              <Image
+                src={src}
+                alt={watch.name}
+                width={400}
+                height={400}
+                sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"
+                className="w-full h-full object-cover rounded-xl"
+                // Prioritize just the first row to improve LCP without overfetching
+                priority={isPriority}
+                fetchPriority={isPriority ? 'high' as const : 'auto'}
+                placeholder="blur"
+                blurDataURL={getOptimizedImageUrl(watch.image, { width: 16, height: 16, quality: 1, crop: 'fill', format: 'jpg' })}
+                onError={handleImgError}
+              />
+            ) : (
+              <span className="text-white/60 text-xs font-light">{watch.name}</span>
+            )}
+          </div>
+        </Link>
+        {/* Action button field — bottom-right of image, visible on hover. Add more buttons here as features grow. */}
+        <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <CompareToggle watch={watch} />
         </div>
-      </Link>
+      </div>
       
       {/* Watch information - brand, collection, model, price */}
       <div className="space-y-2">

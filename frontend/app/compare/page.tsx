@@ -18,6 +18,8 @@ const ComparePage = () => {
   const [showDifferencesOnly, setShowDifferencesOnly] = useState(false);
   const router = useRouter();
 
+  const watchCount = compareWatches.length;
+
   // Parse specs for all watches
   const parsedSpecs = useMemo(() => {
     return compareWatches.map(w => parseStructuredSpecs(w.specs));
@@ -39,10 +41,9 @@ const ComparePage = () => {
           return String(val);
         });
 
-        const nonNullValues = values.filter(v => v !== null);
-        const allSame = nonNullValues.length > 0 && nonNullValues.every(v => v === nonNullValues[0]);
-        const hasAnyValue = nonNullValues.length > 0;
-        const isDifferent = nonNullValues.length > 1 && !allSame;
+        const hasAnyValue = values.some(v => v !== null);
+        // Treat null vs non-null as a difference (e.g., "9.95 mm" vs missing)
+        const isDifferent = hasAnyValue && !values.every(v => v === values[0]);
 
         return { label, values, isDifferent, hasAnyValue };
       });
@@ -53,47 +54,42 @@ const ComparePage = () => {
   }, [parsedSpecs]);
 
   // Empty state
-  if (compareWatches.length === 0) {
+  if (watchCount === 0) {
     return (
       <div className="container mx-auto px-8 py-24 pt-48 max-w-5xl text-center">
-        <div className="mb-8">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-white/20 mb-6">
-            <path d="M12 3v18" />
-            <path d="M3 7h18" />
-            <path d="M6 7l-3 9a5 5 0 0 0 6 0L6 7" />
-            <path d="M18 7l-3 9a5 5 0 0 0 6 0L18 7" />
-          </svg>
-          <h1 className="text-3xl font-playfair font-bold text-[#f0e6d2] mb-3">No Watches to Compare</h1>
-          <p className="text-white/50 font-inter mb-8">Browse our collection and add watches to compare their specifications side by side.</p>
-          <Link
-            href="/watches"
-            className="inline-block py-3 px-8 rounded-xl font-semibold bg-[#f0e6d2] text-[#1e1512] hover:bg-[#e6d9c2] transition-colors"
-          >
-            Browse Watches
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  // Need at least 2 to compare
-  if (compareWatches.length === 1) {
-    return (
-      <div className="container mx-auto px-8 py-24 pt-48 max-w-5xl text-center">
-        <h1 className="text-3xl font-playfair font-bold text-[#f0e6d2] mb-3">Add One More Watch</h1>
-        <p className="text-white/50 font-inter mb-8">Select at least 2 watches to compare. You currently have 1 selected.</p>
-        <Link
-          href="/watches"
-          className="inline-block py-3 px-8 rounded-xl font-semibold bg-[#f0e6d2] text-[#1e1512] hover:bg-[#e6d9c2] transition-colors"
-        >
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-white/20 mb-6">
+          <path d="M12 3v18" />
+          <path d="M3 7h18" />
+          <path d="M6 7l-3 9a5 5 0 0 0 6 0L6 7" />
+          <path d="M18 7l-3 9a5 5 0 0 0 6 0L18 7" />
+        </svg>
+        <h1 className="text-3xl font-playfair font-bold text-[#f0e6d2] mb-3">No Watches to Compare</h1>
+        <p className="text-white/50 font-inter mb-8">Browse our collection and add watches to compare their specifications side by side.</p>
+        <Link href="/watches" className="inline-block py-3 px-8 rounded-xl font-semibold bg-[#f0e6d2] text-[#1e1512] hover:bg-[#e6d9c2] transition-colors">
           Browse Watches
         </Link>
       </div>
     );
   }
 
+  // Need at least 2 to compare
+  if (watchCount === 1) {
+    return (
+      <div className="container mx-auto px-8 py-24 pt-48 max-w-5xl text-center">
+        <h1 className="text-3xl font-playfair font-bold text-[#f0e6d2] mb-3">Add One More Watch</h1>
+        <p className="text-white/50 font-inter mb-8">Select at least 2 watches to compare. You currently have 1 selected.</p>
+        <Link href="/watches" className="inline-block py-3 px-8 rounded-xl font-semibold bg-[#f0e6d2] text-[#1e1512] hover:bg-[#e6d9c2] transition-colors">
+          Browse Watches
+        </Link>
+      </div>
+    );
+  }
+
+  // Column width for spec table: label column + equal watch columns
+  const colTemplate = `minmax(140px, 180px) repeat(${watchCount}, 1fr)`;
+
   return (
-    <div className="container mx-auto px-4 sm:px-8 py-24 pt-48 max-w-7xl">
+    <div className="container mx-auto px-4 sm:px-8 py-24 pt-48 max-w-6xl">
       {/* Back button */}
       <div className="mb-8">
         <button
@@ -108,7 +104,7 @@ const ComparePage = () => {
       </div>
 
       {/* Page title + controls */}
-      <div className="flex items-center justify-between mb-12">
+      <div className="flex items-center justify-between mb-10">
         <h1 className="text-4xl font-playfair font-bold text-[#f0e6d2]">Compare Watches</h1>
         <button
           onClick={() => { clearCompare(); router.push('/watches'); }}
@@ -118,18 +114,15 @@ const ComparePage = () => {
         </button>
       </div>
 
-      {/* Watch header cards — sticky */}
-      <div className="sticky top-28 z-30 bg-gradient-to-b from-[#1e1512] via-[#1e1512] to-transparent pb-6">
-        <div className="grid gap-6" style={{ gridTemplateColumns: `180px repeat(${compareWatches.length}, 1fr)` }}>
-          {/* Empty cell for label column */}
-          <div />
-
+      {/* Watch header cards */}
+      <div className="sticky top-28 z-30 pb-6" style={{ background: 'linear-gradient(to bottom, #1e1512 70%, transparent)' }}>
+        <div className={`grid gap-4 ${watchCount === 2 ? 'grid-cols-2' : watchCount === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
           {compareWatches.map((watch) => (
-            <div key={watch.id} className="relative bg-black/30 backdrop-blur-md border border-white/10 rounded-2xl p-4 text-center group">
+            <div key={watch.id} className="relative bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-5 text-center group">
               {/* Remove button */}
               <button
                 onClick={() => removeFromCompare(watch.id)}
-                className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/15"
+                className="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/20"
               >
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round">
                   <path d="M1 1l8 8M9 1l-8 8" />
@@ -138,17 +131,17 @@ const ComparePage = () => {
 
               {/* Watch image */}
               <Link href={`/watches/${watch.id}`}>
-                <div className="w-full aspect-square max-w-[160px] mx-auto bg-black/40 rounded-xl mb-3 overflow-hidden">
+                <div className="w-28 h-28 mx-auto bg-black/30 rounded-xl mb-3 overflow-hidden border border-white/5">
                   {watch.image ? (
                     <Image
-                      src={watch.imageUrl || imageTransformations.showcase(watch.image)}
+                      src={watch.imageUrl || imageTransformations.card(watch.image)}
                       alt={watch.name}
-                      width={300}
-                      height={300}
-                      className="w-full h-full object-cover rounded-xl"
+                      width={200}
+                      height={200}
+                      className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-white/30 text-xs font-inter">
+                    <div className="w-full h-full flex items-center justify-center text-white/30 text-[10px] font-inter p-2">
                       {watch.name}
                     </div>
                   )}
@@ -157,10 +150,10 @@ const ComparePage = () => {
 
               {/* Watch info */}
               <Link href={`/watches/${watch.id}`} className="hover:text-white transition-colors">
-                <h3 className="text-sm font-playfair font-semibold text-[#f0e6d2] mb-1 truncate">{watch.name}</h3>
+                <h3 className="text-sm font-playfair font-semibold text-[#f0e6d2] mb-1 line-clamp-1">{watch.name}</h3>
               </Link>
-              <p className="text-xs text-white/50 font-inter mb-2 truncate">{watch.description}</p>
-              <p className="text-lg font-inter font-semibold text-white">
+              <p className="text-[11px] text-white/40 font-inter mb-2 line-clamp-1">{watch.description}</p>
+              <p className="text-base font-inter font-semibold text-white">
                 {watch.currentPrice === 0 ? 'Price on Request' : `$${watch.currentPrice.toLocaleString()}`}
               </p>
             </div>
@@ -169,7 +162,7 @@ const ComparePage = () => {
       </div>
 
       {/* Differences toggle */}
-      <div className="flex items-center justify-end mb-8 mt-4">
+      <div className="flex items-center justify-end mb-6 mt-2">
         <label className="flex items-center gap-3 cursor-pointer select-none">
           <span className="text-sm text-white/50 font-inter">Show differences only</span>
           <button
@@ -188,7 +181,7 @@ const ComparePage = () => {
       </div>
 
       {/* Spec comparison sections */}
-      <div className="space-y-10">
+      <div className="space-y-8">
         {sections.map((section) => {
           const filteredRows = showDifferencesOnly
             ? section.rows.filter(r => r.isDifferent)
@@ -198,18 +191,18 @@ const ComparePage = () => {
 
           return (
             <div key={section.key}>
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-white/40 mb-4 font-inter">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f0e6d2]/50 mb-3 font-inter">
                 {section.title}
               </h2>
-              <div className="border border-white/5 rounded-xl overflow-hidden">
+              <div className="border border-white/8 rounded-xl overflow-hidden">
                 {filteredRows.map((row, rowIdx) => (
                   <div
                     key={row.label}
-                    className="grid items-center"
-                    style={{ gridTemplateColumns: `180px repeat(${compareWatches.length}, 1fr)` }}
+                    className={`grid items-stretch ${rowIdx > 0 ? 'border-t border-white/5' : ''}`}
+                    style={{ gridTemplateColumns: colTemplate }}
                   >
                     {/* Label cell */}
-                    <div className={`px-5 py-3.5 text-sm text-white/50 font-inter ${rowIdx > 0 ? 'border-t border-white/5' : ''}`}>
+                    <div className="px-4 py-3 text-sm text-white/40 font-inter flex items-center bg-white/[0.02]">
                       {row.label}
                     </div>
 
@@ -217,13 +210,13 @@ const ComparePage = () => {
                     {row.values.map((value, colIdx) => (
                       <div
                         key={colIdx}
-                        className={`px-5 py-3.5 text-sm font-inter font-medium ${rowIdx > 0 ? 'border-t border-white/5' : ''} ${
+                        className={`px-4 py-3 text-sm font-inter font-medium flex items-center border-l ${
                           row.isDifferent
-                            ? 'text-white/90 border-l-2 border-l-[#f0e6d2]/30'
-                            : 'text-white/50 border-l border-l-white/5'
+                            ? 'text-white/90 border-l-[#f0e6d2]/25 bg-[#f0e6d2]/[0.03]'
+                            : 'text-white/50 border-l-white/5'
                         }`}
                       >
-                        {value || <span className="text-white/20">—</span>}
+                        {value || <span className="text-white/15 italic">N/A</span>}
                       </div>
                     ))}
                   </div>
@@ -236,14 +229,14 @@ const ComparePage = () => {
 
       {/* Production status row */}
       {parsedSpecs.some(s => s?.productionStatus) && (
-        <div className="mt-10">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-white/40 mb-4 font-inter">Status</h2>
-          <div className="border border-white/5 rounded-xl overflow-hidden">
-            <div className="grid items-center" style={{ gridTemplateColumns: `180px repeat(${compareWatches.length}, 1fr)` }}>
-              <div className="px-5 py-3.5 text-sm text-white/50 font-inter">Production</div>
+        <div className="mt-8">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f0e6d2]/50 mb-3 font-inter">Status</h2>
+          <div className="border border-white/8 rounded-xl overflow-hidden">
+            <div className="grid items-stretch" style={{ gridTemplateColumns: colTemplate }}>
+              <div className="px-4 py-3 text-sm text-white/40 font-inter flex items-center bg-white/[0.02]">Production</div>
               {parsedSpecs.map((specs, idx) => (
-                <div key={idx} className="px-5 py-3.5 text-sm font-inter font-medium text-white/70 border-l border-l-white/5">
-                  {specs?.productionStatus || <span className="text-white/20">—</span>}
+                <div key={idx} className="px-4 py-3 text-sm font-inter font-medium text-white/70 border-l border-l-white/5 flex items-center">
+                  {specs?.productionStatus || <span className="text-white/15 italic">N/A</span>}
                 </div>
               ))}
             </div>
