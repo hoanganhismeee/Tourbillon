@@ -41,7 +41,7 @@ public class CaseSpecs
     [JsonPropertyName("thickness")]
     public string? Thickness { get; set; }
 
-    /// Water resistance (e.g., "30 m", "100 m", "5 bar")
+    /// Water resistance (e.g., "30 m / 3 bar", "100 m / 10 bar")
     [JsonPropertyName("waterResistance")]
     public string? WaterResistance { get; set; }
 
@@ -101,6 +101,10 @@ public class StrapSpecs
 /// Complete watch specifications - stored as JSON in Watch.Specs
 public class WatchSpecs
 {
+    /// Production status (e.g., "Current production", "Discontinued")
+    [JsonPropertyName("productionStatus")]
+    public string? ProductionStatus { get; set; }
+
     [JsonPropertyName("dial")]
     public DialSpecs? Dial { get; set; }
 

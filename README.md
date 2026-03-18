@@ -35,6 +35,18 @@ Tourbillon is a full-stack e-commerce platform for luxury watches, built with a 
 - **Authentication**: ASP.NET Identity with HttpOnly cookie sessions and role-based admin access.
 - **Price Tracking**: Backend supports price history per watch for future data visualization.
 
+## In-Progress AI Features
+
+- **AI Watch Finder + Concierge**: Natural language watch discovery — describe what you want and get ranked product recommendations with match explanations. Conversational shopping assistant for guided purchase decisions.
+- **Smart Compare Mode**: Side-by-side watch comparison with AI-generated insights on wearability, brand character, and fit recommendations beyond raw specs.
+- **Wrist-fit Recommender**: Input your wrist size and style preferences to get fit scores, wrist presence ratings, and cuff friendliness assessments using case dimensions data.
+- **Watch DNA / Taste Profile**: Personalization engine that learns your preferences from browsing behavior and adapts recommendations — classic dress, sport integrated, haute horlogerie, or minimalist.
+- **Story-first Product Pages**: AI-generated editorial content for each watch — collector appeal, design language analysis, and contextual recommendations.
+- **AI Discovery Pages**: Curated, auto-generated pages like "Best salmon dial watches" or "German alternatives to Rolex" — optimized for AI search citation (GEO).
+- **Save / Build Collection**: Create and share personal watch collections by theme, occasion, or budget.
+
+See [ROADMAP.md](ROADMAP.md) for full implementation details and phasing.
+
 ## Tech Stack
 
 | Layer          | Technology                                              |

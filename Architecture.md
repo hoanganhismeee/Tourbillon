@@ -303,5 +303,5 @@ Once all brands are scraped, the scraping services (`SitemapScraperService`, `Cl
 - **Vercel vs Amplify**: Vercel is simpler for Next.js; Amplify ties into AWS ecosystem better if everything else is AWS
 - **AI Chatbot**: Self-hosted (full control, higher cost) vs third-party API (simpler, usage-based pricing)
 - **Database hosting**: Managed PostgreSQL (RDS) vs PostgreSQL pod in K8s. RDS is recommended — you don't want to manage database backups and failover yourself
-- **ai-service scope**: Will it handle chatbot only, or also any remaining data processing tasks?
+- **ai-service scope**: Will handle chatbot, AI Watch Finder, Compare Mode insights, Story-first content generation, Taste Profile, and Discovery Pages. See `ROADMAP.md` for full feature list.
 - **Redis hosting**: ElastiCache (managed) vs Redis pod in K8s. ElastiCache is simpler but adds AWS cost

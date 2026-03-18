@@ -117,3 +117,4 @@ Cost: ~$0.001/watch via Claude Haiku. Max 25 watches per collection (cost-consci
 | DB context + seeding | `backend/Database/TourbillonContext.cs`, `DbInitializer.cs` |
 | Claude extraction service | `backend/Services/ClaudeApiService.cs` |
 | Main scraper service | `backend/Services/SitemapScraperService.cs` |
+| Feature roadmap | `ROADMAP.md` |
