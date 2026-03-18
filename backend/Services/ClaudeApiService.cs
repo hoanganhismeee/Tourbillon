@@ -300,6 +300,7 @@ Return ONLY valid JSON (no markdown fences, no explanation) with this exact stru
   ""price"": ""string or null"",
   ""imageUrl"": ""string or null"",
   ""specs"": {{
+    ""productionStatus"": ""Current production"" or ""Discontinued"" or null,
     ""dial"": {{
       ""color"": ""string or null"",
       ""finish"": ""string or null"",
@@ -310,6 +311,7 @@ Return ONLY valid JSON (no markdown fences, no explanation) with this exact stru
       ""material"": ""string or null"",
       ""diameter"": ""string or null"",
       ""thickness"": ""string or null"",
+      ""lugToLug"": ""string or null"",
       ""waterResistance"": ""string or null"",
       ""crystal"": ""string or null"",
       ""caseBack"": ""string or null""
@@ -344,7 +346,12 @@ Rules:
 - dial.finish: surface finish (e.g. ""Sunburst"", ""Galvanic"", ""Lacquered"", ""Guilloché"").
 - dial.indices: hour marker type (e.g. ""Applied baton"", ""Roman numerals"", ""Arabic numerals"").
 - movement.type: normalize to exactly ""Automatic"", ""Manual"", or ""Quartz"".
-- movement.functions: list each function/complication separately (e.g. [""Hours"", ""Minutes"", ""Seconds"", ""Date"", ""Moon phase""]).
+- movement.frequency: format as ""28,800 vph (4 Hz)"" — comma-separated thousands, lowercase ""vph"", Hz in parentheses.
+- movement.powerReserve: write out ""hours"" in full (e.g. ""70 hours"", not ""70 h"").
+- movement.functions: list each function separately. Capitalise the first item, lowercase the rest (e.g. [""Hours"", ""minutes"", ""central seconds"", ""date""]).
+- case.waterResistance: format as ""30 m / 3 bar"" — metres first, slash separator, bar second.
+- case.lugToLug: lug-to-lug distance in mm (e.g. ""47 mm""). Use null if not found.
+- productionStatus: ""Current production"" if the watch appears currently available, ""Discontinued"" if the page indicates it is no longer produced, null if unclear.
 - Use null for any field not found. Never guess or fabricate.
 
 Page URL: {url}

@@ -13,7 +13,7 @@ interface AddWatchModalProps {
     onSave: () => void;
 }
 
-const DEFAULT_SPECS = '{"dial":{},"case":{},"movement":{},"strap":{}}';
+const DEFAULT_SPECS = '{"productionStatus":null,"dial":{},"case":{},"movement":{},"strap":{}}';
 
 export default function AddWatchModal({ brands, collections, onClose, onSave }: AddWatchModalProps) {
     const [brandId, setBrandId] = useState<number | ''>('');

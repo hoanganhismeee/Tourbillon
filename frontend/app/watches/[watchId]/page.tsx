@@ -6,7 +6,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Watch, fetchWatchById } from '@/lib/api';
+import Link from 'next/link';
+import { Watch, Brand, Collection, fetchWatchById, fetchBrands, fetchCollections } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
@@ -19,6 +20,8 @@ const WatchDetailPage = () => {
     const router = useRouter();
     const watchId = params.watchId as string;
     const [watch, setWatch] = useState<Watch | null>(null);
+    const [brands, setBrands] = useState<Brand[]>([]);
+    const [collections, setCollections] = useState<Collection[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [imageError, setImageError] = useState(false);
     const [imageLoading, setImageLoading] = useState(true);
@@ -57,15 +60,20 @@ const WatchDetailPage = () => {
         if (watchId) {
             const getWatchDetails = async () => {
                 try {
-                    // Convert the watchId from string to number before fetching
                     const numericWatchId = parseInt(watchId, 10);
                     if (isNaN(numericWatchId)) {
                         setError('Invalid watch ID.');
                         return;
                     }
-                    const data = await fetchWatchById(numericWatchId);
+                    // Fetch watch, brands, and collections in parallel
+                    const [data, brandsData, collectionsData] = await Promise.all([
+                        fetchWatchById(numericWatchId),
+                        fetchBrands(),
+                        fetchCollections()
+                    ]);
                     setWatch(data);
-                    // Set the image URL when watch data is loaded
+                    setBrands(brandsData || []);
+                    setCollections(collectionsData || []);
                     if (data?.imageUrl) {
                         setImgSrc(data.imageUrl);
                     }
@@ -180,7 +188,10 @@ const WatchDetailPage = () => {
             .filter(([key]) => section[key] != null)
             .map(([key, label]) => {
                 const val = section[key];
-                if (Array.isArray(val)) return { label, value: val.join(', ') };
+                // Functions array: capitalise first item, lowercase the rest
+                if (Array.isArray(val)) {
+                    return { label, value: val.map((v, i) => i === 0 ? String(v) : String(v).toLowerCase()).join(', ') };
+                }
                 return { label, value: String(val) };
             });
     };
@@ -188,25 +199,15 @@ const WatchDetailPage = () => {
     const structuredSpecs = parseStructuredSpecs(watch.specs);
     const flatSpecs = structuredSpecs ? null : parseFlatSpecs(watch.specs);
 
-    // Build spec sections for structured format
+    // Build spec sections — outside-in flow: Case, Dial, Movement, Strap
     const specSections = structuredSpecs ? [
-        {
-            title: 'Movement',
-            rows: formatSection(structuredSpecs.movement, {
-                caliber: 'Caliber',
-                type: 'Type',
-                powerReserve: 'Power Reserve',
-                frequency: 'Frequency',
-                jewels: 'Jewels',
-                functions: 'Functions',
-            }),
-        },
         {
             title: 'Case',
             rows: formatSection(structuredSpecs.case, {
                 material: 'Material',
                 diameter: 'Diameter',
                 thickness: 'Thickness',
+                lugToLug: 'Lug to Lug',
                 waterResistance: 'Water Resistance',
                 crystal: 'Crystal',
                 caseBack: 'Case Back',
@@ -219,6 +220,17 @@ const WatchDetailPage = () => {
                 finish: 'Finish',
                 indices: 'Indices',
                 hands: 'Hands',
+            }),
+        },
+        {
+            title: 'Movement',
+            rows: formatSection(structuredSpecs.movement, {
+                caliber: 'Caliber',
+                type: 'Type',
+                powerReserve: 'Power Reserve',
+                frequency: 'Frequency',
+                jewels: 'Jewels',
+                functions: 'Functions',
             }),
         },
         {
@@ -292,6 +304,25 @@ const WatchDetailPage = () => {
 
                 {/* Right Column: Details & Actions */}
                 <div className="pt-8">
+                    {/* Brand and Collection breadcrumb */}
+                    {(brands.length > 0 || collections.length > 0) && (
+                        <div className="flex items-center gap-2 mb-3 text-sm">
+                            {brands.find(b => b.id === watch.brandId) && (
+                                <Link href={`/brands/${watch.brandId}`} className="text-white/50 hover:text-white/80 transition-colors font-inter">
+                                    {brands.find(b => b.id === watch.brandId)?.name}
+                                </Link>
+                            )}
+                            {watch.collectionId && collections.find(c => c.id === watch.collectionId) && (
+                                <>
+                                    <span className="text-white/30">·</span>
+                                    <Link href={`/collections/${watch.collectionId}`} className="text-white/50 hover:text-white/80 transition-colors font-inter">
+                                        {collections.find(c => c.id === watch.collectionId)?.name}
+                                    </Link>
+                                </>
+                            )}
+                        </div>
+                    )}
+
                     <h1 className="text-4xl lg:text-5xl font-playfair font-bold text-[#f0e6d2] mb-2">
                         {watch.name || 'Unnamed Watch'}
                     </h1>
@@ -304,6 +335,16 @@ const WatchDetailPage = () => {
                             {watch.currentPrice > 0 ? `$${watch.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Price on request'}
                         </span>
                         <p className="text-sm text-white/50 mt-1">Price subject to market changes</p>
+                        {/* Production status badge */}
+                        {structuredSpecs?.productionStatus && (
+                            <span className={`inline-block mt-2 px-3 py-1 text-xs font-medium rounded-full border ${
+                                structuredSpecs.productionStatus === 'Discontinued'
+                                    ? 'text-white/40 border-white/15 bg-white/5'
+                                    : 'text-[#f0e6d2]/70 border-[#f0e6d2]/20 bg-[#f0e6d2]/5'
+                            }`}>
+                                {structuredSpecs.productionStatus}
+                            </span>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-4 mb-10">
