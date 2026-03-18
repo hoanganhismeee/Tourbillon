@@ -3,8 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node -e \"require('fs').mkdirSync('.next/static/development', {recursive: true})\"",
     "dev": "next dev --turbo",
-    "dev-fresh": "rmdir /s /q .next && next dev --turbo",
+    "dev-fresh": "node -e \"require('fs').rmSync('.next', {recursive: true, force: true})\" && next dev --turbo",
+    "dev-webpack": "next dev --no-turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

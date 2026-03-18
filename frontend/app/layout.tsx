@@ -6,10 +6,13 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { WatchesPageProvider } from "@/contexts/WatchesPageContext";
 import { NavigationProvider } from "@/contexts/NavigationContext";
 import { CompareProvider } from "@/contexts/CompareContext";
+import { CursorProvider } from "@/contexts/CursorContext";
 import "./globals.css";
 import NavBar from "./components/layout/NavBar";
 import AnimatedLayout from "./scrollMotion/AnimatedLayout";
 import CompareIndicator from "./components/compare/CompareIndicator";
+import CustomCursor from "./components/cursor/CustomCursor";
+import CursorSelector from "./components/cursor/CursorSelector";
 
 const playfairDisplay = Playfair_Display({
   variable: "--font-playfair-display",
@@ -51,11 +54,15 @@ export default function RootLayout({
           <WatchesPageProvider>
             <NavigationProvider>
               <CompareProvider>
-                <NavBar />
-                <AnimatedLayout>
+                <CursorProvider>
+                  <NavBar />
+                  <AnimatedLayout>
                     {children}
-                </AnimatedLayout>
-                <CompareIndicator />
+                  </AnimatedLayout>
+                  <CompareIndicator />
+                  <CursorSelector />
+                  <CustomCursor />
+                </CursorProvider>
               </CompareProvider>
             </NavigationProvider>
           </WatchesPageProvider>
