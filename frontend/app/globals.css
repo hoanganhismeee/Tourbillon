@@ -16,6 +16,12 @@
   }
 }
 
+/* Hide native cursor when custom cursor is active */
+html.custom-cursor,
+html.custom-cursor * {
+  cursor: none !important;
+}
+
 /* Font Utility Classes */
 .font-playfair {
   font-family: var(--font-playfair-display), serif;
