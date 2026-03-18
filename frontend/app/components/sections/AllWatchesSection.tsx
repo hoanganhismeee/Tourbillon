@@ -12,6 +12,7 @@ import { imageTransformations, getOptimizedImageUrl } from '@/lib/cloudinary';
 import Image from 'next/image';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import { useNavigation } from '@/contexts/NavigationContext';
+import CompareToggle from '../compare/CompareToggle';
 
 
 // Individual watch card component for grid layout on Page 1
@@ -74,7 +75,12 @@ const WatchCard = ({ watch, brands, collections, isPriority = false }: {
   };
 
   return (
-    <div className="group block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10">
+    <div className="group relative block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10">
+      {/* Compare toggle — top-right, visible on hover */}
+      <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        <CompareToggle watch={watch} />
+      </div>
+
       {/* Watch image with Cloudinary optimization - Clickable to watch details */}
       <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
         <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl mb-4 flex items-center justify-center border border-white/10 overflow-hidden cursor-pointer">
