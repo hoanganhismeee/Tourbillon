@@ -11,6 +11,8 @@ import { Watch, Brand, Collection, fetchWatchById, fetchBrands, fetchCollections
 import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
+import { parseStructuredSpecs, parseFlatSpecs, buildSpecSections } from '@/lib/specs';
+import CompareToggle from '../../components/compare/CompareToggle';
 import Image from 'next/image';
 
 
@@ -129,119 +131,9 @@ const WatchDetailPage = () => {
         );
     }
 
-    // Parse structured specs (new format: {dial:{}, case:{}, movement:{}, strap:{}})
-    // Also handles legacy formats (array, semicolon-separated)
-    const parseStructuredSpecs = (specsString: string | null) => {
-        if (!specsString) return null;
-
-        try {
-            const parsed = JSON.parse(specsString);
-
-            // New structured format: { dial: {...}, case: {...}, movement: {...}, strap: {...} }
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
-                (parsed.dial || parsed.case || parsed.movement || parsed.strap)) {
-                return parsed;
-            }
-        } catch {
-            // Not JSON
-        }
-        return null;
-    };
-
-    // Parse legacy flat specs (old format: array or semicolon-separated)
-    const parseFlatSpecs = (specsString: string | null): { name: string; value: string }[] => {
-        if (!specsString) return [];
-
-        try {
-            const parsed = JSON.parse(specsString);
-            if (Array.isArray(parsed)) {
-                return parsed.map(spec => ({
-                    name: spec.name || spec.key || 'Specification',
-                    value: spec.value || spec.val || 'N/A'
-                }));
-            }
-            // If it's an object but not structured (no dial/case/movement), flatten it
-            if (typeof parsed === 'object' && !parsed.dial && !parsed.case && !parsed.movement) {
-                return Object.entries(parsed).map(([key, val]) => ({
-                    name: key.charAt(0).toUpperCase() + key.slice(1),
-                    value: String(val) || 'N/A'
-                }));
-            }
-        } catch {
-            // Try semicolon-separated
-            const specs = specsString.split(';').map(s => s.trim()).filter(Boolean);
-            return specs.map(spec => {
-                const idx = spec.indexOf(':');
-                if (idx > 0) {
-                    return { name: spec.substring(0, idx).trim(), value: spec.substring(idx + 1).trim() };
-                }
-                return { name: 'Specification', value: spec };
-            });
-        }
-        return [{ name: 'Specifications', value: specsString }];
-    };
-
-    // Helper to format a spec section's fields into rows
-    const formatSection = (section: Record<string, unknown> | undefined, labels: Record<string, string>): { label: string; value: string }[] => {
-        if (!section) return [];
-        return Object.entries(labels)
-            .filter(([key]) => section[key] != null)
-            .map(([key, label]) => {
-                const val = section[key];
-                // Functions array: capitalise first item, lowercase the rest
-                if (Array.isArray(val)) {
-                    return { label, value: val.map((v, i) => i === 0 ? String(v) : String(v).toLowerCase()).join(', ') };
-                }
-                return { label, value: String(val) };
-            });
-    };
-
     const structuredSpecs = parseStructuredSpecs(watch.specs);
-    const flatSpecs = structuredSpecs ? null : parseFlatSpecs(watch.specs);
-
-    // Build spec sections — outside-in flow: Case, Dial, Movement, Strap
-    const specSections = structuredSpecs ? [
-        {
-            title: 'Case',
-            rows: formatSection(structuredSpecs.case, {
-                material: 'Material',
-                diameter: 'Diameter',
-                thickness: 'Thickness',
-                lugToLug: 'Lug to Lug',
-                waterResistance: 'Water Resistance',
-                crystal: 'Crystal',
-                caseBack: 'Case Back',
-            }),
-        },
-        {
-            title: 'Dial',
-            rows: formatSection(structuredSpecs.dial, {
-                color: 'Color',
-                finish: 'Finish',
-                indices: 'Indices',
-                hands: 'Hands',
-            }),
-        },
-        {
-            title: 'Movement',
-            rows: formatSection(structuredSpecs.movement, {
-                caliber: 'Caliber',
-                type: 'Type',
-                powerReserve: 'Power Reserve',
-                frequency: 'Frequency',
-                jewels: 'Jewels',
-                functions: 'Functions',
-            }),
-        },
-        {
-            title: 'Strap',
-            rows: formatSection(structuredSpecs.strap, {
-                material: 'Material',
-                color: 'Color',
-                buckle: 'Buckle',
-            }),
-        },
-    ].filter(s => s.rows.length > 0) : [];
+    const flatSpecRows = structuredSpecs ? null : parseFlatSpecs(watch.specs);
+    const specSections = structuredSpecs ? buildSpecSections(structuredSpecs) : [];
 
     return (
         <div className="container mx-auto px-4 sm:px-8 py-24 pt-48 text-white">
@@ -351,6 +243,7 @@ const WatchDetailPage = () => {
                         <button className="py-4 px-8 rounded-xl font-semibold bg-white/10 text-white hover:bg-white/20 transition">
                             Contact Advisor
                         </button>
+                        <CompareToggle watch={watch} variant="button" />
                     </div>
 
                     {/* Specifications - Structured Format */}
@@ -378,14 +271,14 @@ const WatchDetailPage = () => {
                     )}
 
                     {/* Specifications - Legacy Flat Format */}
-                    {flatSpecs && flatSpecs.length > 0 && (
+                    {flatSpecRows && flatSpecRows.length > 0 && (
                         <div>
                             <h2 className="text-2xl font-playfair font-semibold border-b border-white/10 pb-3 mb-4">Specifications</h2>
                             <table className="w-full text-left">
                                 <tbody>
-                                    {flatSpecs.map((spec) => (
-                                        <tr key={spec.name} className="border-b border-white/5">
-                                            <td className="py-2.5 pr-6 text-white/50 text-sm w-2/5">{spec.name}</td>
+                                    {flatSpecRows.map((spec) => (
+                                        <tr key={spec.label} className="border-b border-white/5">
+                                            <td className="py-2.5 pr-6 text-white/50 text-sm w-2/5">{spec.label}</td>
                                             <td className="py-2.5 text-white/90 font-medium text-sm">{spec.value}</td>
                                         </tr>
                                     ))}

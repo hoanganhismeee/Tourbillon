@@ -10,6 +10,7 @@ import { Watch, Collection, fetchCollectionsByBrand } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
+import CompareToggle from '../../components/compare/CompareToggle';
 import Image from 'next/image';
 
 
@@ -91,10 +92,16 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
   }, [watch.collectionId, watch.brandId]);
 
   return (
-    <Link 
-      href={`/watches/${watch.id}`} 
+    <div className={`group relative bg-black/30 backdrop-blur-md border border-white/20 rounded-2xl p-6 transition-all duration-500 hover:border-white/40 hover:bg-black/40 hover:scale-[1.02] ${className}`}>
+      {/* Compare toggle — top-right, visible on hover */}
+      <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        <CompareToggle watch={watch} />
+      </div>
+
+    <Link
+      href={`/watches/${watch.id}`}
       onClick={handleWatchClick} // Save navigation state when clicked
-      className={`group block bg-black/30 backdrop-blur-md border border-white/20 rounded-2xl p-6 transition-all duration-500 hover:border-white/40 hover:bg-black/40 hover:scale-[1.02] ${className}`}
+      className="block"
     >
       {/* Watch Image */}
       <div className="w-full h-80 bg-black/40 rounded-xl mb-4 flex items-center justify-center relative overflow-hidden">
@@ -158,7 +165,8 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
         </p>
       </div>
     </Link>
+    </div>
   );
 };
 
-export default WatchCard; 
+export default WatchCard;

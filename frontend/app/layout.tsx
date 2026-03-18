@@ -5,9 +5,11 @@ import { Playfair_Display, Inter } from "next/font/google";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { WatchesPageProvider } from "@/contexts/WatchesPageContext";
 import { NavigationProvider } from "@/contexts/NavigationContext";
+import { CompareProvider } from "@/contexts/CompareContext";
 import "./globals.css";
 import NavBar from "./components/layout/NavBar";
 import AnimatedLayout from "./scrollMotion/AnimatedLayout";
+import CompareIndicator from "./components/compare/CompareIndicator";
 
 const playfairDisplay = Playfair_Display({
   variable: "--font-playfair-display",
@@ -48,10 +50,13 @@ export default function RootLayout({
         <AuthProvider>
           <WatchesPageProvider>
             <NavigationProvider>
-              <NavBar />
-              <AnimatedLayout>
-                  {children}
-              </AnimatedLayout>
+              <CompareProvider>
+                <NavBar />
+                <AnimatedLayout>
+                    {children}
+                </AnimatedLayout>
+                <CompareIndicator />
+              </CompareProvider>
             </NavigationProvider>
           </WatchesPageProvider>
         </AuthProvider>
