@@ -115,7 +115,7 @@ const ComparePage = () => {
       </div>
 
       {/* Watch header cards */}
-      <div className="sticky top-28 z-30 pb-6" style={{ background: 'linear-gradient(to bottom, #1e1512 70%, transparent)' }}>
+      <div className="pb-6">
         <div className={`grid gap-4 ${watchCount === 2 ? 'grid-cols-2' : watchCount === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
           {compareWatches.map((watch) => (
             <div key={watch.id} className="relative bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-5 text-center group">
@@ -182,6 +182,23 @@ const ComparePage = () => {
 
       {/* Spec comparison sections */}
       <div className="space-y-8">
+        {/* Production status — shown first */}
+        {parsedSpecs.some(s => s?.productionStatus) && (
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f0e6d2]/50 mb-3 font-inter">Status</h2>
+            <div className="border border-white/8 rounded-xl overflow-hidden">
+              <div className="grid items-stretch" style={{ gridTemplateColumns: colTemplate }}>
+                <div className="px-4 py-3 text-sm text-white/40 font-inter flex items-center bg-white/[0.02]">Production</div>
+                {parsedSpecs.map((specs, idx) => (
+                  <div key={idx} className="px-4 py-3 text-sm font-inter font-medium text-white/70 border-l border-l-white/5 flex items-center">
+                    {specs?.productionStatus || <span className="text-white/15 italic">N/A</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {sections.map((section) => {
           const filteredRows = showDifferencesOnly
             ? section.rows.filter(r => r.isDifferent)
@@ -227,22 +244,6 @@ const ComparePage = () => {
         })}
       </div>
 
-      {/* Production status row */}
-      {parsedSpecs.some(s => s?.productionStatus) && (
-        <div className="mt-8">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f0e6d2]/50 mb-3 font-inter">Status</h2>
-          <div className="border border-white/8 rounded-xl overflow-hidden">
-            <div className="grid items-stretch" style={{ gridTemplateColumns: colTemplate }}>
-              <div className="px-4 py-3 text-sm text-white/40 font-inter flex items-center bg-white/[0.02]">Production</div>
-              {parsedSpecs.map((specs, idx) => (
-                <div key={idx} className="px-4 py-3 text-sm font-inter font-medium text-white/70 border-l border-l-white/5 flex items-center">
-                  {specs?.productionStatus || <span className="text-white/15 italic">N/A</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

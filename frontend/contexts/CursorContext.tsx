@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-export type CursorStyle = 'default' | 'crown' | 'tourbillon' | 'crosshair' | 'lumed';
+export type CursorStyle = 'default' | 'tourbillon' | 'crosshair' | 'lumed' | 'hand' | 'bezel' | 'compass' | 'sapphire' | 'rotor';
 
 export interface CursorOption {
   id: CursorStyle;
@@ -12,11 +12,15 @@ export interface CursorOption {
 }
 
 export const CURSOR_OPTIONS: CursorOption[] = [
-  { id: 'default',     label: 'Default',     description: 'System cursor'             },
-  { id: 'crown',       label: 'Crown',       description: 'Watch winding crown'        },
-  { id: 'tourbillon',  label: 'Tourbillon',  description: 'Rotating escapement'        },
-  { id: 'crosshair',   label: 'Crosshair',   description: 'Dial precision marker'      },
-  { id: 'lumed',       label: 'Lume Dot',    description: 'Glowing luminous pip'       },
+  { id: 'default',    label: 'Default',     description: 'System cursor'           },
+  { id: 'tourbillon', label: 'Tourbillon',  description: 'Rotating escapement'     },
+  { id: 'crosshair',  label: 'Crosshair',   description: 'Dial precision marker'   },
+  { id: 'lumed',      label: 'Lume Dot',    description: 'Luminous hour pip'       },
+  { id: 'hand',       label: 'Watch Hand',  description: 'Sword-hand pointer'      },
+  { id: 'bezel',      label: 'Bezel',       description: 'Rotating bezel ring'     },
+  { id: 'compass',    label: 'Compass',     description: 'Navigation rose'         },
+  { id: 'sapphire',   label: 'Sapphire',    description: 'Crystal facet gem'       },
+  { id: 'rotor',      label: 'Rotor',       description: 'Automatic winding rotor' },
 ];
 
 interface CursorContextType {
