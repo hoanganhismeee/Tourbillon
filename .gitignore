@@ -7,6 +7,8 @@
 .claude
 .cursor
 .cursor\rules
+CLAUDE.md
+ROADMAP.md
 # User-specific files
 *.rsuser
 *.suo
