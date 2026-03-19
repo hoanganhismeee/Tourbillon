@@ -57,7 +57,7 @@ export default function WristFitWidget({ caseSpecs }: WristFitWidgetProps) {
         Wrist Fit
       </h2>
 
-      <div className="bg-white/3 border border-white/10 rounded-xl p-6 space-y-5">
+      <div className={`bg-white/3 border border-white/10 rounded-xl ${scores ? 'p-6 space-y-5' : 'p-4 space-y-3'}`}>
         {/* Input */}
         <div>
           <label className="block text-xs font-medium text-white/40 uppercase tracking-widest mb-2">
