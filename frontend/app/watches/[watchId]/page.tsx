@@ -64,9 +64,11 @@ const WatchDetailPage = () => {
                 document.body.style.transition = 'opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1)';
                 document.body.style.opacity = '1';
             }, 2000);
-            const pageParam = navigationState.currentPage > 1 ? `?page=${navigationState.currentPage}` : '';
+            // Use router.back() so we unwind the real history entry instead of
+            // pushing a new one — prevents history pollution when the originating
+            // page is /compare, /brands, /collections, etc.
             setTimeout(() => {
-                router.push(`${navigationState.path}${pageParam}`, { scroll: false });
+                router.back();
             }, 160);
         } else {
             router.push('/watches');

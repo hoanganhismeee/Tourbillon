@@ -10,6 +10,7 @@ import { useCompare } from '@/stores/compareStore';
 import { imageTransformations } from '@/lib/cloudinary';
 import { parseStructuredSpecs, getAllLabelsForSection } from '@/lib/specs';
 import { useNavigation } from '@/contexts/NavigationContext';
+import { useScrollRestore } from '@/hooks/useScrollRestore';
 
 const sectionKeys = ['case', 'dial', 'movement', 'strap'] as const;
 const sectionTitles: Record<string, string> = { case: 'Case', dial: 'Dial', movement: 'Movement', strap: 'Strap' };
@@ -57,6 +58,7 @@ const ComparePage = () => {
   const [showDifferencesOnly, setShowDifferencesOnly] = useState(false);
   const router = useRouter();
   const { saveNavigationState } = useNavigation();
+  useScrollRestore(true);
 
   const handleWatchClick = () => {
     saveNavigationState({
