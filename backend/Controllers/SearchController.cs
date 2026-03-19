@@ -1,5 +1,6 @@
 // Search controller for Tourbillon backend
-// Implements priority-based search with relevance scoring
+// Token-based multi-word search with fuzzy (Levenshtein) matching for typo tolerance.
+// Splits queries into tokens, scores each field independently, and applies a match-all bonus.
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
@@ -36,73 +37,78 @@ public class SearchController : ControllerBase
 
         try
         {
-            // Get data from database first
-            var brands = await _context.Brands
-                .Include(b => b.Watches)
-                .ToListAsync();
-
+            var brands = await _context.Brands.ToListAsync();
             var watches = await _context.Watches
                 .Include(w => w.Brand)
                 .Include(w => w.Collection)
                 .ToListAsync();
-
             var collections = await _context.Collections
                 .Include(c => c.Brand)
                 .ToListAsync();
 
-            // Calculate relevance scores and filter results
-            var searchTerm = q.ToLower();
-            
+            var fullTerm = q.ToLower().Trim();
+
+            // Split multi-word queries into individual tokens for independent matching
+            var tokens = fullTerm
+                .Split(new[] { ' ', '-', '_', ',', '.' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(t => t.Length >= 2)
+                .Distinct()
+                .ToArray();
+            if (tokens.Length == 0) tokens = new[] { fullTerm };
+
             var relevantBrands = brands
-                .Where(b => CalculateBrandRelevance(b, searchTerm) > 0)
-                .Select(b => new
-                {
-                    id = b.Id,
-                    name = b.Name,
-                    image = b.Image,
-                    type = "brand",
-                    relevanceScore = CalculateBrandRelevance(b, searchTerm)
-                })
-                .OrderByDescending(b => b.relevanceScore)
+                .Select(b => new { brand = b, score = CalculateBrandRelevance(b, fullTerm, tokens) })
+                .Where(x => x.score > 0)
+                .OrderByDescending(x => x.score)
                 .Take(10)
+                .Select(x => new
+                {
+                    id = x.brand.Id,
+                    name = x.brand.Name,
+                    image = x.brand.Image,
+                    type = "brand",
+                    relevanceScore = x.score
+                })
                 .ToList();
 
             var relevantWatches = watches
-                .Where(w => CalculateWatchRelevance(w, searchTerm) > 0)
-                .Select(w => new
-                {
-                    id = w.Id,
-                    name = w.Name,
-                    currentPrice = w.CurrentPrice,
-                    image = w.Image,
-                    brand = new { id = w.Brand.Id, name = w.Brand.Name },
-                    collection = w.Collection != null ? new { id = w.Collection.Id, name = w.Collection.Name } : null,
-                    type = "watch",
-                    relevanceScore = CalculateWatchRelevance(w, searchTerm)
-                })
-                .OrderByDescending(w => w.relevanceScore)
+                .Select(w => new { watch = w, score = CalculateWatchRelevance(w, fullTerm, tokens) })
+                .Where(x => x.score > 0)
+                .OrderByDescending(x => x.score)
                 .Take(20)
+                .Select(x => new
+                {
+                    id = x.watch.Id,
+                    name = x.watch.Name,
+                    currentPrice = x.watch.CurrentPrice,
+                    image = x.watch.Image,
+                    brand = new { id = x.watch.Brand.Id, name = x.watch.Brand.Name },
+                    collection = x.watch.Collection != null
+                        ? new { id = x.watch.Collection.Id, name = x.watch.Collection.Name }
+                        : null,
+                    type = "watch",
+                    relevanceScore = x.score
+                })
                 .ToList();
 
             var relevantCollections = collections
-                .Where(c => CalculateCollectionRelevance(c, searchTerm) > 0)
-                .Select(c => new
-                {
-                    id = c.Id,
-                    name = c.Name,
-                    image = c.Image,
-                    brand = new { id = c.Brand.Id, name = c.Brand.Name },
-                    type = "collection",
-                    relevanceScore = CalculateCollectionRelevance(c, searchTerm)
-                })
-                .OrderByDescending(c => c.relevanceScore)
+                .Select(c => new { collection = c, score = CalculateCollectionRelevance(c, fullTerm, tokens) })
+                .Where(x => x.score > 0)
+                .OrderByDescending(x => x.score)
                 .Take(10)
+                .Select(x => new
+                {
+                    id = x.collection.Id,
+                    name = x.collection.Name,
+                    image = x.collection.Image,
+                    brand = new { id = x.collection.Brand.Id, name = x.collection.Brand.Name },
+                    type = "collection",
+                    relevanceScore = x.score
+                })
                 .ToList();
 
-            var totalResults = relevantBrands.Count() + relevantWatches.Count() + relevantCollections.Count();
-
-            // Generate suggestions
-            var suggestions = GenerateSuggestions(searchTerm, brands, watches, collections);
+            var totalResults = relevantBrands.Count + relevantWatches.Count + relevantCollections.Count;
+            var suggestions = GenerateSuggestions(tokens, brands, watches, collections);
 
             return Ok(new
             {
@@ -119,105 +125,140 @@ public class SearchController : ControllerBase
         }
     }
 
-    // Calculate relevance score for brands (highest priority)
-    private double CalculateBrandRelevance(Brand brand, string searchTerm)
+    // Score one pre-lowercased field against one token. Returns 0 if no match.
+    private static double ScoreField(string field, string token)
     {
-        var score = 0.0;
-        var term = searchTerm.ToLower();
+        if (string.IsNullOrEmpty(field)) return 0;
+        if (field == token) return 400;
+        if (field.StartsWith(token)) return 200;
+        if (field.Contains(token)) return 100;
+        if (FuzzyWordMatch(field, token)) return 25; // typo tolerance fallback
+        return 0;
+    }
+
+    private static double CalculateBrandRelevance(Brand brand, string fullTerm, string[] tokens)
+    {
         var brandName = brand.Name.ToLower();
+        double score = 0;
 
-        // Exact match gets highest score
-        if (brandName == term) score += 1000;
-        
-        // Starts with search term (very high priority)
-        if (brandName.StartsWith(term)) score += 500;
-        
-        // Contains search term
-        if (brandName.Contains(term)) score += 200;
-        
-        // Word boundary match
-        if (Regex.IsMatch(brandName, $@"\b{term}")) score += 150;
+        // Full-phrase bonus
+        if (brandName == fullTerm) score += 1000;
+        else if (brandName.Contains(fullTerm)) score += 300;
+
+        // Individual token scoring
+        foreach (var token in tokens)
+            score += ScoreField(brandName, token) * 0.8;
 
         return score;
     }
 
-    // Calculate relevance score for watches
-    private double CalculateWatchRelevance(Watch watch, string searchTerm)
+    private static double CalculateWatchRelevance(Watch watch, string fullTerm, string[] tokens)
     {
-        var score = 0.0;
-        var term = searchTerm.ToLower();
-        var watchName = watch.Name.ToLower();
         var brandName = watch.Brand.Name.ToLower();
+        var watchName = watch.Name.ToLower();
+        var description = watch.Description?.ToLower() ?? "";
+        var specs = watch.Specs?.ToLower() ?? "";
 
-        // Brand name matches (high priority)
-        if (brandName == term) score += 800;
-        if (brandName.StartsWith(term)) score += 400;
-        if (brandName.Contains(term)) score += 200;
+        // Combined field used for all-tokens bonus check
+        var combined = $"{brandName} {watchName} {description} {specs}";
 
-        // Watch name matches
-        if (watchName == term) score += 600;
-        if (watchName.StartsWith(term)) score += 300;
-        if (watchName.Contains(term)) score += 100;
+        double score = 0;
 
-        // Description matches
-        if (watch.Description != null && watch.Description.ToLower().Contains(term))
-            score += 50;
+        // Full-phrase bonus
+        if (combined.Contains(fullTerm)) score += 200;
 
-        // Specs matches
-        if (watch.Specs != null && watch.Specs.ToLower().Contains(term))
-            score += 30;
+        // Per-token scoring across all fields with field-importance weighting
+        foreach (var token in tokens)
+        {
+            score += ScoreField(brandName, token) * 0.9;    // brand name
+            score += ScoreField(watchName, token);           // reference number / watch name
+            score += ScoreField(description, token) * 0.5;  // brand subtitle
+            score += ScoreField(specs, token) * 0.4;        // specs JSON (dial, case, movement, strap)
+        }
+
+        // Strong query-intent signal: all tokens appear somewhere in this watch's data
+        if (tokens.Length > 1 && tokens.All(t => combined.Contains(t) || FuzzyWordMatch(combined, t)))
+            score *= 1.5;
 
         return score;
     }
 
-    // Calculate relevance score for collections
-    private double CalculateCollectionRelevance(Collection collection, string searchTerm)
+    private static double CalculateCollectionRelevance(Collection collection, string fullTerm, string[] tokens)
     {
-        var score = 0.0;
-        var term = searchTerm.ToLower();
         var collectionName = collection.Name.ToLower();
         var brandName = collection.Brand.Name.ToLower();
+        var combined = $"{brandName} {collectionName}";
+        double score = 0;
 
-        // Brand name matches
-        if (brandName == term) score += 600;
-        if (brandName.StartsWith(term)) score += 300;
-        if (brandName.Contains(term)) score += 150;
+        if (combined == fullTerm) score += 1000;
+        else if (combined.Contains(fullTerm)) score += 300;
 
-        // Collection name matches
-        if (collectionName == term) score += 500;
-        if (collectionName.StartsWith(term)) score += 250;
-        if (collectionName.Contains(term)) score += 100;
+        foreach (var token in tokens)
+        {
+            score += ScoreField(brandName, token) * 0.7;
+            score += ScoreField(collectionName, token);
+        }
+
+        if (tokens.Length > 1 && tokens.All(t => combined.Contains(t) || FuzzyWordMatch(combined, t)))
+            score *= 1.5;
 
         return score;
     }
 
-    // Generate search suggestions
-    private List<string> GenerateSuggestions(string searchTerm, List<Brand> brands, List<Watch> watches, List<Collection> collections)
+    // Approximate match: checks if any word in `text` is within edit distance of `token`.
+    // Handles typos like "perpetuel" → "perpetual", "patik" → "patek".
+    private static bool FuzzyWordMatch(string text, string token)
+    {
+        if (token.Length < 4) return false;
+        int maxDistance = token.Length >= 7 ? 2 : 1;
+
+        // Split on non-alphanumeric chars to cleanly tokenize JSON strings in specs
+        var words = Regex.Split(text, @"\W+").Where(w => w.Length > 0);
+        return words.Any(word =>
+            Math.Abs(word.Length - token.Length) <= maxDistance &&
+            LevenshteinDistance(word, token) <= maxDistance);
+    }
+
+    // Standard dynamic-programming Levenshtein distance
+    private static int LevenshteinDistance(string s, string t)
+    {
+        if (s.Length == 0) return t.Length;
+        if (t.Length == 0) return s.Length;
+
+        var d = new int[s.Length + 1, t.Length + 1];
+        for (int i = 0; i <= s.Length; i++) d[i, 0] = i;
+        for (int j = 0; j <= t.Length; j++) d[0, j] = j;
+
+        for (int i = 1; i <= s.Length; i++)
+            for (int j = 1; j <= t.Length; j++)
+                d[i, j] = Math.Min(
+                    Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1),
+                    d[i - 1, j - 1] + (s[i - 1] == t[j - 1] ? 0 : 1));
+
+        return d[s.Length, t.Length];
+    }
+
+    // Suggest brands, collections, and watch descriptions matching any token
+    private static List<string> GenerateSuggestions(string[] tokens, List<Brand> brands, List<Watch> watches, List<Collection> collections)
     {
         var suggestions = new List<string>();
-        var term = searchTerm.ToLower();
 
-        // Add brand suggestions
-        var brandSuggestions = brands
-            .Where(b => b.Name.ToLower().Contains(term))
+        suggestions.AddRange(brands
+            .Where(b => tokens.Any(t => b.Name.ToLower().Contains(t) || FuzzyWordMatch(b.Name.ToLower(), t)))
             .Take(3)
-            .Select(b => b.Name);
-        suggestions.AddRange(brandSuggestions);
+            .Select(b => b.Name));
 
-        // Add watch suggestions
-        var watchSuggestions = watches
-            .Where(w => w.Name.ToLower().Contains(term))
+        suggestions.AddRange(collections
+            .Where(c => tokens.Any(t => c.Name.ToLower().Contains(t) || FuzzyWordMatch(c.Name.ToLower(), t)))
             .Take(3)
-            .Select(w => w.Name);
-        suggestions.AddRange(watchSuggestions);
+            .Select(c => c.Name));
 
-        // Add collection suggestions
-        var collectionSuggestions = collections
-            .Where(c => c.Name.ToLower().Contains(term))
+        suggestions.AddRange(watches
+            .Where(w => !string.IsNullOrEmpty(w.Description) &&
+                        tokens.Any(t => w.Description!.ToLower().Contains(t) || FuzzyWordMatch(w.Description!.ToLower(), t)))
             .Take(2)
-            .Select(c => c.Name);
-        suggestions.AddRange(collectionSuggestions);
+            .Select(w => w.Description!));
 
         return suggestions.Distinct().Take(5).ToList();
     }
-} 
+}
