@@ -134,7 +134,7 @@ const WatchDetailPage = () => {
     const specSections = structuredSpecs ? buildSpecSections(structuredSpecs) : [];
 
     return (
-        <div className="container mx-auto px-4 sm:px-8 py-8 pt-28 text-white">
+        <div className="container mx-auto px-4 sm:px-8 py-8 pt-28 pb-28 text-white">
             {/* Back Navigation Button */}
             <div className="mb-8">
                 <button
