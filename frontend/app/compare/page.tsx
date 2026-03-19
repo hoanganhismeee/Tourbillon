@@ -1,5 +1,5 @@
 // Side-by-side watch comparison page
-// Editorial layout with sectioned spec tables and difference highlighting
+// Editorial layout: label spacer column with balance icon + Playfair numeral anchor
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -13,6 +13,44 @@ import { parseStructuredSpecs, getAllLabelsForSection } from '@/lib/specs';
 const sectionKeys = ['case', 'dial', 'movement', 'strap'] as const;
 const sectionTitles: Record<string, string> = { case: 'Case', dial: 'Dial', movement: 'Movement', strap: 'Strap' };
 
+// Editorial spacer — occupies the label column in the watch card header row
+const EditorialSpacer = ({ count }: { count: number }) => (
+  <div className="flex flex-col items-center justify-center h-full py-6 select-none">
+    {/* Fading rule — top */}
+    <div className="w-px flex-1 bg-gradient-to-b from-transparent to-[#f0e6d2]/20" />
+
+    {/* Scale / balance icon */}
+    <svg
+      width="22" height="22" viewBox="0 0 24 24" fill="none"
+      stroke="#c9a96e" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"
+      className="my-3 opacity-70"
+    >
+      <path d="M12 3v18" />
+      <path d="M3 7h18" />
+      <path d="M6 7l-3 9a5 5 0 0 0 6 0L6 7" />
+      <path d="M18 7l-3 9a5 5 0 0 0 6 0L18 7" />
+    </svg>
+
+    {/* Watch count */}
+    <div className="flex flex-col items-center leading-none">
+      <span className="font-playfair text-5xl font-normal italic text-[#f0e6d2]/60 tracking-wide">
+        {count}
+      </span>
+    </div>
+
+    {/* Fading rule — bottom */}
+    <div className="w-px flex-1 bg-gradient-to-t from-transparent to-[#f0e6d2]/20 mt-3" />
+
+    {/* Rotated label */}
+    <span
+      className="font-inter text-[9px] font-semibold tracking-[0.35em] text-[#f0e6d2]/30 uppercase mt-4"
+      style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+    >
+      compare
+    </span>
+  </div>
+);
+
 const ComparePage = () => {
   const { compareWatches, removeFromCompare, clearCompare } = useCompare();
   const [showDifferencesOnly, setShowDifferencesOnly] = useState(false);
@@ -20,12 +58,10 @@ const ComparePage = () => {
 
   const watchCount = compareWatches.length;
 
-  // Parse specs for all watches
   const parsedSpecs = useMemo(() => {
     return compareWatches.map(w => parseStructuredSpecs(w.specs));
   }, [compareWatches]);
 
-  // Build comparison rows per section
   const sections = useMemo(() => {
     return sectionKeys.map(sectionKey => {
       const labels = getAllLabelsForSection(sectionKey);
@@ -42,9 +78,7 @@ const ComparePage = () => {
         });
 
         const hasAnyValue = values.some(v => v !== null);
-        // Treat null vs non-null as a difference (e.g., "9.95 mm" vs missing)
         const isDifferent = hasAnyValue && !values.every(v => v === values[0]);
-
         return { label, values, isDifferent, hasAnyValue };
       });
 
@@ -53,13 +87,14 @@ const ComparePage = () => {
     }).filter(s => s.rows.length > 0);
   }, [parsedSpecs]);
 
-  // Empty state
+  // Grid template: label/spacer column + one column per watch
+  const colTemplate = `minmax(140px, 180px) repeat(${watchCount}, 1fr)`;
+
   if (watchCount === 0) {
     return (
       <div className="container mx-auto px-8 py-24 pt-48 max-w-5xl text-center">
         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-white/20 mb-6">
-          <path d="M12 3v18" />
-          <path d="M3 7h18" />
+          <path d="M12 3v18" /><path d="M3 7h18" />
           <path d="M6 7l-3 9a5 5 0 0 0 6 0L6 7" />
           <path d="M18 7l-3 9a5 5 0 0 0 6 0L18 7" />
         </svg>
@@ -72,7 +107,6 @@ const ComparePage = () => {
     );
   }
 
-  // Need at least 2 to compare
   if (watchCount === 1) {
     return (
       <div className="container mx-auto px-8 py-24 pt-48 max-w-5xl text-center">
@@ -85,13 +119,11 @@ const ComparePage = () => {
     );
   }
 
-  // Column width for spec table: label column + equal watch columns
-  const colTemplate = `minmax(140px, 180px) repeat(${watchCount}, 1fr)`;
-
   return (
-    <div className="container mx-auto px-4 sm:px-8 py-24 pt-48 max-w-6xl">
+    <div className="container mx-auto px-4 sm:px-8 py-8 pt-20 max-w-6xl">
+
       {/* Back button */}
-      <div className="mb-8">
+      <div className="mb-5">
         <button
           onClick={() => router.back()}
           className="inline-flex items-center text-white/60 hover:text-white transition-colors duration-300 text-lg font-playfair font-medium"
@@ -103,61 +135,90 @@ const ComparePage = () => {
         </button>
       </div>
 
-      {/* Page title + controls */}
-      <div className="flex items-center justify-between mb-10">
+      {/* Page title + Clear all */}
+      <div className="flex items-center justify-between mb-8">
         <h1 className="text-4xl font-playfair font-bold text-[#f0e6d2]">Compare Watches</h1>
         <button
           onClick={() => { clearCompare(); router.push('/watches'); }}
-          className="text-sm text-white/40 hover:text-white/70 transition-colors font-inter"
+          className="text-base text-white/40 hover:text-white/70 transition-colors font-inter"
         >
           Clear all
         </button>
       </div>
 
-      {/* Watch header cards */}
+      {/* Watch header cards — same grid as spec table so columns align */}
       <div className="pb-6">
-        <div className={`grid gap-4 ${watchCount === 2 ? 'grid-cols-2' : watchCount === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
-          {compareWatches.map((watch) => (
-            <div key={watch.id} className="relative bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-5 text-center group">
-              {/* Remove button */}
-              <button
-                onClick={() => removeFromCompare(watch.id)}
-                className="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/20"
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M1 1l8 8M9 1l-8 8" />
-                </svg>
-              </button>
+        <div className="grid gap-4" style={{ gridTemplateColumns: colTemplate }}>
+          {/* Editorial spacer occupies the label column */}
+          <EditorialSpacer count={watchCount} />
 
-              {/* Watch image */}
-              <Link href={`/watches/${watch.id}`}>
-                <div className="w-28 h-28 mx-auto bg-black/30 rounded-xl mb-3 overflow-hidden border border-white/5">
-                  {watch.image ? (
-                    <Image
-                      src={watch.imageUrl || imageTransformations.card(watch.image)}
-                      alt={watch.name}
-                      width={200}
-                      height={200}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-white/30 text-[10px] font-inter p-2">
-                      {watch.name}
-                    </div>
-                  )}
-                </div>
-              </Link>
+          {compareWatches.map((watch, idx) => {
+            const specs = parsedSpecs[idx];
+            const diameter = specs?.case?.diameter ? String(specs.case.diameter) : null;
+            const movementType = specs?.movement?.type ? String(specs.movement.type) : null;
+            const powerReserve = specs?.movement?.powerReserve ? String(specs.movement.powerReserve) : null;
+            const pills = [diameter, movementType, powerReserve].filter(Boolean) as string[];
 
-              {/* Watch info */}
-              <Link href={`/watches/${watch.id}`} className="hover:text-white transition-colors">
-                <h3 className="text-sm font-playfair font-semibold text-[#f0e6d2] mb-1 line-clamp-1">{watch.name}</h3>
-              </Link>
-              <p className="text-[11px] text-white/40 font-inter mb-2 line-clamp-1">{watch.description}</p>
-              <p className="text-base font-inter font-semibold text-white">
-                {watch.currentPrice === 0 ? 'Price on Request' : `$${watch.currentPrice.toLocaleString()}`}
-              </p>
-            </div>
-          ))}
+            return (
+              <div key={watch.id} className="relative bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-5 text-center group">
+                {/* Remove button */}
+                <button
+                  onClick={() => removeFromCompare(watch.id)}
+                  className="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/20"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M1 1l8 8M9 1l-8 8" />
+                  </svg>
+                </button>
+
+                {/* Watch image */}
+                <Link href={`/watches/${watch.id}`}>
+                  <div className="w-36 h-36 mx-auto bg-black/30 rounded-xl mb-3 overflow-hidden border border-white/5">
+                    {watch.image ? (
+                      <Image
+                        src={watch.imageUrl || imageTransformations.card(watch.image)}
+                        alt={watch.name}
+                        width={200}
+                        height={200}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white/30 text-[10px] font-inter p-2">
+                        {watch.name}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+
+                {/* Watch name */}
+                <Link href={`/watches/${watch.id}`} className="hover:text-white transition-colors">
+                  <h3 className="text-sm font-playfair font-semibold text-[#f0e6d2] mb-1 line-clamp-2">{watch.name}</h3>
+                </Link>
+
+                {/* Description */}
+                <p className="text-[11px] text-white/40 font-inter mb-3 line-clamp-2">{watch.description}</p>
+
+                {/* Spec pills */}
+                {pills.length > 0 && (
+                  <div className="flex flex-wrap justify-center gap-1.5 mb-3">
+                    {pills.map((pill) => (
+                      <span
+                        key={pill}
+                        className="px-2.5 py-0.5 rounded-full text-[10px] font-inter text-white/60 border border-white/10 bg-white/5"
+                      >
+                        {pill}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Price */}
+                <p className="text-base font-inter font-semibold text-white">
+                  {watch.currentPrice === 0 ? 'Price on Request' : `$${watch.currentPrice.toLocaleString()}`}
+                </p>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -182,7 +243,6 @@ const ComparePage = () => {
 
       {/* Spec comparison sections */}
       <div className="space-y-8">
-        {/* Production status — shown first */}
         {parsedSpecs.some(s => s?.productionStatus) && (
           <div>
             <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f0e6d2]/50 mb-3 font-inter">Status</h2>
@@ -218,12 +278,9 @@ const ComparePage = () => {
                     className={`grid items-stretch ${rowIdx > 0 ? 'border-t border-white/5' : ''}`}
                     style={{ gridTemplateColumns: colTemplate }}
                   >
-                    {/* Label cell */}
                     <div className="px-4 py-3 text-sm text-white/40 font-inter flex items-center bg-white/[0.02]">
                       {row.label}
                     </div>
-
-                    {/* Value cells */}
                     {row.values.map((value, colIdx) => (
                       <div
                         key={colIdx}
