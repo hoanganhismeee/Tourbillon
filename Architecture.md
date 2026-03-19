@@ -161,6 +161,48 @@ Email: `TestEmailDto`
 
 ---
 
+## AI Service (Python Flask)
+
+Entry point: `ai-service/app.py` (currently a stub — placeholder for Phase 2+)
+
+```
+Frontend (Next.js — Vercel)
+    ↓
+Backend (.NET 8 API — EC2)
+    ↓
+AI Service (Python / Flask — same EC2 instance)
+    ↓
+Claude Haiku API (production) / Ollama Qwen 2.5 7B (local)
+```
+
+External services: PostgreSQL (RDS or EC2-hosted) · Amazon S3 + CloudFront (images) · Anthropic API
+
+**Architecture rule:** All prompt construction and response parsing lives here. The .NET backend sends and receives structured data only — no prompt strings in C#. This isolates all AI concerns to one layer.
+
+**Environment switching — single env var, no code change:**
+
+```python
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
+LLM_API_KEY  = os.getenv("LLM_API_KEY",  "ollama")
+LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
+```
+
+Local defaults point to Ollama. Set these in `.env` (or the Docker Compose `environment` block) to switch to production without touching code.
+
+**Scope (when built out):** AI Watch Finder intent parsing + ranking, Compare Mode explanations, Story-first content generation, Chat Assistant, Discovery Page editorial generation, Watch DNA taste profiling.
+
+**Response parsing — defensive layer:** Both Haiku and Qwen can add conversational filler before JSON output. The AI service strips preamble and validates schema before returning to the backend. On parse failure it retries once with a stricter prompt; on second failure it returns a structured error so the backend falls back to standard search.
+
+```python
+def parse_llm_json(raw: str) -> dict:
+    match = re.search(r'[\[{]', raw)
+    if not match:
+        raise ValueError("No JSON found in response")
+    return json.loads(raw[match.start():])
+```
+
+---
+
 ## Scraping Pipeline (temporary — for initial data collection only)
 
 3 strategies:
@@ -297,6 +339,17 @@ Once all brands are scraped, the scraping services (`SitemapScraperService`, `Cl
 | **5. AI Service** | Build out `ai-service/` | All LLM calls consolidated into Python service. Chatbot endpoint | `ClaudeApiService.cs` in backend |
 | **6. Kubernetes** | Orchestrate containers | Backend + AI + Redis pods, scaling, health checks, rolling deploys | Docker Compose / manual |
 | **7. Terraform** | Infrastructure as Code | All cloud resources (K8s, S3, CloudFront, RDS, Redis, networking) | Manual cloud console setup |
+
+### Design Decisions
+
+| Decision | Rationale |
+|---|---|
+| Single model (Haiku) in production | All Tourbillon AI tasks are short-input, short-output. No routing layer needed. |
+| Qwen 2.5 7B locally, not a stronger model | Weaker model exposes prompt edge cases. Prompts that survive 7B are robust everywhere. |
+| Cache checked before quota | Cache hits cost nothing. Penalising them with quota wastes user allowance. |
+| Pre-generate static AI content | Story pages and Discovery pages generated once, stored in DB. Zero runtime cost, zero latency. |
+| Backend owns all logic | SQL handles filtering, sorting, scoring. AI called only for NLU and explanation. |
+| Defensive parsing in Python | AI service strips preamble, validates JSON schema, retries on parse failure. Never trust raw LLM output. |
 
 ### Key Decisions Still Open
 
