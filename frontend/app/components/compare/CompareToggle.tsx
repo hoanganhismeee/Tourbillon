@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { Watch } from '@/lib/api';
-import { useCompare } from '@/contexts/CompareContext';
+import { useCompare, MAX_COMPARE_COUNT } from '@/stores/compareStore';
 
 interface CompareToggleProps {
   watch: Watch;
@@ -13,9 +13,9 @@ interface CompareToggleProps {
 }
 
 const CompareToggle = ({ watch, variant = 'icon', className = '' }: CompareToggleProps) => {
-  const { addToCompare, removeFromCompare, isInCompare, isFull } = useCompare();
+  const { addToCompare, removeFromCompare, isInCompare, compareWatches } = useCompare();
   const active = isInCompare(watch.id);
-  const disabled = !active && isFull;
+  const disabled = !active && compareWatches.length >= MAX_COMPARE_COUNT;
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();

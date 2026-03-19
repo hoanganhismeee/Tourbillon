@@ -7,10 +7,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Watch, Brand, Collection, fetchWatchById, fetchBrands, fetchCollections } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { fetchWatchById, fetchBrands, fetchCollections } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
-import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import { parseStructuredSpecs, parseFlatSpecs, buildSpecSections } from '@/lib/specs';
 import CompareToggle from '../../components/compare/CompareToggle';
 import WristFitWidget from '../../components/wristfit/WristFitWidget';
@@ -22,79 +22,63 @@ const WatchDetailPage = () => {
     const params = useParams();
     const router = useRouter();
     const watchId = params.watchId as string;
-    const [watch, setWatch] = useState<Watch | null>(null);
-    const [brands, setBrands] = useState<Brand[]>([]);
-    const [collections, setCollections] = useState<Collection[]>([]);
-    const [error, setError] = useState<string | null>(null);
+    const numericWatchId = watchId ? parseInt(watchId, 10) : NaN;
+
     const [imageError, setImageError] = useState(false);
     const [imageLoading, setImageLoading] = useState(true);
     const [imgSrc, setImgSrc] = useState<string | null>(null);
     const [retryCount, setRetryCount] = useState<number>(0);
 
-    // Get navigation context for back functionality
-    const { navigationState, clearNavigationState } = useNavigation();
-    // Get setCurrentPage from watches page context
-    const { setCurrentPage } = useWatchesPage();
+    const { navigationState } = useNavigation();
+
+    const { data: watch, isLoading, error } = useQuery({
+        queryKey: ['watch', numericWatchId],
+        queryFn: () => fetchWatchById(numericWatchId),
+        enabled: !isNaN(numericWatchId),
+    });
+
+    const { data: brands = [] } = useQuery({
+        queryKey: ['brands'],
+        queryFn: fetchBrands,
+    });
+
+    const { data: collections = [] } = useQuery({
+        queryKey: ['collections'],
+        queryFn: fetchCollections,
+    });
+
+    // Sync image source when watch data arrives (or changes)
+    useEffect(() => {
+        if (watch?.imageUrl) setImgSrc(watch.imageUrl);
+    }, [watch?.imageUrl]);
 
     // Handle back navigation with position restoration
     const handleBackClick = () => {
         if (navigationState) {
-            // Navigate back to the saved path
-            router.push(navigationState.path);
-
-            // Use setTimeout to ensure navigation completes before restoring state
+            // Brief fade-out makes the departure feel intentional rather than abrupt.
+            // Navigate after the fade so the listing page renders while invisible.
+            document.body.style.transition = 'opacity 0.18s ease-in';
+            document.body.style.opacity = '0';
+            // Safety: always restore visibility after 2 s in case restoration fails
             setTimeout(() => {
-                // Restore the page number
-                setCurrentPage(navigationState.currentPage);
-
-                // Restore scroll position
-                window.scrollTo(0, navigationState.scrollPosition);
-
-                // Clear the navigation state after successful restoration
-                clearNavigationState();
-            }, 100);
+                document.body.style.transition = 'opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1)';
+                document.body.style.opacity = '1';
+            }, 2000);
+            const pageParam = navigationState.currentPage > 1 ? `?page=${navigationState.currentPage}` : '';
+            setTimeout(() => {
+                router.push(`${navigationState.path}${pageParam}`, { scroll: false });
+            }, 160);
         } else {
-            // Fallback: go back to watches page
             router.push('/watches');
         }
     };
-
-    useEffect(() => {
-        if (watchId) {
-            const getWatchDetails = async () => {
-                try {
-                    const numericWatchId = parseInt(watchId, 10);
-                    if (isNaN(numericWatchId)) {
-                        setError('Invalid watch ID.');
-                        return;
-                    }
-                    // Fetch watch, brands, and collections in parallel
-                    const [data, brandsData, collectionsData] = await Promise.all([
-                        fetchWatchById(numericWatchId),
-                        fetchBrands(),
-                        fetchCollections()
-                    ]);
-                    setWatch(data);
-                    setBrands(brandsData || []);
-                    setCollections(collectionsData || []);
-                    if (data?.imageUrl) {
-                        setImgSrc(data.imageUrl);
-                    }
-                } catch (err) {
-                    setError('Failed to fetch watch details. Please try again later.');
-                    console.error(err);
-                }
-            };
-            getWatchDetails();
-        }
-    }, [watchId]);
 
     const handleImageError = () => {
         // One-time retry with explicit JPG and cache-busting to mitigate transient failures
         if (watch && retryCount < 1) {
             setRetryCount(1);
             const fallback = (watch.imageUrl || imageTransformations.detail(watch.image)) + `?r=${Date.now()}`;
-            setImgSrc(fallback.replace('/f_auto', '/f_jpg')); // coarse switch to JPG if URL contains f_auto
+            setImgSrc(fallback.replace('/f_auto', '/f_jpg'));
             return;
         }
         setImageError(true);
@@ -104,6 +88,17 @@ const WatchDetailPage = () => {
     const handleImageLoad = () => {
         setImageLoading(false);
     };
+
+    if (isNaN(numericWatchId)) {
+        return (
+            <div className="flex justify-center items-center min-h-screen">
+                <div className="text-center">
+                    <h2 className="text-2xl font-playfair font-bold text-red-400 mb-2">Invalid Watch</h2>
+                    <p className="text-white/60">The watch ID in the URL is not valid.</p>
+                </div>
+            </div>
+        );
+    }
 
     if (error) {
         return (
@@ -115,13 +110,13 @@ const WatchDetailPage = () => {
                         </svg>
                     </div>
                     <h2 className="text-2xl font-playfair font-bold text-red-400 mb-2">Error Loading Watch</h2>
-                    <p className="text-white/60">{error}</p>
+                    <p className="text-white/60">Failed to fetch watch details. Please try again later.</p>
                 </div>
             </div>
         );
     }
 
-    if (!watch) {
+    if (isLoading || !watch) {
         return (
             <div className="flex justify-center items-center min-h-screen">
                 <div className="text-center">
@@ -137,7 +132,7 @@ const WatchDetailPage = () => {
     const specSections = structuredSpecs ? buildSpecSections(structuredSpecs) : [];
 
     return (
-        <div className="container mx-auto px-4 sm:px-8 py-24 pt-48 text-white">
+        <div className="container mx-auto px-4 sm:px-8 py-8 pt-28 text-white">
             {/* Back Navigation Button */}
             <div className="mb-8">
                 <button
@@ -155,18 +150,14 @@ const WatchDetailPage = () => {
                 {/* Left Column: Watch Image */}
                 <div className="flex justify-center items-start">
                     <div className="sticky top-32 w-full max-w-md bg-black/20 p-8 rounded-xl border border-white/10">
-                        {/* Watch Image with Error Handling */}
                         <div className="aspect-square bg-white/5 flex items-center justify-center rounded-lg relative overflow-hidden">
                             {watch.image && !imageError ? (
                                 <>
-                                    {/* Loading state */}
                                     {imageLoading && (
                                         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white/30"></div>
                                         </div>
                                     )}
-
-                                    {/* Actual image with Cloudinary optimization */}
                                     <Image
                                       src={imgSrc || watch.imageUrl || imageTransformations.detail(watch.image)}
                                       alt={watch.name}
@@ -182,7 +173,6 @@ const WatchDetailPage = () => {
                                     />
                                 </>
                             ) : (
-                                /* Fallback when no image or image failed to load */
                                 <div className="flex flex-col items-center justify-center text-center p-8">
                                     <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-4">
                                         <svg className="w-10 h-10 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">                                        </svg>
@@ -228,7 +218,6 @@ const WatchDetailPage = () => {
                             {watch.currentPrice > 0 ? `$${watch.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Price on request'}
                         </span>
                         <p className="text-sm text-white/50 mt-1">Price subject to market changes</p>
-                        {/* Production status badge */}
                         {structuredSpecs?.productionStatus && (
                             <span className={`inline-block mt-2 px-3 py-1 text-xs font-medium rounded-full border ${
                                 structuredSpecs.productionStatus === 'Discontinued'

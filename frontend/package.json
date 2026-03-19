@@ -13,12 +13,17 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
+    "@tanstack/query-sync-storage-persister": "^5.90.25",
+    "@tanstack/react-query": "^5.91.0",
+    "@tanstack/react-query-devtools": "^5.91.3",
+    "@tanstack/react-query-persist-client": "^5.90.25",
     "framer-motion": "^12.23.9",
     "intersection-observer": "^0.12.2",
     "next": "15.3.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-intersection-observer": "^9.16.0"
+    "react-intersection-observer": "^9.16.0",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

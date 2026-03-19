@@ -2,10 +2,10 @@
 // It sets up the global fonts, structure, and the navigation bar.
 import type { Metadata } from "next";
 import { Playfair_Display, Inter } from "next/font/google";
+import { QueryProvider } from "@/providers/QueryProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { WatchesPageProvider } from "@/contexts/WatchesPageContext";
 import { NavigationProvider } from "@/contexts/NavigationContext";
-import { CompareProvider } from "@/contexts/CompareContext";
 import { CursorProvider } from "@/contexts/CursorContext";
 import "./globals.css";
 import NavBar from "./components/layout/NavBar";
@@ -50,10 +50,10 @@ export default function RootLayout({
         suppressHydrationWarning={true}
         style={{ scrollBehavior: 'auto' }}
       >
-        <AuthProvider>
-          <WatchesPageProvider>
-            <NavigationProvider>
-              <CompareProvider>
+        <QueryProvider>
+          <AuthProvider>
+            <WatchesPageProvider>
+              <NavigationProvider>
                 <CursorProvider>
                   <NavBar />
                   <AnimatedLayout>
@@ -63,20 +63,13 @@ export default function RootLayout({
                   <CursorSelector />
                   <CustomCursor />
                 </CursorProvider>
-              </CompareProvider>
-            </NavigationProvider>
-          </WatchesPageProvider>
-        </AuthProvider>
+              </NavigationProvider>
+            </WatchesPageProvider>
+          </AuthProvider>
+        </QueryProvider>
         <script
           dangerouslySetInnerHTML={{
-            __html: `
-              if (typeof window !== 'undefined') {
-                if ('scrollRestoration' in history) {
-                  history.scrollRestoration = 'manual';
-                }
-                window.scrollTo(0, 0);
-              }
-            `,
+            __html: `if ('scrollRestoration' in history) { history.scrollRestoration = 'auto'; }`,
           }}
         />
       </body>
