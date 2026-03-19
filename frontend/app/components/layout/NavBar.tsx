@@ -5,7 +5,6 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import { usePathname } from 'next/navigation';
 
 // Custom SVG icon components for consistent styling and easy maintenance
@@ -130,9 +129,6 @@ const UserMenu = () => {
     const [scrollY, setScrollY] = useState(0); // Current scroll position for background opacity
     const [mounted, setMounted] = useState(false); // Hydration state to prevent SSR/client mismatch
     
-    // Get resetToPageOne function from watches page context for navbar navigation
-    const { resetToPageOne } = useWatchesPage();
-
     // Set mounted state to true after component mounts (prevents hydration errors)
     useEffect(() => {
       setMounted(true);
@@ -265,7 +261,6 @@ const UserMenu = () => {
         <div className="flex items-center justify-start gap-[50px] pl-8 font-playfair font-light tracking-[0.08em] text-white uppercase">
           <Link 
             href="/watches" 
-            onClick={resetToPageOne} // Reset to page 1 when clicking Timepieces
             className="hover:opacity-10 transition-opacity"
           >
             Timepieces

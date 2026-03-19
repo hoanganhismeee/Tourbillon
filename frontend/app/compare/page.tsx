@@ -6,9 +6,10 @@ import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useCompare } from '@/contexts/CompareContext';
+import { useCompare } from '@/stores/compareStore';
 import { imageTransformations } from '@/lib/cloudinary';
 import { parseStructuredSpecs, getAllLabelsForSection } from '@/lib/specs';
+import { useNavigation } from '@/contexts/NavigationContext';
 
 const sectionKeys = ['case', 'dial', 'movement', 'strap'] as const;
 const sectionTitles: Record<string, string> = { case: 'Case', dial: 'Dial', movement: 'Movement', strap: 'Strap' };
@@ -55,6 +56,16 @@ const ComparePage = () => {
   const { compareWatches, removeFromCompare, clearCompare } = useCompare();
   const [showDifferencesOnly, setShowDifferencesOnly] = useState(false);
   const router = useRouter();
+  const { saveNavigationState } = useNavigation();
+
+  const handleWatchClick = () => {
+    saveNavigationState({
+      scrollPosition: window.scrollY,
+      currentPage: 1,
+      path: '/compare',
+      timestamp: Date.now(),
+    });
+  };
 
   const watchCount = compareWatches.length;
 
@@ -120,10 +131,10 @@ const ComparePage = () => {
   }
 
   return (
-    <div className="container mx-auto px-4 sm:px-8 py-8 pt-20 max-w-6xl">
+    <div className="container mx-auto px-4 sm:px-8 py-8 pt-28">
 
       {/* Back button */}
-      <div className="mb-5">
+      <div className="mb-8 -ml-2">
         <button
           onClick={() => router.back()}
           className="inline-flex items-center text-white/60 hover:text-white transition-colors duration-300 text-lg font-playfair font-medium"
@@ -172,7 +183,7 @@ const ComparePage = () => {
                 </button>
 
                 {/* Watch image */}
-                <Link href={`/watches/${watch.id}`}>
+                <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
                   <div className="w-36 h-36 mx-auto bg-black/30 rounded-xl mb-3 overflow-hidden border border-white/5">
                     {watch.image ? (
                       <Image
@@ -191,7 +202,7 @@ const ComparePage = () => {
                 </Link>
 
                 {/* Watch name */}
-                <Link href={`/watches/${watch.id}`} className="hover:text-white transition-colors">
+                <Link href={`/watches/${watch.id}`} onClick={handleWatchClick} className="hover:text-white transition-colors">
                   <h3 className="text-sm font-playfair font-semibold text-[#f0e6d2] mb-1 line-clamp-2">{watch.name}</h3>
                 </Link>
 

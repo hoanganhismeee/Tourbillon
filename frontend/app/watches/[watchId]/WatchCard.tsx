@@ -5,11 +5,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Watch, Collection, fetchCollectionsByBrand } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
-import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import CompareToggle from '../../components/compare/CompareToggle';
 import Image from 'next/image';
 
@@ -27,10 +26,9 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
   const [retryCount, setRetryCount] = useState<number>(0);
   const router = useRouter();
   
-  // Get navigation context for saving back state
   const { saveNavigationState } = useNavigation();
-  // Get current page from watches page context
-  const { currentPage } = useWatchesPage();
+  const searchParams = useSearchParams();
+  const currentPage = Number(searchParams.get('page') ?? '1');
 
   const handleImageError = () => {
     // Retry strategy: try 2 times with different approaches

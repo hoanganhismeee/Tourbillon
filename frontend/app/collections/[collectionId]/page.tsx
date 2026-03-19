@@ -1,77 +1,60 @@
 // Collection detail page - displays collection information and watches that belong to this collection
-// Shows collection description, brand info, and all watches that match the collection ID
-// Collection page: loads the collection, its brand, and all member watches.
-// Client-side fetching keeps things straightforward; images use Cloudinary thumbs.
-// Small, human-friendly UI touches guide the user if data is missing.
+// Data cached via TanStack Query; images use Cloudinary thumbs.
+// Brand query is dependent on collection data (uses collection.brandId).
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { fetchCollectionById, fetchWatchesByCollection, fetchBrandById, Collection, Watch, Brand } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { fetchCollectionById, fetchWatchesByCollection, fetchBrandById } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import Image from 'next/image';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import StaggeredFade from '../../scrollMotion/StaggeredFade';
 import WatchCard from '../../watches/[watchId]/WatchCard';
+import { useScrollRestore } from '@/hooks/useScrollRestore';
 
 const CollectionPage = () => {
   const params = useParams();
   const collectionId = Array.isArray(params.collectionId) ? params.collectionId[0] : params.collectionId;
+  const numericCollectionId = collectionId ? parseInt(collectionId, 10) : NaN;
 
-  const [collection, setCollection] = useState<Collection | null>(null);
-  const [watches, setWatches] = useState<Watch[]>([]);
-  const [brand, setBrand] = useState<Brand | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [imgError, setImgError] = useState(false);
 
-  useEffect(() => {
-    if (!collectionId) return;
+  const { data: collection, isLoading: collectionLoading, error } = useQuery({
+    queryKey: ['collection', numericCollectionId],
+    queryFn: () => fetchCollectionById(numericCollectionId),
+    enabled: !isNaN(numericCollectionId),
+  });
 
-    const getCollectionData = async () => {
-      try {
-        setLoading(true);
-        const numericCollectionId = parseInt(collectionId, 10);
+  const { data: watches = [], isLoading: watchesLoading } = useQuery({
+    queryKey: ['watches', 'collection', numericCollectionId],
+    queryFn: () => fetchWatchesByCollection(numericCollectionId),
+    enabled: !isNaN(numericCollectionId),
+  });
 
-        if (isNaN(numericCollectionId)) {
-          throw new Error('Invalid Collection ID');
-        }
+  useScrollRestore(watches.length > 0 || !watchesLoading);
 
-        // Fetch collection data first
-        const collectionData = await fetchCollectionById(numericCollectionId);
-        setCollection(collectionData);
+  // Brand query depends on collection being loaded first
+  const { data: brand } = useQuery({
+    queryKey: ['brand', collection?.brandId],
+    queryFn: () => fetchBrandById(collection!.brandId),
+    enabled: !!collection?.brandId,
+  });
 
-        // Then fetch watches for this collection and brand info
-        const [watchesData, brandData] = await Promise.all([
-          fetchWatchesByCollection(numericCollectionId),
-          fetchBrandById(collectionData.brandId),
-        ]);
-
-        setWatches(watchesData);
-        setBrand(brandData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    getCollectionData();
-  }, [collectionId]);
-
-  if (loading) {
+  if (collectionLoading) {
     return <div className="flex justify-center items-center min-h-screen text-white/80">Loading...</div>;
   }
 
   if (error) {
-    return <div className="flex justify-center items-center min-h-screen text-red-500">Error: {error}</div>;
+    return <div className="flex justify-center items-center min-h-screen text-red-500">Error loading collection.</div>;
   }
 
   if (!collection) {
     return <div className="flex justify-center items-center min-h-screen text-white/80">Collection not found.</div>;
   }
-  
+
   return (
     <div className="container mx-auto px-4 sm:px-8 py-24 pt-48">
       {/* Breadcrumb Navigation */}
@@ -144,4 +127,4 @@ const CollectionPage = () => {
   );
 };
 
-export default CollectionPage; 
+export default CollectionPage;

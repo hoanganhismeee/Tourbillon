@@ -4,14 +4,20 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useCompare } from '@/contexts/CompareContext';
+import { useCompare } from '@/stores/compareStore';
 import { imageTransformations } from '@/lib/cloudinary';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 
 const CompareIndicator = () => {
-  const { compareWatches, removeFromCompare, clearCompare, compareCount } = useCompare();
+  const { compareWatches, removeFromCompare, clearCompare } = useCompare();
+  const compareCount = compareWatches.length;
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Trigger Zustand localStorage rehydration after mount (skipHydration: true in store)
+  useEffect(() => {
+    useCompare.persist.rehydrate();
+  }, []);
   const panelRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
