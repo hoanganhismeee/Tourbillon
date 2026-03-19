@@ -13,6 +13,7 @@ import { useNavigation } from '@/contexts/NavigationContext';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import { parseStructuredSpecs, parseFlatSpecs, buildSpecSections } from '@/lib/specs';
 import CompareToggle from '../../components/compare/CompareToggle';
+import WristFitWidget from '../../components/wristfit/WristFitWidget';
 import Image from 'next/image';
 
 
@@ -286,6 +287,8 @@ const WatchDetailPage = () => {
                             </table>
                         </div>
                     )}
+
+                    <WristFitWidget caseSpecs={structuredSpecs?.case as Record<string, unknown> | undefined} />
                 </div>
             </div>
         </div>

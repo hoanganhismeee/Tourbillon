@@ -24,7 +24,6 @@ const caseLabels: Record<string, string> = {
   material: 'Material',
   diameter: 'Diameter',
   thickness: 'Thickness',
-  lugToLug: 'Lug to Lug',
   waterResistance: 'Water Resistance',
   crystal: 'Crystal',
   caseBack: 'Case Back',
