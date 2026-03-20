@@ -217,6 +217,31 @@ Local defaults point to Ollama. Set these in `.env` (or the Docker Compose `envi
 
 **Models loaded at startup:** `qwen2.5:7b` (LLM) + `nomic-embed-text` (embeddings). Both run in the same Ollama container.
 
+### AI Service Warm-up Strategy
+
+**Why warm-up exists:** Ollama lazy-loads models into VRAM on first request. Without pre-warming, the first user search triggers a 30–60 second model load — visible as a hanging spinner. This is a local Ollama problem only.
+
+**How it works (local dev):**
+
+```
+docker compose up
+  ├─ ai-service starts
+  │     ├─ Ollama starts, models pulled/cached in ollama_data volume
+  │     ├─ Flask starts
+  │     ├─ POST /watch-finder/parse  ← loads qwen2.5:7b into VRAM
+  │     ├─ POST /embed               ← loads nomic-embed-text into VRAM
+  │     └─ touch /tmp/ai_ready       ← sentinel file signals readiness
+  │
+  └─ backend starts only after ai-service healthcheck passes (test: -f /tmp/ai_ready)
+        └─ first user search hits warm models — no wait
+```
+
+`OLLAMA_KEEP_ALIVE: -1` keeps both models in VRAM indefinitely after the first load. On subsequent restarts (models already cached in volume), warm-up takes ~5–15 seconds (disk → VRAM), not 60.
+
+**In production (Anthropic API):** The warm-up is unnecessary. `claude-haiku-4-5` is a remote API — it responds instantly and has no load step. The sentinel file is still written (the two warm-up requests return in milliseconds), so `depends_on: service_healthy` still works and no code changes are needed.
+
+**Removing warm-up for a production-only Anthropic build:** If you ever build an image that will never use Ollama, simplify `entrypoint.sh` to just `python app.py` and replace the healthcheck with `curl -f http://localhost:5000/health`. The `depends_on: service_healthy` on the backend can stay as-is.
+
 **Scope:** AI Watch Finder intent parsing + candidate ranking + on-demand explanations + semantic embedding generation. Future: Compare Mode insights, Chat Assistant, Watch DNA taste profiling.
 
 **Response parsing — defensive layer:** Both Haiku and Qwen can add conversational filler before JSON output. The AI service strips preamble and validates schema before returning to the backend. On parse failure it retries once with a stricter prompt; on second failure it returns a structured error so the backend falls back to standard search.

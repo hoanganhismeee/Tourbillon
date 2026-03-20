@@ -34,14 +34,27 @@ ollama create "${CUSTOM_MODEL}" -f /app/Modelfile
 echo "Starting Flask..."
 python app.py &
 
-# Warmup — load model into VRAM before first real user request
-echo "Warming up model..."
+# Warmup — load BOTH models into VRAM before signalling ready.
+# /tmp/ai_ready is the sentinel Docker healthcheck waits for.
+# Without this, the backend would start serving users while models are still cold.
+echo "Warming up models..."
 until curl -sf http://localhost:5000/health > /dev/null 2>&1; do
   sleep 1
 done
+
+# Warm LLM (qwen / haiku)
 curl -sf -X POST http://localhost:5000/watch-finder/parse \
   -H "Content-Type: application/json" \
   -d '{"query":"dress watch"}' > /dev/null 2>&1
-echo "Model warm, ready."
+echo "LLM warm."
+
+# Warm embedding model (nomic-embed-text)
+curl -sf -X POST http://localhost:5000/embed \
+  -H "Content-Type: application/json" \
+  -d '{"texts":["dress watch"]}' > /dev/null 2>&1
+echo "Embed model warm."
+
+touch /tmp/ai_ready
+echo "AI service ready."
 
 wait
