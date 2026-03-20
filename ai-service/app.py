@@ -1,7 +1,8 @@
-# AI service — watch finder endpoints: intent parsing and candidate reranking
+# AI service — watch finder endpoints: intent parsing, candidate reranking, embedding generation
 import json
 import os
 import re
+import threading
 
 from flask import Flask, jsonify, request
 from openai import OpenAI
@@ -18,6 +19,42 @@ client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
 # In-memory response cache — keyed by normalised query + endpoint
 # Cleared on service restart; Redis upgrade deferred to Phase 3
 _cache: dict[str, dict] = {}
+
+# ── Model readiness ───────────────────────────────────────────────────────────
+
+# False until the LLM warmup call completes. Prevents users from racing the 60s VRAM load.
+# On Claude API (production), warmup skips immediately — no cold start.
+_model_ready = False
+
+
+# ── Warmup ───────────────────────────────────────────────────────────────────
+
+def _warmup():
+    """Fire a real LLM call on startup to load the model into VRAM before any user request.
+    On Claude API (production) the skip path fires immediately — no cold start there."""
+    global _model_ready
+    if "ollama" not in LLM_BASE_URL and "11434" not in LLM_BASE_URL:
+        _model_ready = True
+        print("Production LLM detected — skipping warmup.")
+        return
+    try:
+        # Import the parse prompt lazily (defined below) via a simple inline prompt
+        _client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
+        _client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": "dress watch"}],
+            temperature=0.1,
+            max_tokens=10,
+        )
+        _model_ready = True
+        print("Warmup complete — model ready.")
+    except Exception as e:
+        print(f"Warmup failed (proceeding anyway): {e}")
+        _model_ready = True  # don't block the service forever
+
+
+# Start warmup in background so Flask can serve /ready and /health immediately
+threading.Thread(target=_warmup, daemon=True).start()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -94,6 +131,8 @@ PARSE_STRICT_PROMPT = PARSE_SYSTEM_PROMPT + "\n\nCRITICAL: Output raw JSON only.
 @app.route("/watch-finder/parse", methods=["POST"])
 def watch_finder_parse():
     """LLM call 1 — convert plain-language query into structured intent filters."""
+    if not _model_ready:
+        return jsonify({"error": "Model warming up, please retry in a moment"}), 503
     body = request.get_json(silent=True) or {}
     query = (body.get("query") or "").strip()
     if not query:
@@ -122,17 +161,20 @@ def watch_finder_parse():
 
 # ── Rerank endpoint ───────────────────────────────────────────────────────────
 
-RERANK_SYSTEM_PROMPT = """You are a luxury watch expert. Score EVERY watch in the list 0-100 for fit with the query. 100=perfect match, 0=irrelevant.
-You MUST include one entry per watch — do not skip any. Keep explanations to one short sentence.
+RERANK_SYSTEM_PROMPT = """You are a luxury watch expert. Score EVERY watch 0-100 for fit with the query. 100=perfect match, 0=irrelevant.
+You MUST include one entry per watch — do not skip any.
 Return ONLY a JSON array with exactly as many entries as watches provided, no markdown, no preamble:
-[{"watch_id": 42, "score": 92, "explanation": "One sentence specific to this watch and the query."}]"""
+[{"watch_id": 42, "score": 92}]
+No explanation field. Include ALL watches."""
 
-RERANK_STRICT_PROMPT = RERANK_SYSTEM_PROMPT + "\n\nOutput the JSON array only. Include ALL watches. No text before or after the array."
+RERANK_STRICT_PROMPT = RERANK_SYSTEM_PROMPT + "\n\nJSON array only. Include ALL watches. No text before or after the array."
 
 
 @app.route("/watch-finder/rerank", methods=["POST"])
 def watch_finder_rerank():
-    """LLM call 2 — rerank filtered candidates and generate per-watch explanations."""
+    """LLM call 2 — score candidates by relevance (scores only, no explanations)."""
+    if not _model_ready:
+        return jsonify({"error": "Model warming up, please retry in a moment"}), 503
     body = request.get_json(silent=True) or {}
     query   = (body.get("query") or "").strip()
     watches = body.get("watches") or []
@@ -161,13 +203,13 @@ def watch_finder_rerank():
 
     user_content = f'Query: "{query}"\n\nWatches:\n{watches_text}'
 
-    # Cap at 1500 tokens — 30 watches × ~50 tokens per scored entry
+    # Cap at 600 tokens — 30 watches × ~20 tokens per scores-only entry
     try:
-        raw = call_llm(RERANK_SYSTEM_PROMPT, user_content, max_tokens=1500)
+        raw = call_llm(RERANK_SYSTEM_PROMPT, user_content, max_tokens=600)
         ranked = parse_llm_json(raw)
     except (ValueError, json.JSONDecodeError):
         try:
-            raw = call_llm(RERANK_STRICT_PROMPT, user_content, max_tokens=1500)
+            raw = call_llm(RERANK_STRICT_PROMPT, user_content, max_tokens=600)
             ranked = parse_llm_json(raw)
         except (ValueError, json.JSONDecodeError) as e:
             return jsonify({"error": f"Failed to parse LLM response: {str(e)}"}), 502
@@ -177,11 +219,55 @@ def watch_finder_rerank():
     return jsonify(result)
 
 
-# ── Health check ──────────────────────────────────────────────────────────────
+# ── On-demand explain endpoint ────────────────────────────────────────────────
+
+EXPLAIN_SYSTEM_PROMPT = "You are a luxury watch expert. In one sentence, explain exactly why this watch fits the user's query. Be specific about which features match."
+
+
+@app.route("/watch-finder/explain", methods=["POST"])
+def watch_finder_explain():
+    """On-demand single-watch explanation — only called when user clicks 'Why this?'."""
+    body = request.get_json(silent=True) or {}
+    query = (body.get("query") or "").strip()
+    watch = body.get("watch") or {}
+
+    if not query or not watch:
+        return jsonify({"error": "query and watch required"}), 400
+
+    cache_key = f"explain:{normalise(query)}:{watch.get('id', '')}"
+    if cache_key in _cache:
+        return jsonify({**_cache[cache_key], "cached": True})
+
+    price_str = f"${watch['price']:,}" if watch.get("price") else "Price on request"
+    watch_text = (
+        f"ID {watch.get('id','')} | {watch.get('brand','')} | "
+        f"{watch.get('name','')} | {price_str} | {watch.get('specs_summary','')}"
+    )
+    user_content = f'Query: "{query}"\nWatch: {watch_text}'
+
+    try:
+        explanation = call_llm(EXPLAIN_SYSTEM_PROMPT, user_content, max_tokens=100).strip()
+    except Exception as e:
+        return jsonify({"error": f"Explain failed: {str(e)}"}), 502
+
+    result = {"explanation": explanation}
+    _cache[cache_key] = result
+    return jsonify({**result, "cached": False})
+
+
+# ── Readiness + health checks ─────────────────────────────────────────────────
+
+@app.route("/ready")
+def ready():
+    """503 until model warmup completes; 200 after. Frontend polls this before allowing queries."""
+    if not _model_ready:
+        return jsonify({"ready": False, "message": "Model warming up"}), 503
+    return jsonify({"ready": True})
+
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "service": "ai-service", "model": LLM_MODEL})
+    return jsonify({"status": "ok", "service": "ai-service", "model": LLM_MODEL, "ready": _model_ready})
 
 
 if __name__ == "__main__":
