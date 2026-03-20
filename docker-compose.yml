@@ -26,6 +26,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      ai-service:
+        condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -64,6 +66,14 @@ services:
       OLLAMA_FLASH_ATTENTION: 1
       OLLAMA_KEEP_ALIVE: -1
       OLLAMA_MAX_LOADED_MODELS: 2
+    healthcheck:
+      # Sentinel file written by entrypoint.sh only after both LLM and embed models are warm.
+      # Backend depends on this — it will not start serving traffic until AI is ready.
+      test: ["CMD", "test", "-f", "/tmp/ai_ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 30        # 30 × 10s = 5-minute window for cold model pull + warmup
+      start_period: 120s # grace period before first check (model pull can take time)
 
 volumes:
   pgdata:

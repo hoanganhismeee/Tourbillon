@@ -123,9 +123,15 @@ public class WatchFinderService
         if (candidates.Count == 0) return result;
 
         // Step 4: rerank candidates via AI service
+        // Send only the top 40 by vector similarity to the LLM — beyond that, quality degrades
+        // and latency climbs linearly. The remaining candidates become OtherCandidates as-is.
+        const int RerankLimit = 40;
+        var rerankCandidates = candidates.Take(RerankLimit).ToList();
+        var unscoredCandidates = candidates.Skip(RerankLimit).ToList();
+
         try
         {
-            var payload = candidates.Select(w =>
+            var payload = rerankCandidates.Select(w =>
             {
                 var specs = DeserialiseSpecs(w.Specs);
                 return new
@@ -152,7 +158,7 @@ public class WatchFinderService
                     const int TopMatchLimit = 20;
                     const int MinScoreThreshold = 60;
 
-                    var scoredAndOrdered = candidates
+                    var scoredAndOrdered = rerankCandidates
                         .Where(w => scoreMap.ContainsKey(w.Id))
                         .OrderByDescending(w => scoreMap[w.Id].Score)
                         .ToList();
@@ -169,10 +175,11 @@ public class WatchFinderService
 
                     result.Watches = topMatches.Select(w => WatchDto.FromWatch(w)).ToList();
 
-                    // All non-top candidates — lower-scored first, then unscored
-                    result.OtherCandidates = candidates
+                    // Non-top reranked candidates (lower-scored first), then the vector-tail that was never reranked
+                    result.OtherCandidates = rerankCandidates
                         .Where(w => !topMatchIds.Contains(w.Id))
                         .OrderByDescending(w => scoreMap.ContainsKey(w.Id) ? scoreMap[w.Id].Score : -1)
+                        .Concat(unscoredCandidates)
                         .Select(w => WatchDto.FromWatch(w))
                         .ToList();
 
