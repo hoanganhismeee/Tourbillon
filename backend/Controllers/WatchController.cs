@@ -3,6 +3,7 @@
 using Microsoft.AspNetCore.Mvc;
 using backend.Database;
 using backend.Models;
+using backend.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace backend.Controllers;
@@ -12,10 +13,22 @@ namespace backend.Controllers;
 public class WatchController : ControllerBase
 {
     private readonly TourbillonContext _context;
+    private readonly WatchFinderService _watchFinderService;
 
-    public WatchController(TourbillonContext context)
+    public WatchController(TourbillonContext context, WatchFinderService watchFinderService)
     {
         _context = context;
+        _watchFinderService = watchFinderService;
+    }
+
+    [HttpPost("find")]
+    public async Task<IActionResult> FindWatches([FromBody] WatchFinderRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Query))
+            return BadRequest(new { error = "Query is required" });
+
+        var result = await _watchFinderService.FindWatchesAsync(request.Query);
+        return Ok(result);
     }
 
     [HttpGet]

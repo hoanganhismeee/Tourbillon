@@ -81,6 +81,15 @@ builder.Services.AddHttpClient<IClaudeApiService, ClaudeApiService>();
 // Register sitemap-driven scraper service (Selenium + Claude API, no per-brand XPath config needed)
 builder.Services.AddScoped<SitemapScraperService>();
 
+// Register AI Watch Finder services
+builder.Services.AddHttpClient("ai-service", c =>
+{
+    c.BaseAddress = new Uri(builder.Configuration["AiService:BaseUrl"] ?? "http://localhost:5000");
+    c.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddSingleton<WatchFilterMapper>();
+builder.Services.AddScoped<WatchFinderService>();
+
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
 {
