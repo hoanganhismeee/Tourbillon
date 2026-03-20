@@ -87,18 +87,23 @@ public class WatchEmbeddingService
         _logger.LogDebug("Embedded watch {Id} ({Name})", watchId, watch.Name);
     }
 
-    /// Generates embeddings for a list of watch IDs, processed 10 at a time.
+    /// Generates embeddings for a list of watch IDs, skipping any already fully embedded.
+    /// Called as fire-and-forget from search results — only processes watches new to the vector store.
     public async Task GenerateBulkAsync(IEnumerable<int> watchIds)
     {
-        const int BatchSize = 10;
         var ids = watchIds.ToList();
-        for (int i = 0; i < ids.Count; i += BatchSize)
+
+        // Skip watches that already have all 4 chunk types — avoids re-embedding on every search
+        var alreadyEmbedded = await _context.WatchEmbeddings
+            .Where(e => ids.Contains(e.WatchId) && e.ChunkType == "full")
+            .Select(e => e.WatchId)
+            .ToListAsync();
+        var toEmbed = ids.Except(alreadyEmbedded).ToList();
+
+        foreach (var id in toEmbed)
         {
-            foreach (var id in ids.Skip(i).Take(BatchSize))
-            {
-                try { await GenerateForWatchAsync(id); }
-                catch (Exception ex) { _logger.LogWarning("Embedding skipped for watch {Id}: {Err}", id, ex.Message); }
-            }
+            try { await GenerateForWatchAsync(id); }
+            catch (Exception ex) { _logger.LogWarning("Embedding skipped for watch {Id}: {Err}", id, ex.Message); }
         }
     }
 
@@ -116,21 +121,87 @@ public class WatchEmbeddingService
     }
 
     /// Generates embeddings for all watches that don't yet have a "full" chunk.
+    /// Uses true batch embedding: accumulates all chunk texts, sends 50 watches at a time
+    /// (200 texts per HTTP call) instead of one call per watch — scales to 1000+ watches.
     /// Returns the number of newly embedded watches.
     public async Task<int> GenerateMissingAsync()
     {
+        const int WatchesPerBatch = 50; // 50 watches × 4 chunks = 200 texts per embed call
+        var httpClient = _httpClientFactory.CreateClient("ai-service");
+
         var alreadyEmbeddedIds = await _context.WatchEmbeddings
             .Where(e => e.ChunkType == "full")
             .Select(e => e.WatchId)
             .ToListAsync();
 
-        var missingIds = await _context.Watches
+        var missing = await _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
             .Where(w => !alreadyEmbeddedIds.Contains(w.Id))
-            .Select(w => w.Id)
+            .AsNoTracking()
             .ToListAsync();
 
-        await GenerateBulkAsync(missingIds);
-        return missingIds.Count;
+        if (missing.Count == 0) return 0;
+
+        // Build all chunks upfront — avoids per-watch DB round trips
+        var watchChunks = missing.Select(w => (Watch: w, Chunks: BuildChunks(w))).ToList();
+
+        for (int i = 0; i < watchChunks.Count; i += WatchesPerBatch)
+        {
+            var batch = watchChunks.Skip(i).Take(WatchesPerBatch).ToList();
+            var allTexts = batch.SelectMany(wc => wc.Chunks.Select(c => c.Text)).ToList();
+
+            List<float[]>? embeddings;
+            try
+            {
+                var resp = await httpClient.PostAsJsonAsync("/embed", new { texts = allTexts });
+                if (!resp.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Batch embed returned {Status} for watches {Start}-{End}", resp.StatusCode, i, i + batch.Count);
+                    continue;
+                }
+                var json = await resp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
+                if (!json.TryGetProperty("embeddings", out var embEl)) continue;
+                embeddings = JsonSerializer.Deserialize<List<float[]>>(embEl.GetRawText(), _jsonOptions);
+                if (embeddings == null || embeddings.Count != allTexts.Count) continue;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Batch embed call failed: {Err}", ex.Message);
+                continue;
+            }
+
+            // Delete any partial embeddings for this batch's watches, then insert fresh
+            var batchWatchIds = batch.Select(wc => wc.Watch.Id).ToList();
+            var existing = await _context.WatchEmbeddings
+                .Where(e => batchWatchIds.Contains(e.WatchId))
+                .ToListAsync();
+            _context.WatchEmbeddings.RemoveRange(existing);
+
+            // Distribute embeddings back to each watch in order
+            int offset = 0;
+            var now = DateTime.UtcNow;
+            foreach (var (watch, chunks) in batch)
+            {
+                for (int j = 0; j < chunks.Count; j++)
+                {
+                    _context.WatchEmbeddings.Add(new WatchEmbedding
+                    {
+                        WatchId = watch.Id,
+                        ChunkType = chunks[j].ChunkType,
+                        ChunkText = chunks[j].Text,
+                        Embedding = new Vector(embeddings[offset + j]),
+                        UpdatedAt = now,
+                    });
+                }
+                offset += chunks.Count;
+            }
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Embedded batch {Start}-{End} of {Total}", i, i + batch.Count, missing.Count);
+        }
+
+        return missing.Count;
     }
 
     // ── Chunk builder ─────────────────────────────────────────────────────────

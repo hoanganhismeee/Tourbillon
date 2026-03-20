@@ -16,6 +16,7 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
     public DbSet<Collection> Collections { get; set; }
     public DbSet<PriceTrend> PriceTrends { get; set; }
     public DbSet<WatchEmbedding> WatchEmbeddings { get; set; }
+    public DbSet<QueryCache> QueryCaches { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,6 +32,11 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
 
             // One row per (watch, chunk_type) — upsert logic deletes + reinserts
             entity.HasIndex(e => new { e.WatchId, e.ChunkType }).IsUnique();
+        });
+
+        modelBuilder.Entity<QueryCache>(entity =>
+        {
+            entity.Property(e => e.QueryEmbedding).HasColumnType("vector(768)");
         });
     }
 }

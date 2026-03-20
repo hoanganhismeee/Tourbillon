@@ -1,7 +1,6 @@
 // Orchestrates the AI Watch Finder pipeline:
-// 1. LLM parse — NL query → structured intent (ai-service)
-// 2. Filter — intent predicates applied to watch list (WatchFilterMapper)
-// 3. LLM rerank — candidate pool → scored + explained ranking (ai-service)
+// Phase 3B: embed query → vector similarity search → LLM rerank
+// Fallback (embed unavailable): LLM parse → SQL filter → LLM rerank
 
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -9,6 +8,8 @@ using System.Text.Json.Serialization;
 using backend.Database;
 using backend.Models;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
+using Pgvector.EntityFrameworkCore;
 
 namespace backend.Services;
 
@@ -53,6 +54,7 @@ public class WatchFinderService
     private readonly TourbillonContext _context;
     private readonly WatchFilterMapper _mapper;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly QueryCacheService _queryCache;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -63,33 +65,51 @@ public class WatchFinderService
         IHttpClientFactory httpClientFactory,
         TourbillonContext context,
         WatchFilterMapper mapper,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        QueryCacheService queryCache)
     {
         _httpClientFactory = httpClientFactory;
         _context = context;
         _mapper = mapper;
         _scopeFactory = scopeFactory;
+        _queryCache = queryCache;
     }
 
     public async Task<WatchFinderResult> FindWatchesAsync(string query)
     {
         var httpClient = _httpClientFactory.CreateClient("ai-service");
 
-        // Steps 1 + 2 run concurrently — parse has no dependency on DB load
-        var parseTask = ParseIntentAsync(httpClient, query);
-        var dbTask    = _context.Watches
-            .Include(w => w.Brand)
-            .AsNoTracking()
-            .ToListAsync();
+        // Step 0: embed query + check QueryCache.
+        // nomic-embed-text (~50ms) runs independently of the LLM.
+        var queryEmbedding = await EmbedQueryAsync(httpClient, query);
+        if (queryEmbedding != null)
+        {
+            var cached = await _queryCache.LookupAsync(queryEmbedding);
+            if (cached != null) return cached;
+        }
 
-        await Task.WhenAll(parseTask, dbTask);
+        // Step 1: retrieve candidates.
+        // Phase 3B — vector similarity against WatchEmbeddings (4 chunks per watch).
+        // Each watch's best-matching chunk is used; top 30 by cosine distance returned.
+        // Fallback to LLM parse + SQL filter if embeddings are unavailable.
+        List<Watch> candidates;
+        ParsedIntent? intent = null;
 
-        var intent     = await parseTask;
-        var allWatches = await dbTask;
-
-        // Step 3: apply filters, take top 30 by brand spread — rerank trims to final 6
-        var filtered   = (intent != null ? _mapper.Apply(allWatches, intent) : allWatches).ToList();
-        var candidates = BrandSpread(filtered, 30);
+        if (queryEmbedding != null)
+        {
+            candidates = await VectorSearchAsync(queryEmbedding);
+        }
+        else
+        {
+            // Embed unavailable — fall back to Phase 2 pipeline
+            var parseTask = ParseIntentAsync(httpClient, query);
+            var dbTask    = _context.Watches.Include(w => w.Brand).AsNoTracking().ToListAsync();
+            await Task.WhenAll(parseTask, dbTask);
+            intent = await parseTask;
+            var allWatches = await dbTask;
+            var filtered = (intent != null ? _mapper.Apply(allWatches, intent) : allWatches).ToList();
+            candidates = BrandSpread(filtered, 30);
+        }
 
         // Base result — returned as-is if rerank fails (all candidates, no split)
         var result = new WatchFinderResult
@@ -184,7 +204,77 @@ public class WatchFinderService
             });
         }
 
+        // Fire-and-forget: store the result in the persistent query cache.
+        // New scope required — cannot reuse the request's DbContext on a background thread.
+        if (queryEmbedding != null)
+        {
+            var capturedEmbedding = queryEmbedding;
+            var capturedResult = result;
+            _ = Task.Run(async () =>
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var cacheService = scope.ServiceProvider.GetRequiredService<QueryCacheService>();
+                await cacheService.StoreAsync(query, capturedEmbedding, capturedResult);
+            });
+        }
+
         return result;
+    }
+
+    // Phase 3B retrieval: cosine similarity search against all watch chunk embeddings.
+    // For each watch, the best-matching chunk wins. Returns top 30 watches in similarity order.
+    private async Task<List<Watch>> VectorSearchAsync(float[] queryEmbedding)
+    {
+        var queryVector = new Vector(queryEmbedding);
+
+        // Order all chunks by cosine distance — best chunk per watch floats to the top.
+        // Selecting only WatchId keeps the query lightweight (no 768-float vectors transferred).
+        var orderedIds = await _context.WatchEmbeddings
+            .Where(e => e.Embedding != null)
+            .OrderBy(e => e.Embedding!.CosineDistance(queryVector))
+            .Select(e => e.WatchId)
+            .ToListAsync();
+
+        // Deduplicate in memory preserving order — first occurrence = best chunk for that watch
+        var seen   = new HashSet<int>();
+        var topIds = new List<int>(30);
+        foreach (var id in orderedIds)
+        {
+            if (seen.Add(id))
+            {
+                topIds.Add(id);
+                if (topIds.Count >= 30) break;
+            }
+        }
+
+        if (topIds.Count == 0)
+            return [];
+
+        // Load the Watch objects, then restore similarity order (IN clause has no guaranteed order)
+        var watches   = await _context.Watches
+            .Include(w => w.Brand)
+            .AsNoTracking()
+            .Where(w => topIds.Contains(w.Id))
+            .ToListAsync();
+
+        var watchById = watches.ToDictionary(w => w.Id);
+        return topIds.Where(id => watchById.ContainsKey(id)).Select(id => watchById[id]).ToList();
+    }
+
+    // Embeds the query text using nomic-embed-text via ai-service.
+    // Returns null if the embed call fails — callers treat null as cache unavailable.
+    private async Task<float[]?> EmbedQueryAsync(HttpClient httpClient, string query)
+    {
+        try
+        {
+            var resp = await httpClient.PostAsJsonAsync("/embed", new { texts = new[] { query } });
+            if (!resp.IsSuccessStatusCode) return null;
+            var json = await resp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
+            if (!json.TryGetProperty("embeddings", out var embEl)) return null;
+            var embeddings = JsonSerializer.Deserialize<List<float[]>>(embEl.GetRawText(), _jsonOptions);
+            return embeddings?.Count > 0 ? embeddings[0] : null;
+        }
+        catch { return null; }
     }
 
     // Parse intent from AI service — runs concurrently with DB load

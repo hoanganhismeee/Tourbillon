@@ -190,6 +190,34 @@ namespace backend.Migrations
                     b.ToTable("WatchEmbeddings");
                 });
 
+            modelBuilder.Entity("backend.Models.QueryCache", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("QueryText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Vector>("QueryEmbedding")
+                        .IsRequired()
+                        .HasColumnType("vector(768)");
+
+                    b.Property<string>("ResultJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("QueryCaches");
+                });
+
             modelBuilder.Entity("backend.Models.Brand", b =>
                 {
                     b.Property<int>("Id")

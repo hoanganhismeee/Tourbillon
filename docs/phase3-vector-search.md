@@ -1,7 +1,8 @@
 # Phase 3: Vector Search — Demand-Driven Embedding Strategy
 
-**Phase 3A (infrastructure) — COMPLETE.** Embeddings are being generated and stored.
-**Phase 3B (switch retrieval to vector similarity) — PENDING.** Activate once coverage > 80%.
+**Phase 3A (infrastructure) — COMPLETE.** Watch embeddings generated and stored (100% coverage).
+**Phase 3B (vector similarity retrieval) — COMPLETE.** SQL filter replaced with cosine similarity search.
+**Query Cache — COMPLETE.** Persistent semantic query cache layers on top of Phase 3B.
 
 Upgrade the watch finder candidate retrieval from SQL predicate filtering to vector similarity search, using a lazy embedding generation strategy that scales with usage.
 
@@ -36,74 +37,92 @@ Pre-compute a semantic embedding for each watch (a float array representing its 
 
 ---
 
-## Demand-Driven Embedding (the key design decision)
+## Demand-Driven Query Cache (the key design decision)
 
-Rather than embedding all watches upfront in a batch job, embeddings are generated lazily — only when a watch first appears in a search result. The vector store grows organically with usage.
+Rather than pre-computing results for every possible query, the QueryCache grows organically with real usage. Every search that misses the cache runs the full pipeline and stores the result. Future queries with similar phrasing hit the cache and skip the LLM entirely.
 
 ```
-Query 1: "dress watch" → 30 SQL candidates found, none embedded yet
-  → SQL filter used for retrieval (current behaviour)
-  → Response returned to user
-  → [Background] embed all 30 candidates → store in DB
+Query 1: "dress watch for a wedding" → cache miss
+  → embed query → vector search → LLM rerank → result
+  → [Background] store result in QueryCaches
 
-Query 2: "formal watch for dinner" → similar candidates
-  → 28 of 30 already embedded → vector search used
-  → 2 new candidates → SQL fallback
-  → Response faster, semantically better
+Query 2: "formal watch for a wedding ceremony"  (similarity 0.96 → HIT)
+  → embed query → QueryCaches match → return stored result   (~55ms)
 
-Week 2: ~280/300 watches embedded
-  → Almost every query hits vector search
-  → Near-instant retrieval, <500ms
+Query 3: "sporty dive watch under 10k" → cache miss
+  → embed query → vector search → LLM rerank → result
+  → [Background] store result in QueryCaches
+
+Month 2: hundreds of diverse searches accumulated in QueryCaches
+  → most real user queries hit the cache
+  → sub-100ms responses, zero LLM cost on hits
 ```
 
-Coverage reaches ~100% naturally because the most-searched watches are embedded first — which are also the most likely to appear in future searches.
+The more diverse queries run (in dev or by real users), the higher the cache hit rate becomes. Common patterns — brand names, occasions, price bands, complications — get cached first, which are also the queries most likely to repeat.
+
+**Watch chunk embeddings (WatchEmbeddings) work differently** — they are pre-computed from watch text and don't grow from queries. They are the semantic index that makes vector search work for *any* query, seen or unseen. QueryCaches is the speed layer on top.
 
 ---
 
-## Dev-to-Production Pre-Seeding
+## How Embedding Generation Works
 
-**The build-up phase happens during development, not in production.**
+Watch embeddings are generated in two ways:
 
-Run searches yourself during dev — every query you fire generates embeddings in the background. Once coverage looks good, export the database state (including the embedding column) and import it to the production DB on first deploy.
-
+**1. Admin bulk generation (preferred for seeding)**
 ```
-Dev workflow:
-  make reset → run 50+ varied searches → all 300 watches embedded
-  pg_dump -t watches tourbillon > watches_seeded.sql
-
-Production deploy:
-  psql tourbillon < watches_seeded.sql
-  → Production starts day 1 with full vector coverage
-  → Zero cold start, zero gradual build-up for real users
+POST /api/admin/embeddings/generate
+  → loads all watches without a "full" chunk
+  → sends 50 watches (200 texts) per HTTP call to /embed
+  → upserts all vectors in one SaveChanges per batch
+  → returns { generated, total, embedded, coveragePct }
 ```
+Run this once before deploying. Current coverage: **100%** (351/351).
 
-You absorb the entire embedding generation cost yourself. Users never experience the slow phase.
+**2. Demand-driven (for new watches added via scraping)**
+
+After every scrape, `WatchCacheService` fires a background `GenerateBulkAsync` for the newly inserted watch IDs. Already-embedded watches are skipped. New watches are embedded within seconds of being added.
 
 ---
 
-## Architecture
+## Production Deploy Workflow
+
+Watch embeddings live in PostgreSQL alongside the watch data. Export and import them with the catalog:
+
+```bash
+# Dump watch data + embeddings together
+pg_dump -t "Watches" -t "WatchEmbeddings" tourbillon > catalog_seeded.sql
+
+# Import to production on first deploy
+psql tourbillon < catalog_seeded.sql
+```
+
+Production starts with 100% vector coverage on day 1. No cold-start period.
+
+QueryCaches self-populates from real traffic — no pre-seeding needed. The watch chunk embeddings in `WatchEmbeddings` are the semantic index; queries don't need to be pre-run to "teach" the system.
+
+---
+
+## Architecture (Phase 3B — current)
 
 ```
 Query
   ↓
-Check embedded watches count
+Embed query text → float[768]  (~50ms, nomic-embed-text)
   ↓
-  >= threshold → vector similarity search → top 30 candidates  (~50ms)
-  < threshold  → SQL filter (current Phase 2 fallback)          (~10ms)
-  ↓
-LLM rerank (unchanged from Phase 2)
-  ↓
-[Background async] embed any unembedded watches from this result set → store
-```
+Check QueryCaches (cosine similarity ≥ 0.92)
+  ├─ hit  → return stored result                              (~55ms total)
+  └─ miss
+       ↓
+     Vector search: ORDER BY chunk embedding <=> query vector
+     Best chunk per watch, top 30 returned                   (~50ms)
+       ↓
+     LLM rerank → top 8                                      (~2s Ollama / ~800ms Haiku)
+       ↓
+     [Background] store result in QueryCaches
+     [Background] embed any new watch IDs (skips already-embedded)
 
-### Hybrid retrieval (mixed coverage)
-
-When coverage is partial, both paths run in parallel and results are merged:
-
-```
-Vector search  → scored by similarity
-SQL fallback   → catches watches not yet embedded
-Merge → deduplicate → send to LLM rerank
+Fallback (embed call fails):
+  LLM parse → SQL filter → LLM rerank
 ```
 
 ---
@@ -150,8 +169,8 @@ CREATE UNIQUE INDEX ON "WatchEmbeddings" ("WatchId", "ChunkType");
 | File | Purpose |
 |---|---|
 | `backend/Models/WatchEmbedding.cs` | EF Core entity |
-| `backend/Services/WatchEmbeddingService.cs` | Chunk builder + HTTP → ai-service `/embed` + upsert |
-| `ai-service/app.py` → `POST /embed` | Calls nomic-embed-text, returns float[768][] |
+| `backend/Services/WatchEmbeddingService.cs` | Chunk builder + true-batch HTTP → ai-service `/embed` + upsert |
+| `ai-service/app.py` → `POST /embed` | Calls nomic-embed-text (batched input), returns float[768][] |
 | `ai-service/entrypoint.sh` | Pulls `nomic-embed-text` on container start |
 | `backend/Controllers/AdminController.cs` | `POST /api/admin/embeddings/generate`, `GET /api/admin/embeddings/status` |
 
@@ -159,17 +178,17 @@ CREATE UNIQUE INDEX ON "WatchEmbeddings" ("WatchId", "ChunkType");
 
 1. User fires a search → `WatchFinderService` returns results
 2. After returning, fire-and-forget `Task.Run` with new `IServiceScopeFactory` scope
-3. `WatchEmbeddingService.GenerateBulkAsync` embeds all returned watch IDs
+3. `WatchEmbeddingService.GenerateBulkAsync` skips already-embedded watches, embeds new ones
 4. Same trigger in `WatchCacheService` for newly scraped watches
 
-### Admin bulk generation
+### Admin bulk generation — scales to 1000+ watches
 
 ```
 POST /api/admin/embeddings/generate   → embeds all watches with no "full" chunk, returns { generated, total, embedded, coveragePct }
 GET  /api/admin/embeddings/status     → returns { total, embedded, coveragePct }
 ```
 
-Run the admin endpoint to fast-fill coverage instead of waiting for organic search traffic.
+**True batch embedding:** `GenerateMissingAsync` loads all missing watches, accumulates all chunk texts, and sends 50 watches (200 texts) per HTTP call to `/embed`. One Ollama call per 200 texts instead of per-watch calls. Scales linearly — 1000 watches ≈ 20 HTTP calls ≈ 20 seconds.
 
 ### Watch embedding text format
 
@@ -182,6 +201,87 @@ alligator strap, classic round case, Swiss luxury"
 ```
 
 More context = better matches for nuanced queries like "something a banker would wear to a client dinner."
+
+---
+
+## Persistent Query Cache (COMPLETE)
+
+A second vector layer that caches full search results indexed by query embedding. Sits in front of the LLM pipeline — no LLM call on a cache hit.
+
+### Why two vector layers?
+
+| Layer | What it stores | What it solves |
+|---|---|---|
+| `WatchEmbeddings` | One vector per watch chunk | Semantic retrieval — finds watches SQL filtering misses |
+| `QueryCaches` | One vector per query + full result JSON | Cold-start — returns instant results for anticipated queries |
+
+They serve different purposes and don't conflict. Watch embeddings power Phase 3B retrieval quality. Query cache powers Phase 3 response speed.
+
+### Request flow with query cache
+
+```
+Query
+  ↓
+Embed query text → float[768]  (~50ms, nomic-embed-text, not LLM)
+  ↓
+Cosine similarity search → QueryCaches table
+  ├─ hit (similarity ≥ 0.92) → return cached result              (~55ms total)
+  └─ miss → full pipeline (parse → SQL/vector → rerank)          (~4s)
+              ↓
+            [Background] store result in QueryCaches
+```
+
+Similarity threshold 0.92 catches near-identical phrasings ("dress watch" vs "dress watches") while rejecting queries with genuinely different intent ("dress watch" vs "dive watch" ≈ 0.7).
+
+### QueryCaches table
+
+```sql
+CREATE TABLE "QueryCaches" (
+  "Id"             serial PRIMARY KEY,
+  "QueryText"      text NOT NULL,
+  "QueryEmbedding" vector(768) NOT NULL,
+  "ResultJson"     text NOT NULL,        -- full WatchFinderResult as JSON
+  "CreatedAt"      timestamptz NOT NULL
+);
+```
+
+### Key files
+
+| File | Purpose |
+|---|---|
+| `backend/Models/QueryCache.cs` | EF Core entity |
+| `backend/Services/QueryCacheService.cs` | Lookup (cosine similarity) + store + clear |
+| `backend/Services/WatchFinderService.cs` | Embed-first → cache check → pipeline if miss → background store |
+| `backend/Controllers/AdminController.cs` | `POST /api/admin/query-cache/seed`, `GET /api/admin/query-cache/status`, `DELETE /api/admin/query-cache` |
+
+### Pre-seeding (optional)
+
+The cache self-populates from real traffic — every search that misses the cache stores its result automatically. No pre-seeding is required for correctness.
+
+Pre-seeding is an optional cost/speed optimization: warm the cache before deploy so common queries skip the LLM rerank from day one.
+
+```
+POST /api/admin/query-cache/seed   → runs 115 built-in queries, caches results
+```
+
+With Phase 3B active, **watch chunk embeddings handle all queries semantically** regardless of whether QueryCaches has seen them before. QueryCaches only saves the LLM rerank step on repeated/similar queries.
+
+### Clearing the cache
+
+After a major catalog update (new brands, price changes), clear and re-seed:
+
+```
+DELETE /api/admin/query-cache   → clears all entries
+POST   /api/admin/query-cache/seed → re-warms with 115 queries
+```
+
+### Scaling
+
+At 1000+ watches, the `QueryCaches` table will have at most a few hundred rows — one per unique query fired. Linear scan is fast at this size. If query volume grows to tens of thousands, add an `ivfflat` index on `QueryEmbedding`:
+
+```sql
+CREATE INDEX ON "QueryCaches" USING ivfflat ("QueryEmbedding" vector_cosine_ops) WITH (lists = 10);
+```
 
 ---
 

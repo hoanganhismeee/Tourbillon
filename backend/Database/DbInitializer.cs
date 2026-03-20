@@ -170,10 +170,6 @@ namespace backend.Database
 
             // Seed collections from CSV (contains descriptions and heritage information)
             SeedCollectionsFromCsv(context);
-
-            // Seed the 9 showcase watches from CSV with their curated images
-            // IDs: 2, 4, 11, 13, 18, 24, 28, 30, 35
-            SeedWatchesFromCsv(context);
         }
 
         /// Ensures Admin role exists in the database
