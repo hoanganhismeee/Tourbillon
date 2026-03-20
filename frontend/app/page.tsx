@@ -1,9 +1,6 @@
-// Simple landing page: a calm welcome with brand voice.
-// Keeps SSR-friendly content light, letting users jump straight into watches.
+// Landing page: hero text + AI Watch Finder search bar
 import ScrollFade from "./scrollMotion/ScrollFade";
-// import StaggeredFade from "./scrollMotion/StaggeredFade";
-// use ScrollFade for independent animations (from bottom to top)
-// use StaggeredFade for animations that require a delay between items (from top to bottom)
+import WatchFinderSearch from "./components/WatchFinderSearch";
 
 export default function Home() {
   return (
@@ -20,8 +17,7 @@ export default function Home() {
           </p>
         </ScrollFade>
         <ScrollFade>
-          <div className="flex flex-col sm:flex-row gap-6 justify-center">
-          </div>
+          <WatchFinderSearch />
         </ScrollFade>
       </div>
     </div>

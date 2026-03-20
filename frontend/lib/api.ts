@@ -130,6 +130,32 @@ export const fetchCollectionsByBrand = async (brandId: number): Promise<Collecti
   return response.json();
 };
 
+// --- AI Watch Finder ---
+
+export interface WatchMatchDetail {
+  explanation: string;
+  score: number;
+}
+
+export interface WatchFinderResult {
+  watches: Watch[];
+  matchDetails: Record<number, WatchMatchDetail>;
+  parsedIntent: Record<string, unknown> | null;
+}
+
+export const watchFinderSearch = async (query: string): Promise<WatchFinderResult> => {
+  const response = await fetchWithTimeout('/api/watch-finder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+    timeoutMs: 60000, // LLM inference can take up to ~30s on first cold run
+  });
+  if (!response.ok) {
+    throw new Error('Watch finder search failed');
+  }
+  return response.json();
+};
+
 // --- Auth API Functions ---
 
 // Interfaces for Auth data
