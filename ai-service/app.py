@@ -10,7 +10,7 @@ app = Flask(__name__)
 
 # LLM client — points to Ollama locally, swappable to Anthropic via env vars
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
-LLM_MODEL    = os.getenv("LLM_MODEL", "qwen3:8b")
+LLM_MODEL    = os.getenv("LLM_MODEL", "qwen2.5:7b")
 LLM_API_KEY  = os.getenv("LLM_API_KEY", "ollama")
 
 client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
@@ -41,7 +41,7 @@ def parse_llm_json(raw: str):
     return json.loads(raw[match.start():])
 
 
-def call_llm(system_prompt: str, user_content: str) -> str:
+def call_llm(system_prompt: str, user_content: str, max_tokens: int = 512) -> str:
     """Single LLM call — returns raw text content."""
     response = client.chat.completions.create(
         model=LLM_MODEL,
@@ -50,6 +50,7 @@ def call_llm(system_prompt: str, user_content: str) -> str:
             {"role": "user",   "content": user_content},
         ],
         temperature=0.1,
+        max_tokens=max_tokens,
     )
     return response.choices[0].message.content or ""
 
@@ -102,14 +103,14 @@ def watch_finder_parse():
     if cache_key in _cache:
         return jsonify({**_cache[cache_key], "cached": True})
 
-    # First attempt
+    # First attempt — cap at 250 tokens (JSON intent is ~100-150 tokens)
     try:
-        raw = call_llm(PARSE_SYSTEM_PROMPT, query)
+        raw = call_llm(PARSE_SYSTEM_PROMPT, query, max_tokens=250)
         intent = parse_llm_json(raw)
     except (ValueError, json.JSONDecodeError):
         # Retry with stricter no-preamble instruction
         try:
-            raw = call_llm(PARSE_STRICT_PROMPT, query)
+            raw = call_llm(PARSE_STRICT_PROMPT, query, max_tokens=250)
             intent = parse_llm_json(raw)
         except (ValueError, json.JSONDecodeError) as e:
             return jsonify({"error": f"Failed to parse LLM response: {str(e)}"}), 502
@@ -121,23 +122,12 @@ def watch_finder_parse():
 
 # ── Rerank endpoint ───────────────────────────────────────────────────────────
 
-RERANK_SYSTEM_PROMPT = """You are a luxury watch expert. Rerank the provided watches from most to least suitable for the user's query.
-Consider occasion, style, material, price, and dimensions.
+RERANK_SYSTEM_PROMPT = """You are a luxury watch expert. Score EVERY watch in the list 0-100 for fit with the query. 100=perfect match, 0=irrelevant.
+You MUST include one entry per watch — do not skip any. Keep explanations to one short sentence.
+Return ONLY a JSON array with exactly as many entries as watches provided, no markdown, no preamble:
+[{"watch_id": 42, "score": 92, "explanation": "One sentence specific to this watch and the query."}]"""
 
-Return ONLY a JSON array — no markdown, no preamble, no explanation:
-[
-  {"watch_id": 42, "score": 92, "explanation": "One concise sentence explaining the match."}
-]
-
-Scoring guide (0–100):
-- 90–100: Near-perfect match on all mentioned criteria
-- 70–89: Strong match on primary criteria, minor gaps
-- 50–69: Partial match — some criteria met
-- Below 50: Weak match, included as fallback only
-
-Keep each explanation to one sentence, specific to the watch and query."""
-
-RERANK_STRICT_PROMPT = RERANK_SYSTEM_PROMPT + "\n\nCRITICAL: Output raw JSON array only. No markdown. No text before or after the array."
+RERANK_STRICT_PROMPT = RERANK_SYSTEM_PROMPT + "\n\nOutput the JSON array only. Include ALL watches. No text before or after the array."
 
 
 @app.route("/watch-finder/rerank", methods=["POST"])
@@ -158,24 +148,26 @@ def watch_finder_rerank():
     if cache_key in _cache:
         return jsonify({**_cache[cache_key], "cached": True})
 
-    # Build a compact watch list string for the prompt
+    # Build a compact watch list string for the prompt — cap specs at 80 chars
     watch_lines = []
     for w in watches:
         price_str = f"${w['price']:,}" if w.get("price") else "Price on request"
+        specs = (w.get("specs_summary") or "")[:80]
         watch_lines.append(
             f"ID {w['id']} | {w.get('brand', '')} | {w.get('name', '')} | "
-            f"{price_str} | {w.get('specs_summary', '')} | {w.get('description', '')}"
+            f"{price_str} | {specs} | {w.get('description', '')}"
         )
     watches_text = "\n".join(watch_lines)
 
     user_content = f'Query: "{query}"\n\nWatches:\n{watches_text}'
 
+    # Cap at 1500 tokens — 30 watches × ~50 tokens per scored entry
     try:
-        raw = call_llm(RERANK_SYSTEM_PROMPT, user_content)
+        raw = call_llm(RERANK_SYSTEM_PROMPT, user_content, max_tokens=1500)
         ranked = parse_llm_json(raw)
     except (ValueError, json.JSONDecodeError):
         try:
-            raw = call_llm(RERANK_STRICT_PROMPT, user_content)
+            raw = call_llm(RERANK_STRICT_PROMPT, user_content, max_tokens=1500)
             ranked = parse_llm_json(raw)
         except (ValueError, json.JSONDecodeError) as e:
             return jsonify({"error": f"Failed to parse LLM response: {str(e)}"}), 502

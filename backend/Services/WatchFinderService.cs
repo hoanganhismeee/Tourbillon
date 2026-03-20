@@ -39,6 +39,7 @@ public class WatchMatchDetail
 public class WatchFinderResult
 {
     public List<WatchDto> Watches { get; set; } = [];
+    public List<WatchDto> OtherCandidates { get; set; } = [];
     public Dictionary<int, WatchMatchDetail> MatchDetails { get; set; } = [];
     public object? ParsedIntent { get; set; }
 }
@@ -67,44 +68,37 @@ public class WatchFinderService
     {
         var httpClient = _httpClientFactory.CreateClient("ai-service");
 
-        // Step 1: parse intent from AI service
-        ParsedIntent? intent = null;
-        try
-        {
-            var parseResp = await httpClient.PostAsJsonAsync("/watch-finder/parse", new { query });
-            if (parseResp.IsSuccessStatusCode)
-            {
-                var json = await parseResp.Content.ReadFromJsonAsync<JsonElement>();
-                if (json.TryGetProperty("intent", out var intentEl))
-                    intent = JsonSerializer.Deserialize<ParsedIntent>(intentEl.GetRawText(), _jsonOptions);
-            }
-        }
-        catch { /* AI service unreachable — continue with null intent */ }
-
-        // Step 2: load all watches with Brand for rerank context
-        var allWatches = await _context.Watches
+        // Steps 1 + 2 run concurrently — parse has no dependency on DB load
+        var parseTask = ParseIntentAsync(httpClient, query);
+        var dbTask    = _context.Watches
             .Include(w => w.Brand)
             .AsNoTracking()
             .ToListAsync();
 
-        // Step 3: apply filters, take top 30 by brand spread
-        var candidates = (intent != null ? _mapper.Apply(allWatches, intent) : allWatches).ToList();
-        var top30 = BrandSpread(candidates, 30);
+        await Task.WhenAll(parseTask, dbTask);
 
-        // Base result — returned as-is if rerank fails
+        var intent     = await parseTask;
+        var allWatches = await dbTask;
+
+        // Step 3: apply filters, take top 30 by brand spread — rerank trims to final 6
+        var filtered   = (intent != null ? _mapper.Apply(allWatches, intent) : allWatches).ToList();
+        var candidates = BrandSpread(filtered, 30);
+
+        // Base result — returned as-is if rerank fails (all candidates, no split)
         var result = new WatchFinderResult
         {
-            Watches = top30.Take(6).Select(w => WatchDto.FromWatch(w)).ToList(),
+            Watches = candidates.Select(w => WatchDto.FromWatch(w)).ToList(),
+            OtherCandidates = [],
             MatchDetails = [],
             ParsedIntent = intent
         };
 
-        if (top30.Count == 0) return result;
+        if (candidates.Count == 0) return result;
 
         // Step 4: rerank candidates via AI service
         try
         {
-            var payload = top30.Select(w =>
+            var payload = candidates.Select(w =>
             {
                 var specs = DeserialiseSpecs(w.Specs);
                 return new
@@ -124,17 +118,22 @@ public class WatchFinderService
                 var json = await rerankResp.Content.ReadFromJsonAsync<JsonElement>();
                 if (json.TryGetProperty("ranked", out var rankedEl))
                 {
-                    var ranked = JsonSerializer.Deserialize<List<RankedWatch>>(rankedEl.GetRawText(), _jsonOptions) ?? [];
+                    var ranked   = JsonSerializer.Deserialize<List<RankedWatch>>(rankedEl.GetRawText(), _jsonOptions) ?? [];
                     var scoreMap = ranked.ToDictionary(r => r.WatchId);
 
-                    var reranked = top30
+                    // Scored watches → top matches, unscored → "you may also be interested in"
+                    var scoredIds = new HashSet<int>(scoreMap.Keys);
+                    var topMatches = candidates
                         .Where(w => scoreMap.ContainsKey(w.Id))
                         .OrderByDescending(w => scoreMap[w.Id].Score)
-                        .Take(6)
                         .ToList();
 
-                    result.Watches = reranked.Select(w => WatchDto.FromWatch(w)).ToList();
-                    result.MatchDetails = reranked.ToDictionary(
+                    result.Watches = topMatches.Select(w => WatchDto.FromWatch(w)).ToList();
+                    result.OtherCandidates = candidates
+                        .Where(w => !scoredIds.Contains(w.Id))
+                        .Select(w => WatchDto.FromWatch(w))
+                        .ToList();
+                    result.MatchDetails = topMatches.ToDictionary(
                         w => w.Id,
                         w => new WatchMatchDetail
                         {
@@ -147,6 +146,21 @@ public class WatchFinderService
         catch { /* AI service unreachable — return unranked filtered results */ }
 
         return result;
+    }
+
+    // Parse intent from AI service — runs concurrently with DB load
+    private async Task<ParsedIntent?> ParseIntentAsync(HttpClient httpClient, string query)
+    {
+        try
+        {
+            var parseResp = await httpClient.PostAsJsonAsync("/watch-finder/parse", new { query });
+            if (!parseResp.IsSuccessStatusCode) return null;
+            var json = await parseResp.Content.ReadFromJsonAsync<JsonElement>();
+            if (json.TryGetProperty("intent", out var intentEl))
+                return JsonSerializer.Deserialize<ParsedIntent>(intentEl.GetRawText(), _jsonOptions);
+        }
+        catch { /* AI service unreachable — continue with null intent */ }
+        return null;
     }
 
     // Round-robin across brands to ensure variety in the candidate pool
