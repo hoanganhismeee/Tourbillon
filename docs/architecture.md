@@ -54,8 +54,13 @@ Entry point: `backend/Program.cs`
 **Scraping pipeline (temporary — will be removed after data collection):**
 - `SitemapScraperService` — Main scraper. Selenium renders page, HtmlAgilityPack strips HTML, Claude Haiku extracts JSON. Three modes: sitemap, listing page, single URL.
 - `ClaudeApiService` — Calls Claude Haiku API via HttpClient. Will migrate to ai-service.
-- `WatchCacheService` — Inserts scraped watches into DB with duplicate checking by reference number.
+- `WatchCacheService` — Inserts scraped watches into DB with duplicate checking by reference number. Fires background embedding generation for newly inserted watches.
 - `BrandScraperService` — Legacy per-brand XPath scraper. Superseded.
+
+**AI Watch Finder (Phase 2+):**
+- `WatchFinderService` — Orchestrates parse → filter → rerank pipeline. Top-8 cap with score ≥ 60 threshold. Fires demand-driven embedding in background after each result.
+- `WatchFilterMapper` — Maps parsed LLM intent to SQL predicates.
+- `WatchEmbeddingService` — Builds 4 text chunks per watch, calls ai-service `/embed`, upserts into `WatchEmbeddings` table. Supports bulk generation and admin status reporting.
 
 **User/auth:**
 - `UserRegistrationService`, `UserProfileService`, `PasswordChangeService`, `PasswordResetService`, `AccountDeletionService`, `RoleManagementService`
@@ -66,7 +71,7 @@ Entry point: `backend/Program.cs`
 - `EmailService` — SMTP email sending
 - `CurrencyConverter` — Currency conversion singleton
 
-### Models (8)
+### Models (9)
 
 | Model | Notes |
 |---|---|
@@ -77,6 +82,7 @@ Entry point: `backend/Program.cs`
 | `PriceTrend` | Price history per watch |
 | `BrandScraperConfig` | XPath config for legacy scraper (temporary) |
 | `WatchSpecs` | Deserialized specs: DialSpecs, CaseSpecs, MovementSpecs, StrapSpecs |
+| `WatchEmbedding` | pgvector embedding row — WatchId + ChunkType + ChunkText + vector(768) |
 | `WatchDto` | Data transfer object |
 
 ### DTOs (12)
@@ -114,10 +120,12 @@ Email: `TestEmailDto`
 
 | Route | Purpose |
 |---|---|
-| `/` | Home / landing page |
+| `/` | Home / landing page with AI search (redirects to `/smart-search`) |
+| `/smart-search` | AI Watch Finder results page — horizontal filter bar + full-width grid |
 | `/brands/[brandId]` | Brand detail |
 | `/collections/[collectionId]` | Collection detail |
 | `/watches/` | Watch listing + detail |
+| `/watches/[watchId]?wristFit=17` | Watch detail with wrist fit pre-filled |
 | `/cart/` | Shopping cart |
 | `/search/` | Global search |
 | `/login/`, `/register/` | Auth |
@@ -130,9 +138,14 @@ Email: `TestEmailDto`
 
 ### API Route Handlers
 
-- `app/api/scraper-proxy/` — Proxies scrape requests to .NET backend (temporary)
-- `app/api/search/` — Search proxy
-- `app/api/upload/` — Upload proxy
+| Handler | Purpose |
+|---|---|
+| `app/api/scraper-proxy/` | Proxies scrape requests to .NET backend (temporary) |
+| `app/api/search/` | Search proxy |
+| `app/api/upload/` | Upload proxy |
+| `app/api/watch-finder/` | Proxies `POST /api/watch/find` to .NET backend |
+| `app/api/watch-finder-explain/` | Proxies `POST /api/watch/explain` to .NET backend |
+| `app/api/ai-ready/` | Proxies `GET /ready` to ai-service — polls warmup status |
 
 ### Key Libraries
 
@@ -163,7 +176,7 @@ Email: `TestEmailDto`
 
 ## AI Service (Python Flask)
 
-Entry point: `ai-service/app.py` (currently a stub — placeholder for Phase 2+)
+Entry point: `ai-service/app.py`
 
 ```
 Frontend (Next.js — Vercel)
@@ -189,7 +202,20 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 
 Local defaults point to Ollama. Set these in `.env` (or the Docker Compose `environment` block) to switch to production without touching code.
 
-**Scope (when built out):** AI Watch Finder intent parsing + ranking, Compare Mode explanations, Story-first content generation, Chat Assistant, Discovery Page editorial generation, Watch DNA taste profiling.
+**Endpoints:**
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /watch-finder/parse` | NL query → structured intent JSON (LLM call 1) |
+| `POST /watch-finder/rerank` | Candidate pool → scores-only array (LLM call 2, no explanations) |
+| `POST /watch-finder/explain` | Single-watch on-demand explanation (cached) |
+| `POST /embed` | Batch text → float[768] embeddings via nomic-embed-text (no LLM) |
+| `GET /ready` | 503 until model warmup completes, 200 after |
+| `GET /health` | Always 200, includes readiness flag |
+
+**Models loaded at startup:** `qwen2.5:7b` (LLM) + `nomic-embed-text` (embeddings). Both run in the same Ollama container.
+
+**Scope:** AI Watch Finder intent parsing + candidate ranking + on-demand explanations + semantic embedding generation. Future: Compare Mode insights, Chat Assistant, Watch DNA taste profiling.
 
 **Response parsing — defensive layer:** Both Haiku and Qwen can add conversational filler before JSON output. The AI service strips preamble and validates schema before returning to the backend. On parse failure it retries once with a stricter prompt; on second failure it returns a structured error so the backend falls back to standard search.
 

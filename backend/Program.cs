@@ -89,6 +89,7 @@ builder.Services.AddHttpClient("ai-service", c =>
 });
 builder.Services.AddSingleton<WatchFilterMapper>();
 builder.Services.AddScoped<WatchFinderService>();
+builder.Services.AddScoped<WatchEmbeddingService>();
 
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>

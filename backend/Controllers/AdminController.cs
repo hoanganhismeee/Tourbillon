@@ -21,17 +21,20 @@ public class AdminController : ControllerBase
     private readonly WatchCacheService _cacheService;
     private readonly BrandScraperService _brandScraperService;
     private readonly SitemapScraperService _sitemapScraperService;
+    private readonly WatchEmbeddingService _embeddingService;
     private readonly ILogger<AdminController> _logger;
 
     public AdminController(
         WatchCacheService cacheService,
         BrandScraperService brandScraperService,
         SitemapScraperService sitemapScraperService,
+        WatchEmbeddingService embeddingService,
         ILogger<AdminController> logger)
     {
         _cacheService = cacheService;
         _brandScraperService = brandScraperService;
         _sitemapScraperService = sitemapScraperService;
+        _embeddingService = embeddingService;
         _logger = logger;
     }
 
@@ -1018,6 +1021,28 @@ public class AdminController : ControllerBase
             20 => new { dial = new { color = "Solid silver", finish = "Argenté", indices = "Gold batons", hands = "Pink gold" }, @case = new { material = "18-carat Pink Gold", diameter = "35.0 mm", thickness = "7.3 mm", waterResistance = "30 m", crystal = "Sapphire", caseBack = "Sapphire" }, movement = new { caliber = "L941.1", type = "Manual winding", powerReserve = "45 hours", frequency = "21,600 vph", jewels = 21, functions = new[] { "Hours", "Minutes", "Seconds" } }, strap = new { material = "Alligator leather", color = "Dark brown", buckle = "Prong buckle" } },
             _ => null
         };
+    }
+
+    // ── Embedding endpoints ────────────────────────────────────────────────────
+
+    /// Generates embeddings for all watches that don't yet have a "full" chunk.
+    /// POST: api/admin/embeddings/generate
+    [HttpPost("embeddings/generate")]
+    public async Task<IActionResult> GenerateEmbeddings()
+    {
+        _logger.LogInformation("Admin: bulk embedding generation requested");
+        var generated = await _embeddingService.GenerateMissingAsync();
+        var (total, embedded, pct) = await _embeddingService.GetStatusAsync();
+        return Ok(new { generated, total, embedded, coveragePct = pct });
+    }
+
+    /// Returns current embedding coverage stats.
+    /// GET: api/admin/embeddings/status
+    [HttpGet("embeddings/status")]
+    public async Task<IActionResult> GetEmbeddingStatus()
+    {
+        var (total, embedded, pct) = await _embeddingService.GetStatusAsync();
+        return Ok(new { total, embedded, coveragePct = pct });
     }
 }
 

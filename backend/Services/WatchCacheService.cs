@@ -12,15 +12,18 @@ public class WatchCacheService
     private readonly TourbillonContext _context;
     private readonly ILogger<WatchCacheService> _logger;
     private readonly ICloudinaryService _cloudinaryService;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public WatchCacheService(
         TourbillonContext context,
         ILogger<WatchCacheService> logger,
-        ICloudinaryService cloudinaryService)
+        ICloudinaryService cloudinaryService,
+        IServiceScopeFactory scopeFactory)
     {
         _context = context;
         _logger = logger;
         _cloudinaryService = cloudinaryService;
+        _scopeFactory = scopeFactory;
     }
 
     /// Caches a list of already-scraped watches to the database
@@ -40,13 +43,26 @@ public class WatchCacheService
 
             // Process and save to database
             int watchesAdded = 0;
+            var newlyAdded = new List<Watch>();
             foreach (var scrapedWatch in scrapedWatches)
             {
-                var added = await ProcessScrapedWatchAsync(scrapedWatch);
-                if (added) watchesAdded++;
+                var watch = await ProcessScrapedWatchAsync(scrapedWatch);
+                if (watch != null) { newlyAdded.Add(watch); watchesAdded++; }
             }
 
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(); // IDs are assigned after this point
+
+            // Fire-and-forget embeddings for newly inserted watches
+            if (newlyAdded.Count > 0)
+            {
+                var idsToEmbed = newlyAdded.Select(w => w.Id).ToList();
+                _ = Task.Run(async () =>
+                {
+                    using var scope = _scopeFactory.CreateScope();
+                    var embeddingService = scope.ServiceProvider.GetRequiredService<WatchEmbeddingService>();
+                    await embeddingService.GenerateBulkAsync(idsToEmbed);
+                });
+            }
 
             var successMessage = $"Successfully cached {watchesAdded} out of {scrapedWatches.Count} watches";
             _logger.LogInformation(successMessage);
@@ -169,7 +185,8 @@ public class WatchCacheService
 
     #region Private Helper Methods
 
-    private async Task<bool> ProcessScrapedWatchAsync(ScrapedWatchDto scrapedWatch)
+    // Returns the newly created Watch entity if added, null if skipped (duplicate/showcase/error).
+    private async Task<Watch?> ProcessScrapedWatchAsync(ScrapedWatchDto scrapedWatch)
     {
         try
         {
@@ -178,7 +195,7 @@ public class WatchCacheService
             if (brand == null)
             {
                 _logger.LogWarning("Could not find or create brand: {Brand}", scrapedWatch.BrandName);
-                return false;
+                return null;
             }
 
             // Find or create collection
@@ -234,7 +251,7 @@ public class WatchCacheService
                 {
                     _logger.LogInformation("Skipping showcase watch ID {Id}: {Name} - fully protected",
                         existingWatch.Id, existingWatch.Name);
-                    return false;
+                    return null;
                 }
 
                 _logger.LogDebug("Watch already exists: {Name}", scrapedWatch.Name);
@@ -246,7 +263,7 @@ public class WatchCacheService
                     existingWatch.Image = scrapedWatch.ImageUrl;
                 }
 
-                return false;
+                return null;
             }
 
             // Parse price
@@ -270,12 +287,12 @@ public class WatchCacheService
             _context.Watches.Add(watch);
             _logger.LogDebug("Added new watch: {Name} - ${Price}", watch.Name, watch.CurrentPrice);
 
-            return true;
+            return watch;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing scraped watch: {Name}", scrapedWatch.Name);
-            return false;
+            return null;
         }
     }
 

@@ -16,6 +16,11 @@ LLM_API_KEY  = os.getenv("LLM_API_KEY", "ollama")
 
 client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
 
+# Embedding client — always Ollama regardless of LLM choice (nomic-embed-text is local only)
+EMBED_BASE_URL = os.getenv("EMBED_BASE_URL", "http://localhost:11434/v1")
+EMBED_MODEL    = "nomic-embed-text"
+embed_client   = OpenAI(base_url=EMBED_BASE_URL, api_key="ollama")
+
 # In-memory response cache — keyed by normalised query + endpoint
 # Cleared on service restart; Redis upgrade deferred to Phase 3
 _cache: dict[str, dict] = {}
@@ -253,6 +258,27 @@ def watch_finder_explain():
     result = {"explanation": explanation}
     _cache[cache_key] = result
     return jsonify({**result, "cached": False})
+
+
+# ── Embedding endpoint ────────────────────────────────────────────────────────
+
+@app.route("/embed", methods=["POST"])
+def embed():
+    """Generate embeddings for a batch of text chunks using nomic-embed-text.
+    No LLM call — embedding model is always local Ollama regardless of LLM_BASE_URL."""
+    body = request.get_json(silent=True) or {}
+    texts = body.get("texts") or []
+    if not texts:
+        return jsonify({"error": "texts required"}), 400
+
+    try:
+        embeddings = []
+        for text in texts:
+            resp = embed_client.embeddings.create(model=EMBED_MODEL, input=text)
+            embeddings.append(resp.data[0].embedding)
+        return jsonify({"embeddings": embeddings})
+    except Exception as e:
+        return jsonify({"error": f"Embedding failed: {str(e)}"}), 502
 
 
 # ── Readiness + health checks ─────────────────────────────────────────────────

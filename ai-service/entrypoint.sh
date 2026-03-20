@@ -19,6 +19,14 @@ else
   ollama pull "${BASE_MODEL}"
 fi
 
+# Pull embedding model if not cached (nomic-embed-text: 768-dim, free, runs alongside LLM)
+if ollama list | grep -q "^nomic-embed-text"; then
+  echo "nomic-embed-text already cached."
+else
+  echo "Pulling nomic-embed-text..."
+  ollama pull nomic-embed-text
+fi
+
 # Create custom model with extended context from Modelfile
 echo "Creating ${CUSTOM_MODEL} from Modelfile (num_ctx 4096)..."
 ollama create "${CUSTOM_MODEL}" -f /app/Modelfile

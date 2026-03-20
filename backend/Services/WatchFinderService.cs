@@ -52,17 +52,23 @@ public class WatchFinderService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly TourbillonContext _context;
     private readonly WatchFilterMapper _mapper;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
-    public WatchFinderService(IHttpClientFactory httpClientFactory, TourbillonContext context, WatchFilterMapper mapper)
+    public WatchFinderService(
+        IHttpClientFactory httpClientFactory,
+        TourbillonContext context,
+        WatchFilterMapper mapper,
+        IServiceScopeFactory scopeFactory)
     {
         _httpClientFactory = httpClientFactory;
         _context = context;
         _mapper = mapper;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task<WatchFinderResult> FindWatchesAsync(string query)
@@ -160,6 +166,23 @@ public class WatchFinderService
             }
         }
         catch { /* AI service unreachable — return unranked filtered results */ }
+
+        // Fire-and-forget: generate embeddings for all returned watches in background.
+        // A new scope is created so the background task doesn't share the request's DbContext.
+        var idsToEmbed = result.Watches
+            .Concat(result.OtherCandidates)
+            .Select(w => w.Id)
+            .ToList();
+
+        if (idsToEmbed.Count > 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var embeddingService = scope.ServiceProvider.GetRequiredService<WatchEmbeddingService>();
+                await embeddingService.GenerateBulkAsync(idsToEmbed);
+            });
+        }
 
         return result;
     }
