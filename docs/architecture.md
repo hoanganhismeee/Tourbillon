@@ -26,9 +26,9 @@ Current system architecture as of March 2026. This document exists to provide co
 ```
 
 Notes:
-- `ai-service/` directory contains a Flask skeleton (`app.py` is empty). Placeholder for a future standalone Python AI service that will own all LLM calls.
+- `ai-service/` is a Python Flask service that owns all LLM calls (intent parsing, reranking, embedding generation). The .NET backend sends and receives structured data only — no prompt strings in C#.
 - Selenium/scraping components are **temporary** — used only during initial product data collection, will be removed once all brands are scraped. Not part of the production architecture.
-- Claude Haiku API calls currently live in `ClaudeApiService.cs` in the backend. These will migrate to `ai-service/` when that service is built out.
+- Claude Haiku API calls used during scraping (`ClaudeApiService.cs`) are separate from the AI Watch Finder — the scraper calls Claude directly; the Watch Finder goes through `ai-service`.
 
 ---
 
@@ -58,9 +58,10 @@ Entry point: `backend/Program.cs`
 - `BrandScraperService` — Legacy per-brand XPath scraper. Superseded.
 
 **AI Watch Finder (Phase 2+):**
-- `WatchFinderService` — Orchestrates parse → filter → rerank pipeline. Top-8 cap with score ≥ 60 threshold. Fires demand-driven embedding in background after each result.
+- `WatchFinderService` — Orchestrates the Phase 3B pipeline: embed query → check `QueryCache` → on miss: vector similarity search against `WatchEmbeddings` → LLM rerank → background cache store. Fallback to LLM parse + SQL filter if embed call fails. Top-8 cap, score ≥ 60 threshold.
 - `WatchFilterMapper` — Maps parsed LLM intent to SQL predicates.
-- `WatchEmbeddingService` — Builds 4 text chunks per watch, calls ai-service `/embed`, upserts into `WatchEmbeddings` table. Supports bulk generation and admin status reporting.
+- `WatchEmbeddingService` — Builds 4 text chunks per watch, calls ai-service `/embed` in true batches (50 watches / 200 texts per HTTP call), upserts into `WatchEmbeddings`. Skips already-embedded watches on demand-driven calls.
+- `QueryCacheService` — Persistent semantic query cache. Looks up the nearest cached query by cosine similarity (threshold 0.92). On hit, returns stored JSON result immediately — no LLM call. On miss, stores the new result for future similar queries.
 
 **User/auth:**
 - `UserRegistrationService`, `UserProfileService`, `PasswordChangeService`, `PasswordResetService`, `AccountDeletionService`, `RoleManagementService`
@@ -71,7 +72,7 @@ Entry point: `backend/Program.cs`
 - `EmailService` — SMTP email sending
 - `CurrencyConverter` — Currency conversion singleton
 
-### Models (9)
+### Models (10)
 
 | Model | Notes |
 |---|---|
@@ -82,7 +83,8 @@ Entry point: `backend/Program.cs`
 | `PriceTrend` | Price history per watch |
 | `BrandScraperConfig` | XPath config for legacy scraper (temporary) |
 | `WatchSpecs` | Deserialized specs: DialSpecs, CaseSpecs, MovementSpecs, StrapSpecs |
-| `WatchEmbedding` | pgvector embedding row — WatchId + ChunkType + ChunkText + vector(768) |
+| `WatchEmbedding` | pgvector row — WatchId + ChunkType + ChunkText + vector(768). 4 rows per watch. |
+| `QueryCache` | pgvector row — QueryText + QueryEmbedding vector(768) + ResultJson. One row per unique search. |
 | `WatchDto` | Data transfer object |
 
 ### DTOs (12)
@@ -229,6 +231,86 @@ def parse_llm_json(raw: str) -> dict:
 
 ---
 
+## Vector Search Architecture — Why and How
+
+This section explains the two-layer vector system from first principles. It is written for contributors who haven't worked with embeddings before.
+
+### The problem with SQL keyword search
+
+When a user searches "something a banker would wear to a client dinner", there is no database column called `occasion` that says "business formal". SQL can only match what was explicitly stored. A WHERE clause like `style = 'dress'` will miss watches that are clearly relevant but weren't tagged with that exact value.
+
+The Phase 2 pipeline works around this with an LLM that parses the query into structured filters (`style=dress`, `material=gold`), but the LLM-extracted fields are still mapped to SQL predicates. A nuanced query still produces a blunt database query.
+
+### What an embedding is
+
+An embedding is what you get when you pass text through a neural network that has learned the meaning of language. The network outputs a list of 768 numbers — a coordinate in a 768-dimensional space. The important property: **texts with similar meaning end up close together in that space**.
+
+```
+"dress watch for a wedding"          → [0.12, -0.43, 0.87, ...]   (768 numbers)
+"formal watch for a black tie event" → [0.11, -0.41, 0.85, ...]   (close — similar meaning)
+"dive watch 300m"                    → [-0.23, 0.91, -0.15, ...]  (far — different meaning)
+```
+
+"Closeness" is measured by cosine similarity — the angle between two vectors. Similarity 1.0 = identical meaning, 0.0 = unrelated, negative = opposite.
+
+### Why embed all the watches upfront
+
+At query time, we embed the user's query (one call, ~50ms). We then need to find which watches are semantically closest to it. To do that comparison, the watches must already be in the same vector space.
+
+If we didn't pre-compute watch embeddings, we would have to embed all 351 watches on every single search request — 351 Ollama calls before we could return a single result. Pre-computing once and storing the vectors in PostgreSQL means each search only needs one embed call (the query), then a fast database similarity scan.
+
+This is the same principle as a database index: pay the cost once at write time, get fast reads forever.
+
+### The two-layer design
+
+```
+Layer 1 — WatchEmbeddings (what each watch IS)
+  One entry per watch chunk (4 chunks × 351 watches = 1,404 rows)
+  Answers: "which watches are semantically similar to this query?"
+  Used by: Phase 3B vector retrieval (replaces SQL filtering)
+
+Layer 2 — QueryCaches (what was returned for a past query)
+  One entry per unique search query ever run
+  Answers: "have we seen this exact query (or one very close to it) before?"
+  Used by: instant cache hits before the LLM pipeline runs at all
+```
+
+They solve different problems and stack on top of each other:
+
+```
+User query
+  ↓
+[Layer 2] Embed query → cosine similarity vs QueryCaches
+  ├─ hit (similarity ≥ 0.92) → return stored result              <100ms, no LLM
+  └─ miss
+       ↓
+     [Layer 1] Phase 3B: cosine similarity vs WatchEmbeddings → top 30 candidates
+     (currently still SQL — Phase 3B not yet activated)
+       ↓
+     LLM rerank → top 8 results
+       ↓
+     [Background] store result in QueryCaches for next time
+```
+
+### Why the same embedding model everywhere
+
+Vectors from different models are incompatible — they live in different spaces with different dimensions and learned meanings. A `nomic-embed-text` vector and a `text-embedding-3-small` vector cannot be compared. This is why the rule exists: `nomic-embed-text` in dev (Ollama) and `nomic-embed-text` in production (also Ollama, same container). The 100% watch coverage seeded in dev is valid in production because the model is identical.
+
+### The four chunk types per watch
+
+Each watch is embedded as four separate texts, not one. This is because a single text can't capture all the ways a user might describe it:
+
+| Chunk | What it contains | Matches queries like |
+|---|---|---|
+| `full` | Brand + name + collection + price + all specs | "Patek Philippe 38mm white gold" |
+| `brand_style` | Brand identity + case material + dial color + strap | "rose gold watch with alligator strap" |
+| `specs` | All technical specs: diameter, thickness, water resistance, functions | "thin watch under 8mm with power reserve" |
+| `use_case` | Inferred occasions: diving, formal, dress, everyday | "something for a black tie event" |
+
+At retrieval time (Phase 3B), all four chunk vectors are compared against the query vector and the best-matching chunk wins. A query about case specs finds the right watch via its `specs` chunk even if the `full` chunk isn't the closest match.
+
+---
+
 ## Scraping Pipeline (temporary — for initial data collection only)
 
 3 strategies:
@@ -299,7 +381,7 @@ Once all brands are scraped, the scraping services (`SitemapScraperService`, `Cl
 - **CORS**: Configurable via `ALLOWED_ORIGINS` env var (defaults to `http://localhost:3000`)
 - **Workflow**: `docker compose up --build` to start, `docker compose down` to stop, `docker compose down -v` to also wipe database
 - **Images**: Cloudinary (upload from URL or stream, store public IDs)
-- **Caching**: None
+- **Caching**: Persistent semantic query cache (`QueryCaches` table in PostgreSQL). In-memory LLM response cache in `ai-service` (cleared on restart). No Redis yet.
 - **CDN**: None (Cloudinary handles edge delivery)
 - **IaC**: None
 - **CI/CD**: None

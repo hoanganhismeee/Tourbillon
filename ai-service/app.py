@@ -272,10 +272,8 @@ def embed():
         return jsonify({"error": "texts required"}), 400
 
     try:
-        embeddings = []
-        for text in texts:
-            resp = embed_client.embeddings.create(model=EMBED_MODEL, input=text)
-            embeddings.append(resp.data[0].embedding)
+        resp = embed_client.embeddings.create(model=EMBED_MODEL, input=texts)
+        embeddings = [item.embedding for item in sorted(resp.data, key=lambda x: x.index)]
         return jsonify({"embeddings": embeddings})
     except Exception as e:
         return jsonify({"error": f"Embedding failed: {str(e)}"}), 502
@@ -297,4 +295,4 @@ def health():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, threaded=True)

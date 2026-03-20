@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17-bookworm
+    image: pgvector/pgvector:pg17
     container_name: postgresql
     restart: unless-stopped
     environment:
@@ -29,7 +29,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=tourbillon;Username=${POSTGRES_USER:-tourbillon};Password=${POSTGRES_PASSWORD}"
+      ConnectionStrings__DefaultConnection: "Host=ep-lucky-fog-a7stpbyi-pooler.ap-southeast-2.aws.neon.tech;Port=5432;Username=neondb_owner;Password=npg_K6JYeMRBa5fL;Database=neondb;Ssl Mode=Require"
       Cloudinary__CloudName: ${CLOUDINARY_CLOUD_NAME:-}
       Cloudinary__ApiKey: ${CLOUDINARY_API_KEY:-}
       Cloudinary__ApiSecret: ${CLOUDINARY_API_SECRET:-}
@@ -63,6 +63,7 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-ollama}
       OLLAMA_FLASH_ATTENTION: 1
       OLLAMA_KEEP_ALIVE: -1
+      OLLAMA_MAX_LOADED_MODELS: 2
 
 volumes:
   pgdata:

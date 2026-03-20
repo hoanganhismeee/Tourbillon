@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using System.IO;
+using Npgsql;
+using Pgvector.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,9 +19,13 @@ builder.Services.AddSwaggerGen();
 // Add memory cache for rate limiting
 builder.Services.AddMemoryCache();
 
-// Add DbContext (PostgreSQL)
+// Add DbContext (PostgreSQL) with pgvector support
+var pgConnectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+var pgDataSourceBuilder = new NpgsqlDataSourceBuilder(pgConnectionString);
+pgDataSourceBuilder.UseVector();
+var pgDataSource = pgDataSourceBuilder.Build();
 builder.Services.AddDbContext<TourbillonContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(pgDataSource, npgsqlOptions => npgsqlOptions.UseVector()));
 
 // Adds and configures ASP.NET Core Identity for user management and authentication.
 builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
@@ -90,6 +96,7 @@ builder.Services.AddHttpClient("ai-service", c =>
 builder.Services.AddSingleton<WatchFilterMapper>();
 builder.Services.AddScoped<WatchFinderService>();
 builder.Services.AddScoped<WatchEmbeddingService>();
+builder.Services.AddScoped<QueryCacheService>();
 
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>

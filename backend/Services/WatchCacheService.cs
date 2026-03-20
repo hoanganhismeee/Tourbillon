@@ -111,8 +111,8 @@ public class WatchCacheService
     {
         try
         {
-            // IDs of the 9 showcase watches to keep (from DbInitializer)
-            var showcaseWatchIds = new HashSet<int> { 2, 4, 11, 13, 18, 24, 28, 30, 35 };
+            // IDs of the showcase watches to keep (9 Holy Trinity watches)
+            var showcaseWatchIds = new HashSet<int> { 1, 2, 3, 32, 33, 34, 57, 58, 59 };
 
             IQueryable<Watch> query = _context.Watches
                 .Where(w => !showcaseWatchIds.Contains(w.Id));
@@ -244,19 +244,9 @@ public class WatchCacheService
 
             if (existingWatch != null)
             {
-                // IDs of the 9 showcase watches - DO NOT TOUCH anything (name, description, image, price, specs)
-                var showcaseWatchIds = new HashSet<int> { 2, 4, 11, 13, 18, 24, 28, 30, 35 };
-
-                if (showcaseWatchIds.Contains(existingWatch.Id))
-                {
-                    _logger.LogInformation("Skipping showcase watch ID {Id}: {Name} - fully protected",
-                        existingWatch.Id, existingWatch.Name);
-                    return null;
-                }
-
                 _logger.LogDebug("Watch already exists: {Name}", scrapedWatch.Name);
 
-                // Update price and image for non-showcase watches
+                // Update price and image with fresh scraped data
                 UpdateWatchPrice(existingWatch, scrapedWatch.CurrentPrice);
                 if (!string.IsNullOrEmpty(scrapedWatch.ImageUrl))
                 {
