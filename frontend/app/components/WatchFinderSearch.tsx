@@ -102,7 +102,7 @@ export default function WatchFinderSearch() {
       {/* Error state */}
       {status === 'error' && (
         <p className="mt-6 text-sm font-inter text-white/50">
-          Something went wrong — try a different search.
+          Something went wrong — the AI model may still be warming up. Try again in a moment.
         </p>
       )}
 

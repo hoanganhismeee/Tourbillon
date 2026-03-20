@@ -24,4 +24,16 @@ echo "Creating ${CUSTOM_MODEL} from Modelfile (num_ctx 4096)..."
 ollama create "${CUSTOM_MODEL}" -f /app/Modelfile
 
 echo "Starting Flask..."
-exec python app.py
+python app.py &
+
+# Warmup — load model into VRAM before first real user request
+echo "Warming up model..."
+until curl -sf http://localhost:5000/health > /dev/null 2>&1; do
+  sleep 1
+done
+curl -sf -X POST http://localhost:5000/watch-finder/parse \
+  -H "Content-Type: application/json" \
+  -d '{"query":"dress watch"}' > /dev/null 2>&1
+echo "Model warm, ready."
+
+wait
