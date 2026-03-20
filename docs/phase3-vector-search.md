@@ -1,5 +1,8 @@
 # Phase 3: Vector Search — Demand-Driven Embedding Strategy
 
+**Phase 3A (infrastructure) — COMPLETE.** Embeddings are being generated and stored.
+**Phase 3B (switch retrieval to vector similarity) — PENDING.** Activate once coverage > 80%.
+
 Upgrade the watch finder candidate retrieval from SQL predicate filtering to vector similarity search, using a lazy embedding generation strategy that scales with usage.
 
 ---
@@ -111,10 +114,62 @@ Merge → deduplicate → send to LLM rerank
 |---|---|---|
 | Embedding model | `nomic-embed-text` via Ollama | Free, 768-dim, good semantic quality, same container |
 | Vector storage | pgvector (PostgreSQL extension) | Already have Postgres, no new service |
+| EF Core package | `Pgvector.EntityFrameworkCore` 0.3.0 | `Vector` type, column type `vector(768)` |
 | Similarity metric | Cosine similarity | Standard for text embeddings |
-| Migration | One EF Core migration, one pgvector extension | Minimal infra change |
+| Migration | `20260320120000_AddWatchEmbeddings.cs` | Creates `WatchEmbeddings` table + unique index |
 
 **Critical rule: same embedding model in dev and production.** Embeddings from different models are incompatible — different dimensions, different vector space. Using `nomic-embed-text` in both environments ensures the seeded vectors are valid in production.
+
+## Phase 3A Implementation (DONE)
+
+### WatchEmbeddings table
+
+```sql
+CREATE TABLE "WatchEmbeddings" (
+  "Id"        serial PRIMARY KEY,
+  "WatchId"   integer NOT NULL REFERENCES "Watches"("Id") ON DELETE CASCADE,
+  "ChunkType" text NOT NULL,   -- 'full' | 'brand_style' | 'specs' | 'use_case'
+  "ChunkText" text NOT NULL,
+  "Embedding" vector(768),
+  "UpdatedAt" timestamptz NOT NULL
+);
+CREATE UNIQUE INDEX ON "WatchEmbeddings" ("WatchId", "ChunkType");
+```
+
+### Four chunk types per watch
+
+| ChunkType | Content |
+|---|---|
+| `full` | Brand + name + collection + price + specs summary — holistic fallback |
+| `brand_style` | Brand, collection identity, case material, dial color, strap |
+| `specs` | All technical specs (diameter, thickness, water resistance, power reserve, functions) |
+| `use_case` | Occasion inference (diving, formal, dress, everyday) + price |
+
+### Key files
+
+| File | Purpose |
+|---|---|
+| `backend/Models/WatchEmbedding.cs` | EF Core entity |
+| `backend/Services/WatchEmbeddingService.cs` | Chunk builder + HTTP → ai-service `/embed` + upsert |
+| `ai-service/app.py` → `POST /embed` | Calls nomic-embed-text, returns float[768][] |
+| `ai-service/entrypoint.sh` | Pulls `nomic-embed-text` on container start |
+| `backend/Controllers/AdminController.cs` | `POST /api/admin/embeddings/generate`, `GET /api/admin/embeddings/status` |
+
+### Demand-driven embedding flow
+
+1. User fires a search → `WatchFinderService` returns results
+2. After returning, fire-and-forget `Task.Run` with new `IServiceScopeFactory` scope
+3. `WatchEmbeddingService.GenerateBulkAsync` embeds all returned watch IDs
+4. Same trigger in `WatchCacheService` for newly scraped watches
+
+### Admin bulk generation
+
+```
+POST /api/admin/embeddings/generate   → embeds all watches with no "full" chunk, returns { generated, total, embedded, coveragePct }
+GET  /api/admin/embeddings/status     → returns { total, embedded, coveragePct }
+```
+
+Run the admin endpoint to fast-fill coverage instead of waiting for organic search traffic.
 
 ### Watch embedding text format
 

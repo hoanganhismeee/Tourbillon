@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using Pgvector;
 using backend.Database;
 
 #nullable disable
@@ -18,7 +19,8 @@ namespace backend.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("ProductVersion", "9.0.7")
-                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+                .HasAnnotation("Relational:MaxIdentifierLength", 63)
+                .HasPostgresExtension("vector");
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
@@ -152,6 +154,40 @@ namespace backend.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("backend.Models.WatchEmbedding", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("WatchId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ChunkType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ChunkText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Vector>("Embedding")
+                        .HasColumnType("vector(768)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WatchId", "ChunkType")
+                        .IsUnique()
+                        .HasDatabaseName("IX_WatchEmbeddings_WatchId_ChunkType");
+
+                    b.ToTable("WatchEmbeddings");
                 });
 
             modelBuilder.Entity("backend.Models.Brand", b =>
@@ -466,6 +502,17 @@ namespace backend.Migrations
             modelBuilder.Entity("backend.Models.Watch", b =>
                 {
                     b.Navigation("PriceHistory");
+                });
+
+            modelBuilder.Entity("backend.Models.WatchEmbedding", b =>
+                {
+                    b.HasOne("backend.Models.Watch", "Watch")
+                        .WithMany()
+                        .HasForeignKey("WatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Watch");
                 });
 #pragma warning restore 612, 618
         }

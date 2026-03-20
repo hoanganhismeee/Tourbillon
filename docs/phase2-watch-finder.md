@@ -15,15 +15,20 @@ User query (plain text)
 2. FILTER  — backend SQL (WatchFilterMapper)
              Apply parsed intent as predicates → up to 30 candidates (brand-spread)
   ↓
-3. RERANK  — ai-service /watch-finder/rerank
-             Score each candidate 0–100, return explanation per watch
+3. RERANK  — ai-service /watch-finder/rerank (scores only, no explanations)
+             Score each candidate 0–100
   ↓
 4. SPLIT   — backend
-             Scored watches   → "Best matches" (top section, with AI explanation)
-             Unscored watches → "You may also be interested in" (bottom section)
+             Top matches: score ≥ 60, capped at 8 → top section
+             All others (lower-scored + unscored) → "Also interested in"
   ↓
-Response to frontend
+5. EMBED   — background fire-and-forget
+             WatchEmbeddingService generates vectors for all returned watches
+  ↓
+Response to frontend → /smart-search?q=...
 ```
+
+**On-demand explain:** `POST /api/watch/explain` → ai-service `/watch-finder/explain` — called only when user requests "Why this watch?" Single-sentence explanation, cached.
 
 ---
 
@@ -31,15 +36,20 @@ Response to frontend
 
 | Layer | File |
 |---|---|
-| AI service (parse + rerank) | `ai-service/app.py` |
+| AI service (parse + rerank + explain + embed) | `ai-service/app.py` |
 | Model config | `ai-service/Modelfile` |
 | Container startup | `ai-service/entrypoint.sh` |
 | Backend orchestration | `backend/Services/WatchFinderService.cs` |
 | SQL filter logic | `backend/Services/WatchFilterMapper.cs` |
-| API endpoint | `backend/Controllers/WatchController.cs` → `POST /api/watch/find` |
+| Embedding generation | `backend/Services/WatchEmbeddingService.cs` |
+| API endpoints | `backend/Controllers/WatchController.cs` → `POST /api/watch/find`, `POST /api/watch/explain`, `GET /api/watch/filter-options` |
+| Admin embedding endpoints | `backend/Controllers/AdminController.cs` → `POST /api/admin/embeddings/generate`, `GET /api/admin/embeddings/status` |
 | Next.js proxy | `frontend/app/api/watch-finder/route.ts` |
-| UI component | `frontend/app/components/WatchFinderSearch.tsx` |
-| API client type | `frontend/lib/api.ts` → `WatchFinderResult` |
+| Explain proxy | `frontend/app/api/watch-finder-explain/route.ts` |
+| AI ready proxy | `frontend/app/api/ai-ready/route.ts` |
+| Homepage search (redirect-only) | `frontend/app/components/WatchFinderSearch.tsx` |
+| Smart search page | `frontend/app/smart-search/SmartSearchClient.tsx` |
+| API client types | `frontend/lib/api.ts` → `WatchFinderResult`, `FilterOptions`, `watchFinderExplain`, `fetchFilterOptions` |
 
 ---
 
@@ -105,6 +115,20 @@ curl -sf -X POST http://localhost:5000/watch-finder/parse \
 ## Candidate Selection
 
 1. SQL filter returns up to **30 candidates** using a brand-spread algorithm (round-robin across brands for variety)
-2. All 30 sent to rerank
-3. AI scores as many as it can — scored ones become top matches, unscored become "also interested in"
-4. No artificial cap on results — specific queries naturally return fewer, broad queries return more
+2. All 30 sent to rerank — scores only (no explanations), `max_tokens` 600
+3. **Top section**: score ≥ 60, capped at 8 watches. If < 3 qualify, relax threshold and take top 8 regardless of score
+4. **"Also interested in" section**: all remaining candidates (lower-scored + unscored), ordered by score descending
+
+## Cold Start UX
+
+`_model_ready` flag in `app.py` gates `/parse` and `/rerank` — both return 503 until the warmup LLM call completes (~60s on first start). Frontend polls `GET /api/ai-ready` every 5s and shows "AI service warming up" while waiting.
+
+## Smart Search Page (`/smart-search`)
+
+Search from homepage redirects to `/smart-search?q=...` instead of showing inline results. The page:
+- Fetches AI results + brands + filter options in parallel on load
+- Shows a **horizontal accordion filter bar** (multi-select checkboxes per filter category)
+- Filters: Brand, Collection (cascades from brand), Case Material, Diameter, Movement, Dial Color, Water Resistance, Power Reserve, Complication, Price — all multi-select
+- **Wrist Fit input**: number → appended as `?wristFit=17` to all watch card links → pre-fills `WristFitWidget` on the detail page
+- All filtering is client-side (`useMemo`) on the full AI result set — no re-fetch
+- Results show in full-width 4-column grid with divider between top/other sections
