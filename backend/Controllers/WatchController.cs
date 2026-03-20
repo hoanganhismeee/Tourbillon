@@ -1,5 +1,7 @@
 // Manages individual watch products (specific models customers can buy).
 
+using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using backend.Database;
 using backend.Models;
@@ -14,11 +16,13 @@ public class WatchController : ControllerBase
 {
     private readonly TourbillonContext _context;
     private readonly WatchFinderService _watchFinderService;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public WatchController(TourbillonContext context, WatchFinderService watchFinderService)
+    public WatchController(TourbillonContext context, WatchFinderService watchFinderService, IHttpClientFactory httpClientFactory)
     {
         _context = context;
         _watchFinderService = watchFinderService;
+        _httpClientFactory = httpClientFactory;
     }
 
     [HttpPost("find")]
@@ -29,6 +33,103 @@ public class WatchController : ControllerBase
 
         var result = await _watchFinderService.FindWatchesAsync(request.Query);
         return Ok(result);
+    }
+
+    // On-demand explanation for a single watch — called when user clicks "Why this?" in Smart Search
+    [HttpPost("explain")]
+    public async Task<IActionResult> ExplainWatch([FromBody] ExplainWatchRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Query) || request.WatchId <= 0)
+            return BadRequest(new { error = "query and watchId are required" });
+
+        var watch = await _context.Watches.Include(w => w.Brand).AsNoTracking()
+            .FirstOrDefaultAsync(w => w.Id == request.WatchId);
+        if (watch == null) return NotFound();
+
+        var specs = DeserialiseSpecs(watch.Specs);
+        var payload = new
+        {
+            query = request.Query,
+            watch = new
+            {
+                id = watch.Id,
+                name = watch.Name,
+                brand = watch.Brand?.Name ?? "",
+                description = watch.Description ?? "",
+                price = (double)watch.CurrentPrice,
+                specs_summary = BuildSpecsSummary(specs)
+            }
+        };
+
+        var httpClient = _httpClientFactory.CreateClient("ai-service");
+        try
+        {
+            var resp = await httpClient.PostAsJsonAsync("/watch-finder/explain", payload);
+            if (!resp.IsSuccessStatusCode)
+                return StatusCode((int)resp.StatusCode, new { error = "AI service error" });
+
+            var json = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            return Ok(json);
+        }
+        catch
+        {
+            return StatusCode(503, new { error = "AI service unavailable" });
+        }
+    }
+
+    // Returns distinct spec values from the full catalog — used to populate Smart Search filter dropdowns
+    [HttpGet("filter-options")]
+    public IActionResult GetFilterOptions()
+    {
+        var watches = _context.Watches.AsNoTracking().ToList();
+        var specsList = watches
+            .Select(w => DeserialiseSpecs(w.Specs))
+            .Where(s => s != null)
+            .Select(s => s!)
+            .ToList();
+
+        static IEnumerable<string> Distinct(IEnumerable<string?> vals) =>
+            vals.Where(v => !string.IsNullOrWhiteSpace(v))
+                .Select(v => v!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(v => v);
+
+        var options = new
+        {
+            caseMaterials    = Distinct(specsList.Select(s => s.Case?.Material)).ToList(),
+            movementTypes    = Distinct(specsList.Select(s => s.Movement?.Type)).ToList(),
+            dialColors       = Distinct(specsList.Select(s => s.Dial?.Color)).ToList(),
+            waterResistance  = Distinct(specsList.Select(s => s.Case?.WaterResistance)).ToList(),
+            powerReserve     = Distinct(specsList.Select(s => s.Movement?.PowerReserve)).ToList(),
+            complications    = specsList
+                .SelectMany(s => s.Movement?.Functions ?? [])
+                .Where(f => !string.IsNullOrWhiteSpace(f))
+                .Select(f => f!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(f => f)
+                .ToList(),
+        };
+        return Ok(options);
+    }
+
+    private static WatchSpecs? DeserialiseSpecs(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return System.Text.Json.JsonSerializer.Deserialize<WatchSpecs>(json); }
+        catch { return null; }
+    }
+
+    private static string BuildSpecsSummary(WatchSpecs? specs)
+    {
+        if (specs == null) return "";
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(specs.Case?.Material))  parts.Add(specs.Case.Material);
+        if (!string.IsNullOrEmpty(specs.Case?.Diameter))  parts.Add(specs.Case.Diameter);
+        if (!string.IsNullOrEmpty(specs.Case?.Thickness)) parts.Add($"{specs.Case.Thickness} thick");
+        if (!string.IsNullOrEmpty(specs.Movement?.Type))  parts.Add(specs.Movement.Type);
+        if (!string.IsNullOrEmpty(specs.Dial?.Color))     parts.Add($"{specs.Dial.Color} dial");
+        if (!string.IsNullOrEmpty(specs.Strap?.Material)) parts.Add(specs.Strap.Material);
+        return string.Join(", ", parts);
     }
 
     [HttpGet]

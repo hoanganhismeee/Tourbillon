@@ -16,6 +16,8 @@ namespace backend.Services;
 
 public record WatchFinderRequest(string Query);
 
+public record ExplainWatchRequest(string Query, int WatchId);
+
 public class ParsedIntent
 {
     public string? Occasion { get; set; }
@@ -32,7 +34,6 @@ public class ParsedIntent
 
 public class WatchMatchDetail
 {
-    public string Explanation { get; set; } = "";
     public int Score { get; set; }
 }
 
@@ -121,23 +122,38 @@ public class WatchFinderService
                     var ranked   = JsonSerializer.Deserialize<List<RankedWatch>>(rankedEl.GetRawText(), _jsonOptions) ?? [];
                     var scoreMap = ranked.ToDictionary(r => r.WatchId);
 
-                    // Scored watches → top matches, unscored → "you may also be interested in"
-                    var scoredIds = new HashSet<int>(scoreMap.Keys);
-                    var topMatches = candidates
+                    // Top matches: capped at 8, minimum score 60 (fallback: relax threshold if fewer than 3)
+                    const int TopMatchLimit = 8;
+                    const int MinScoreThreshold = 60;
+
+                    var scoredAndOrdered = candidates
                         .Where(w => scoreMap.ContainsKey(w.Id))
                         .OrderByDescending(w => scoreMap[w.Id].Score)
                         .ToList();
 
+                    var topMatches = scoredAndOrdered
+                        .Where(w => scoreMap[w.Id].Score >= MinScoreThreshold)
+                        .Take(TopMatchLimit)
+                        .ToList();
+
+                    if (topMatches.Count < 3)
+                        topMatches = scoredAndOrdered.Take(Math.Min(TopMatchLimit, scoredAndOrdered.Count)).ToList();
+
+                    var topMatchIds = new HashSet<int>(topMatches.Select(w => w.Id));
+
                     result.Watches = topMatches.Select(w => WatchDto.FromWatch(w)).ToList();
+
+                    // All non-top candidates — lower-scored first, then unscored
                     result.OtherCandidates = candidates
-                        .Where(w => !scoredIds.Contains(w.Id))
+                        .Where(w => !topMatchIds.Contains(w.Id))
+                        .OrderByDescending(w => scoreMap.ContainsKey(w.Id) ? scoreMap[w.Id].Score : -1)
                         .Select(w => WatchDto.FromWatch(w))
                         .ToList();
+
                     result.MatchDetails = topMatches.ToDictionary(
                         w => w.Id,
                         w => new WatchMatchDetail
                         {
-                            Explanation = scoreMap[w.Id].Explanation,
                             Score = scoreMap[w.Id].Score
                         });
                 }
@@ -201,7 +217,7 @@ public class WatchFinderService
         catch { return null; }
     }
 
-    // Maps the ai-service rerank response shape
+    // Maps the ai-service rerank response shape (scores only — no explanation)
     private class RankedWatch
     {
         [JsonPropertyName("watch_id")]
@@ -209,8 +225,5 @@ public class WatchFinderService
 
         [JsonPropertyName("score")]
         public int Score { get; set; }
-
-        [JsonPropertyName("explanation")]
-        public string Explanation { get; set; } = "";
     }
 }
