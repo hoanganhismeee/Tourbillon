@@ -1,23 +1,31 @@
-// Smart Search page — AI watch finder results with a horizontal accordion filter bar.
-// Loads AI results, then lets users refine with multi-select checkboxes for each attribute.
+// Smart Search page — AI watch finder results with a horizontal filter bar and page tabs.
+// Top 20 best-match watches on page 1; remaining candidates on pages 2+ (20 per page).
+// Page number lives in the URL so router.back() from the compare page restores the correct page.
 // All filtering is client-side; no re-fetch after initial load.
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   watchFinderSearch,
   fetchBrands,
   fetchFilterOptions,
-  fetchCollectionsByBrand,
+  fetchCollections,
   WatchFinderResult,
   FilterOptions,
   Brand,
   Collection,
   Watch,
 } from '@/lib/api';
-import WatchCard from '@/app/watches/[watchId]/WatchCard';
+import { imageTransformations, getOptimizedImageUrl } from '@/lib/cloudinary';
+import { useNavigation } from '@/contexts/NavigationContext';
+import CompareToggle from '@/app/components/compare/CompareToggle';
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+
+const OTHERS_PAGE_SIZE = 20;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -122,13 +130,123 @@ function applyFilters(watches: Watch[], filters: Filters): Watch[] {
   });
 }
 
-// ── Shared dropdown button style ───────────────────────────────────────────────
+// ── SmartCard — AllWatchesSection-style card sized for a 4-col grid ───────────
+
+function SmartCard({
+  watch,
+  brands,
+  collections,
+  currentPage,
+}: {
+  watch: Watch;
+  brands: Brand[];
+  collections: Collection[];
+  currentPage: number;
+}) {
+  const { saveNavigationState } = useNavigation();
+  const router = useRouter();
+
+  const [src, setSrc] = useState<string>(watch.imageUrl || imageTransformations.card(watch.image));
+  const [retryCount, setRetryCount] = useState(0);
+
+  const handleImgError = () => {
+    if (retryCount < 1) {
+      setRetryCount(1);
+      const fallback = getOptimizedImageUrl(watch.image, {
+        width: 400, height: 400, crop: 'fill', quality: 'auto', format: 'jpg',
+      }) + `?r=${Date.now()}`;
+      setSrc(fallback);
+    }
+  };
+
+  const handleWatchClick = () => {
+    saveNavigationState({
+      scrollPosition: window.scrollY,
+      currentPage,
+      path: window.location.pathname + window.location.search,
+      timestamp: Date.now(),
+    });
+  };
+
+  const handleBrandClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    router.push(`/brands/${watch.brandId}`);
+  };
+
+  const handleCollectionClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (watch.collectionId) router.push(`/collections/${watch.collectionId}`);
+  };
+
+  const collectionName = watch.collectionId
+    ? collections.find(c => c.id === watch.collectionId)?.name
+    : null;
+
+  return (
+    <div className="group relative block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10">
+      {/* Image */}
+      <div className="relative mb-4">
+        <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
+          <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl flex items-center justify-center border border-white/10 overflow-hidden cursor-pointer">
+            {watch.image ? (
+              <Image
+                src={src}
+                alt={watch.name}
+                width={400}
+                height={400}
+                sizes="(min-width: 1024px) 25vw, 50vw"
+                className="w-full h-full object-cover rounded-xl"
+                onError={handleImgError}
+              />
+            ) : (
+              <span className="text-white/60 text-xs font-light">{watch.name}</span>
+            )}
+          </div>
+        </Link>
+        <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <CompareToggle watch={watch} />
+        </div>
+      </div>
+
+      {/* Info — left-aligned, matching AllWatches card */}
+      <div className="space-y-2">
+        <button
+          onClick={handleBrandClick}
+          className="text-xs text-white/60 hover:text-white/90 font-inter font-light uppercase tracking-wide transition-colors cursor-pointer bg-transparent border-none p-0 text-left"
+        >
+          {brands.find(b => b.id === watch.brandId)?.name ?? ''}
+        </button>
+
+        {collectionName && (
+          <button
+            onClick={handleCollectionClick}
+            className="block text-xs text-white/50 hover:text-white/80 font-inter font-light transition-colors cursor-pointer bg-transparent border-none p-0 text-left"
+          >
+            {collectionName}
+          </button>
+        )}
+
+        <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
+          <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate cursor-pointer">
+            {watch.name}
+          </h3>
+        </Link>
+
+        <p className="text-lg text-[#f0e6d2] font-inter font-semibold">
+          {watch.currentPrice === 0 ? 'Price on Request' : `$${watch.currentPrice.toLocaleString()}`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Filter pill style ──────────────────────────────────────────────────────────
 
 function pillClass(active: boolean) {
-  return `flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-inter whitespace-nowrap transition-colors ${
+  return `flex items-center gap-2 px-4 py-2.5 rounded-full border text-sm font-inter whitespace-nowrap transition-colors flex-shrink-0 ${
     active
-      ? 'bg-[#f0e6d2]/10 border-[#f0e6d2]/30 text-[#f0e6d2]'
-      : 'bg-white/5 border-white/15 text-white/60 hover:border-white/25 hover:text-white/90'
+      ? 'bg-[#f0e6d2]/15 border-[#f0e6d2]/40 text-[#f0e6d2]'
+      : 'bg-transparent border-white/12 text-white/50 hover:border-white/25 hover:text-white/80'
   }`;
 }
 
@@ -146,7 +264,7 @@ function Chevron({ open }: { open: boolean }) {
 function CountBadge({ count }: { count: number }) {
   if (count === 0) return null;
   return (
-    <span className="bg-[#f0e6d2]/15 text-[#f0e6d2] text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium leading-none">
+    <span className="bg-[#f0e6d2]/20 text-[#f0e6d2] text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium leading-none">
       {count}
     </span>
   );
@@ -154,10 +272,7 @@ function CountBadge({ count }: { count: number }) {
 
 // Generic dropdown with string checkboxes
 function FilterDropdown({
-  label,
-  options,
-  selected,
-  onChange,
+  label, options, selected, onChange,
 }: {
   label: string;
   options: string[];
@@ -182,7 +297,7 @@ function FilterDropdown({
   if (options.length === 0) return null;
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative flex-shrink-0">
       <button onClick={() => setOpen(o => !o)} className={pillClass(selected.length > 0)}>
         {label}
         <CountBadge count={selected.length} />
@@ -190,7 +305,7 @@ function FilterDropdown({
       </button>
 
       {open && (
-        <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 rounded-xl shadow-2xl min-w-52 overflow-hidden">
+        <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-52 overflow-hidden">
           <div className="max-h-64 overflow-y-auto p-2">
             {options.map(opt => {
               const active = selected.includes(opt);
@@ -198,7 +313,7 @@ function FilterDropdown({
                 <button
                   key={opt}
                   onClick={() => toggle(opt)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.04] transition-colors text-left"
                 >
                   <span className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
                     active ? 'bg-[#f0e6d2] border-[#f0e6d2]' : 'border-white/25'
@@ -222,9 +337,7 @@ function FilterDropdown({
 
 // Brand dropdown — same pattern but works with Brand objects / number IDs
 function BrandDropdown({
-  brands,
-  selected,
-  onChange,
+  brands, selected, onChange,
 }: {
   brands: Brand[];
   selected: number[];
@@ -248,7 +361,7 @@ function BrandDropdown({
   if (brands.length === 0) return null;
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative flex-shrink-0">
       <button onClick={() => setOpen(o => !o)} className={pillClass(selected.length > 0)}>
         Brand
         <CountBadge count={selected.length} />
@@ -256,7 +369,7 @@ function BrandDropdown({
       </button>
 
       {open && (
-        <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 rounded-xl shadow-2xl min-w-52 overflow-hidden">
+        <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-52 overflow-hidden">
           <div className="max-h-64 overflow-y-auto p-2">
             {brands.map(b => {
               const active = selected.includes(b.id);
@@ -264,7 +377,7 @@ function BrandDropdown({
                 <button
                   key={b.id}
                   onClick={() => toggle(b.id)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.04] transition-colors text-left"
                 >
                   <span className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
                     active ? 'bg-[#f0e6d2] border-[#f0e6d2]' : 'border-white/25'
@@ -286,27 +399,17 @@ function BrandDropdown({
   );
 }
 
-function SkeletonGrid({ count = 6 }: { count?: number }) {
+function SkeletonGrid({ count = 20 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-6 animate-pulse">
-          <div className="w-full h-64 bg-white/8 rounded-xl mb-5" />
-          <div className="h-3 bg-white/8 rounded mb-2 w-1/2 mx-auto" />
-          <div className="h-4 bg-white/8 rounded mb-2 w-3/4 mx-auto" />
-          <div className="h-4 bg-white/8 rounded w-1/2 mx-auto" />
+        <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-4 animate-pulse">
+          <div className="w-full aspect-square bg-white/8 rounded-xl mb-4" />
+          <div className="h-2.5 bg-white/8 rounded mb-2 w-1/3" />
+          <div className="h-3 bg-white/8 rounded mb-2 w-2/3" />
+          <div className="h-5 bg-white/8 rounded w-1/2" />
         </div>
       ))}
-    </div>
-  );
-}
-
-function Divider({ label }: { label: string }) {
-  return (
-    <div className="flex items-center gap-4 my-10">
-      <div className="flex-1 h-px bg-white/10" />
-      <p className="text-xs font-inter text-white/35 uppercase tracking-widest whitespace-nowrap">{label}</p>
-      <div className="flex-1 h-px bg-white/10" />
     </div>
   );
 }
@@ -318,6 +421,9 @@ export default function SmartSearchClient() {
   const router = useRouter();
   const query = searchParams.get('q') ?? '';
 
+  // Page lives in the URL — router.back() from /compare returns to the correct page automatically
+  const activePage = Number(searchParams.get('page') ?? '1');
+
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [result, setResult] = useState<WatchFinderResult | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -326,7 +432,7 @@ export default function SmartSearchClient() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [wristFit, setWristFit] = useState('');
 
-  // Initial parallel fetch: AI results + brands + filter options
+  // Initial parallel fetch: AI results + brands + filter options + all collections
   useEffect(() => {
     if (!query) { setStatus('error'); return; }
     setStatus('loading');
@@ -334,29 +440,16 @@ export default function SmartSearchClient() {
     setFilters(EMPTY_FILTERS);
     setWristFit('');
 
-    Promise.all([watchFinderSearch(query), fetchBrands(), fetchFilterOptions()])
-      .then(([res, br, fo]) => {
+    Promise.all([watchFinderSearch(query), fetchBrands(), fetchFilterOptions(), fetchCollections()])
+      .then(([res, br, fo, cols]) => {
         setResult(res);
         setBrands(br);
         setFilterOptions(fo);
+        setCollections(cols);
         setStatus('success');
       })
       .catch(() => setStatus('error'));
   }, [query]);
-
-  // Cascade: load collections only when exactly 1 brand is selected
-  useEffect(() => {
-    if (filters.brandIds.length !== 1) {
-      setCollections([]);
-      setFilters(prev => ({ ...prev, collectionIds: [] }));
-      return;
-    }
-    fetchCollectionsByBrand(filters.brandIds[0])
-      .then(setCollections)
-      .catch(() => setCollections([]));
-    setFilters(prev => ({ ...prev, collectionIds: [] }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.brandIds]);
 
   const setFilter = useCallback(<K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -369,7 +462,7 @@ export default function SmartSearchClient() {
 
   const hrefSuffix = wristFit ? `?wristFit=${encodeURIComponent(wristFit)}` : '';
 
-  // Client-side filter + re-split into top / others
+  // Client-side filter + split top / others
   const { topWatches, otherWatches } = useMemo(() => {
     if (!result) return { topWatches: [], otherWatches: [] };
     const topIds = new Set(result.watches.map(w => w.id));
@@ -379,6 +472,29 @@ export default function SmartSearchClient() {
       otherWatches: all.filter(w => !topIds.has(w.id)),
     };
   }, [result, filters]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    if (activePage !== 1 && status === 'success') {
+      router.replace(`/smart-search?q=${encodeURIComponent(query)}`, { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, wristFit]);
+
+  const goToPage = (page: number) => {
+    const url = page === 1
+      ? `/smart-search?q=${encodeURIComponent(query)}`
+      : `/smart-search?q=${encodeURIComponent(query)}&page=${page}`;
+    router.replace(url, { scroll: true });
+  };
+
+  const totalPages = 1 + Math.ceil(otherWatches.length / OTHERS_PAGE_SIZE);
+
+  // Slice others for current page (pages 2, 3, ...)
+  const othersSlice = useMemo(() => {
+    const offset = (activePage - 2) * OTHERS_PAGE_SIZE;
+    return otherWatches.slice(offset, offset + OTHERS_PAGE_SIZE);
+  }, [otherWatches, activePage]);
 
   if (!query) {
     return (
@@ -390,6 +506,11 @@ export default function SmartSearchClient() {
       </div>
     );
   }
+
+  // Decide what grid to render based on active page
+  const showingOthers = activePage >= 2;
+  const currentGrid = showingOthers ? othersSlice : topWatches;
+  const currentPage = activePage;
 
   return (
     <div className="container mx-auto px-4 sm:px-8 py-8 pt-28 pb-28 text-white">
@@ -421,111 +542,130 @@ export default function SmartSearchClient() {
         )}
       </div>
 
-      {/* ── Horizontal Filter Bar ── */}
-      <div className="mb-8 flex flex-wrap items-center gap-2">
+      {/* ── Filter Bar ── */}
+      <div className="pb-5 mb-6 border-b border-white/8">
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
 
-        <BrandDropdown
-          brands={brands}
-          selected={filters.brandIds}
-          onChange={v => setFilter('brandIds', v)}
-        />
+          {/* "Filters" label */}
+          <span className="text-xs font-inter text-white/30 uppercase tracking-widest mr-1 flex-shrink-0 self-center">
+            Filters
+          </span>
 
-        {/* Collection — only visible when exactly 1 brand is selected */}
-        {filters.brandIds.length === 1 && collections.length > 0 && (
+          <BrandDropdown
+            brands={brands}
+            selected={filters.brandIds}
+            onChange={v => setFilter('brandIds', v)}
+          />
+
+          {filterOptions && (
+            <>
+              <FilterDropdown
+                label="Case Material"
+                options={filterOptions.caseMaterials}
+                selected={filters.caseMaterials}
+                onChange={v => setFilter('caseMaterials', v)}
+              />
+              <FilterDropdown
+                label="Diameter"
+                options={DIAMETER_BUCKETS.map(b => b.label)}
+                selected={filters.diameterBuckets}
+                onChange={v => setFilter('diameterBuckets', v)}
+              />
+              <FilterDropdown
+                label="Movement"
+                options={filterOptions.movementTypes}
+                selected={filters.movementTypes}
+                onChange={v => setFilter('movementTypes', v)}
+              />
+              <FilterDropdown
+                label="Dial Color"
+                options={filterOptions.dialColors}
+                selected={filters.dialColors}
+                onChange={v => setFilter('dialColors', v)}
+              />
+              <FilterDropdown
+                label="Water Resistance"
+                options={filterOptions.waterResistance}
+                selected={filters.waterResistances}
+                onChange={v => setFilter('waterResistances', v)}
+              />
+              <FilterDropdown
+                label="Power Reserve"
+                options={filterOptions.powerReserve}
+                selected={filters.powerReserves}
+                onChange={v => setFilter('powerReserves', v)}
+              />
+              <FilterDropdown
+                label="Complication"
+                options={filterOptions.complications}
+                selected={filters.complications}
+                onChange={v => setFilter('complications', v)}
+              />
+            </>
+          )}
+
           <FilterDropdown
-            label="Collection"
-            options={collections.map(c => c.name)}
-            selected={collections.filter(c => filters.collectionIds.includes(c.id)).map(c => c.name)}
-            onChange={names => {
-              const ids = collections.filter(c => names.includes(c.name)).map(c => c.id);
-              setFilter('collectionIds', ids);
-            }}
+            label="Price"
+            options={PRICE_BUCKETS.map(b => b.label)}
+            selected={filters.priceBuckets}
+            onChange={v => setFilter('priceBuckets', v)}
           />
-        )}
 
-        {filterOptions && (
-          <>
-            <FilterDropdown
-              label="Case Material"
-              options={filterOptions.caseMaterials}
-              selected={filters.caseMaterials}
-              onChange={v => setFilter('caseMaterials', v)}
+          {/* Wrist Fit */}
+          <div className="flex items-center gap-2 px-3.5 py-2.5 bg-transparent border border-white/12 rounded-full flex-shrink-0">
+            <span className="text-sm font-inter text-white/50 whitespace-nowrap">Wrist</span>
+            <input
+              type="number"
+              min={10}
+              max={25}
+              step={0.5}
+              placeholder="17.0"
+              value={wristFit}
+              onChange={e => setWristFit(e.target.value)}
+              className="w-14 bg-transparent text-white text-sm font-inter placeholder-white/25 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
-            <FilterDropdown
-              label="Diameter"
-              options={DIAMETER_BUCKETS.map(b => b.label)}
-              selected={filters.diameterBuckets}
-              onChange={v => setFilter('diameterBuckets', v)}
-            />
-            <FilterDropdown
-              label="Movement"
-              options={filterOptions.movementTypes}
-              selected={filters.movementTypes}
-              onChange={v => setFilter('movementTypes', v)}
-            />
-            <FilterDropdown
-              label="Dial Color"
-              options={filterOptions.dialColors}
-              selected={filters.dialColors}
-              onChange={v => setFilter('dialColors', v)}
-            />
-            <FilterDropdown
-              label="Water Resistance"
-              options={filterOptions.waterResistance}
-              selected={filters.waterResistances}
-              onChange={v => setFilter('waterResistances', v)}
-            />
-            <FilterDropdown
-              label="Power Reserve"
-              options={filterOptions.powerReserve}
-              selected={filters.powerReserves}
-              onChange={v => setFilter('powerReserves', v)}
-            />
-            <FilterDropdown
-              label="Complication"
-              options={filterOptions.complications}
-              selected={filters.complications}
-              onChange={v => setFilter('complications', v)}
-            />
-          </>
-        )}
+            <span className="text-xs text-white/35">cm</span>
+          </div>
 
-        <FilterDropdown
-          label="Price"
-          options={PRICE_BUCKETS.map(b => b.label)}
-          selected={filters.priceBuckets}
-          onChange={v => setFilter('priceBuckets', v)}
-        />
-
-        {/* Wrist Fit — inline input pill */}
-        <div className="flex items-center gap-2 px-3.5 py-2 bg-white/5 border border-white/15 rounded-xl">
-          <span className="text-sm font-inter text-white/50 whitespace-nowrap">Wrist</span>
-          <input
-            type="number"
-            min={10}
-            max={25}
-            step={0.5}
-            placeholder="17.0"
-            value={wristFit}
-            onChange={e => setWristFit(e.target.value)}
-            className="w-14 bg-transparent text-white text-sm font-inter placeholder-white/25 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          />
-          <span className="text-xs text-white/35">cm</span>
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="ml-2 text-xs font-inter text-white/35 hover:text-white/60 transition-colors flex-shrink-0"
+            >
+              Clear all
+            </button>
+          )}
         </div>
-
-        {/* Clear all — far right */}
-        {hasActiveFilters && (
-          <button
-            onClick={clearFilters}
-            className="ml-auto text-xs font-inter text-white/35 hover:text-white/60 transition-colors"
-          >
-            Clear all
-          </button>
-        )}
       </div>
 
+      {/* ── Page tabs ── */}
+      {status === 'success' && result && totalPages > 1 && (
+        <div className="flex items-center gap-1 mb-6">
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+            <button
+              key={p}
+              onClick={() => goToPage(p)}
+              className={`w-8 h-8 rounded-full text-sm font-inter transition-colors ${
+                activePage === p
+                  ? 'bg-[#f0e6d2]/15 text-[#f0e6d2] border border-[#f0e6d2]/30'
+                  : 'text-white/35 hover:text-white/60 border border-transparent'
+              }`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── "Timepieces you may also be interested in" label on page 2+ ── */}
+      {status === 'success' && showingOthers && (
+        <p className="text-xs font-inter text-white/35 uppercase tracking-widest mb-6">
+          Timepieces you may also be interested in
+        </p>
+      )}
+
       {/* ── Results Grid ── */}
-      {status === 'loading' && <SkeletonGrid count={8} />}
+      {status === 'loading' && <SkeletonGrid count={20} />}
 
       {status === 'error' && (
         <div className="text-center py-20">
@@ -545,33 +685,30 @@ export default function SmartSearchClient() {
 
       {status === 'success' && result && (
         <>
-          {topWatches.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {topWatches.map(w => (
-                <WatchCard key={w.id} watch={w} hrefSuffix={hrefSuffix} />
+          {currentGrid.length > 0 ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+              {currentGrid.map(w => (
+                <SmartCard
+                  key={w.id}
+                  watch={w}
+                  brands={brands}
+                  collections={collections}
+                  currentPage={currentPage}
+                />
               ))}
             </div>
           ) : (
             <div className="py-12 text-center">
               <p className="text-white/40 font-inter text-sm">No watches match your current filters.</p>
-              <button
-                onClick={clearFilters}
-                className="mt-3 text-sm text-white/50 hover:text-white underline underline-offset-2 font-inter transition-colors"
-              >
-                Clear filters
-              </button>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="mt-3 text-sm text-white/50 hover:text-white underline underline-offset-2 font-inter transition-colors"
+                >
+                  Clear filters
+                </button>
+              )}
             </div>
-          )}
-
-          {otherWatches.length > 0 && (
-            <>
-              <Divider label="Timepieces you may also be interested in" />
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {otherWatches.map(w => (
-                  <WatchCard key={w.id} watch={w} hrefSuffix={hrefSuffix} />
-                ))}
-              </div>
-            </>
           )}
         </>
       )}

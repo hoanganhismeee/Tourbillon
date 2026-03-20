@@ -108,7 +108,7 @@ public class WatchFinderService
             intent = await parseTask;
             var allWatches = await dbTask;
             var filtered = (intent != null ? _mapper.Apply(allWatches, intent) : allWatches).ToList();
-            candidates = BrandSpread(filtered, 30);
+            candidates = BrandSpread(filtered, 100);
         }
 
         // Base result — returned as-is if rerank fails (all candidates, no split)
@@ -148,8 +148,8 @@ public class WatchFinderService
                     var ranked   = JsonSerializer.Deserialize<List<RankedWatch>>(rankedEl.GetRawText(), _jsonOptions) ?? [];
                     var scoreMap = ranked.ToDictionary(r => r.WatchId);
 
-                    // Top matches: capped at 8, minimum score 60 (fallback: relax threshold if fewer than 3)
-                    const int TopMatchLimit = 8;
+                    // Top matches: capped at 20, minimum score 60 (fallback: relax threshold if fewer than 3)
+                    const int TopMatchLimit = 20;
                     const int MinScoreThreshold = 60;
 
                     var scoredAndOrdered = candidates
@@ -237,13 +237,13 @@ public class WatchFinderService
 
         // Deduplicate in memory preserving order — first occurrence = best chunk for that watch
         var seen   = new HashSet<int>();
-        var topIds = new List<int>(30);
+        var topIds = new List<int>(100);
         foreach (var id in orderedIds)
         {
             if (seen.Add(id))
             {
                 topIds.Add(id);
-                if (topIds.Count >= 30) break;
+                if (topIds.Count >= 100) break;
             }
         }
 
