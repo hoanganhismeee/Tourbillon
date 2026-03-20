@@ -25,7 +25,8 @@ import CompareToggle from '@/app/components/compare/CompareToggle';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const OTHERS_PAGE_SIZE = 20;
+// Kept for reference — page size is defined inline as PAGE_SIZE inside the component
+// const OTHERS_PAGE_SIZE = 20;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -432,7 +433,19 @@ export default function SmartSearchClient() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [wristFit, setWristFit] = useState('');
 
-  // Initial parallel fetch: AI results + brands + filter options + all collections
+  // Load filter metadata immediately (fast DB queries) so the filter bar renders during the AI call.
+  // watchFinderSearch is slow (~4s) and runs separately — filter pills appear right away.
+  useEffect(() => {
+    Promise.all([fetchBrands(), fetchFilterOptions(), fetchCollections()])
+      .then(([br, fo, cols]) => {
+        setBrands(br);
+        setFilterOptions(fo);
+        setCollections(cols);
+      })
+      .catch(() => {});
+  }, []);
+
+  // AI search — re-runs whenever query changes
   useEffect(() => {
     if (!query) { setStatus('error'); return; }
     setStatus('loading');
@@ -440,14 +453,8 @@ export default function SmartSearchClient() {
     setFilters(EMPTY_FILTERS);
     setWristFit('');
 
-    Promise.all([watchFinderSearch(query), fetchBrands(), fetchFilterOptions(), fetchCollections()])
-      .then(([res, br, fo, cols]) => {
-        setResult(res);
-        setBrands(br);
-        setFilterOptions(fo);
-        setCollections(cols);
-        setStatus('success');
-      })
+    watchFinderSearch(query)
+      .then(res => { setResult(res); setStatus('success'); })
       .catch(() => setStatus('error'));
   }, [query]);
 
@@ -488,13 +495,26 @@ export default function SmartSearchClient() {
     router.replace(url, { scroll: true });
   };
 
-  const totalPages = 1 + Math.ceil(otherWatches.length / OTHERS_PAGE_SIZE);
+  const PAGE_SIZE = 20;
 
-  // Slice others for current page (pages 2, 3, ...)
-  const othersSlice = useMemo(() => {
-    const offset = (activePage - 2) * OTHERS_PAGE_SIZE;
-    return otherWatches.slice(offset, offset + OTHERS_PAGE_SIZE);
-  }, [otherWatches, activePage]);
+  // Flatten into a single ordered list: top matches first, then others.
+  // This ensures we always show exactly 20 per page regardless of whether the
+  // reranker succeeded (split between top/other) or failed (all in topWatches).
+  const allWatches = useMemo(
+    () => [...topWatches, ...otherWatches],
+    [topWatches, otherWatches]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(allWatches.length / PAGE_SIZE));
+
+  const currentGrid = useMemo(() => {
+    const offset = (activePage - 1) * PAGE_SIZE;
+    return allWatches.slice(offset, offset + PAGE_SIZE);
+  }, [allWatches, activePage]);
+
+  // Show "Timepieces" label when this page starts inside the otherWatches zone
+  const pageStartIndex = (activePage - 1) * PAGE_SIZE;
+  const showOthersLabel = otherWatches.length > 0 && topWatches.length > 0 && pageStartIndex >= topWatches.length;
 
   if (!query) {
     return (
@@ -507,9 +527,6 @@ export default function SmartSearchClient() {
     );
   }
 
-  // Decide what grid to render based on active page
-  const showingOthers = activePage >= 2;
-  const currentGrid = showingOthers ? othersSlice : topWatches;
   const currentPage = activePage;
 
   return (
@@ -544,7 +561,7 @@ export default function SmartSearchClient() {
 
       {/* ── Filter Bar ── */}
       <div className="pb-5 mb-6 border-b border-white/8">
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+        <div className="flex items-center gap-2 flex-wrap">
 
           {/* "Filters" label */}
           <span className="text-xs font-inter text-white/30 uppercase tracking-widest mr-1 flex-shrink-0 self-center">
@@ -658,7 +675,7 @@ export default function SmartSearchClient() {
       )}
 
       {/* ── "Timepieces you may also be interested in" label on page 2+ ── */}
-      {status === 'success' && showingOthers && (
+      {status === 'success' && showOthersLabel && (
         <p className="text-xs font-inter text-white/35 uppercase tracking-widest mb-6">
           Timepieces you may also be interested in
         </p>
