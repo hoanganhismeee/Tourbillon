@@ -124,6 +124,24 @@ export default function WatchFinderSearch() {
                   />
                 ))}
               </div>
+
+              {result.otherCandidates.length > 0 && (
+                <div className="mt-10">
+                  <div className="flex items-center gap-4 mb-5">
+                    <div className="flex-1 h-px bg-white/10" />
+                    <p className="text-xs font-inter text-white/35 uppercase tracking-widest whitespace-nowrap">
+                      You may also be interested in
+                    </p>
+                    <div className="flex-1 h-px bg-white/10" />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {result.otherCandidates.map(watch => (
+                      <FinderWatchCard key={watch.id} watch={watch} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="mt-6 text-right">
                 <Link
                   href={`/search?q=${encodeURIComponent(query)}`}

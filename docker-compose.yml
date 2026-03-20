@@ -49,7 +49,7 @@ services:
 
   ai-service:
     build: ./ai-service
-    container_name: qwen3-8b
+    container_name: qwen2.5-7b
     restart: unless-stopped
     ports:
       - "5000:5000"
@@ -58,8 +58,10 @@ services:
     environment:
       FLASK_ENV: production
       LLM_BASE_URL: http://localhost:11434/v1
-      LLM_MODEL: ${LLM_MODEL:-qwen3:8b}
+      LLM_MODEL: qwen2.5:7b
+      BASE_LLM_MODEL: ${BASE_LLM_MODEL:-qwen2.5:7b}
       LLM_API_KEY: ${LLM_API_KEY:-ollama}
+      OLLAMA_FLASH_ATTENTION: 1
 
 volumes:
   pgdata:

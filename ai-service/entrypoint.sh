@@ -8,13 +8,20 @@ until curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do
   sleep 2
 done
 
-MODEL="${LLM_MODEL:-qwen3:8b}"
-if ollama list | grep -q "^${MODEL}"; then
-  echo "Model ${MODEL} already cached, skipping pull."
+BASE_MODEL="${BASE_LLM_MODEL:-qwen2.5:7b}"
+CUSTOM_MODEL="${LLM_MODEL:-qwen2.5:7b}"
+
+# Pull base model if not cached
+if ollama list | grep -q "^${BASE_MODEL}"; then
+  echo "Model ${BASE_MODEL} already cached, skipping pull."
 else
-  echo "Pulling ${MODEL}..."
-  ollama pull "${MODEL}"
+  echo "Pulling ${BASE_MODEL}..."
+  ollama pull "${BASE_MODEL}"
 fi
+
+# Create custom model with extended context from Modelfile
+echo "Creating ${CUSTOM_MODEL} from Modelfile (num_ctx 4096)..."
+ollama create "${CUSTOM_MODEL}" -f /app/Modelfile
 
 echo "Starting Flask..."
 exec python app.py

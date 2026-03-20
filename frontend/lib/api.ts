@@ -139,6 +139,7 @@ export interface WatchMatchDetail {
 
 export interface WatchFinderResult {
   watches: Watch[];
+  otherCandidates: Watch[];
   matchDetails: Record<number, WatchMatchDetail>;
   parsedIntent: Record<string, unknown> | null;
 }

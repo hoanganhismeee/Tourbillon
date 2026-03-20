@@ -1,0 +1,12 @@
+# NVIDIA GPU override — merge with base docker-compose.yml via:
+#   docker compose -f docker-compose.yml -f docker-compose.nvidia.yml up -d --build
+# Requires NVIDIA Container Toolkit on the host.
+services:
+  ai-service:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
