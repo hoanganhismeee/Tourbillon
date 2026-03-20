@@ -5,7 +5,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWatchById, fetchBrands, fetchCollections } from '@/lib/api';
@@ -21,6 +21,7 @@ import Image from 'next/image';
 const WatchDetailPage = () => {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const watchId = params.watchId as string;
     const numericWatchId = watchId ? parseInt(watchId, 10) : NaN;
 
@@ -279,7 +280,10 @@ const WatchDetailPage = () => {
                         </div>
                     )}
 
-                    <WristFitWidget caseSpecs={structuredSpecs?.case as Record<string, unknown> | undefined} />
+                    <WristFitWidget
+                        caseSpecs={structuredSpecs?.case as Record<string, unknown> | undefined}
+                        initialValue={searchParams.get('wristFit') ?? undefined}
+                    />
                 </div>
             </div>
         </div>

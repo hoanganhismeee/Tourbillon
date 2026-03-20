@@ -16,9 +16,10 @@ import Image from 'next/image';
 interface WatchCardProps {
   watch: Watch;
   className?: string;
+  hrefSuffix?: string;  // appended to /watches/[id], e.g. "?wristFit=17"
 }
 
-const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
+const WatchCard = ({ watch, className = "", hrefSuffix = "" }: WatchCardProps) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [collection, setCollection] = useState<Collection | null>(null);
@@ -89,11 +90,13 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
     fetchCollection();
   }, [watch.collectionId, watch.brandId]);
 
+  const watchHref = `/watches/${watch.id}${hrefSuffix}`;
+
   return (
     <div className={`group relative bg-black/30 backdrop-blur-md border border-white/20 rounded-2xl p-6 transition-all duration-500 hover:border-white/40 hover:bg-black/40 hover:scale-[1.02] ${className}`}>
       {/* Image + action button overlay */}
       <div className="relative mb-4">
-        <Link href={`/watches/${watch.id}`} onClick={handleWatchClick} className="block">
+        <Link href={watchHref} onClick={handleWatchClick} className="block">
           <div className="w-full h-80 bg-black/40 rounded-xl flex items-center justify-center relative overflow-hidden">
             {!imageError ? (
               <>
@@ -144,7 +147,7 @@ const WatchCard = ({ watch, className = "" }: WatchCardProps) => {
       )}
 
       {/* Watch Details */}
-      <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
+      <Link href={watchHref} onClick={handleWatchClick}>
         <div className="space-y-3 text-center">
           <h3 className="text-xl font-playfair font-semibold text-[#f0e6d2] group-hover:text-white transition-colors">
             {watch.name}

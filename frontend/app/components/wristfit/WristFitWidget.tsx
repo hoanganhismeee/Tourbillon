@@ -9,6 +9,7 @@ import { calculateFitScores, FitScores } from '@/lib/wristfit';
 
 interface WristFitWidgetProps {
   caseSpecs: Record<string, unknown> | undefined;
+  initialValue?: string;
 }
 
 function scoreColor(score: number): string {
@@ -37,8 +38,8 @@ function SubScoreBar({ label, score }: { label: string; score: number }) {
   );
 }
 
-export default function WristFitWidget({ caseSpecs }: WristFitWidgetProps) {
-  const [inputValue, setInputValue] = useState('');
+export default function WristFitWidget({ caseSpecs, initialValue }: WristFitWidgetProps) {
+  const [inputValue, setInputValue] = useState(initialValue ?? '');
 
   // Guard: hide if no diameter data available
   if (!caseSpecs?.diameter) return null;
