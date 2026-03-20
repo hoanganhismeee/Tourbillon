@@ -8,8 +8,13 @@ until curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do
   sleep 2
 done
 
-echo "Pulling ${LLM_MODEL:-qwen3:8b}..."
-ollama pull "${LLM_MODEL:-qwen3:8b}"
+MODEL="${LLM_MODEL:-qwen3:8b}"
+if ollama list | grep -q "^${MODEL}"; then
+  echo "Model ${MODEL} already cached, skipping pull."
+else
+  echo "Pulling ${MODEL}..."
+  ollama pull "${MODEL}"
+fi
 
 echo "Starting Flask..."
 exec python app.py
