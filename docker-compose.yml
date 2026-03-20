@@ -62,6 +62,7 @@ services:
       BASE_LLM_MODEL: ${BASE_LLM_MODEL:-qwen2.5:7b}
       LLM_API_KEY: ${LLM_API_KEY:-ollama}
       OLLAMA_FLASH_ATTENTION: 1
+      OLLAMA_KEEP_ALIVE: -1
 
 volumes:
   pgdata:

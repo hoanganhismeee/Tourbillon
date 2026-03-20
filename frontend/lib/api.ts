@@ -149,7 +149,7 @@ export const watchFinderSearch = async (query: string): Promise<WatchFinderResul
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query }),
-    timeoutMs: 60000, // LLM inference can take up to ~30s on first cold run
+    timeoutMs: 120000, // cold start can take ~60s on first run after container restart
   });
   if (!response.ok) {
     throw new Error('Watch finder search failed');
