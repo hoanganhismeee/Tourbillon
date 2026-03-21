@@ -427,6 +427,55 @@ namespace backend.Migrations
                     b.ToTable("Watches");
                 });
 
+            modelBuilder.Entity("backend.Models.UserTasteProfile", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("PreferredBrandIds")
+                        .IsRequired()
+                        .HasDefaultValue("[]")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PreferredDialColors")
+                        .IsRequired()
+                        .HasDefaultValue("[]")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PreferredMaterials")
+                        .IsRequired()
+                        .HasDefaultValue("[]")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PreferredCaseSize")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("PriceMax")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("PriceMin")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("TasteText")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserTasteProfiles");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<int>", null)
@@ -541,6 +590,17 @@ namespace backend.Migrations
                         .IsRequired();
 
                     b.Navigation("Watch");
+                });
+
+            modelBuilder.Entity("backend.Models.UserTasteProfile", b =>
+                {
+                    b.HasOne("backend.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 #pragma warning restore 612, 618
         }

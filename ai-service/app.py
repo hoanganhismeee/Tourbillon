@@ -279,6 +279,62 @@ def embed():
         return jsonify({"error": f"Embedding failed: {str(e)}"}), 502
 
 
+# ── Taste profile extraction ──────────────────────────────────────────────────
+
+TASTE_SYSTEM_PROMPT = """You are a luxury watch expert. Extract structured watch preferences from the user's plain-text description.
+
+Available brands will be provided. Match brand names exactly from that list (case-insensitive).
+For case size, map to one of: "small" (<37mm), "medium" (37-41mm), "large" (>41mm), or null.
+
+Return ONLY valid JSON with these exact keys. Use null for unmentioned fields, [] for empty lists:
+{
+  "preferred_brands": [],
+  "preferred_materials": [],
+  "preferred_dial_colors": [],
+  "price_min": null,
+  "price_max": null,
+  "preferred_case_size": null
+}
+
+Key guidance:
+- preferred_brands: match names from the provided available_brands list only
+- preferred_materials: from ["stainless steel", "yellow gold", "white gold", "rose gold", "platinum", "titanium", "ceramic"]
+- preferred_dial_colors: common colors like "blue", "black", "white", "silver", "green", "champagne", "salmon", "grey"
+- price_min / price_max: numbers in USD, convert "20k" → 20000
+- preferred_case_size: infer from mm mentions ("39mm" → "medium") or descriptors ("large", "small wrist")
+
+No preamble. No explanation. JSON only."""
+
+TASTE_STRICT_PROMPT = TASTE_SYSTEM_PROMPT + "\n\nCRITICAL: Output raw JSON only. No markdown. No text before or after."
+
+
+@app.route("/parse-taste", methods=["POST"])
+def parse_taste():
+    """Extract structured watch preferences from a user's plain-text taste description.
+    Input: { taste_text: str, available_brands: list[str] }
+    Output: { preferred_brands, preferred_materials, preferred_dial_colors, price_min, price_max, preferred_case_size }"""
+    body = request.get_json(silent=True) or {}
+    taste_text = (body.get("taste_text") or "").strip()
+    available_brands = body.get("available_brands") or []
+
+    if not taste_text:
+        return jsonify({"error": "taste_text is required"}), 400
+
+    user_content = f"Available brands: {', '.join(available_brands)}\n\nUser description: {taste_text}"
+
+    try:
+        raw = call_llm(TASTE_SYSTEM_PROMPT, user_content, max_tokens=200)
+        result = parse_llm_json(raw)
+    except (ValueError, json.JSONDecodeError):
+        try:
+            raw = call_llm(TASTE_STRICT_PROMPT, user_content, max_tokens=200)
+            result = parse_llm_json(raw)
+        except (ValueError, json.JSONDecodeError) as e:
+            return jsonify({"error": f"Failed to parse LLM response: {str(e)}"}), 502
+
+    return jsonify(result)
+
+
 # ── Readiness + health checks ─────────────────────────────────────────────────
 
 @app.route("/ready")
