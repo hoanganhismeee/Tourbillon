@@ -104,19 +104,23 @@ QueryCaches self-populates from real traffic — no pre-seeding needed. The watc
 
 ## Architecture (Phase 3B — current)
 
+Three-tier routing. The LLM rerank is a tiebreaker, not a mandatory step.
+
 ```
 Query
   ↓
 Embed query text → float[768]  (~50ms, nomic-embed-text)
   ↓
 Check QueryCaches (cosine similarity ≥ 0.92)
-  ├─ hit  → return stored result                              (~55ms total)
+  ├─ hit  → return stored result                                   (~200ms total)
   └─ miss
        ↓
-     Vector search: ORDER BY chunk embedding <=> query vector
-     Best chunk per watch, top 30 returned                   (~50ms)
+     Vector search: cosine distance < 0.55, ORDER BY distance
+     Best chunk per watch, up to 50 watches returned              (~50ms)
        ↓
-     LLM rerank → top 8                                      (~2s Ollama / ~800ms Haiku)
+     Tier 4: 0 candidates → return empty immediately              (~300ms total)
+     Tier 2: best distance < 0.20 → return top 15 by vector order (~300ms total)
+     Tier 3: best distance 0.20–0.55 → LLM rerank on top 15      (10–30s Ollama / ~2s Haiku)
        ↓
      [Background] store result in QueryCaches
      [Background] embed any new watch IDs (skips already-embedded)
@@ -124,6 +128,15 @@ Check QueryCaches (cosine similarity ≥ 0.92)
 Fallback (embed call fails):
   LLM parse → SQL filter → LLM rerank
 ```
+
+**Routing thresholds (cosine distance: 0 = identical, 1 = orthogonal):**
+
+| Tier | Condition | LLM called? | Notes |
+|---|---|---|---|
+| Cache hit | similarity ≥ 0.92 | No | Always fastest path |
+| Tier 2 | best distance < 0.20 | No | Brand names, exact collection matches |
+| Tier 3 | best distance 0.20–0.55 | Yes (top 15) | Ambiguous queries needing ranking |
+| Tier 4 | best distance > 0.55 | No | Nothing relevant, return empty |
 
 ---
 
@@ -136,6 +149,7 @@ Fallback (embed call fails):
 | EF Core package | `Pgvector.EntityFrameworkCore` 0.3.0 | `Vector` type, column type `vector(768)` |
 | Similarity metric | Cosine similarity | Standard for text embeddings |
 | Migration | `20260320120000_AddWatchEmbeddings.cs` | Creates `WatchEmbeddings` table + unique index |
+| HNSW index migration | `20260321010000_AddWatchEmbeddingsHnswIndex.cs` | ANN index for sub-10ms vector search at scale |
 
 **Critical rule: same embedding model in dev and production.** Embeddings from different models are incompatible — different dimensions, different vector space. Using `nomic-embed-text` in both environments ensures the seeded vectors are valid in production.
 
@@ -287,16 +301,15 @@ CREATE INDEX ON "QueryCaches" USING ivfflat ("QueryEmbedding" vector_cosine_ops)
 
 ## Performance Targets
 
-| Scenario | Phase 2 (current) | Phase 3 (vector) |
+| Scenario | Phase 2 | Phase 3B (current) |
 |---|---|---|
-| Parse (LLM) | ~2s warm | ~2s (unchanged) |
-| Candidate retrieval | ~10ms SQL | ~50ms vector |
-| Rerank (LLM) | ~1.5s warm | ~1.5s (unchanged) |
-| Total warm | ~4s | ~4s (marginal gain here) |
-| Total — full coverage, cached query | ~5ms | ~5ms |
-| Semantic accuracy | Medium (SQL field matching) | High (semantic similarity) |
+| Cache hit | ~5ms | ~200ms (embed + DB lookup) |
+| Exact/brand query (Tier 2) | ~4s (always LLM) | ~300ms (vector only) |
+| Ambiguous query (Tier 3) | ~4s | 10–30s Ollama / ~2s Haiku |
+| No match (Tier 4) | ~4s (LLM still called) | ~300ms (early return) |
+| Semantic accuracy | Medium (SQL field matching) | High (cosine similarity) |
 
-The main gain from Phase 3 is **result quality**, not raw speed. Speed gain comes from the query result cache (unchanged) and from removing edge cases where SQL filtering misses relevant watches.
+The main gain from Phase 3B over Phase 2 is **result quality** and **short-circuit speed for no-match/strong-match cases**. The LLM is now reserved for genuinely ambiguous queries — acting as a tiebreaker, not a mandatory pipeline step.
 
 ---
 

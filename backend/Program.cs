@@ -91,7 +91,7 @@ builder.Services.AddScoped<SitemapScraperService>();
 builder.Services.AddHttpClient("ai-service", c =>
 {
     c.BaseAddress = new Uri(builder.Configuration["AiService:BaseUrl"] ?? "http://localhost:5000");
-    c.Timeout = TimeSpan.FromMinutes(3);
+    c.Timeout = TimeSpan.FromSeconds(25);
 });
 builder.Services.AddSingleton<WatchFilterMapper>();
 builder.Services.AddScoped<WatchFinderService>();
