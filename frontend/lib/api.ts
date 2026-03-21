@@ -33,6 +33,13 @@ export interface Collection {
   brandId: number;
 }
 
+export interface WatchEditorialContent {
+  whyItMatters: string;
+  collectorAppeal: string;
+  designLanguage: string;
+  bestFor: string;
+}
+
 export interface Watch {
   id: number;
   name: string;
@@ -43,6 +50,7 @@ export interface Watch {
   brandId: number;
   collectionId: number | null;
   specs: string | null;
+  editorialContent?: WatchEditorialContent | null;
 }
 
 export interface User {
