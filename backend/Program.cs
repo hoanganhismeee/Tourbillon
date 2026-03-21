@@ -107,6 +107,7 @@ builder.Services.AddSingleton<WatchFilterMapper>();
 builder.Services.AddScoped<WatchFinderService>();
 builder.Services.AddScoped<WatchEmbeddingService>();
 builder.Services.AddScoped<QueryCacheService>();
+builder.Services.AddScoped<WatchEditorialService>();
 
 // Register taste profile service for Watch DNA personalization
 builder.Services.AddScoped<ITasteProfileService, TasteProfileService>();

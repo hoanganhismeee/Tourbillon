@@ -24,6 +24,7 @@ public class AdminController : ControllerBase
     private readonly WatchEmbeddingService _embeddingService;
     private readonly WatchFinderService _watchFinderService;
     private readonly QueryCacheService _queryCache;
+    private readonly WatchEditorialService _editorialService;
     private readonly ILogger<AdminController> _logger;
 
     public AdminController(
@@ -33,6 +34,7 @@ public class AdminController : ControllerBase
         WatchEmbeddingService embeddingService,
         WatchFinderService watchFinderService,
         QueryCacheService queryCache,
+        WatchEditorialService editorialService,
         ILogger<AdminController> logger)
     {
         _cacheService = cacheService;
@@ -41,6 +43,7 @@ public class AdminController : ControllerBase
         _embeddingService = embeddingService;
         _watchFinderService = watchFinderService;
         _queryCache = queryCache;
+        _editorialService = editorialService;
         _logger = logger;
     }
 
@@ -1164,6 +1167,52 @@ public class AdminController : ControllerBase
     {
         await _queryCache.ClearAsync();
         return Ok(new { message = "Query cache cleared." });
+    }
+
+    // ── Editorial endpoints ────────────────────────────────────────────────────
+
+    /// Generates editorial story content for all collections and links all watches.
+    /// Run once offline with gemma2:9b before deploy, then pg_dump the editorial tables.
+    /// POST: api/admin/editorial/seed
+    [HttpPost("editorial/seed")]
+    public async Task<IActionResult> SeedEditorial()
+    {
+        _logger.LogInformation("Admin: editorial seeding started");
+        try
+        {
+            var (seeded, linked, skipped) = await _editorialService.SeedAllAsync();
+            return Ok(new
+            {
+                Success = true,
+                Seeded = seeded,
+                Linked = linked,
+                Skipped = skipped,
+                Timestamp = DateTime.UtcNow,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Editorial seeding failed");
+            return StatusCode(500, new { Success = false, Message = ex.Message });
+        }
+    }
+
+    /// Returns editorial coverage stats.
+    /// GET: api/admin/editorial/status
+    [HttpGet("editorial/status")]
+    public async Task<IActionResult> GetEditorialStatus()
+    {
+        var (total, withEditorial, pct) = await _editorialService.GetStatusAsync();
+        return Ok(new { Total = total, WithEditorial = withEditorial, CoveragePct = pct });
+    }
+
+    /// Deletes all editorial content and links. Use before re-seeding with a different model.
+    /// DELETE: api/admin/editorial
+    [HttpDelete("editorial")]
+    public async Task<IActionResult> ClearEditorial()
+    {
+        var deleted = await _editorialService.ClearAllAsync();
+        return Ok(new { Success = true, Deleted = deleted });
     }
 }
 
