@@ -8,12 +8,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { fetchWatches, fetchCollections, Watch, Collection, Brand } from '@/lib/api';
+import { fetchWatches, fetchCollections, getTasteProfile, Watch, Collection, Brand, TasteProfile } from '@/lib/api';
 import { imageTransformations, getOptimizedImageUrl } from '@/lib/cloudinary';
 import Image from 'next/image';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
+import { useAuth } from '@/contexts/AuthContext';
 import CompareToggle from '../compare/CompareToggle';
 
 
@@ -167,8 +168,68 @@ function interleaveByBrand(watches: Watch[]): Watch[] {
   return result;
 }
 
+// Parsed shape of the Watch.specs JSON field used for taste scoring
+interface WatchSpecsParsed {
+  case?: { material?: string; diameter?: string };
+  dial?: { color?: string };
+}
+
+// Score a watch against a taste profile (mirrors TasteProfileService.ScoreWatch in C#).
+// +3 brand, +2 material, +2 dial color, +1 case size, +1 price = 9 max.
+function scoreTasteMatch(watch: Watch, profile: TasteProfile): number {
+  let score = 0;
+
+  if (profile.preferredBrandIds.includes(watch.brandId)) score += 3;
+
+  const specs: WatchSpecsParsed | null = (() => {
+    try { return watch.specs ? JSON.parse(watch.specs) : null; } catch { return null; }
+  })();
+
+  if (specs?.case?.material && profile.preferredMaterials.length > 0) {
+    const mat = specs.case.material.toLowerCase();
+    if (profile.preferredMaterials.some(m => mat.includes(m.toLowerCase()))) score += 2;
+  }
+
+  if (specs?.dial?.color && profile.preferredDialColors.length > 0) {
+    const col = specs.dial.color.toLowerCase();
+    if (profile.preferredDialColors.some(c => col.includes(c.toLowerCase()))) score += 2;
+  }
+
+  if (specs?.case?.diameter && profile.preferredCaseSize) {
+    const mmMatch = specs.case.diameter.match(/\d+\.?\d*/);
+    if (mmMatch) {
+      const mm = parseFloat(mmMatch[0]);
+      const matches =
+        profile.preferredCaseSize === 'small'  ? mm < 37 :
+        profile.preferredCaseSize === 'medium' ? mm >= 37 && mm <= 41 :
+        mm > 41;
+      if (matches) score += 1;
+    }
+  }
+
+  // Exclude PoR watches (price === 0) from price scoring
+  if (profile.priceMin != null && profile.priceMax != null && watch.currentPrice > 0) {
+    if (watch.currentPrice >= profile.priceMin && watch.currentPrice <= profile.priceMax) score += 1;
+  }
+
+  return score;
+}
+
+// Returns true when the profile has at least one preference set
+function hasAnyPreference(profile: TasteProfile): boolean {
+  return (
+    profile.preferredBrandIds.length > 0 ||
+    profile.preferredMaterials.length > 0 ||
+    profile.preferredDialColors.length > 0 ||
+    profile.preferredCaseSize != null ||
+    profile.priceMin != null ||
+    profile.priceMax != null
+  );
+}
+
 // Main component: handles watches display, pagination, and shuffle logic
 const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
+  const { isAuthenticated } = useAuth();
   const { hasShuffledWatches, setHasShuffledWatches } = useWatchesPage();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -201,18 +262,39 @@ const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
     queryFn: fetchCollections,
   });
 
-  // Shuffle watches once per session after data arrives; preserve order on back-navigation
+  // Fetch taste profile only for authenticated users; staleTime:Infinity so it
+  // only refreshes when explicitly invalidated (i.e. after the user saves their taste).
+  const { data: tasteProfile } = useQuery({
+    queryKey: ['tasteProfile'],
+    queryFn: getTasteProfile,
+    enabled: isAuthenticated,
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  const isPersonalized = isAuthenticated && !!tasteProfile && hasAnyPreference(tasteProfile);
+
+  // Sort watches by taste score on load and whenever the profile changes.
+  // Matched watches (score > 0) float to the top, sorted highest-first.
+  // Unmatched watches keep the interleaved-by-brand shuffle for visual variety.
+  // Falls back to the standard interleave shuffle when no preferences are set.
   useEffect(() => {
     if (watches.length === 0) return;
     const filtered = watches.filter(w => !TRINITY_WATCH_IDS.includes(w.id));
-    if (!hasShuffledWatches) {
-      const shuffled = interleaveByBrand(filtered);
-      setShuffledWatches(shuffled);
+
+    if (isPersonalized && tasteProfile) {
+      const scored = filtered.map(w => ({ watch: w, score: scoreTasteMatch(w, tasteProfile) }));
+      const matched   = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score).map(s => s.watch);
+      const unmatched = scored.filter(s => s.score === 0).map(s => s.watch);
+      setShuffledWatches([...matched, ...interleaveByBrand(unmatched)]);
+      setHasShuffledWatches(true);
+    } else if (!hasShuffledWatches) {
+      setShuffledWatches(interleaveByBrand(filtered));
       setHasShuffledWatches(true);
     } else {
       setShuffledWatches(filtered);
     }
-  }, [watches]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [watches, tasteProfile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // isReady: content is in the DOM (either watches rendered, or confirmed empty)
   const isReady = shuffledWatches.length > 0 || (!watchesLoading && watches.length === 0);
@@ -237,9 +319,16 @@ const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
 
   return (
     <section>
-      <h2 className="text-5xl font-playfair font-bold text-center mb-20 text-[#f0e6d2]">
-        {currentPage === 1 ? 'All Watches' : `Watches - Page ${currentPage}`}
-      </h2>
+      <div className="text-center mb-20">
+        <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2]">
+          {currentPage === 1 ? 'All Watches' : `Watches - Page ${currentPage}`}
+        </h2>
+        {isPersonalized && (
+          <span className="inline-block mt-3 px-3 py-1 rounded-full text-xs border border-[var(--primary-brown)]/40 text-[var(--primary-brown)]">
+            Personalized for you
+          </span>
+        )}
+      </div>
 
       {/* Loading state */}
       {watchesLoading ? (

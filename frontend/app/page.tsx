@@ -1,5 +1,6 @@
-// Landing page: hero text + AI Watch Finder search bar
+// Landing page: hero text + AI Watch Finder search bar + personalisation CTA for guests
 import WatchFinderSearch from "./components/WatchFinderSearch";
+import TasteCTA from "./components/TasteCTA";
 
 export default function Home() {
   return (
@@ -12,6 +13,7 @@ export default function Home() {
           Experience the precision and elegance of mechanical timepieces. Discover our curated collection of luxury watches from the world&apos;s finest manufacturers.
         </p>
         <WatchFinderSearch />
+        <TasteCTA />
       </div>
     </div>
   );

@@ -477,6 +477,40 @@ export const deleteWatch = async (id: number): Promise<void> => {
   }
 };
 
+// ── Taste Profile ────────────────────────────────────────────────────────────
+
+export interface TasteProfile {
+  tasteText: string | null;
+  preferredBrandIds: number[];
+  preferredMaterials: string[];
+  preferredDialColors: string[];
+  priceMin: number | null;
+  priceMax: number | null;
+  preferredCaseSize: 'small' | 'medium' | 'large' | null;
+}
+
+export const getTasteProfile = async (): Promise<TasteProfile> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/taste`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch taste profile');
+  return response.json();
+};
+
+export const saveTasteProfile = async (tasteText: string): Promise<TasteProfile> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/taste`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ tasteText }),
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.message || 'Failed to save taste profile');
+  }
+  return response.json();
+};
+
 export const adminUploadWatchImage = async (file: File, slug?: string): Promise<{ success: boolean; publicId: string }> => {
   const formData = new FormData();
   formData.append('file', file);
