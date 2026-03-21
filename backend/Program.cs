@@ -38,7 +38,17 @@ builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
     options.Password.RequireLowercase = false;
 })
 .AddEntityFrameworkStores<TourbillonContext>() // Links Identity to the Entity Framework data store.
-.AddRoleManager<RoleManager<IdentityRole<int>>>(); // Enable role management
+.AddRoleManager<RoleManager<IdentityRole<int>>>() // Enable role management
+.AddDefaultTokenProviders(); // Required for external login token validation
+
+// Add Google OAuth — ClientId/Secret loaded from user-secrets in dev, env vars in prod
+builder.Services.AddAuthentication()
+    .AddGoogle(options =>
+    {
+        options.ClientId     = builder.Configuration["Authentication:Google:ClientId"]!;
+        options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"]!;
+        // Default callback path is /signin-google; handled automatically by the middleware
+    });
 
 // Configure authorization policies
 builder.Services.AddAuthorization(options =>
@@ -100,6 +110,9 @@ builder.Services.AddScoped<QueryCacheService>();
 
 // Register taste profile service for Watch DNA personalization
 builder.Services.AddScoped<ITasteProfileService, TasteProfileService>();
+
+// Register magic login (passwordless OTP) service
+builder.Services.AddScoped<IMagicLoginService, MagicLoginService>();
 
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
