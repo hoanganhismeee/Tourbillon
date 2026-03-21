@@ -1,5 +1,6 @@
 // This controller handles user authentication operations (login, logout, register).
 // It follows Single Responsibility Principle by focusing only on authentication concerns.
+using System.Security.Claims;
 using backend.Models;
 using backend.Services;
 using backend.DTOs;
@@ -18,6 +19,7 @@ public class AuthenticationController : ControllerBase
     private readonly RoleManager<IdentityRole<int>> _roleManager;
     private readonly IUserRegistrationService _userRegistrationService;
     private readonly IPasswordResetService _passwordResetService;
+    private readonly IMagicLoginService _magicLoginService;
     private readonly ILogger<AuthenticationController> _logger;
 
     public AuthenticationController(
@@ -26,6 +28,7 @@ public class AuthenticationController : ControllerBase
         RoleManager<IdentityRole<int>> roleManager,
         IUserRegistrationService userRegistrationService,
         IPasswordResetService passwordResetService,
+        IMagicLoginService magicLoginService,
         ILogger<AuthenticationController> logger)
     {
         _signInManager = signInManager;
@@ -33,6 +36,7 @@ public class AuthenticationController : ControllerBase
         _roleManager = roleManager;
         _userRegistrationService = userRegistrationService;
         _passwordResetService = passwordResetService;
+        _magicLoginService = magicLoginService;
         _logger = logger;
     }
 
@@ -227,6 +231,90 @@ public class AuthenticationController : ControllerBase
             _logger.LogError(ex, "Error in SetupFirstAdmin");
             return StatusCode(500, new { Message = $"Error during admin setup: {ex.Message}" });
         }
+    }
+
+    // GET: api/authentication/google
+    // Initiates Google OAuth flow — full browser redirect, not XHR.
+    [HttpGet("google")]
+    [AllowAnonymous]
+    public IActionResult GoogleLogin()
+    {
+        // redirectUrl is where the OAuth middleware redirects AFTER it processes /signin-google
+        var redirectUrl = Url.Action(nameof(GoogleCallback), "Authentication");
+        var properties  = _signInManager.ConfigureExternalAuthenticationProperties("Google", redirectUrl);
+        return Challenge(properties, "Google");
+    }
+
+    // GET: api/authentication/google-callback
+    // Receives the user after the Google middleware has validated the auth code and stored
+    // the external login info in a temporary cookie. Finds or creates a local account,
+    // signs the user in, and redirects to the frontend.
+    [HttpGet("google-callback")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GoogleCallback()
+    {
+        const string frontendBase = "http://localhost:3000";
+
+        var info = await _signInManager.GetExternalLoginInfoAsync();
+        if (info == null)
+            return Redirect($"{frontendBase}/login?error=google-failed");
+
+        var email = info.Principal.FindFirstValue(ClaimTypes.Email);
+        if (string.IsNullOrEmpty(email))
+            return Redirect($"{frontendBase}/login?error=no-email");
+
+        // Find existing account by email — avoid duplicate users for same address
+        var user = await _userManager.FindByEmailAsync(email);
+        if (user == null)
+        {
+            // Auto-create a passwordless account (user can add a password later via Edit Details)
+            var firstName = info.Principal.FindFirstValue(ClaimTypes.GivenName) ?? string.Empty;
+            var lastName  = info.Principal.FindFirstValue(ClaimTypes.Surname)   ?? string.Empty;
+            user = new User { UserName = email, Email = email, FirstName = firstName, LastName = lastName };
+            var createResult = await _userManager.CreateAsync(user);
+            if (!createResult.Succeeded)
+            {
+                _logger.LogError("Google OAuth: failed to create user {Email}: {Errors}",
+                    email, string.Join(", ", createResult.Errors.Select(e => e.Description)));
+                return Redirect($"{frontendBase}/login?error=create-failed");
+            }
+        }
+
+        // Sign in and set the application cookie
+        await _signInManager.SignInAsync(user, isPersistent: false);
+        _logger.LogInformation("Google OAuth sign-in: {Email}", email);
+        return Redirect($"{frontendBase}/auth/callback");
+    }
+
+    // POST: api/authentication/magic-login/request
+    // Step 1: Send a 6-char OTP to the given email. Always 200 — never reveals if email exists.
+    [HttpPost("magic-login/request")]
+    [AllowAnonymous]
+    public async Task<IActionResult> MagicLoginRequest([FromBody] MagicLoginRequestDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Email))
+            return BadRequest(new { Message = "Email is required." });
+
+        await _magicLoginService.RequestAsync(dto.Email.Trim());
+        return Ok(new { Message = "If that email is valid, a sign-in code has been sent." });
+    }
+
+    // POST: api/authentication/magic-login/verify
+    // Step 2: Validate the OTP, sign the user in (creating account if new), return 200.
+    [HttpPost("magic-login/verify")]
+    [AllowAnonymous]
+    public async Task<IActionResult> MagicLoginVerify([FromBody] MagicLoginVerifyDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Code))
+            return BadRequest(new { Message = "Email and code are required." });
+
+        var user = await _magicLoginService.VerifyAsync(dto.Email.Trim(), dto.Code.Trim());
+        if (user == null)
+            return Unauthorized(new { Message = "Invalid or expired code." });
+
+        await _signInManager.SignInAsync(user, isPersistent: false);
+        _logger.LogInformation("Magic login sign-in: {Email}", user.Email);
+        return Ok(new { Message = "Sign-in successful." });
     }
 
     // POST: api/authentication/test-email

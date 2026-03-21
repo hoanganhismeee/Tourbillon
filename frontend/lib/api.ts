@@ -477,6 +477,33 @@ export const deleteWatch = async (id: number): Promise<void> => {
   }
 };
 
+// ── Magic Login (passwordless OTP) ───────────────────────────────────────────
+
+export const requestMagicLogin = async (email: string): Promise<void> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/authentication/magic-login/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.message || 'Failed to send code');
+  }
+};
+
+export const verifyMagicLogin = async (data: { email: string; code: string }): Promise<void> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/authentication/magic-login/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.message || 'Invalid or expired code');
+  }
+};
+
 // ── Taste Profile ────────────────────────────────────────────────────────────
 
 export interface TasteProfile {
