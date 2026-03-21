@@ -20,6 +20,7 @@ import {
   Watch,
 } from '@/lib/api';
 import { imageTransformations, getOptimizedImageUrl } from '@/lib/cloudinary';
+import { calculateFitScores, parseSpecMm } from '@/lib/wristfit';
 import { useNavigation } from '@/contexts/NavigationContext';
 import CompareToggle from '@/app/components/compare/CompareToggle';
 
@@ -85,7 +86,9 @@ function parseDiameterMm(raw: string | undefined): number | null {
   return match ? parseFloat(match[1]) : null;
 }
 
-function applyFilters(watches: Watch[], filters: Filters): Watch[] {
+function applyFilters(watches: Watch[], filters: Filters, wristFit: string): Watch[] {
+  const wristCm = wristFit ? parseFloat(wristFit) : null;
+
   return watches.filter(w => {
     const specs = parseSpecs(w.specs);
 
@@ -127,6 +130,20 @@ function applyFilters(watches: Watch[], filters: Filters): Watch[] {
       const buckets = PRICE_BUCKETS.filter(b => filters.priceBuckets.includes(b.label));
       if (!buckets.some(b => b.test(w.currentPrice))) return false;
     }
+
+    // Wrist fit filter: exclude watches that score below 40 ("Wearable" threshold)
+    if (wristCm !== null && !isNaN(wristCm)) {
+      const caseSpecs = specs?.case as { diameter?: string; thickness?: string } | undefined;
+      // If the watch has no diameter data, skip the filter (don't exclude it)
+      if (caseSpecs?.diameter) {
+        const diameterMm = parseSpecMm(caseSpecs.diameter);
+        if (diameterMm !== null) {
+          const fit = calculateFitScores(wristCm, caseSpecs);
+          if (fit !== null && fit.overall < 40) return false;
+        }
+      }
+    }
+
     return true;
   });
 }
@@ -138,14 +155,18 @@ function SmartCard({
   brands,
   collections,
   currentPage,
+  wristFit,
 }: {
   watch: Watch;
   brands: Brand[];
   collections: Collection[];
   currentPage: number;
+  wristFit: string;
 }) {
   const { saveNavigationState } = useNavigation();
   const router = useRouter();
+
+  const watchHref = `/watches/${watch.id}${wristFit ? `?wristFit=${encodeURIComponent(wristFit)}` : ''}`;
 
   const [src, setSrc] = useState<string>(watch.imageUrl || imageTransformations.card(watch.image));
   const [retryCount, setRetryCount] = useState(0);
@@ -187,7 +208,7 @@ function SmartCard({
     <div className="group relative block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10">
       {/* Image */}
       <div className="relative mb-4">
-        <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
+        <Link href={watchHref} onClick={handleWatchClick}>
           <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl flex items-center justify-center border border-white/10 overflow-hidden cursor-pointer">
             {watch.image ? (
               <Image
@@ -227,7 +248,7 @@ function SmartCard({
           </button>
         )}
 
-        <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
+        <Link href={watchHref} onClick={handleWatchClick}>
           <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate cursor-pointer">
             {watch.name}
           </h3>
@@ -432,6 +453,7 @@ export default function SmartSearchClient() {
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [wristFit, setWristFit] = useState('');
+  const [editQuery, setEditQuery] = useState(query);
 
   // Load filter metadata immediately (fast DB queries) so the filter bar renders during the AI call.
   // watchFinderSearch is slow (~4s) and runs separately — filter pills appear right away.
@@ -445,7 +467,10 @@ export default function SmartSearchClient() {
       .catch(() => {});
   }, []);
 
-  // AI search — re-runs whenever query changes
+  // Sync editable query header when URL query changes (e.g. browser back/forward)
+  useEffect(() => { setEditQuery(query); }, [query]);
+
+  // AI search — checks sessionStorage first to avoid re-running on back navigation
   useEffect(() => {
     if (!query) { setStatus('error'); return; }
     setStatus('loading');
@@ -453,8 +478,33 @@ export default function SmartSearchClient() {
     setFilters(EMPTY_FILTERS);
     setWristFit('');
 
+    const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+    const cacheKey = `smartsearch:${query}`;
+
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const { result: cachedResult, ts } = JSON.parse(cached) as { result: WatchFinderResult; ts: number };
+        if (Date.now() - ts < CACHE_TTL) {
+          setResult(cachedResult);
+          setStatus('success');
+          return;
+        }
+      }
+    } catch {
+      // sessionStorage unavailable (private browsing, storage full) — proceed with fetch
+    }
+
     watchFinderSearch(query)
-      .then(res => { setResult(res); setStatus('success'); })
+      .then(res => {
+        setResult(res);
+        setStatus('success');
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({ result: res, ts: Date.now() }));
+        } catch {
+          // ignore storage errors
+        }
+      })
       .catch(() => setStatus('error'));
   }, [query]);
 
@@ -467,18 +517,16 @@ export default function SmartSearchClient() {
   const hasActiveFilters =
     Object.values(filters).some(v => Array.isArray(v) && v.length > 0) || wristFit !== '';
 
-  const hrefSuffix = wristFit ? `?wristFit=${encodeURIComponent(wristFit)}` : '';
-
   // Client-side filter + split top / others
   const { topWatches, otherWatches } = useMemo(() => {
     if (!result) return { topWatches: [], otherWatches: [] };
     const topIds = new Set(result.watches.map(w => w.id));
-    const all = applyFilters([...result.watches, ...result.otherCandidates], filters);
+    const all = applyFilters([...result.watches, ...result.otherCandidates], filters, wristFit);
     return {
       topWatches: all.filter(w => topIds.has(w.id)),
       otherWatches: all.filter(w => !topIds.has(w.id)),
     };
-  }, [result, filters]);
+  }, [result, filters, wristFit]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -545,8 +593,19 @@ export default function SmartSearchClient() {
         </button>
 
         <div className="flex items-start gap-3 flex-wrap">
-          <h1 className="text-3xl font-playfair font-bold text-[#f0e6d2]">&ldquo;{query}&rdquo;</h1>
-          <span className="mt-1.5 px-2 py-0.5 text-xs font-inter font-medium bg-white/10 border border-white/20 rounded-full text-white/60 uppercase tracking-wider self-start">
+          <input
+            type="text"
+            value={editQuery}
+            onChange={e => setEditQuery(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && editQuery.trim()) {
+                router.push(`/smart-search?q=${encodeURIComponent(editQuery.trim())}`);
+              }
+            }}
+            className="text-3xl font-playfair font-bold text-[#f0e6d2] bg-transparent border-none outline-none focus:border-b focus:border-[#f0e6d2]/30 min-w-0 flex-1"
+            aria-label="Edit search query"
+          />
+          <span className="mt-1.5 px-2 py-0.5 text-xs font-inter font-medium bg-white/10 border border-white/20 rounded-full text-white/60 uppercase tracking-wider self-start flex-shrink-0">
             AI
           </span>
         </div>
@@ -711,6 +770,7 @@ export default function SmartSearchClient() {
                   brands={brands}
                   collections={collections}
                   currentPage={currentPage}
+                  wristFit={wristFit}
                 />
               ))}
             </div>
