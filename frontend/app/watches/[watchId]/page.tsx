@@ -286,6 +286,31 @@ const WatchDetailPage = () => {
                     />
                 </div>
             </div>
+
+            {/* Story-first editorial sections — pre-generated, served from DB */}
+            {watch.editorialContent && (
+                <div className="mt-20 border-t border-white/10 pt-14 max-w-3xl">
+                    <h2 className="text-3xl font-playfair font-semibold text-[#f0e6d2] mb-12">The Story</h2>
+                    <div className="space-y-10">
+                        <div>
+                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Why This Watch Matters</h3>
+                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.whyItMatters}</p>
+                        </div>
+                        <div>
+                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Collector Appeal</h3>
+                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.collectorAppeal}</p>
+                        </div>
+                        <div>
+                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Design Language</h3>
+                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.designLanguage}</p>
+                        </div>
+                        <div>
+                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Best For</h3>
+                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.bestFor}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

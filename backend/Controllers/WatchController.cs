@@ -141,12 +141,16 @@ public class WatchController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    public IActionResult GetWatch(int id) // Return a specific watch from database from id
+    public async Task<IActionResult> GetWatch(int id)
     {
-        var watch = _context.Watches.Find(id);
+        var watch = await _context.Watches
+            .Include(w => w.EditorialLink)
+                .ThenInclude(l => l!.EditorialContent)
+            .FirstOrDefaultAsync(w => w.Id == id);
+
         if (watch == null) return NotFound();
 
-        var watchDto = WatchDto.FromWatch(watch);
+        var watchDto = WatchDto.FromWatch(watch, editorial: watch.EditorialLink?.EditorialContent);
         return Ok(watchDto);
     }
 
