@@ -43,7 +43,7 @@ const CompareIndicator = () => {
   };
 
   return (
-    <div className="fixed bottom-8 right-8 z-50 select-none" ref={panelRef}>
+    <div className="fixed bottom-24 right-8 z-50 select-none" ref={panelRef}>
       <AnimatePresence>
         {isExpanded && (
           <motion.div
