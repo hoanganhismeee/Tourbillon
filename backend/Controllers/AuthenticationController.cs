@@ -20,6 +20,7 @@ public class AuthenticationController : ControllerBase
     private readonly IUserRegistrationService _userRegistrationService;
     private readonly IPasswordResetService _passwordResetService;
     private readonly IMagicLoginService _magicLoginService;
+    private readonly IRoleManagementService _roleManagement;
     private readonly ILogger<AuthenticationController> _logger;
 
     public AuthenticationController(
@@ -29,6 +30,7 @@ public class AuthenticationController : ControllerBase
         IUserRegistrationService userRegistrationService,
         IPasswordResetService passwordResetService,
         IMagicLoginService magicLoginService,
+        IRoleManagementService roleManagement,
         ILogger<AuthenticationController> logger)
     {
         _signInManager = signInManager;
@@ -37,6 +39,7 @@ public class AuthenticationController : ControllerBase
         _userRegistrationService = userRegistrationService;
         _passwordResetService = passwordResetService;
         _magicLoginService = magicLoginService;
+        _roleManagement = roleManagement;
         _logger = logger;
     }
 
@@ -282,6 +285,7 @@ public class AuthenticationController : ControllerBase
 
         // Sign in and set the application cookie
         await _signInManager.SignInAsync(user, isPersistent: false);
+        await _roleManagement.AssignAdminIfConfiguredAsync(user);
         _logger.LogInformation("Google OAuth sign-in: {Email}", email);
         return Redirect($"{frontendBase}/auth/callback");
     }

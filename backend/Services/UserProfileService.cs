@@ -28,6 +28,8 @@ public class UserProfileService : IUserProfileService
                 return null;
             }
 
+            var roles = await _userManager.GetRolesAsync(user);
+
             return new UserProfileDto
             {
                 Email = user.Email,
@@ -38,7 +40,8 @@ public class UserProfileService : IUserProfileService
                 Address = user.Address,
                 City = user.City,
                 State = user.State,
-                Country = user.Country
+                Country = user.Country,
+                Roles = roles.ToList()
             };
         }
         catch (Exception ex)

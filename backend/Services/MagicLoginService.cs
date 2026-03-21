@@ -18,6 +18,7 @@ public class MagicLoginService : IMagicLoginService
     private readonly UserManager<User> _userManager;
     private readonly IEmailService _emailService;
     private readonly IMemoryCache _cache;
+    private readonly IRoleManagementService _roleManagement;
     private readonly ILogger<MagicLoginService> _logger;
 
     // Unambiguous charset: no 0/O, 1/I/L to avoid visual confusion in email
@@ -29,11 +30,13 @@ public class MagicLoginService : IMagicLoginService
         UserManager<User> userManager,
         IEmailService emailService,
         IMemoryCache cache,
+        IRoleManagementService roleManagement,
         ILogger<MagicLoginService> logger)
     {
         _userManager = userManager;
         _emailService = emailService;
         _cache = cache;
+        _roleManagement = roleManagement;
         _logger = logger;
     }
 
@@ -113,6 +116,7 @@ public class MagicLoginService : IMagicLoginService
             _logger.LogInformation("Magic login: auto-created account for {Email}", email);
         }
 
+        await _roleManagement.AssignAdminIfConfiguredAsync(user);
         return user;
     }
 

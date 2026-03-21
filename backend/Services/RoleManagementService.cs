@@ -1,5 +1,6 @@
 using backend.Models;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
 
 namespace backend.Services;
 
@@ -21,6 +22,9 @@ public interface IRoleManagementService
 
     /// Creates a role if it doesn't exist
     Task<(bool Success, string Message)> EnsureRoleExistsAsync(string roleName);
+
+    /// Assigns Admin role if the user's email matches the configured seed admin email
+    Task AssignAdminIfConfiguredAsync(User user);
 }
 
 /// Service for managing user roles
@@ -28,15 +32,18 @@ public class RoleManagementService : IRoleManagementService
 {
     private readonly UserManager<User> _userManager;
     private readonly RoleManager<IdentityRole<int>> _roleManager;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<RoleManagementService> _logger;
 
     public RoleManagementService(
         UserManager<User> userManager,
         RoleManager<IdentityRole<int>> roleManager,
+        IConfiguration configuration,
         ILogger<RoleManagementService> logger)
     {
         _userManager = userManager;
         _roleManager = roleManager;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -151,6 +158,24 @@ public class RoleManagementService : IRoleManagementService
         {
             _logger.LogError(ex, "Error creating role '{Role}'", roleName);
             return (false, $"Error creating role: {ex.Message}");
+        }
+    }
+
+    /// Assigns Admin role if the user's email matches AdminSettings:SeedAdminEmail
+    public async Task AssignAdminIfConfiguredAsync(User user)
+    {
+        var seedEmail = _configuration["AdminSettings:SeedAdminEmail"];
+        if (string.IsNullOrWhiteSpace(seedEmail)) return;
+        if (!string.Equals(user.Email, seedEmail, StringComparison.OrdinalIgnoreCase)) return;
+
+        if (!await _userManager.IsInRoleAsync(user, "Admin"))
+        {
+            var result = await _userManager.AddToRoleAsync(user, "Admin");
+            if (result.Succeeded)
+                _logger.LogInformation("Auto-assigned Admin role to configured seed user {Email}", user.Email);
+            else
+                _logger.LogError("Failed to auto-assign Admin role to {Email}: {Errors}",
+                    user.Email, string.Join(", ", result.Errors.Select(e => e.Description)));
         }
     }
 }

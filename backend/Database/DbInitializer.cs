@@ -5,6 +5,9 @@ using System.IO;
 using CsvHelper.Configuration;
 using CsvHelper.Configuration.Attributes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace backend.Database
 {
@@ -172,29 +175,40 @@ namespace backend.Database
             SeedCollectionsFromCsv(context);
         }
 
-        /// Ensures Admin role exists in the database
+        /// Ensures Admin role exists and seeds the configured admin email with the Admin role
         /// Call this from Program.cs after services are configured
-        public static async Task EnsureAdminRoleAsync(IServiceProvider serviceProvider)
+        public static async Task EnsureAdminSetupAsync(IServiceProvider serviceProvider)
         {
-            var roleManager = serviceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.RoleManager<Microsoft.AspNetCore.Identity.IdentityRole<int>>>();
+            var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole<int>>>();
+            var userManager = serviceProvider.GetRequiredService<UserManager<User>>();
+            var config = serviceProvider.GetRequiredService<IConfiguration>();
 
-            // Check if Admin role exists
+            // Ensure Admin role exists
             if (!await roleManager.RoleExistsAsync("Admin"))
             {
-                // Create Admin role
-                var result = await roleManager.CreateAsync(new Microsoft.AspNetCore.Identity.IdentityRole<int>("Admin"));
-                if (result.Succeeded)
-                {
-                    Console.WriteLine("Created 'Admin' role successfully");
-                }
-                else
-                {
-                    Console.WriteLine($"Failed to create 'Admin' role: {string.Join(", ", result.Errors.Select(e => e.Description))}");
-                }
+                var result = await roleManager.CreateAsync(new IdentityRole<int>("Admin"));
+                Console.WriteLine(result.Succeeded
+                    ? "Created 'Admin' role successfully"
+                    : $"Failed to create 'Admin' role: {string.Join(", ", result.Errors.Select(e => e.Description))}");
             }
-            else
+
+            // Assign Admin role to seed email if the user account already exists
+            var seedEmail = config["AdminSettings:SeedAdminEmail"];
+            if (string.IsNullOrWhiteSpace(seedEmail)) return;
+
+            var user = await userManager.FindByEmailAsync(seedEmail);
+            if (user == null)
             {
-                Console.WriteLine("'Admin' role already exists");
+                Console.WriteLine($"Admin seed: user '{seedEmail}' not found yet, will assign on first sign-in.");
+                return;
+            }
+
+            if (!await userManager.IsInRoleAsync(user, "Admin"))
+            {
+                var result = await userManager.AddToRoleAsync(user, "Admin");
+                Console.WriteLine(result.Succeeded
+                    ? $"Admin seed: assigned Admin role to '{seedEmail}'"
+                    : $"Admin seed: failed for '{seedEmail}': {string.Join(", ", result.Errors.Select(e => e.Description))}");
             }
         }
 
