@@ -98,6 +98,9 @@ builder.Services.AddScoped<WatchFinderService>();
 builder.Services.AddScoped<WatchEmbeddingService>();
 builder.Services.AddScoped<QueryCacheService>();
 
+// Register taste profile service for Watch DNA personalization
+builder.Services.AddScoped<ITasteProfileService, TasteProfileService>();
+
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
 {

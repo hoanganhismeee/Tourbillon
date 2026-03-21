@@ -17,6 +17,7 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
     public DbSet<PriceTrend> PriceTrends { get; set; }
     public DbSet<WatchEmbedding> WatchEmbeddings { get; set; }
     public DbSet<QueryCache> QueryCaches { get; set; }
+    public DbSet<UserTasteProfile> UserTasteProfiles { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -37,6 +38,15 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
         modelBuilder.Entity<QueryCache>(entity =>
         {
             entity.Property(e => e.QueryEmbedding).HasColumnType("vector(768)");
+        });
+
+        modelBuilder.Entity<UserTasteProfile>(entity =>
+        {
+            // One taste profile per user
+            entity.HasIndex(e => e.UserId).IsUnique();
+            entity.Property(e => e.PreferredBrandIds).HasDefaultValue("[]");
+            entity.Property(e => e.PreferredMaterials).HasDefaultValue("[]");
+            entity.Property(e => e.PreferredDialColors).HasDefaultValue("[]");
         });
     }
 }
