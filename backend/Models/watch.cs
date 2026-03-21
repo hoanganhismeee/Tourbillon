@@ -19,6 +19,7 @@ public class Watch
     // Navigation properties
 
     public ICollection<PriceTrend>? PriceHistory { get; set; } = new List<PriceTrend>();
+    public WatchEditorialLink? EditorialLink { get; set; }
 
     /// Returns the complete image URL for Cloudinary images
     /// If Image is already a full URL (starts with http), returns it as-is

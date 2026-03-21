@@ -18,6 +18,8 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
     public DbSet<WatchEmbedding> WatchEmbeddings { get; set; }
     public DbSet<QueryCache> QueryCaches { get; set; }
     public DbSet<UserTasteProfile> UserTasteProfiles { get; set; }
+    public DbSet<WatchEditorialContent> WatchEditorialContents { get; set; }
+    public DbSet<WatchEditorialLink> WatchEditorialLinks { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -47,6 +49,12 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
             entity.Property(e => e.PreferredBrandIds).HasDefaultValue("[]");
             entity.Property(e => e.PreferredMaterials).HasDefaultValue("[]");
             entity.Property(e => e.PreferredDialColors).HasDefaultValue("[]");
+        });
+
+        modelBuilder.Entity<WatchEditorialLink>(entity =>
+        {
+            // WatchId is the PK — one editorial per watch
+            entity.HasKey(e => e.WatchId);
         });
     }
 }
