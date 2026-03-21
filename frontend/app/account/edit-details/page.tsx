@@ -1,5 +1,7 @@
 // This page orchestrates the edit details functionality using separate components
 "use client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import StaggeredFade from "../../scrollMotion/StaggeredFade";
 import WatchDnaForm from "./WatchDnaForm";
@@ -8,17 +10,14 @@ import ChangePasswordForm from "./ChangePasswordForm";
 import DeleteAccountForm from "./DeleteAccountForm";
 
 export default function EditDetailsPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const router = useRouter();
 
-  if (!user) {
-    return (
-      <div className="flex justify-center pt-20 pb-24 px-4">
-        <div className="text-center">
-          <p className="text-[var(--primary-brown)]">Please log in to edit your details.</p>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!loading && !user) router.replace("/login");
+  }, [loading, user, router]);
+
+  if (loading || !user) return null;
 
   return (
     <StaggeredFade>

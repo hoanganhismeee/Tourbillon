@@ -1,22 +1,33 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import { adminFetchWatches, fetchBrands, fetchCollections, deleteWatch, Watch, Brand, Collection } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import WatchEditorModal from './components/WatchEditorModal';
 import AddWatchModal from './components/AddWatchModal';
 
 export default function ScrapeAdminPage() {
+    const { isAdmin, loading: authLoading } = useAuth();
+    const router = useRouter();
+
     const [watches, setWatches] = useState<Watch[]>([]);
     const [brands, setBrands] = useState<Brand[]>([]);
     const [collections, setCollections] = useState<Collection[]>([]);
-    
     const [selectedBrand, setSelectedBrand] = useState<number | ''>('');
     const [selectedCollection, setSelectedCollection] = useState<number | ''>('');
-    
     const [loading, setLoading] = useState(true);
     const [editingWatch, setEditingWatch] = useState<Watch | null>(null);
     const [addingWatch, setAddingWatch] = useState(false);
+
+    const filteredWatches = useMemo(() => {
+        return watches.filter(w => {
+            if (selectedBrand && w.brandId !== selectedBrand) return false;
+            if (selectedCollection && w.collectionId !== selectedCollection) return false;
+            return true;
+        });
+    }, [watches, selectedBrand, selectedCollection]);
 
     const loadData = async () => {
         try {
@@ -46,8 +57,12 @@ export default function ScrapeAdminPage() {
     };
 
     useEffect(() => {
-        loadData();
-    }, []);
+        if (!authLoading && !isAdmin) router.replace('/');
+    }, [authLoading, isAdmin, router]);
+
+    useEffect(() => {
+        if (isAdmin) loadData();
+    }, [isAdmin]);
 
     const handleSave = () => {
         setEditingWatch(null);
@@ -60,13 +75,7 @@ export default function ScrapeAdminPage() {
         reloadWatches();
     };
 
-    const filteredWatches = useMemo(() => {
-        return watches.filter(w => {
-            if (selectedBrand && w.brandId !== selectedBrand) return false;
-            if (selectedCollection && w.collectionId !== selectedCollection) return false;
-            return true;
-        });
-    }, [watches, selectedBrand, selectedCollection]);
+    if (authLoading || !isAdmin) return null;
 
     if (loading) {
         return <div className="text-white p-8">Loading Review Studio...</div>;

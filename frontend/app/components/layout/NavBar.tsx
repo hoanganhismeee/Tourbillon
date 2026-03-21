@@ -33,7 +33,7 @@ const CartIcon = () => (
 // User menu dropdown component with authentication state management
 // Handles login/logout functionality and user account options
 const UserMenu = () => {
-    const { isAuthenticated, user, logout } = useAuth(); // Get auth state from context
+    const { isAuthenticated, isAdmin, user, logout } = useAuth(); // Get auth state from context
     const [isOpen, setIsOpen] = useState(false); // Local state for dropdown visibility
     const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for timeout management
     const isHoveringRef = useRef(false); // Ref to track hover state reliably
@@ -94,6 +94,11 @@ const UserMenu = () => {
                  <Link href="/account/edit-details" className="block px-3 py-2 mt-1 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
                    Edit Details
                  </Link>
+                 {isAdmin && (
+                   <Link href="/scrape" className="block px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
+                     Scrape
+                   </Link>
+                 )}
                  <button onClick={logout} className="block w-full px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
                    Logout
                  </button>

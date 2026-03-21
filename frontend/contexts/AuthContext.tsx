@@ -12,6 +12,8 @@ interface AuthContextType {
     login: () => Promise<void>; // The login function will now trigger a user fetch
     logout: () => void;
     isAuthenticated: boolean;
+    isAdmin: boolean;
+    loading: boolean;
 }
 
 // Create the context
@@ -25,6 +27,7 @@ interface AuthProviderProps {
 // Create the provider component
 export const AuthProvider = ({ children }: AuthProviderProps) => {
     const [user, setUser] = useState<User | null>(null);
+    const [loading, setLoading] = useState(true);
     const router = useRouter();
 
     const fetchUser = async () => {
@@ -37,7 +40,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             if (error instanceof Error && error.message !== 'Not authenticated') {
                 console.error('Failed to fetch user', error);
             }
-            setUser(null); // Ensure user is null if fetch fails
+            setUser(null);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -63,9 +68,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     };
 
     const isAuthenticated = !!user;
+    const isAdmin = user?.roles?.includes('Admin') ?? false;
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, isAuthenticated }}>
+        <AuthContext.Provider value={{ user, login, logout, isAuthenticated, isAdmin, loading }}>
             {children}
         </AuthContext.Provider>
     );
