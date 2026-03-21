@@ -55,6 +55,7 @@ export interface User {
     city?: string;
     state?: string;
     country?: string;
+    roles: string[];
 }
 
 // API Fetch Functions

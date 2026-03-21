@@ -223,7 +223,7 @@ using (var scope = app.Services.CreateScope())
     DbInitializer.Initialize(context); // Seed initial data (9 Holy Trinity showcase watches)
 
     // Ensure Admin role exists
-    await DbInitializer.EnsureAdminRoleAsync(scope.ServiceProvider);
+    await DbInitializer.EnsureAdminSetupAsync(scope.ServiceProvider);
 }
 
 app.Run();

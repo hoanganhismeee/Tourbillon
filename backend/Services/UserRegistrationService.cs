@@ -9,15 +9,18 @@ public class UserRegistrationService : IUserRegistrationService
 {
     private readonly UserManager<User> _userManager;
     private readonly SignInManager<User> _signInManager;
+    private readonly IRoleManagementService _roleManagement;
     private readonly ILogger<UserRegistrationService> _logger;
 
     public UserRegistrationService(
         UserManager<User> userManager,
         SignInManager<User> signInManager,
+        IRoleManagementService roleManagement,
         ILogger<UserRegistrationService> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
+        _roleManagement = roleManagement;
         _logger = logger;
     }
 
@@ -59,6 +62,7 @@ public class UserRegistrationService : IUserRegistrationService
             }
 
             await _signInManager.SignInAsync(user, isPersistent: false);
+            await _roleManagement.AssignAdminIfConfiguredAsync(user);
             _logger.LogInformation("User registered successfully: {Email}", registerDto.Email);
             
             return (true, "Registration successful");
