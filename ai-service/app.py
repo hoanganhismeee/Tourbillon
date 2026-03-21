@@ -335,6 +335,119 @@ def parse_taste():
     return jsonify(result)
 
 
+# ── Editorial content generation ─────────────────────────────────────────────
+
+EDITORIAL_SYSTEM_PROMPT = """You are a senior horological journalist writing editorial content for a luxury watch boutique.
+Your tone is authoritative, specific, and evocative — never generic filler.
+Write as if for Revolution or WatchTime magazine.
+
+Return ONLY valid JSON with exactly these four keys. Each value is 2-3 sentences, specific to this watch:
+{
+  "why_it_matters": "...",
+  "collector_appeal": "...",
+  "design_language": "...",
+  "best_for": "..."
+}
+
+Key guidance:
+- why_it_matters: heritage, horological significance, what this watch represents in the industry
+- collector_appeal: who collects it, market position, resale character, waitlists or scarcity
+- design_language: visual DNA, dial philosophy, case proportions, finishing details
+- best_for: specific occasions, lifestyles, wrist sizes, pairing suggestions
+
+No preamble. No explanation. JSON only."""
+
+EDITORIAL_STRICT_PROMPT = EDITORIAL_SYSTEM_PROMPT + "\n\nCRITICAL: Output raw JSON only. No markdown. No text before or after the JSON object."
+
+
+def _call_llm_editorial(user_content: str) -> str:
+    """LLM call for editorial — uses higher temperature for more natural prose."""
+    response = client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[
+            {"role": "system", "content": EDITORIAL_SYSTEM_PROMPT},
+            {"role": "user",   "content": user_content},
+        ],
+        temperature=0.35,
+        max_tokens=500,
+    )
+    return response.choices[0].message.content or ""
+
+
+@app.route("/generate-editorial", methods=["POST"])
+def generate_editorial():
+    """Generate editorial story sections for a watch archetype.
+    Called offline during seeding — no runtime user requests hit this endpoint.
+    Input: { brand, collection, name, description, case_material, diameter_mm,
+             dial_color, movement_type, power_reserve_h, price_tier }
+    Output: { why_it_matters, collector_appeal, design_language, best_for }"""
+    body = request.get_json(silent=True) or {}
+
+    brand         = body.get("brand", "")
+    collection    = body.get("collection", "")
+    name          = body.get("name", "")
+    description   = body.get("description", "")
+    case_material = body.get("case_material", "")
+    diameter_mm   = body.get("diameter_mm")
+    dial_color    = body.get("dial_color", "")
+    movement_type = body.get("movement_type", "")
+    power_reserve = body.get("power_reserve_h")
+    price_tier    = body.get("price_tier", "luxury")
+
+    if not brand or not name:
+        return jsonify({"error": "brand and name are required"}), 400
+
+    # Build a compact but rich watch description for the prompt
+    specs_parts = []
+    if case_material:
+        specs_parts.append(f"{case_material} case")
+    if diameter_mm:
+        specs_parts.append(f"{diameter_mm}mm diameter")
+    if dial_color:
+        specs_parts.append(f"{dial_color} dial")
+    if movement_type:
+        specs_parts.append(f"{movement_type} movement")
+    if power_reserve:
+        specs_parts.append(f"{power_reserve}h power reserve")
+    specs_str = ", ".join(specs_parts) if specs_parts else "specs unavailable"
+
+    user_content = (
+        f"Brand: {brand}\n"
+        f"Collection: {collection}\n"
+        f"Reference: {name}\n"
+        f"Description: {description}\n"
+        f"Specifications: {specs_str}\n"
+        f"Price tier: {price_tier}"
+    )
+
+    try:
+        raw = _call_llm_editorial(user_content)
+        result = parse_llm_json(raw)
+    except (ValueError, json.JSONDecodeError):
+        # Retry with stricter no-preamble instruction
+        try:
+            response = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": EDITORIAL_STRICT_PROMPT},
+                    {"role": "user",   "content": user_content},
+                ],
+                temperature=0.35,
+                max_tokens=500,
+            )
+            raw = response.choices[0].message.content or ""
+            result = parse_llm_json(raw)
+        except (ValueError, json.JSONDecodeError) as e:
+            return jsonify({"error": f"Failed to parse LLM response: {str(e)}"}), 502
+
+    # Ensure all four keys are present
+    required_keys = {"why_it_matters", "collector_appeal", "design_language", "best_for"}
+    if not required_keys.issubset(result.keys()):
+        return jsonify({"error": f"LLM response missing required keys: {result}"}), 502
+
+    return jsonify(result)
+
+
 # ── Readiness + health checks ─────────────────────────────────────────────────
 
 @app.route("/ready")
