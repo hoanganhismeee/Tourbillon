@@ -61,6 +61,15 @@ public class WatchFinderService
         PropertyNameCaseInsensitive = true
     };
 
+    // Tiered routing thresholds (cosine distance: 0 = identical, 1 = orthogonal)
+    private const float SkipLlmDistance  = 0.20f; // Tier 2: strong match — skip LLM rerank
+    private const float MaxDistance      = 0.55f; // Tier 4: filter no-matches in DB
+
+    // Rerank sizing — smaller set = fewer LLM output tokens = faster inference
+    private const int RerankLimit        = 15;    // max candidates sent to LLM (was 40)
+    private const int TopMatchLimit      = 15;    // max results in Watches (was 20)
+    private const int MinScoreThreshold  = 60;    // min LLM score to appear in top matches
+
     public WatchFinderService(
         IHttpClientFactory httpClientFactory,
         TourbillonContext context,
@@ -93,11 +102,12 @@ public class WatchFinderService
         // Each watch's best-matching chunk is used; top 30 by cosine distance returned.
         // Fallback to LLM parse + SQL filter if embeddings are unavailable.
         List<Watch> candidates;
-        ParsedIntent? intent = null;
+        ParsedIntent? intent    = null;
+        float bestDistance      = float.MaxValue;
 
         if (queryEmbedding != null)
         {
-            candidates = await VectorSearchAsync(queryEmbedding);
+            (candidates, bestDistance) = await VectorSearchAsync(queryEmbedding);
         }
         else
         {
@@ -111,22 +121,22 @@ public class WatchFinderService
             candidates = BrandSpread(filtered, 100);
         }
 
-        // Base result — returned as-is if rerank fails (all candidates, no split)
+        // Base result: top TopMatchLimit by vector/filter order, rest as OtherCandidates.
+        // Returned as-is for Tier 2 (strong vector match) and as LLM-fail fallback.
         var result = new WatchFinderResult
         {
-            Watches = candidates.Select(w => WatchDto.FromWatch(w)).ToList(),
-            OtherCandidates = [],
+            Watches = candidates.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList(),
+            OtherCandidates = candidates.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList(),
             MatchDetails = [],
-            ParsedIntent = intent
+            ParsedIntent = null
         };
 
         if (candidates.Count == 0) return result;
 
-        // Step 4: rerank candidates via AI service
-        // Send only the top 40 by vector similarity to the LLM — beyond that, quality degrades
-        // and latency climbs linearly. The remaining candidates become OtherCandidates as-is.
-        const int RerankLimit = 40;
-        var rerankCandidates = candidates.Take(RerankLimit).ToList();
+        // Tier 3: LLM rerank — skipped when vector match is already decisive (Tier 2)
+        if (bestDistance >= SkipLlmDistance)
+        {
+        var rerankCandidates   = candidates.Take(RerankLimit).ToList();
         var unscoredCandidates = candidates.Skip(RerankLimit).ToList();
 
         try
@@ -153,10 +163,6 @@ public class WatchFinderService
                 {
                     var ranked   = JsonSerializer.Deserialize<List<RankedWatch>>(rankedEl.GetRawText(), _jsonOptions) ?? [];
                     var scoreMap = ranked.ToDictionary(r => r.WatchId);
-
-                    // Top matches: capped at 20, minimum score 60 (fallback: relax threshold if fewer than 3)
-                    const int TopMatchLimit = 20;
-                    const int MinScoreThreshold = 60;
 
                     var scoredAndOrdered = rerankCandidates
                         .Where(w => scoreMap.ContainsKey(w.Id))
@@ -194,6 +200,8 @@ public class WatchFinderService
         }
         catch { /* AI service unreachable — return unranked filtered results */ }
 
+        } // end Tier 3 rerank
+
         // Fire-and-forget: generate embeddings for all returned watches in background.
         // A new scope is created so the background task doesn't share the request's DbContext.
         var idsToEmbed = result.Watches
@@ -228,36 +236,39 @@ public class WatchFinderService
         return result;
     }
 
-    // Phase 3B retrieval: cosine similarity search against all watch chunk embeddings.
-    // For each watch, the best-matching chunk wins. Returns top 30 watches in similarity order.
-    private async Task<List<Watch>> VectorSearchAsync(float[] queryEmbedding)
+    // Phase 3B retrieval: cosine similarity search against watch chunk embeddings.
+    // Filters by MaxDistance in DB, deduplicates chunks per watch in memory, returns best distance.
+    private async Task<(List<Watch> Watches, float BestDistance)> VectorSearchAsync(float[] queryEmbedding)
     {
         var queryVector = new Vector(queryEmbedding);
 
-        // Order all chunks by cosine distance — best chunk per watch floats to the top.
-        // Selecting only WatchId keeps the query lightweight (no 768-float vectors transferred).
-        var orderedIds = await _context.WatchEmbeddings
-            .Where(e => e.Embedding != null)
+        // Push distance filter and LIMIT to DB — skips mismatches without a full table scan.
+        // Project distance alongside WatchId so we capture the best distance in one round-trip.
+        var orderedRows = await _context.WatchEmbeddings
+            .Where(e => e.Embedding != null && e.Embedding.CosineDistance(queryVector) < MaxDistance)
             .OrderBy(e => e.Embedding!.CosineDistance(queryVector))
-            .Select(e => e.WatchId)
+            .Select(e => new { e.WatchId, Distance = (float)e.Embedding!.CosineDistance(queryVector) })
+            .Take(150)
             .ToListAsync();
 
         // Deduplicate in memory preserving order — first occurrence = best chunk for that watch
-        var seen   = new HashSet<int>();
-        var topIds = new List<int>(100);
-        foreach (var id in orderedIds)
+        var seen      = new HashSet<int>();
+        var topIds    = new List<int>(50);
+        float bestDist = float.MaxValue;
+        foreach (var row in orderedRows)
         {
-            if (seen.Add(id))
+            if (seen.Add(row.WatchId))
             {
-                topIds.Add(id);
-                if (topIds.Count >= 100) break;
+                if (topIds.Count == 0) bestDist = row.Distance;
+                topIds.Add(row.WatchId);
+                if (topIds.Count >= 50) break;
             }
         }
 
         if (topIds.Count == 0)
-            return [];
+            return ([], float.MaxValue);
 
-        // Load the Watch objects, then restore similarity order (IN clause has no guaranteed order)
+        // Load Watch objects and restore similarity order (IN has no guaranteed order)
         var watches   = await _context.Watches
             .Include(w => w.Brand)
             .AsNoTracking()
@@ -265,7 +276,8 @@ public class WatchFinderService
             .ToListAsync();
 
         var watchById = watches.ToDictionary(w => w.Id);
-        return topIds.Where(id => watchById.ContainsKey(id)).Select(id => watchById[id]).ToList();
+        var ordered   = topIds.Where(id => watchById.ContainsKey(id)).Select(id => watchById[id]).ToList();
+        return (ordered, bestDist);
     }
 
     // Embeds the query text using nomic-embed-text via ai-service.
