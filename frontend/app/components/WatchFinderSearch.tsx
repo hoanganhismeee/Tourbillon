@@ -8,12 +8,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 const SUGGESTIONS = [
-  'Good watch for a wedding',
-  'Thin dress watch under 20k',
-  'Steel sport watch with date',
-  'German watchmaker under 15k',
-  'Thin automatic for daily wear',
-  'Platinum dress watch, manual winding',
+  'Vacheron dress watch 39–40mm',
+  'JLC Reverso under 50k',
+  'Sport watch under 100k',
+  'Patek Calatrava white gold',
+  'A. Lange & Söhne under 80k',
+  'AP Royal Oak steel 41mm',
 ];
 
 export default function WatchFinderSearch() {
