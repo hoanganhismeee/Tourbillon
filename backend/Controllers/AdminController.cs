@@ -1129,6 +1129,24 @@ public class AdminController : ControllerBase
         "integrated bracelet sport watch under 50k",
         "Vacheron Patrimony 40mm white gold",
         "AP Royal Oak 37mm steel",
+
+        // Complications + brand
+        "Patek Philippe perpetual calendar",
+        "Vacheron Constantin moonphase",
+        "JLC Reverso Duo",
+        "JLC Reverso classic small",
+        "A. Lange Söhne perpetual calendar",
+        "Breguet moonphase Classique",
+        "Patek Philippe annual calendar",
+        "Omega Speedmaster professional",
+        "Rolex Day-Date platinum",
+        "Grand Seiko Spring Drive GMT",
+        "FP Journe Chronometre Bleu",
+        "AP Royal Oak perpetual calendar",
+        "Vacheron Traditionnelle minute repeater",
+        "Glashütte Original PanoMaticLunar",
+        "thin dress watch white gold under 50k",
+        "sport watch steel bracelet under 30k",
     ];
 
     /// Runs the seed query list through the full finder pipeline, caching each result.

@@ -1,10 +1,12 @@
 // Orchestrates the AI Watch Finder pipeline:
 // Phase 3B: embed query → vector similarity search → LLM rerank
+// Hybrid filtering: ParseQueryIntentAsync extracts brand/collection/price as hard SQL pre-filters.
 // Fallback (embed unavailable): LLM parse → SQL filter → LLM rerank
 
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using backend.Database;
 using backend.Models;
 using Microsoft.EntityFrameworkCore;
@@ -38,12 +40,24 @@ public class WatchMatchDetail
     public int Score { get; set; }
 }
 
+/// Structured intent parsed from the raw query text — used for hard SQL pre-filters
+/// and returned to the frontend to pre-populate the filter bar.
+public class QueryIntent
+{
+    public int? BrandId { get; set; }
+    public int? CollectionId { get; set; }
+    public decimal? MaxPrice { get; set; }
+    public decimal? MinPrice { get; set; }
+}
+
 public class WatchFinderResult
 {
     public List<WatchDto> Watches { get; set; } = [];
     public List<WatchDto> OtherCandidates { get; set; } = [];
     public Dictionary<int, WatchMatchDetail> MatchDetails { get; set; } = [];
     public object? ParsedIntent { get; set; }
+    /// Structured intent extracted from query text — brand/collection/price hard constraints.
+    public QueryIntent? QueryIntent { get; set; }
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -88,13 +102,21 @@ public class WatchFinderService
     {
         var httpClient = _httpClientFactory.CreateClient("ai-service");
 
-        // Step 0: embed query + check QueryCache.
+        // Step 0a: parse structured intent (brand/collection/price) from query text.
+        // Pure DB lookup + regex — no LLM, fast.
+        var queryIntent = await ParseQueryIntentAsync(query);
+
+        // Step 0b: embed query + check QueryCache.
         // nomic-embed-text (~50ms) runs independently of the LLM.
         var queryEmbedding = await EmbedQueryAsync(httpClient, query);
         if (queryEmbedding != null)
         {
             var cached = await _queryCache.LookupAsync(queryEmbedding);
-            if (cached != null) return cached;
+            if (cached != null)
+            {
+                cached.QueryIntent = queryIntent;
+                return cached;
+            }
         }
 
         // Step 1: retrieve candidates.
@@ -107,7 +129,7 @@ public class WatchFinderService
 
         if (queryEmbedding != null)
         {
-            (candidates, bestDistance) = await VectorSearchAsync(queryEmbedding);
+            (candidates, bestDistance) = await VectorSearchAsync(queryEmbedding, queryIntent);
         }
         else
         {
@@ -219,6 +241,9 @@ public class WatchFinderService
             });
         }
 
+        // Attach structured intent to result — frontend uses this to pre-populate filter bar.
+        result.QueryIntent = queryIntent;
+
         // Fire-and-forget: store the result in the persistent query cache.
         // New scope required — cannot reuse the request's DbContext on a background thread.
         if (queryEmbedding != null)
@@ -237,16 +262,27 @@ public class WatchFinderService
     }
 
     // Phase 3B retrieval: cosine similarity search against watch chunk embeddings.
-    // Filters by MaxDistance in DB, deduplicates chunks per watch in memory, returns best distance.
-    private async Task<(List<Watch> Watches, float BestDistance)> VectorSearchAsync(float[] queryEmbedding)
+    // Applies hard SQL pre-filters from QueryIntent (brand/collection/price) before cosine ranking.
+    // Deduplicates chunks per watch in memory and returns best distance.
+    private async Task<(List<Watch> Watches, float BestDistance)> VectorSearchAsync(float[] queryEmbedding, QueryIntent? intent)
     {
         var queryVector = new Vector(queryEmbedding);
 
-        // Push distance filter and LIMIT to DB — skips mismatches without a full table scan.
-        // Scoped to "watch_finder" embeddings so editorial/rag_chat chunks don't pollute results.
-        // Project distance alongside WatchId so we capture the best distance in one round-trip.
-        var orderedRows = await _context.WatchEmbeddings
-            .Where(e => e.Feature == "watch_finder" && e.Embedding != null && e.Embedding.CosineDistance(queryVector) < MaxDistance)
+        // Base query: feature-scoped, distance-filtered, ordered by cosine similarity.
+        // Join Watch via Include so brand/collection/price filters can reference Watch columns.
+        var q = _context.WatchEmbeddings
+            .Include(e => e.Watch)
+            .Where(e => e.Feature == "watch_finder" && e.Embedding != null && e.Embedding.CosineDistance(queryVector) < MaxDistance);
+
+        // Hard SQL pre-filters from parsed intent — eliminate irrelevant candidates entirely.
+        // Price 0 = "Price on Request"; never exclude PoR watches from a price-filtered search.
+        if (intent?.BrandId      != null) q = q.Where(e => e.Watch.BrandId      == intent.BrandId);
+        if (intent?.CollectionId != null) q = q.Where(e => e.Watch.CollectionId == intent.CollectionId);
+        if (intent?.MaxPrice     != null) q = q.Where(e => e.Watch.CurrentPrice == 0 || e.Watch.CurrentPrice <= intent.MaxPrice);
+        if (intent?.MinPrice     != null) q = q.Where(e => e.Watch.CurrentPrice == 0 || e.Watch.CurrentPrice >= intent.MinPrice);
+
+        // Push distance order and LIMIT to DB — project WatchId + distance in one round-trip.
+        var orderedRows = await q
             .OrderBy(e => e.Embedding!.CosineDistance(queryVector))
             .Select(e => new { e.WatchId, Distance = (float)e.Embedding!.CosineDistance(queryVector) })
             .Take(150)
@@ -279,6 +315,128 @@ public class WatchFinderService
         var watchById = watches.ToDictionary(w => w.Id);
         var ordered   = topIds.Where(id => watchById.ContainsKey(id)).Select(id => watchById[id]).ToList();
         return (ordered, bestDist);
+    }
+
+    // Brand alias map — short names users commonly type to the canonical DB brand name.
+    private static readonly Dictionary<string, string> _brandAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["JLC"]  = "Jaeger-LeCoultre",
+        ["AP"]   = "Audemars Piguet",
+        ["VC"]   = "Vacheron Constantin",
+        ["PP"]   = "Patek Philippe",
+        ["ALS"]  = "A. Lange & Söhne",
+        ["Lange"] = "A. Lange & Söhne",
+        ["GS"]   = "Grand Seiko",
+        ["GO"]   = "Glashütte Original",
+        ["FC"]   = "Frederique Constant",
+        ["FP Journe"] = "F.P.Journe",
+        ["FPJourne"]  = "F.P.Journe",
+    };
+
+    // Extracts brand, collection, and price constraints from the raw query text.
+    // Uses alias map + substring matching against DB data — no LLM, fast.
+    // Returns null if nothing matched so callers can skip unnecessary filter work.
+    private async Task<QueryIntent?> ParseQueryIntentAsync(string query)
+    {
+        var intent = new QueryIntent();
+
+        // ── Brand matching ────────────────────────────────────────────────────────
+        var brands = await _context.Brands.AsNoTracking().ToListAsync();
+
+        Brand? matchedBrand = null;
+
+        // Check aliases first (exact token match, e.g. "JLC Reverso" → Jaeger-LeCoultre)
+        foreach (var (alias, canonical) in _brandAliases)
+        {
+            if (query.Contains(alias, StringComparison.OrdinalIgnoreCase))
+            {
+                matchedBrand = brands.FirstOrDefault(b =>
+                    b.Name.Equals(canonical, StringComparison.OrdinalIgnoreCase));
+                if (matchedBrand != null) break;
+            }
+        }
+
+        // Fall back to full brand name substring match
+        if (matchedBrand == null)
+        {
+            // Sort longest-name first so "Vacheron Constantin" wins over "Vacheron"
+            matchedBrand = brands
+                .OrderByDescending(b => b.Name.Length)
+                .FirstOrDefault(b => query.Contains(b.Name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (matchedBrand != null)
+            intent.BrandId = matchedBrand.Id;
+
+        // ── Collection matching ───────────────────────────────────────────────────
+        var collections = await _context.Collections.AsNoTracking().ToListAsync();
+
+        // Prefer collections belonging to the matched brand, then try all collections.
+        var pool = matchedBrand != null
+            ? collections.Where(c => c.BrandId == matchedBrand.Id).ToList()
+            : collections;
+
+        var matchedCollection = pool
+            .OrderByDescending(c => c.Name.Length)
+            .FirstOrDefault(c => query.Contains(c.Name, StringComparison.OrdinalIgnoreCase));
+
+        // If no hit within the brand pool, try all collections (e.g. generic query)
+        if (matchedCollection == null && matchedBrand != null)
+        {
+            matchedCollection = collections
+                .OrderByDescending(c => c.Name.Length)
+                .FirstOrDefault(c => query.Contains(c.Name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (matchedCollection != null)
+            intent.CollectionId = matchedCollection.Id;
+
+        // ── Price matching via regex ──────────────────────────────────────────────
+        // Patterns: "under 50k", "below $50,000", "between 20k and 50k"
+        var q = query;
+
+        // "between Xk and Yk" / "between X and Y"
+        var between = Regex.Match(q,
+            @"between\s*\$?\s*(\d[\d,]*)\s*k?\s*and\s*\$?\s*(\d[\d,]*)\s*(k?)",
+            RegexOptions.IgnoreCase);
+        if (between.Success)
+        {
+            var lo = ParsePriceToken(between.Groups[1].Value, between.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase) is false && between.Groups[3].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
+            var hi = ParsePriceToken(between.Groups[2].Value, between.Groups[3].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
+            if (lo > 0) intent.MinPrice = lo;
+            if (hi > 0) intent.MaxPrice = hi;
+        }
+        else
+        {
+            // "under / below / less than $Xk" or "$X,000"
+            var upper = Regex.Match(q,
+                @"(?:under|below|less\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)",
+                RegexOptions.IgnoreCase);
+            if (upper.Success)
+                intent.MaxPrice = ParsePriceToken(upper.Groups[1].Value, upper.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
+
+            // "over / above / more than $Xk"
+            var lower = Regex.Match(q,
+                @"(?:over|above|more\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)",
+                RegexOptions.IgnoreCase);
+            if (lower.Success)
+                intent.MinPrice = ParsePriceToken(lower.Groups[1].Value, lower.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Return null if nothing was extracted — no hard filters to apply
+        if (intent.BrandId == null && intent.CollectionId == null
+            && intent.MaxPrice == null && intent.MinPrice == null)
+            return null;
+
+        return intent;
+    }
+
+    // Parses a price token like "50" with isK=true → 50000, or "50000" with isK=false → 50000.
+    private static decimal ParsePriceToken(string digits, bool isK)
+    {
+        var clean = digits.Replace(",", "");
+        if (!decimal.TryParse(clean, out var value)) return 0;
+        return isK ? value * 1000 : value;
     }
 
     // Embeds the query text using nomic-embed-text via ai-service.

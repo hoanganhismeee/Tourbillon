@@ -107,25 +107,29 @@ QueryCaches self-populates from real traffic — no pre-seeding needed. The watc
 
 ## Architecture (Phase 3B — current)
 
-Three-tier routing. The LLM rerank is a tiebreaker, not a mandatory step.
+Three-tier routing with hybrid filtering. The LLM rerank is a tiebreaker, not a mandatory step.
 
 ```
 Query
   ↓
+ParseQueryIntentAsync → brand/collection/price hard constraints (no LLM, ~5ms)
+  ↓
 Embed query text → float[768]  (~50ms, nomic-embed-text)
   ↓
 Check QueryCaches (cosine similarity ≥ 0.92)
-  ├─ hit  → return stored result                                   (~200ms total)
+  ├─ hit  → attach QueryIntent → return stored result             (~200ms total)
   └─ miss
        ↓
-     Vector search: cosine distance < 0.55, ORDER BY distance
-     Best chunk per watch, up to 50 watches returned              (~50ms)
+     Vector search (hybrid):
+       Hard SQL pre-filters from QueryIntent (brand/collection/price WHERE)
+       Cosine distance < 0.55, ORDER BY distance within filtered pool
+       Best chunk per watch, up to 50 watches returned            (~50ms)
        ↓
      Tier 4: 0 candidates → return empty immediately              (~300ms total)
      Tier 2: best distance < 0.20 → return top 15 by vector order (~300ms total)
      Tier 3: best distance 0.20–0.55 → LLM rerank on top 15      (10–30s Ollama / ~2s Haiku)
        ↓
-     [Background] store result in QueryCaches
+     Attach QueryIntent → [Background] store result in QueryCaches
      [Background] embed any new watch IDs (skips already-embedded)
 
 Fallback (embed call fails):

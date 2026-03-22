@@ -14,6 +14,7 @@ import {
   fetchFilterOptions,
   fetchCollections,
   WatchFinderResult,
+  QueryIntent,
   FilterOptions,
   Brand,
   Collection,
@@ -57,13 +58,11 @@ const EMPTY_FILTERS: Filters = {
   priceBuckets: [],
 };
 
-const DIAMETER_BUCKETS = [
-  { label: 'Under 36mm', test: (mm: number) => mm < 36 },
-  { label: '36 – 38mm',  test: (mm: number) => mm >= 36 && mm <= 38 },
-  { label: '38 – 40mm',  test: (mm: number) => mm > 38 && mm <= 40 },
-  { label: '40 – 42mm',  test: (mm: number) => mm > 40 && mm <= 42 },
-  { label: 'Over 42mm',  test: (mm: number) => mm > 42 },
-];
+// Diameter label uses floor of the parsed mm value — 37.6mm → "37mm".
+// Options are derived from actual watch data so only sizes present in results appear.
+function diameterLabel(mm: number): string {
+  return `${Math.floor(mm)}mm`;
+}
 
 const PRICE_BUCKETS = [
   { label: 'Under $10k',       test: (p: number) => p > 0 && p < 10_000 },
@@ -74,6 +73,27 @@ const PRICE_BUCKETS = [
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+// Converts a QueryIntent (brand/collection/price from the backend) into a Filters object
+// so the filter bar is pre-populated to match what the query implied.
+function buildFiltersFromIntent(intent: QueryIntent): Filters {
+  const f = { ...EMPTY_FILTERS };
+  if (intent.brandId)       f.brandIds      = [intent.brandId];
+  if (intent.collectionId)  f.collectionIds = [intent.collectionId];
+  if (intent.maxPrice) {
+    f.priceBuckets = PRICE_BUCKETS
+      .filter(b => {
+        if (b.label === 'Price on Request') return false;
+        if (b.label === 'Under $10k')  return intent.maxPrice! >= 1;
+        if (b.label === '$10k – $25k') return intent.maxPrice! >= 10_000;
+        if (b.label === '$25k – $50k') return intent.maxPrice! >= 25_000;
+        if (b.label === 'Over $50k')   return intent.maxPrice! > 50_000;
+        return false;
+      })
+      .map(b => b.label);
+  }
+  return f;
+}
 
 function parseSpecs(specsJson: string | null): Record<string, Record<string, unknown>> | null {
   if (!specsJson) return null;
@@ -123,8 +143,7 @@ function applyFilters(watches: Watch[], filters: Filters, wristFit: string): Wat
     if (filters.diameterBuckets.length > 0) {
       const mm = parseDiameterMm(specs?.case?.diameter as string | undefined);
       if (mm === null) return false;
-      const buckets = DIAMETER_BUCKETS.filter(b => filters.diameterBuckets.includes(b.label));
-      if (!buckets.some(b => b.test(mm))) return false;
+      if (!filters.diameterBuckets.includes(diameterLabel(mm))) return false;
     }
     if (filters.priceBuckets.length > 0) {
       const buckets = PRICE_BUCKETS.filter(b => filters.priceBuckets.includes(b.label));
@@ -487,6 +506,7 @@ export default function SmartSearchClient() {
         const { result: cachedResult, ts } = JSON.parse(cached) as { result: WatchFinderResult; ts: number };
         if (Date.now() - ts < CACHE_TTL) {
           setResult(cachedResult);
+          if (cachedResult.queryIntent) setFilters(buildFiltersFromIntent(cachedResult.queryIntent));
           setStatus('success');
           return;
         }
@@ -498,6 +518,7 @@ export default function SmartSearchClient() {
     watchFinderSearch(query)
       .then(res => {
         setResult(res);
+        if (res.queryIntent) setFilters(buildFiltersFromIntent(res.queryIntent));
         setStatus('success');
         try {
           sessionStorage.setItem(cacheKey, JSON.stringify({ result: res, ts: Date.now() }));
@@ -516,6 +537,19 @@ export default function SmartSearchClient() {
 
   const hasActiveFilters =
     Object.values(filters).some(v => Array.isArray(v) && v.length > 0) || wristFit !== '';
+
+  // Diameter options derived from actual result watches — only sizes present are shown.
+  // Sorted numerically so the dropdown reads 36mm, 37mm, 38mm, 39mm...
+  const diameterOptions = useMemo(() => {
+    if (!result) return [];
+    const sizes = new Set<number>();
+    for (const w of [...result.watches, ...result.otherCandidates]) {
+      const specs = parseSpecs(w.specs);
+      const mm = parseDiameterMm(specs?.case?.diameter as string | undefined);
+      if (mm !== null) sizes.add(Math.floor(mm));
+    }
+    return Array.from(sizes).sort((a, b) => a - b).map(n => `${n}mm`);
+  }, [result]);
 
   // Client-side filter + split top / others
   const { topWatches, otherWatches } = useMemo(() => {
