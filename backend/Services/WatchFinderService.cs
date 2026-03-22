@@ -52,6 +52,11 @@ public class QueryIntent
     /// Not applied as SQL WHERE (diameter is stored in Watch.Specs JSON, not a column).
     public double? MinDiameterMm { get; set; }
     public double? MaxDiameterMm { get; set; }
+    /// Spec-level filters — frontend uses these to pre-select filter bar dropdowns.
+    /// Not applied as SQL WHERE (stored in Watch.Specs JSON, not columns).
+    public string? CaseMaterial { get; set; }
+    public string? MovementType { get; set; }
+    public string? WaterResistance { get; set; }
 }
 
 public class WatchFinderResult
@@ -112,8 +117,12 @@ public class WatchFinderService
 
         // Step 0b: embed query + check QueryCache.
         // nomic-embed-text (~50ms) runs independently of the LLM.
+        // Skip cache when QueryIntent has hard SQL filters — a cached "dress watch" result
+        // must not be reused for "Vacheron dress watch" (which needs brand pre-filtering).
+        var hasHardFilters = queryIntent?.BrandId != null || queryIntent?.CollectionId != null
+            || queryIntent?.MaxPrice != null || queryIntent?.MinPrice != null;
         var queryEmbedding = await EmbedQueryAsync(httpClient, query);
-        if (queryEmbedding != null)
+        if (queryEmbedding != null && !hasHardFilters)
         {
             var cached = await _queryCache.LookupAsync(queryEmbedding);
             if (cached != null)
@@ -134,6 +143,7 @@ public class WatchFinderService
         if (queryEmbedding != null)
         {
             (candidates, bestDistance) = await VectorSearchAsync(queryEmbedding, queryIntent);
+            candidates = BrandSpread(candidates, candidates.Count);
         }
         else
         {
@@ -175,6 +185,7 @@ public class WatchFinderService
                     id = w.Id,
                     name = w.Name,
                     brand = w.Brand?.Name ?? "",
+                    collection = w.Collection?.Name ?? "",
                     description = w.Description ?? "",
                     price = (double)w.CurrentPrice,
                     specs_summary = BuildSpecsSummary(specs)
@@ -312,6 +323,7 @@ public class WatchFinderService
         // Load Watch objects and restore similarity order (IN has no guaranteed order)
         var watches   = await _context.Watches
             .Include(w => w.Brand)
+            .Include(w => w.Collection)
             .AsNoTracking()
             .Where(w => topIds.Contains(w.Id))
             .ToListAsync();
@@ -358,10 +370,10 @@ public class WatchFinderService
 
         Brand? matchedBrand = null;
 
-        // Check aliases first (exact token match, e.g. "JLC Reverso" → Jaeger-LeCoultre)
+        // Check aliases first — word-boundary match to prevent "chronograph" matching "AP"
         foreach (var (alias, canonical) in _brandAliases)
         {
-            if (query.Contains(alias, StringComparison.OrdinalIgnoreCase))
+            if (Regex.IsMatch(query, @$"\b{Regex.Escape(alias)}\b", RegexOptions.IgnoreCase))
             {
                 matchedBrand = brands.FirstOrDefault(b =>
                     b.Name.Equals(canonical, StringComparison.OrdinalIgnoreCase));
@@ -464,10 +476,47 @@ public class WatchFinderService
             }
         }
 
+        // ── Case material matching ────────────────────────────────────────────────
+        var materialMap = new (string pattern, string label)[]
+        {
+            (@"\b(?:stainless\s+)?steel\b", "Steel"),
+            (@"\btitanium\b", "Titanium"),
+            (@"\b(?:rose|white|yellow|pink|red)?\s*gold\b", "Gold"),
+            (@"\bplatinum\b", "Platinum"),
+            (@"\bceramic\b", "Ceramic"),
+            (@"\bcarbon\b", "Carbon"),
+        };
+        foreach (var (pattern, label) in materialMap)
+        {
+            if (Regex.IsMatch(q, pattern, RegexOptions.IgnoreCase))
+            {
+                intent.CaseMaterial = label;
+                break;
+            }
+        }
+
+        // ── Movement type matching ───────────────────────────────────────────────
+        if (Regex.IsMatch(q, @"\b(?:automatic|self[- ]winding)\b", RegexOptions.IgnoreCase))
+            intent.MovementType = "Automatic";
+        else if (Regex.IsMatch(q, @"\b(?:manual|hand[- ]wound)\b", RegexOptions.IgnoreCase))
+            intent.MovementType = "Manual-winding";
+        else if (Regex.IsMatch(q, @"\bquartz\b", RegexOptions.IgnoreCase))
+            intent.MovementType = "Quartz";
+
+        // ── Water resistance matching ────────────────────────────────────────────
+        // "300m water resistance", "100m waterproof", or standalone "300m" (only if not diameter)
+        var wrMatch = Regex.Match(q,
+            @"(\d+)\s*m\s*(?:water\s*resist|waterproof|WR)",
+            RegexOptions.IgnoreCase);
+        if (wrMatch.Success)
+            intent.WaterResistance = wrMatch.Groups[1].Value;
+
         // Return null if nothing was extracted — no hard filters to apply
         if (intent.BrandId == null && intent.CollectionId == null
             && intent.MaxPrice == null && intent.MinPrice == null
-            && intent.MinDiameterMm == null && intent.MaxDiameterMm == null)
+            && intent.MinDiameterMm == null && intent.MaxDiameterMm == null
+            && intent.CaseMaterial == null && intent.MovementType == null
+            && intent.WaterResistance == null)
             return null;
 
         return intent;

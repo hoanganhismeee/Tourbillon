@@ -132,6 +132,13 @@ function buildFiltersFromIntent(intent: QueryIntent): Filters {
       })
       .map(b => b.label);
   }
+  if (intent.caseMaterial) f.caseMaterials = [intent.caseMaterial];
+  if (intent.movementType) f.movementTypes = [intent.movementType];
+  if (intent.waterResistance) {
+    const m = parseInt(intent.waterResistance);
+    const bucket = WATER_RESISTANCE_BUCKETS.find(b => b.test(m));
+    if (bucket) f.waterResistances = [bucket.label];
+  }
   return f;
 }
 

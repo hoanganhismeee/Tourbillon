@@ -152,6 +152,9 @@ export interface QueryIntent {
   minPrice: number | null;
   minDiameterMm: number | null;
   maxDiameterMm: number | null;
+  caseMaterial: string | null;
+  movementType: string | null;
+  waterResistance: string | null;
 }
 
 export interface WatchFinderResult {
