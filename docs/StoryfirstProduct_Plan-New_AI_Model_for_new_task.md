@@ -8,7 +8,7 @@ Watch detail pages currently show only specs. The goal is to add AI-generated ed
 ("Why This Watch Matters", "Collector Appeal", "Design Language", "Best For") that turn raw specs
 into compelling narratives for luxury buyers.
 
-The content is generated **once offline** using a strong local Ollama model (phi4:14b), stored in
+The content is generated **once offline** using a strong local Ollama model (gemma2:9b), stored in
 PostgreSQL, and served as a plain SQL join at runtime — zero AI cost in production.
 
 The strategy mirrors the existing QueryCache and embedding pre-seeding pattern:
@@ -20,7 +20,49 @@ QueryCache sharing results across similar queries.
 
 ---
 
-## Add new Local Ollama Model: gemma2:9b for quality-first work (writting), main local dev would still be qwen2.5:7b
+## User Experience Flow
+
+```
+Homepage
+  ↓
+All Watches grid
+  (order personalised by Watch DNA taste profile)
+  ↓
+User clicks a watch card
+  ↓
+┌─────────────────────────────────────┐
+│  Product Detail Page                │
+│                                     │
+│  [Hero: image + name + price]       │  ← first impression
+│                                     │
+│  [Specs table]                      │  ← technical verification
+│  dial / case / movement / strap     │    "does this fit my needs?"
+│                                     │
+│  ── STORY-FIRST SECTIONS ──         │  ← emotional reinforcement
+│  Why This Watch Matters             │    "now I *want* it"
+│  Collector Appeal                   │
+│  Design Language                    │
+│  Best For                           │
+│                                     │
+│  [Related watches]                  │  ← continue discovery
+└─────────────────────────────────────┘
+```
+
+**Why this order:** Luxury buyers verify specs first (does it fit my wrist/budget/style?),
+then need emotional narrative to justify the price. Editorial sits at that inflection point.
+
+**UX properties:**
+- Pre-loaded from DB → renders with the page, no skeleton/loading state
+- Entirely passive — no user action, always present on seeded watches
+- If watch has no editorial → sections simply don't render (page still works)
+
+**Phase 5 connection:** The chatbot retrieves these sections as context chunks.
+A user asking "Is this good for black-tie?" on the product page gets a specific,
+informed answer because the editorial content is already embedded in the retrieval store.
+
+---
+
+## Local Ollama Model: gemma2:9b
 
 **Recommended model:** `gemma2:9b` (Google Gemma 2, 9B parameters)
 
@@ -36,7 +78,6 @@ Higher-quality, specific prose → richer semantic embeddings → better chatbot
 gemma2:9b produces factual, varied vocabulary which improves cosine retrieval over generic filler.
 
 Setup before seeding:
-
 ```bash
 ollama pull gemma2:9b
 # In docker-compose or .env, set:
@@ -47,241 +88,130 @@ The existing `LLM_MODEL` env var in ai-service already handles the swap — no c
 
 ---
 
-## Files to Create / Modify
+## Files Created / Modified
 
 ### New files
-
-
-| File                                        | Purpose                                 |
-| ------------------------------------------- | --------------------------------------- |
-| `backend/Models/WatchEditorialContent.cs`   | EF entity: archetype editorial content  |
-| `backend/Models/WatchEditorialLink.cs`      | EF entity: watch → editorial content FK |
-| `backend/Services/WatchEditorialService.cs` | Seed logic + status                     |
-
+| File | Purpose |
+|---|---|
+| `backend/Models/WatchEditorialContent.cs` | EF entity: archetype editorial content |
+| `backend/Models/WatchEditorialLink.cs` | EF entity: watch → editorial content FK |
+| `backend/Services/WatchEditorialService.cs` | Seed logic + status |
+| `scripts/seed_editorial.sh` | Pre-deploy seed script — run once locally |
 
 ### Modified files
-
-
-| File                                      | Change                                     |
-| ----------------------------------------- | ------------------------------------------ |
-| `backend/Database/TourbillonContext.cs`   | Add 2 DbSets + model config                |
-| `backend/Controllers/AdminController.cs`  | Add 3 editorial endpoints                  |
-| `backend/Controllers/WatchController.cs`  | Include editorial in GET /api/watches/{id} |
-| `ai-service/app.py`                       | Add POST /generate-editorial endpoint      |
-| `frontend/lib/api.ts`                     | Add editorialContent field to Watch type   |
-| `frontend/app/watches/[watchId]/page.tsx` | Add 4 editorial sections below specs       |
-
-
-Plus one new EF Core migration.
+| File | Change |
+|---|---|
+| `backend/Models/Watch.cs` | Added EditorialLink navigation property |
+| `backend/Models/WatchDto.cs` | Added EditorialContent + EditorialContentDto |
+| `backend/Database/TourbillonContext.cs` | Added 2 DbSets + WatchEditorialLink PK config |
+| `backend/Program.cs` | Registered WatchEditorialService |
+| `backend/Controllers/AdminController.cs` | Added editorial/seed, editorial/status, editorial endpoints |
+| `backend/Controllers/WatchController.cs` | GetWatch includes editorial via ThenInclude |
+| `ai-service/app.py` | Added POST /generate-editorial endpoint |
+| `frontend/lib/api.ts` | Added WatchEditorialContent interface + field on Watch |
+| `frontend/app/watches/[watchId]/page.tsx` | Added 4 editorial sections below specs |
 
 ---
 
 ## Data Model
 
 ### WatchEditorialContent
-
+One record per collection (seed watch = most spec-complete in that collection).
 ```csharp
 public class WatchEditorialContent
 {
     public int Id { get; set; }
-    public int SeedWatchId { get; set; }           // Watch whose specs drove generation
-    public Watch SeedWatch { get; set; } = null!;
-    public string WhyItMatters { get; set; } = "";
-    public string CollectorAppeal { get; set; } = "";
-    public string DesignLanguage { get; set; } = "";
-    public string BestFor { get; set; } = "";
+    public int SeedWatchId { get; set; }
+    public string WhyItMatters { get; set; }
+    public string CollectorAppeal { get; set; }
+    public string DesignLanguage { get; set; }
+    public string BestFor { get; set; }
     public DateTime GeneratedAt { get; set; }
-    public ICollection<WatchEditorialLink> Links { get; set; } = [];
 }
 ```
 
 ### WatchEditorialLink
-
+PK = WatchId (one editorial per watch). Many watches share one WatchEditorialContent.
 ```csharp
 public class WatchEditorialLink
 {
-    public int WatchId { get; set; }               // FK (unique — one editorial per watch)
-    public Watch Watch { get; set; } = null!;
+    public int WatchId { get; set; }        // PK
     public int EditorialContentId { get; set; }
-    public WatchEditorialContent EditorialContent { get; set; } = null!;
 }
 ```
-
-No pgvector column needed — watches are linked by collection FK at seed time, not by cosine
-similarity. The similarity lookup is only a fallback for watches with no collection (rare edge case).
 
 ---
 
 ## AI Service: POST /generate-editorial
 
-New endpoint in `ai-service/app.py`:
+Input: `{ brand, collection, name, description, case_material, diameter_mm, dial_color, movement_type, power_reserve_h, price_tier }`
+Output: `{ why_it_matters, collector_appeal, design_language, best_for }`
 
-**Input:**
-
-```json
-{
-  "brand": "Patek Philippe",
-  "collection": "Nautilus",
-  "name": "5711/1A-014",
-  "description": "Patek Philippe Nautilus",
-  "case_material": "stainless steel",
-  "diameter_mm": 40,
-  "dial_color": "olive green",
-  "movement_type": "automatic",
-  "power_reserve_h": 45,
-  "price_tier": "ultra-luxury"
-}
-```
-
-**Output:**
-
-```json
-{
-  "why_it_matters": "...",
-  "collector_appeal": "...",
-  "design_language": "...",
-  "best_for": "..."
-}
-```
-
-**Prompt design:**
-
-- System: luxury watch journalist persona, 2–3 sentences per section, no generic filler
-- Temperature: 0.35 (slightly higher than other endpoints for more natural prose variety)
+- System prompt: luxury watch journalist persona, 2–3 sentences per section, no generic filler
+- Temperature: 0.35 (higher than other endpoints for natural prose variety)
 - Max tokens: 500
-- Uses same `parse_llm_json()` defensive parser already in app.py
+- Uses same `parse_llm_json()` defensive parser
+- Retry with stricter prompt on JSON parse failure
 
-**Price tier mapping** (computed in .NET before calling ai-service):
-
-- 0 = "price on request"
-- < 10,000 = "accessible luxury"
-- < 30,000 = "mid-luxury"
-- < 100,000 = "high luxury"
-- > = 100,000 = "ultra-luxury"
+**Price tier mapping:**
+- 0 = "price on request" | < 10k = "accessible luxury" | < 30k = "mid-luxury" | < 100k = "high luxury" | >= 100k = "ultra-luxury"
 
 ---
 
-## WatchEditorialService — Seeding Logic
+## Seeding Logic (WatchEditorialService)
 
 ```
 SeedAllAsync():
-  For each Collection (51 total):
-    1. Pick seed watch: watch in this collection with most non-null WatchSpecs fields
-    2. If collection has no watches: skip
-    3. POST /generate-editorial to ai-service with seed watch data
-    4. Store WatchEditorialContent (SeedWatchId = seed watch Id)
-    5. INSERT WatchEditorialLink for every watch in this collection → same ContentId
+  Group all watches by CollectionId
+  For each collection group:
+    Skip watches already in WatchEditorialLinks
+    Pick seed = watch with most non-null WatchSpecs fields
+    POST /generate-editorial to ai-service
+    Store WatchEditorialContent (SeedWatchId = seed.Id)
+    Insert WatchEditorialLink for every watch in group → same ContentId
 
-  For watches with CollectionId = null (orphans):
-    Generate individually (expected to be rare or zero)
+  For null-collection watches:
+    Generate individually (rare edge case)
 
-  Return: { seeded (collections), linked (watches), skipped }
+  Return: { seeded, linked, skipped }
 ```
-
-The service reuses `IHttpClientFactory.CreateClient("ai-service")` — same pattern as
-`WatchEmbeddingService` and `WatchFinderService`.
 
 ---
 
-## Admin Endpoints (AdminController.cs)
+## Admin Endpoints
 
 ```
-POST /api/admin/editorial/seed
-  → WatchEditorialService.SeedAllAsync()
-  → Returns { seeded, linked, skipped, timestamp }
-
-GET /api/admin/editorial/status
-  → Returns { totalWatches, withEditorial, coveragePct }
-
-DELETE /api/admin/editorial
-  → Clears WatchEditorialLinks and WatchEditorialContents
-  → Returns { deleted }
+POST /api/admin/editorial/seed    → seed all collections
+GET  /api/admin/editorial/status  → { total, withEditorial, coveragePct }
+DELETE /api/admin/editorial       → clear all content + links (before re-seeding)
 ```
-
-All follow the existing `[Authorize(Roles = "Admin")]` + try/catch + `Ok(new { Success, ... })` pattern.
-
----
-
-## WatchController Change
-
-`GET /api/watches/{id}` — include editorial content in response:
-
-```csharp
-var watch = await _context.Watches
-    .Include(w => w.Brand)
-    .Include(w => w.Collection)
-    .Include(w => w.EditorialLink)
-        .ThenInclude(l => l.EditorialContent)   // <-- new
-    .FirstOrDefaultAsync(w => w.Id == id);
-```
-
-Add navigation property to `Watch.cs`:
-
-```csharp
-public WatchEditorialLink? EditorialLink { get; set; }
-```
-
-The frontend receives `editorialContent` as part of the watch object — no new API endpoint needed.
-
----
-
-## Frontend
-
-### lib/api.ts — extend Watch type
-
-```typescript
-editorialContent?: {
-  whyItMatters: string;
-  collectorAppeal: string;
-  designLanguage: string;
-  bestFor: string;
-} | null;
-```
-
-### app/watches/[watchId]/page.tsx — 4 new sections
-
-Rendered below the specs table. Only shown if `editorialContent` is present (graceful degradation
-for any watch not yet seeded).
-
-Each section: heading + paragraph, clean typography matching existing page style. No new components
-needed — inline JSX with existing Tailwind classes.
 
 ---
 
 ## Pre-Deploy Workflow
 
 ```bash
-# 1. Pull the model (one-time)
-ollama pull phi4:14b
+# 1. Set LLM_MODEL in ai-service
+LLM_MODEL=gemma2:9b docker compose up
 
-# 2. Start services with phi4 as LLM
-LLM_MODEL=phi4:14b docker compose up
+# 2. Run seed script
+bash scripts/seed_editorial.sh
+# Prompts for admin email/password, then seeds ~51 collections (~2-5 min)
 
-# 3. Seed editorial content (admin panel or curl)
-POST /api/admin/editorial/seed
-# ~51 Ollama calls, ~2–5 min total
-
-# 4. Verify
-GET /api/admin/editorial/status
-# Expected: coveragePct ~100%
-
-# 5. Dump editorial tables
-pg_dump -t '"WatchEditorialContents"' -t '"WatchEditorialLinks"' tourbillon > editorial_seed.sql
-
-# 6. Import to production
-psql $PROD_DB < editorial_seed.sql
+# 3. Import SQL dump to production
+psql $PROD_DB < scripts/editorial_seed_YYYYMMDD_HHMMSS.sql
 ```
 
-After import, prod serves editorial content from the DB with zero AI calls — just a SQL join.
+After import, prod serves editorial content as a plain SQL join — zero AI calls at runtime.
 
 ---
 
-## Verification
+## Commit Messages (per milestone)
 
-1. `dotnet build` — no compile errors
-2. `npx tsc --noEmit` — no TypeScript errors
-3. `POST /api/admin/editorial/seed` → check response shows ~51 seeded, ~351 linked
-4. `GET /api/admin/editorial/status` → coveragePct near 100%
-5. Visit any watch detail page → 4 editorial sections render below specs
-6. Watch with no editorial (if any) → page still renders, sections simply absent
-
+1. `feat: add WatchEditorialContent and WatchEditorialLink entities with migration`
+2. `feat(ai-service): add generate-editorial endpoint for story-first content`
+3. `feat: add WatchEditorialService with seed/status/clear admin endpoints`
+4. `feat: include editorial content in watch detail API response`
+5. `feat(frontend): add story-first editorial sections to watch detail page`
+6. `chore: add editorial seed script for pre-deploy content generation`
+7. `docs: update story-first plan with UX flow and gemma2:9b model`
