@@ -41,6 +41,7 @@ interface Filters {
   powerReserves: string[];
   diameterBuckets: string[];
   priceBuckets: string[];
+  complications: string[];
 }
 
 const EMPTY_FILTERS: Filters = {
@@ -52,6 +53,7 @@ const EMPTY_FILTERS: Filters = {
   powerReserves: [],
   diameterBuckets: [],
   priceBuckets: [],
+  complications: [],
 };
 
 // Diameter label uses floor of the parsed mm value — 37.6mm → "37mm".
@@ -104,6 +106,23 @@ const POWER_RESERVE_BUCKETS: { label: string; test: (h: number | null, raw: stri
   { label: 'Over 100h',  test: (h, raw)  => !/battery|year|years|standby/i.test(raw) && h !== null && h >= 100 },
 ];
 const POWER_RESERVE_OPTIONS = POWER_RESERVE_BUCKETS.map(b => b.label);
+
+// Complications — keyword groups that match against specs.movement.functions
+const COMPLICATION_OPTIONS: { label: string; keywords: string[] }[] = [
+  { label: 'Chronograph',        keywords: ['chronograph'] },
+  { label: 'Perpetual Calendar',  keywords: ['perpetual calendar'] },
+  { label: 'Annual Calendar',     keywords: ['annual calendar'] },
+  { label: 'Moonphase',           keywords: ['moon phase', 'moonphase', 'moon phases'] },
+  { label: 'Tourbillon',          keywords: ['tourbillon'] },
+  { label: 'Minute Repeater',     keywords: ['minute repeater'] },
+  { label: 'GMT / World Time',    keywords: ['gmt', 'world time', 'dual time'] },
+  { label: 'Flyback',             keywords: ['flyback'] },
+  { label: 'Power Reserve',       keywords: ['power reserve'] },
+  { label: 'Alarm',               keywords: ['alarm'] },
+  { label: 'Retrograde',          keywords: ['retrograde'] },
+  { label: 'Equation of Time',    keywords: ['equation of time'] },
+];
+const COMPLICATION_LABELS = COMPLICATION_OPTIONS.map(c => c.label);
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -215,6 +234,12 @@ function applyFilters(watches: Watch[], filters: Filters, wristFit: string): Wat
     if (filters.priceBuckets.length > 0) {
       const buckets = PRICE_BUCKETS.filter(b => filters.priceBuckets.includes(b.label));
       if (!buckets.some(b => b.test(w.currentPrice))) return false;
+    }
+    if (filters.complications.length > 0) {
+      const funcsRaw = specs?.movement?.functions;
+      const funcsStr = (Array.isArray(funcsRaw) ? funcsRaw.join(', ') : String(funcsRaw ?? '')).toLowerCase();
+      const selected = COMPLICATION_OPTIONS.filter(c => filters.complications.includes(c.label));
+      if (!selected.some(c => c.keywords.some(k => funcsStr.includes(k)))) return false;
     }
 
     // Wrist fit filter: exclude watches that score below 40 ("Wearable" threshold)
@@ -507,6 +532,70 @@ function BrandDropdown({
   );
 }
 
+// Collection dropdown — same pattern as BrandDropdown, works with Collection objects / number IDs
+function CollectionDropdown({
+  collections, selected, onChange,
+}: {
+  collections: Collection[];
+  selected: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const toggle = (id: number) => {
+    onChange(selected.includes(id) ? selected.filter(i => i !== id) : [...selected, id]);
+  };
+
+  if (collections.length === 0) return null;
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button onClick={() => setOpen(o => !o)} className={pillClass(selected.length > 0)}>
+        Collection
+        <CountBadge count={selected.length} />
+        <Chevron open={open} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-52 overflow-hidden">
+          <div className="max-h-64 overflow-y-auto p-2">
+            {collections.map(c => {
+              const active = selected.includes(c.id);
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => toggle(c.id)}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.04] transition-colors text-left"
+                >
+                  <span className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+                    active ? 'bg-[#f0e6d2] border-[#f0e6d2]' : 'border-white/25'
+                  }`}>
+                    {active && (
+                      <svg className="w-2.5 h-2.5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className={`text-sm font-inter ${active ? 'text-white' : 'text-white/60'}`}>{c.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SkeletonGrid({ count = 20 }: { count?: number }) {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
@@ -556,13 +645,28 @@ export default function SmartSearchClient() {
   // Sync editable query header when URL query changes (e.g. browser back/forward)
   useEffect(() => { setEditQuery(query); }, [query]);
 
+  // Persist wrist fit to sessionStorage so it survives back navigation from product detail page
+  const wristKey = `smartsearch-wrist:${query}`;
+  useEffect(() => {
+    if (!query) return;
+    try {
+      if (wristFit) sessionStorage.setItem(wristKey, wristFit);
+      else sessionStorage.removeItem(wristKey);
+    } catch { /* ignore */ }
+  }, [wristFit, wristKey, query]);
+
   // AI search — checks sessionStorage first to avoid re-running on back navigation
   useEffect(() => {
     if (!query) { setStatus('error'); return; }
     setStatus('loading');
     setResult(null);
     setFilters(EMPTY_FILTERS);
-    setWristFit('');
+
+    // Restore wrist fit from sessionStorage (back navigation) or reset
+    try {
+      const savedWrist = sessionStorage.getItem(`smartsearch-wrist:${query}`);
+      setWristFit(savedWrist ?? '');
+    } catch { setWristFit(''); }
 
     const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
     const cacheKey = `smartsearch:${query}`;
@@ -647,12 +751,21 @@ export default function SmartSearchClient() {
   const PAGE_SIZE = 20;
 
   // Flatten into a single ordered list: top matches first, then others.
-  // This ensures we always show exactly 20 per page regardless of whether the
-  // reranker succeeded (split between top/other) or failed (all in topWatches).
-  const allWatches = useMemo(
-    () => [...topWatches, ...otherWatches],
-    [topWatches, otherWatches]
-  );
+  // When wrist fit is active, sort by fit score descending (best fit first).
+  const allWatches = useMemo(() => {
+    const combined = [...topWatches, ...otherWatches];
+    const wristCm = wristFit ? parseFloat(wristFit) : null;
+    if (wristCm !== null && !isNaN(wristCm)) {
+      combined.sort((a, b) => {
+        const specsA = parseSpecs(a.specs)?.case as { diameter?: string; thickness?: string } | undefined;
+        const specsB = parseSpecs(b.specs)?.case as { diameter?: string; thickness?: string } | undefined;
+        const fitA = specsA?.diameter ? calculateFitScores(wristCm, specsA) : null;
+        const fitB = specsB?.diameter ? calculateFitScores(wristCm, specsB) : null;
+        return (fitB?.overall ?? 0) - (fitA?.overall ?? 0);
+      });
+    }
+    return combined;
+  }, [topWatches, otherWatches, wristFit]);
 
   const totalPages = Math.max(1, Math.ceil(allWatches.length / PAGE_SIZE));
 
@@ -733,6 +846,11 @@ export default function SmartSearchClient() {
             selected={filters.brandIds}
             onChange={v => setFilter('brandIds', v)}
           />
+          <CollectionDropdown
+            collections={collections}
+            selected={filters.collectionIds}
+            onChange={v => setFilter('collectionIds', v)}
+          />
 
           <FilterDropdown
             label="Case Material"
@@ -763,6 +881,13 @@ export default function SmartSearchClient() {
             options={POWER_RESERVE_OPTIONS}
             selected={filters.powerReserves}
             onChange={v => setFilter('powerReserves', v)}
+          />
+
+          <FilterDropdown
+            label="Complications"
+            options={COMPLICATION_LABELS}
+            selected={filters.complications}
+            onChange={v => setFilter('complications', v)}
           />
 
           <FilterDropdown

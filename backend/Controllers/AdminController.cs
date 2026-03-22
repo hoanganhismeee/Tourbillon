@@ -1192,6 +1192,118 @@ public class AdminController : ControllerBase
         "manual winding gold dress watch",
         "self-winding platinum watch",
         "Spring Drive automatic steel Grand Seiko",
+
+        // Style / occasion descriptors
+        "dress watch",
+        "sport watch",
+        "chronograph",
+        "diver watch",
+        "everyday watch",
+        "formal watch for black tie",
+        "casual everyday steel watch",
+        "wedding day watch gold",
+        "business professional watch",
+        "minimalist clean dial watch",
+        "elegant thin watch for suit",
+        "rugged outdoor sport watch",
+        "pilot aviation watch",
+        "racing chronograph watch",
+        "weekend casual watch leather strap",
+
+        // Material standalone
+        "steel watch",
+        "gold watch",
+        "rose gold watch",
+        "white gold watch",
+        "yellow gold watch",
+        "titanium watch",
+        "platinum watch",
+        "ceramic watch",
+
+        // Material × category cross
+        "steel chronograph",
+        "steel diver",
+        "steel dress watch",
+        "gold chronograph",
+        "gold diver",
+        "titanium diver",
+        "titanium chronograph",
+        "titanium sport watch",
+        "platinum chronograph",
+        "ceramic sport watch",
+        "rose gold dress watch 38mm",
+        "white gold chronograph under 80k",
+
+        // Movement standalone + cross
+        "automatic watch",
+        "manual winding watch",
+        "quartz watch",
+        "automatic chronograph",
+        "automatic diver",
+        "automatic dress watch",
+        "manual winding dress watch",
+        "automatic sport watch steel",
+
+        // Water resistance × material/category
+        "300m water resistance steel",
+        "200m diver automatic",
+        "100m water resistant everyday watch",
+        "300m steel diver under 20k",
+        "steel diver 300m automatic",
+
+        // Dial color
+        "blue dial dress watch",
+        "black dial sport watch steel",
+        "white dial dress watch gold",
+        "salmon dial watch",
+        "green dial watch",
+        "silver dial automatic watch",
+
+        // Size-focused
+        "small watch for thin wrist",
+        "large sport watch 44mm",
+        "medium size watch 40mm automatic",
+        "compact dress watch 35-37mm",
+        "oversized chronograph 44mm steel",
+
+        // Natural language / conversational
+        "best dress watch for a wedding",
+        "affordable luxury watch under 15k",
+        "luxury everyday wear watch",
+        "gift for watch collector",
+        "first luxury watch recommendation",
+        "investment grade watch",
+        "good travel watch with GMT",
+        "watch with moonphase and date",
+        "simple time-only dress watch",
+        "complicated watch with multiple functions",
+        "iconic luxury sport watch",
+        "best value steel automatic",
+        "hand wound movement watch",
+        "watch with exhibition caseback",
+        "slim profile dress watch under 9mm thick",
+
+        // Brand-style combos not yet covered
+        "Omega dress watch De Ville",
+        "Rolex Datejust 36 steel",
+        "Rolex Submariner ceramic",
+        "Grand Seiko dress watch",
+        "Breguet Tradition open-worked",
+        "Patek Philippe complications",
+        "JLC automatic dress watch",
+        "Lange Zeitwerk digital display",
+        "Vacheron Overseas diver",
+        "AP Royal Oak selfwinding",
+
+        // Price × category combos
+        "chronograph under 15k",
+        "diver under 10k",
+        "dress watch under 30k",
+        "sport watch under 20k",
+        "gold watch under 50k",
+        "tourbillon under 200k",
+        "watch between 5k and 15k",
+        "watch between 10k and 30k automatic",
     ];
 
     /// Runs the seed query list through the full finder pipeline, caching each result.
