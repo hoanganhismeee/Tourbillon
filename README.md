@@ -9,7 +9,7 @@ Tourbillon is a full-stack e-commerce platform for luxury watches, built with a 
 - **Watch Product Pages**: Clean product display with pricing, spec tables (Dial, Case, Movement, Strap), and upcoming AI-generated editorial sections.
 - **Side-by-side Comparison**: Compare any two watches on specs, with AI-generated wearability and brand-character insights.
 - **Wrist-fit Recommender**: Fit scores and wrist presence ratings calculated from case dimensions — no AI cost, instant results.
-- **AI Watch Finder**: Describe what you want in plain language and receive ranked product recommendations. Hybrid filtering — structured parts (brand, collection, price) applied as hard SQL pre-filters; semantic parts (style, materials, complications) ranked by vector cosine similarity. Filter bar auto-populates to match what the query implied.
+- **AI Watch Finder**: Describe what you want in plain language and receive ranked product recommendations. Hybrid filtering — structured parts (brand, collection, price, case material, movement, water resistance) applied as hard SQL pre-filters; semantic parts (style, complications) ranked by vector cosine similarity with category-aware embeddings. Filter bar auto-populates to match what the query implied.
 - **Save Collections**: Build and share personal watch shortlists by theme, occasion, or budget.
 
 ## Tech Stack

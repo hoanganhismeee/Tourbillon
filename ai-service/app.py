@@ -167,6 +167,7 @@ def watch_finder_parse():
 # ── Rerank endpoint ───────────────────────────────────────────────────────────
 
 RERANK_SYSTEM_PROMPT = """You are a luxury watch expert. Score EVERY watch 0-100 for fit with the query. 100=perfect match, 0=irrelevant.
+Match the watch's functional category to the query: a "dress watch" is thin, minimalist, time-only or with simple complications — chronographs, divers, and sport watches are NOT dress watches regardless of case material.
 You MUST include one entry per watch — do not skip any.
 Return ONLY a JSON array with exactly as many entries as watches provided, no markdown, no preamble:
 [{"watch_id": 42, "score": 92}]
@@ -200,8 +201,10 @@ def watch_finder_rerank():
     for w in watches:
         price_str = f"${w['price']:,}" if w.get("price") else "Price on request"
         specs = (w.get("specs_summary") or "")[:80]
+        col = w.get('collection', '')
+        brand_col = f"{w.get('brand', '')} {col}".strip() if col else w.get('brand', '')
         watch_lines.append(
-            f"ID {w['id']} | {w.get('brand', '')} | {w.get('name', '')} | "
+            f"ID {w['id']} | {brand_col} | {w.get('name', '')} | "
             f"{price_str} | {specs} | {w.get('description', '')}"
         )
     watches_text = "\n".join(watch_lines)

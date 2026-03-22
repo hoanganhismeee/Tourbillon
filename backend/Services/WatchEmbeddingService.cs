@@ -127,7 +127,7 @@ public class WatchEmbeddingService
     /// Returns the number of newly embedded watches.
     public async Task<int> GenerateMissingAsync()
     {
-        const int WatchesPerBatch = 50; // 50 watches × 4 chunks = 200 texts per embed call
+        const int WatchesPerBatch = 10; // 10 watches × 4 chunks = 40 texts per embed call
         var httpClient = _httpClientFactory.CreateClient("ai-service");
 
         var alreadyEmbeddedIds = await _context.WatchEmbeddings
@@ -205,6 +205,19 @@ public class WatchEmbeddingService
         return missing.Count;
     }
 
+    /// Deletes all watch_finder embeddings and regenerates from scratch.
+    /// Use after changing chunk-building logic (InferCategory, InferOccasions, BuildChunks).
+    public async Task<int> RegenerateAllAsync()
+    {
+        var existing = await _context.WatchEmbeddings
+            .Where(e => e.Feature == "watch_finder")
+            .ToListAsync();
+        _context.WatchEmbeddings.RemoveRange(existing);
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Deleted {Count} watch_finder embeddings for regeneration", existing.Count);
+        return await GenerateMissingAsync();
+    }
+
     // ── Chunk builder ─────────────────────────────────────────────────────────
 
     private record Chunk(string ChunkType, string Text);
@@ -243,9 +256,10 @@ public class WatchEmbeddingService
         if (specs?.Movement?.Functions?.Any() == true)          techParts.Add($"Functions: {string.Join(", ", specs.Movement.Functions)}");
         var specsText = $"{brand} {watch.Name} specifications: {string.Join(". ", techParts)}.";
 
-        // use_case: occasion and wear context
+        // use_case: category label + occasion and wear context
+        var category = InferCategory(watch, specs);
         var occasions = InferOccasions(watch, specs);
-        var useCase = $"{brand} {watch.Name} — ideal for {string.Join(", ", occasions)}. Price: {price}.";
+        var useCase = $"{brand} {watch.Name} — {category}. Ideal for {string.Join(", ", occasions)}. Price: {price}.";
 
         return
         [
@@ -256,26 +270,77 @@ public class WatchEmbeddingService
         ];
     }
 
+    // Functional category classification — first match wins.
+    // Used by InferOccasions to gate occasion labels and by BuildChunks to embed category text.
+    private static readonly HashSet<string> _diverCollections = new(StringComparer.OrdinalIgnoreCase)
+        { "Submariner", "SeaQ", "Seamaster", "Aquanaut", "Marine", "Polaris" };
+    private static readonly HashSet<string> _sportCollections = new(StringComparer.OrdinalIgnoreCase)
+        { "Nautilus", "Royal Oak", "Overseas", "Highlife", "lineSport", "Spezialist",
+          "Sport Collection", "GMT-Master II", "Royal Oak Offshore", "Royal Oak Concept" };
+    private static readonly HashSet<string> _dressCollections = new(StringComparer.OrdinalIgnoreCase)
+        { "Calatrava", "Patrimony", "Saxonia", "Classique", "Reverso", "Master Ultra Thin",
+          "Senator", "Slimline", "Elegance Collection", "De Ville", "Tradition", "1815",
+          "Lange 1", "Datejust", "Day-Date", "Historiques", "Métiers d'Art",
+          "Heritage Collection", "Classics", "Reine de Naples", "élégante", "PanoMatic",
+          "Duomètre", "Manufacture", "Constellation", "Grand Complications", "Zeitwerk",
+          "Collection", "Collection Convexe", "Datograph", "Evolution 9" };
+
+    private static string InferCategory(Watch watch, WatchSpecs? specs)
+    {
+        var collection = watch.Collection?.Name ?? "";
+        var name = watch.Name.ToLower();
+        var functions = specs?.Movement?.Functions ?? [];
+        var wr = specs?.Case?.WaterResistance ?? "";
+
+        // 1. Diver — high WR or diver collection
+        var wrMatch = Regex.Match(wr, @"(\d+)");
+        if (wrMatch.Success && int.TryParse(wrMatch.Value, out var wrM) && wrM >= 200)
+            return "diver's watch";
+        if (_diverCollections.Contains(collection))
+            return "diver's watch";
+
+        // 2. Chronograph — functions or name keywords
+        if (functions.Any(f => f.Contains("chronograph", StringComparison.OrdinalIgnoreCase))
+            || Regex.IsMatch(name, @"chronograph|chronographe|chrono|rattrapante|daytona|speedmaster|centigraphe", RegexOptions.IgnoreCase))
+            return "chronograph";
+
+        // 3. Sport watch — sport-oriented collections
+        if (_sportCollections.Contains(collection))
+            return "sport watch";
+
+        // 4. Dress watch — dress-oriented collections
+        if (_dressCollections.Contains(collection))
+            return "dress watch";
+
+        // 5. Default
+        return "luxury watch";
+    }
+
     private static List<string> InferOccasions(Watch watch, WatchSpecs? specs)
     {
         var occasions = new List<string>();
+        var category = InferCategory(watch, specs);
 
         // High water resistance → diving / water sports
         var wr = specs?.Case?.WaterResistance ?? "";
         if (Regex.IsMatch(wr, @"\b(100|150|200|300|500)\s*(m|bar|ATM)", RegexOptions.IgnoreCase))
             occasions.Add("diving and water sports");
 
-        // Gold / platinum / tourbillon / complications → formal / black tie
+        // Gold / platinum → formal ONLY for dress watches and uncategorised pieces
         var mat = specs?.Case?.Material?.ToLower() ?? "";
         var name = watch.Name.ToLower();
-        if (mat.Contains("gold") || mat.Contains("platinum") || name.Contains("tourbillon") || name.Contains("minute repeater"))
+        if ((mat.Contains("gold") || mat.Contains("platinum")
+            || name.Contains("tourbillon") || name.Contains("minute repeater"))
+            && category is "dress watch" or "luxury watch")
             occasions.Add("formal occasions and black-tie events");
 
-        // Small diameter → dress / understated elegance
-        var diamRaw = specs?.Case?.Diameter ?? "";
-        var diamMatch = Regex.Match(diamRaw, @"(\d+(?:\.\d+)?)");
-        if (diamMatch.Success && double.TryParse(diamMatch.Value, out var diam) && diam <= 38)
+        // Dress category → dress occasions
+        if (category == "dress watch")
             occasions.Add("dress occasions and understated elegance");
+
+        // Sport / diver / chrono → active lifestyle
+        if (category is "sport watch" or "diver's watch" or "chronograph")
+            occasions.Add("active lifestyle and sport");
 
         if (occasions.Count == 0)
             occasions.Add("everyday luxury wear");

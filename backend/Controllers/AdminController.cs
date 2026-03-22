@@ -1045,6 +1045,18 @@ public class AdminController : ControllerBase
         return Ok(new { generated, total, embedded, coveragePct = pct });
     }
 
+    /// Deletes all watch_finder embeddings and regenerates with current chunk logic.
+    /// Use after changing InferCategory, InferOccasions, or BuildChunks.
+    /// POST: api/admin/embeddings/regenerate
+    [HttpPost("embeddings/regenerate")]
+    public async Task<IActionResult> RegenerateEmbeddings()
+    {
+        _logger.LogInformation("Admin: full embedding regeneration requested");
+        var regenerated = await _embeddingService.RegenerateAllAsync();
+        var (total, embedded, pct) = await _embeddingService.GetStatusAsync();
+        return Ok(new { regenerated, total, embedded, coveragePct = pct });
+    }
+
     /// Returns current embedding coverage stats.
     /// GET: api/admin/embeddings/status
     [HttpGet("embeddings/status")]
