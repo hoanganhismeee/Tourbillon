@@ -4,6 +4,9 @@
 **Phase 3B (vector similarity retrieval) — COMPLETE.** SQL filter replaced with cosine similarity search.
 **Query Cache — COMPLETE.** Persistent semantic query cache layers on top of Phase 3B.
 
+> **Scope boundary:** This pipeline handles brand, collection, specs, and price queries — e.g. "Vacheron dress watch 39–40mm", "JLC Reverso under 50k", "AP Royal Oak steel 41mm".
+> Occasion and lifestyle queries ("wedding watch", "watch for a banker") are Phase 5 (RAG Chat Concierge) scope.
+
 Upgrade the watch finder candidate retrieval from SQL predicate filtering to vector similarity search, using a lazy embedding generation strategy that scales with usage.
 
 ---
@@ -13,10 +16,10 @@ Upgrade the watch finder candidate retrieval from SQL predicate filtering to vec
 The current Phase 2 pipeline filters candidates by matching parsed intent fields directly against database columns:
 
 ```
-"elegant watch for a client dinner"
-  → LLM extracts: style=dress, occasion=business, material=[gold]
-  → SQL WHERE: style LIKE 'dress' AND occasion = 'business'
-  → Misses watches that are clearly relevant but don't match the exact fields
+"Vacheron dress watch 39–40mm"
+  → LLM extracts: brand=Vacheron Constantin, style=dress, diameter=39-40mm
+  → SQL WHERE: brand = 'Vacheron Constantin' AND diameter BETWEEN 39 AND 40
+  → Misses semantically close watches that don't match the exact extracted fields
 ```
 
 SQL is blunt — it can only match what was explicitly extracted. Nuanced queries lose candidates that a human would consider obvious matches.
@@ -28,10 +31,10 @@ SQL is blunt — it can only match what was explicitly extracted. Nuanced querie
 Pre-compute a semantic embedding for each watch (a float array representing its meaning in vector space). At query time, embed the query and find the closest watches by cosine similarity — no field matching needed.
 
 ```
-"elegant watch for a client dinner"
+"Vacheron dress watch 39–40mm"
   → Embed query → float[768]
   → Cosine similarity against all embedded watches
-  → Returns watches semantically close to "elegant, business, formal, refined"
+  → Returns watches semantically close to Vacheron Constantin dress/Patrimony style at that diameter
   → No explicit field parsing required
 ```
 
@@ -42,14 +45,14 @@ Pre-compute a semantic embedding for each watch (a float array representing its 
 Rather than pre-computing results for every possible query, the QueryCache grows organically with real usage. Every search that misses the cache runs the full pipeline and stores the result. Future queries with similar phrasing hit the cache and skip the LLM entirely.
 
 ```
-Query 1: "dress watch for a wedding" → cache miss
+Query 1: "JLC Reverso under 50k" → cache miss
   → embed query → vector search → LLM rerank → result
   → [Background] store result in QueryCaches
 
-Query 2: "formal watch for a wedding ceremony"  (similarity 0.96 → HIT)
+Query 2: "Jaeger-LeCoultre Reverso below 50000"  (similarity 0.96 → HIT)
   → embed query → QueryCaches match → return stored result   (~55ms)
 
-Query 3: "sporty dive watch under 10k" → cache miss
+Query 3: "sport watch under 100k" → cache miss
   → embed query → vector search → LLM rerank → result
   → [Background] store result in QueryCaches
 
@@ -214,7 +217,7 @@ manual-winding, ultra-thin, formal, no date, no complications,
 alligator strap, classic round case, Swiss luxury"
 ```
 
-More context = better matches for nuanced queries like "something a banker would wear to a client dinner."
+More context = better matches for queries like "Vacheron dress watch 39–40mm" or "JLC Reverso under 50k".
 
 ---
 

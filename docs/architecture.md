@@ -262,18 +262,18 @@ This section explains the two-layer vector system from first principles. It is w
 
 ### The problem with SQL keyword search
 
-When a user searches "something a banker would wear to a client dinner", there is no database column called `occasion` that says "business formal". SQL can only match what was explicitly stored. A WHERE clause like `style = 'dress'` will miss watches that are clearly relevant but weren't tagged with that exact value.
+When a user searches "Vacheron dress watch 39–40mm", there is no single database column that captures brand + style + diameter together. SQL can only match what was explicitly stored. A WHERE clause on individual columns will miss watches that are clearly relevant but weren't tagged with the exact extracted values.
 
-The Phase 2 pipeline works around this with an LLM that parses the query into structured filters (`style=dress`, `material=gold`), but the LLM-extracted fields are still mapped to SQL predicates. A nuanced query still produces a blunt database query.
+The Phase 2 pipeline works around this with an LLM that parses the query into structured filters (`brand=Vacheron Constantin`, `diameter=39-40mm`), but the LLM-extracted fields are still mapped to SQL predicates. A nuanced query still produces a blunt database query.
 
 ### What an embedding is
 
 An embedding is what you get when you pass text through a neural network that has learned the meaning of language. The network outputs a list of 768 numbers — a coordinate in a 768-dimensional space. The important property: **texts with similar meaning end up close together in that space**.
 
 ```
-"dress watch for a wedding"          → [0.12, -0.43, 0.87, ...]   (768 numbers)
-"formal watch for a black tie event" → [0.11, -0.41, 0.85, ...]   (close — similar meaning)
-"dive watch 300m"                    → [-0.23, 0.91, -0.15, ...]  (far — different meaning)
+"Vacheron dress watch 39–40mm"       → [0.12, -0.43, 0.87, ...]   (768 numbers)
+"VC Patrimony slim 40mm"             → [0.11, -0.41, 0.85, ...]   (close — similar meaning)
+"AP Royal Oak steel sport watch"     → [-0.23, 0.91, -0.15, ...]  (far — different meaning)
 ```
 
 "Closeness" is measured by cosine similarity — the angle between two vectors. Similarity 1.0 = identical meaning, 0.0 = unrelated, negative = opposite.
@@ -310,7 +310,6 @@ User query
   └─ miss
        ↓
      [Layer 1] Phase 3B: cosine similarity vs WatchEmbeddings → top 30 candidates
-     (currently still SQL — Phase 3B not yet activated)
        ↓
      LLM rerank → top 8 results
        ↓
@@ -330,7 +329,7 @@ Each watch is embedded as four separate texts, not one. This is because a single
 | `full` | Brand + name + collection + price + all specs | "Patek Philippe 38mm white gold" |
 | `brand_style` | Brand identity + case material + dial color + strap | "rose gold watch with alligator strap" |
 | `specs` | All technical specs: diameter, thickness, water resistance, functions | "thin watch under 8mm with power reserve" |
-| `use_case` | Inferred occasions: diving, formal, dress, everyday | "something for a black tie event" |
+| `use_case` | Inferred style profile: diving, dress, sport, everyday wear | "JLC Reverso under 50k" |
 
 At retrieval time (Phase 3B), all four chunk vectors are compared against the query vector and the best-matching chunk wins. A query about case specs finds the right watch via its `specs` chunk even if the `full` chunk isn't the closest match.
 

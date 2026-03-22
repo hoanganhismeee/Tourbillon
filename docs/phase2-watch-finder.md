@@ -2,6 +2,9 @@
 
 AI-powered natural language watch search. Users describe what they want in plain English and get ranked product results with match explanations.
 
+> **Scope:** The Watch Finder handles brand, collection, specs, and price queries — e.g. "Vacheron dress watch 39–40mm", "JLC Reverso under 50k", "sport watch under 100k".
+> Occasion and lifestyle queries ("wedding watch", "watch for a banker") are Phase 5 scope — see `phase5-rag-chatbot.md`.
+
 ---
 
 ## Pipeline
