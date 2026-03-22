@@ -87,6 +87,7 @@ public class WatchFinderService
     // Tiered routing thresholds (cosine distance: 0 = identical, 1 = orthogonal)
     private const float SkipLlmDistance  = 0.20f; // Tier 2: strong match — skip LLM rerank
     private const float MaxDistance      = 0.55f; // Tier 4: filter no-matches in DB
+    private const float MinRelevance     = 0.35f; // reject results when best match is worse than this
 
     // Rerank sizing — smaller set = fewer LLM output tokens = faster inference
     private const int RerankLimit        = 15;    // max candidates sent to LLM (was 40)
@@ -317,7 +318,7 @@ public class WatchFinderService
             }
         }
 
-        if (topIds.Count == 0)
+        if (topIds.Count == 0 || bestDist >= MinRelevance)
             return ([], float.MaxValue);
 
         // Load Watch objects and restore similarity order (IN has no guaranteed order)

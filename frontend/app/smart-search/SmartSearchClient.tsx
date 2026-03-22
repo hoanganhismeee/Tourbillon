@@ -813,7 +813,7 @@ export default function SmartSearchClient() {
             onChange={e => setEditQuery(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter' && editQuery.trim()) {
-                router.push(`/smart-search?q=${encodeURIComponent(editQuery.trim())}`);
+                router.replace(`/smart-search?q=${encodeURIComponent(editQuery.trim())}`);
               }
             }}
             className="text-3xl font-playfair font-bold text-[#f0e6d2] bg-transparent border-none outline-none focus:border-b focus:border-[#f0e6d2]/30 min-w-0 flex-1"
@@ -826,8 +826,8 @@ export default function SmartSearchClient() {
 
         {status === 'success' && result && (
           <p className="text-sm font-inter text-white/40 mt-1.5">
-            {topWatches.length + otherWatches.length} watches
-            {hasActiveFilters && ' · filtered'}
+            {topWatches.length + otherWatches.length} Watches found
+            {hasActiveFilters && ' · with filtered'}
           </p>
         )}
       </div>
