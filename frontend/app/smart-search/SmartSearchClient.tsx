@@ -37,10 +37,8 @@ interface Filters {
   collectionIds: number[];
   caseMaterials: string[];
   movementTypes: string[];
-  dialColors: string[];
   waterResistances: string[];
   powerReserves: string[];
-  complications: string[];
   diameterBuckets: string[];
   priceBuckets: string[];
 }
@@ -50,10 +48,8 @@ const EMPTY_FILTERS: Filters = {
   collectionIds: [],
   caseMaterials: [],
   movementTypes: [],
-  dialColors: [],
   waterResistances: [],
   powerReserves: [],
-  complications: [],
   diameterBuckets: [],
   priceBuckets: [],
 };
@@ -64,13 +60,50 @@ function diameterLabel(mm: number): string {
   return `${Math.floor(mm)}mm`;
 }
 
+// Descending order: Price on Request first, then highest to lowest
 const PRICE_BUCKETS = [
-  { label: 'Under $10k',       test: (p: number) => p > 0 && p < 10_000 },
-  { label: '$10k – $25k',      test: (p: number) => p >= 10_000 && p < 25_000 },
-  { label: '$25k – $50k',      test: (p: number) => p >= 25_000 && p < 50_000 },
-  { label: 'Over $50k',        test: (p: number) => p >= 50_000 },
   { label: 'Price on Request', test: (p: number) => p === 0 },
+  { label: 'Over $100k',       test: (p: number) => p >= 100_000 },
+  { label: '$50k – $100k',     test: (p: number) => p >= 50_000 && p < 100_000 },
+  { label: '$25k – $50k',      test: (p: number) => p >= 25_000 && p < 50_000 },
+  { label: '$10k – $25k',      test: (p: number) => p >= 10_000 && p < 25_000 },
 ];
+
+// Curated case material options — majority coverage; niche values fall under "Other"
+const CASE_MATERIAL_OPTIONS = ['Steel', 'Titanium', 'Gold', 'Platinum', 'Carbon', 'Ceramic', 'Other'];
+// Spring Drive is grouped under Automatic; all four options + Other cover the full catalog
+const MOVEMENT_OPTIONS = ['Automatic', 'Self-winding', 'Manual-winding', 'Quartz', 'Other'];
+
+// Per-option keyword lists — Automatic includes Spring Drive since it's the same watch family
+const MOVEMENT_MATCH: Record<string, string[]> = {
+  'Automatic':     ['automatic', 'spring drive'],
+  'Self-winding':  ['self-winding'],
+  'Manual-winding':['manual'],
+  'Quartz':        ['quartz'],
+};
+
+// All keywords across named options — used to detect "Other"
+const STANDARD_CASE_KEYWORDS = ['steel', 'titanium', 'gold', 'platinum', 'carbon', 'ceramic'];
+const STANDARD_MOVEMENT_KEYWORDS = ['automatic', 'spring drive', 'self-winding', 'manual', 'quartz'];
+
+// Water resistance buckets — consolidate the same depth across multiple unit formats
+const WATER_RESISTANCE_BUCKETS: { label: string; test: (m: number | null) => boolean }[] = [
+  { label: 'Up to 30m',    test: m => m === null || m <= 30 },
+  { label: '50m – 120m',    test: m => m !== null && m >= 50  && m <= 120 },
+  { label: '150m – 300m',   test: m => m !== null && m >= 150 && m <= 300 },
+  { label: '600m+',         test: m => m !== null && m >= 600 },
+];
+const WATER_RESISTANCE_OPTIONS = WATER_RESISTANCE_BUCKETS.map(b => b.label);
+
+// Power reserve buckets — collapse near-duplicates ("72 hours", "Approx. 72 hours", etc.)
+const POWER_RESERVE_BUCKETS: { label: string; test: (h: number | null, raw: string) => boolean }[] = [
+  { label: 'Battery',    test: (_h, raw) => /battery|year|years|standby/i.test(raw) },
+  { label: 'Under 48h',  test: (h, raw)  => !/battery|year|years|standby/i.test(raw) && h !== null && h < 48 },
+  { label: '48h – 72h',  test: (h, raw)  => !/battery|year|years|standby/i.test(raw) && h !== null && h >= 48 && h < 72 },
+  { label: '72h – 100h', test: (h, raw)  => !/battery|year|years|standby/i.test(raw) && h !== null && h >= 72 && h < 100 },
+  { label: 'Over 100h',  test: (h, raw)  => !/battery|year|years|standby/i.test(raw) && h !== null && h >= 100 },
+];
+const POWER_RESERVE_OPTIONS = POWER_RESERVE_BUCKETS.map(b => b.label);
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -80,14 +113,21 @@ function buildFiltersFromIntent(intent: QueryIntent): Filters {
   const f = { ...EMPTY_FILTERS };
   if (intent.brandId)       f.brandIds      = [intent.brandId];
   if (intent.collectionId)  f.collectionIds = [intent.collectionId];
+  if (intent.minDiameterMm !== null || intent.maxDiameterMm !== null) {
+    const min = Math.floor(intent.minDiameterMm ?? 1);
+    const max = Math.floor(intent.maxDiameterMm ?? 200);
+    const labels: string[] = [];
+    for (let mm = min; mm <= max; mm++) labels.push(`${mm}mm`);
+    f.diameterBuckets = labels;
+  }
   if (intent.maxPrice) {
     f.priceBuckets = PRICE_BUCKETS
       .filter(b => {
         if (b.label === 'Price on Request') return false;
-        if (b.label === 'Under $10k')  return intent.maxPrice! >= 1;
-        if (b.label === '$10k – $25k') return intent.maxPrice! >= 10_000;
-        if (b.label === '$25k – $50k') return intent.maxPrice! >= 25_000;
-        if (b.label === 'Over $50k')   return intent.maxPrice! > 50_000;
+        if (b.label === '$10k – $25k')  return intent.maxPrice! >= 10_000;
+        if (b.label === '$25k – $50k')  return intent.maxPrice! >= 25_000;
+        if (b.label === '$50k – $100k') return intent.maxPrice! >= 50_000;
+        if (b.label === 'Over $100k')   return intent.maxPrice! > 100_000;
         return false;
       })
       .map(b => b.label);
@@ -106,6 +146,20 @@ function parseDiameterMm(raw: string | undefined): number | null {
   return match ? parseFloat(match[1]) : null;
 }
 
+// Extract leading metre value from strings like "100 m", "100 m / 10 bar", "300 m / 1,000 ft"
+function parseWaterResistanceM(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const match = raw.match(/^(\d[\d,]*)\s*m/i);
+  return match ? parseInt(match[1].replace(',', ''), 10) : null;
+}
+
+// Extract leading hour value from strings like "72 hours", "Approx. 72 hours", "35-45 hours"
+function parsePowerReserveH(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const match = raw.match(/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
 function applyFilters(watches: Watch[], filters: Filters, wristFit: string): Watch[] {
   const wristCm = wristFit ? parseFloat(wristFit) : null;
 
@@ -117,28 +171,34 @@ function applyFilters(watches: Watch[], filters: Filters, wristFit: string): Wat
         (w.collectionId === null || !filters.collectionIds.includes(w.collectionId))) return false;
 
     if (filters.caseMaterials.length > 0) {
-      const mat = (specs?.case?.material as string | undefined) ?? '';
-      if (!filters.caseMaterials.some(m => mat.toLowerCase().includes(m.toLowerCase()))) return false;
+      const mat = (specs?.case?.material as string | undefined)?.toLowerCase() ?? '';
+      const hasOther = filters.caseMaterials.includes('Other');
+      const namedSelected = filters.caseMaterials.filter(m => m !== 'Other');
+      const matchesNamed = namedSelected.some(m => mat.includes(m.toLowerCase()));
+      const matchesOther = hasOther && !STANDARD_CASE_KEYWORDS.some(k => mat.includes(k));
+      if (!matchesNamed && !matchesOther) return false;
     }
     if (filters.movementTypes.length > 0) {
-      const mov = (specs?.movement?.type as string | undefined) ?? '';
-      if (!filters.movementTypes.some(m => mov.toLowerCase().includes(m.toLowerCase()))) return false;
-    }
-    if (filters.dialColors.length > 0) {
-      const col = (specs?.dial?.color as string | undefined) ?? '';
-      if (!filters.dialColors.some(c => col.toLowerCase().includes(c.toLowerCase()))) return false;
+      const mov = (specs?.movement?.type as string | undefined)?.toLowerCase() ?? '';
+      const hasOther = filters.movementTypes.includes('Other');
+      const namedSelected = filters.movementTypes.filter(m => m !== 'Other');
+      const matchesNamed = namedSelected.some(m =>
+        (MOVEMENT_MATCH[m] ?? [m.toLowerCase()]).some(k => mov.includes(k))
+      );
+      const matchesOther = hasOther && !STANDARD_MOVEMENT_KEYWORDS.some(k => mov.includes(k));
+      if (!matchesNamed && !matchesOther) return false;
     }
     if (filters.waterResistances.length > 0) {
-      const wr = (specs?.case?.waterResistance as string | undefined) ?? '';
-      if (!filters.waterResistances.some(r => wr.toLowerCase().includes(r.toLowerCase()))) return false;
+      const wrRaw = (specs?.case?.waterResistance as string | undefined) ?? '';
+      const wrM = parseWaterResistanceM(wrRaw);
+      const buckets = WATER_RESISTANCE_BUCKETS.filter(b => filters.waterResistances.includes(b.label));
+      if (!buckets.some(b => b.test(wrM))) return false;
     }
     if (filters.powerReserves.length > 0) {
-      const pr = (specs?.movement?.powerReserve as string | undefined) ?? '';
-      if (!filters.powerReserves.some(r => pr.toLowerCase().includes(r.toLowerCase()))) return false;
-    }
-    if (filters.complications.length > 0) {
-      const fns = (specs?.movement?.functions as string[] | undefined) ?? [];
-      if (!filters.complications.some(c => fns.some(f => f.toLowerCase().includes(c.toLowerCase())))) return false;
+      const prRaw = (specs?.movement?.powerReserve as string | undefined) ?? '';
+      const prH = parsePowerReserveH(prRaw);
+      const buckets = POWER_RESERVE_BUCKETS.filter(b => filters.powerReserves.includes(b.label));
+      if (!buckets.some(b => b.test(prH, prRaw))) return false;
     }
     if (filters.diameterBuckets.length > 0) {
       const mm = parseDiameterMm(specs?.case?.diameter as string | undefined);
@@ -667,52 +727,36 @@ export default function SmartSearchClient() {
             onChange={v => setFilter('brandIds', v)}
           />
 
-          {filterOptions && (
-            <>
-              <FilterDropdown
-                label="Case Material"
-                options={filterOptions.caseMaterials}
-                selected={filters.caseMaterials}
-                onChange={v => setFilter('caseMaterials', v)}
-              />
-              <FilterDropdown
-                label="Diameter"
-                options={DIAMETER_BUCKETS.map(b => b.label)}
-                selected={filters.diameterBuckets}
-                onChange={v => setFilter('diameterBuckets', v)}
-              />
-              <FilterDropdown
-                label="Movement"
-                options={filterOptions.movementTypes}
-                selected={filters.movementTypes}
-                onChange={v => setFilter('movementTypes', v)}
-              />
-              <FilterDropdown
-                label="Dial Color"
-                options={filterOptions.dialColors}
-                selected={filters.dialColors}
-                onChange={v => setFilter('dialColors', v)}
-              />
-              <FilterDropdown
-                label="Water Resistance"
-                options={filterOptions.waterResistance}
-                selected={filters.waterResistances}
-                onChange={v => setFilter('waterResistances', v)}
-              />
-              <FilterDropdown
-                label="Power Reserve"
-                options={filterOptions.powerReserve}
-                selected={filters.powerReserves}
-                onChange={v => setFilter('powerReserves', v)}
-              />
-              <FilterDropdown
-                label="Complication"
-                options={filterOptions.complications}
-                selected={filters.complications}
-                onChange={v => setFilter('complications', v)}
-              />
-            </>
-          )}
+          <FilterDropdown
+            label="Case Material"
+            options={CASE_MATERIAL_OPTIONS}
+            selected={filters.caseMaterials}
+            onChange={v => setFilter('caseMaterials', v)}
+          />
+          <FilterDropdown
+            label="Diameter"
+            options={diameterOptions}
+            selected={filters.diameterBuckets}
+            onChange={v => setFilter('diameterBuckets', v)}
+          />
+          <FilterDropdown
+            label="Movement"
+            options={MOVEMENT_OPTIONS}
+            selected={filters.movementTypes}
+            onChange={v => setFilter('movementTypes', v)}
+          />
+          <FilterDropdown
+            label="Water Resistance"
+            options={WATER_RESISTANCE_OPTIONS}
+            selected={filters.waterResistances}
+            onChange={v => setFilter('waterResistances', v)}
+          />
+          <FilterDropdown
+            label="Power Reserve"
+            options={POWER_RESERVE_OPTIONS}
+            selected={filters.powerReserves}
+            onChange={v => setFilter('powerReserves', v)}
+          />
 
           <FilterDropdown
             label="Price"
