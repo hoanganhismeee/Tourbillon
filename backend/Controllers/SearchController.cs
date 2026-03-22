@@ -80,8 +80,10 @@ public class SearchController : ControllerBase
                 {
                     id = x.watch.Id,
                     name = x.watch.Name,
+                    description = x.watch.Description,
                     currentPrice = x.watch.CurrentPrice,
                     image = x.watch.Image,
+                    specs = x.watch.Specs,
                     brand = new { id = x.watch.Brand.Id, name = x.watch.Brand.Name },
                     collection = x.watch.Collection != null
                         ? new { id = x.watch.Collection.Id, name = x.watch.Collection.Name }

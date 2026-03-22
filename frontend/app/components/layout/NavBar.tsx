@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePathname } from 'next/navigation';
+import SearchOverlay from './SearchOverlay';
 
 // Custom SVG icon components for consistent styling and easy maintenance
 
@@ -118,15 +119,12 @@ const UserMenu = () => {
   
   // Main navigation bar component with search, scroll effects, and responsive design
   export default function NavBar() {
-    // Refs for DOM manipulation and focus management
-    const navRef = useRef<HTMLElement>(null); // Reference to the nav element for height calculations
-    const searchInputRef = useRef<HTMLInputElement>(null); // Reference to search input for focus management
-    const searchContainerRef = useRef<HTMLDivElement>(null); // Reference to search container for click outside detection
-    
-    // State for search functionality
-    const [isSearchExpanded, setIsSearchExpanded] = useState(false); // Controls search bar expansion
-    const [searchQuery, setSearchQuery] = useState(''); // Current search input value
-    
+    // Refs for DOM manipulation
+    const navRef = useRef<HTMLElement>(null);
+
+    // State for search overlay
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
+
     // State for scroll-based animations and navbar behavior
     const lastScrollY = useRef(0); // Previous scroll position for direction detection
     const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up'); // Current scroll direction
@@ -139,54 +137,11 @@ const UserMenu = () => {
       setMounted(true);
     }, []);
   
-    // Handle search icon click - toggle search expansion and focus input
-    const handleSearchClick = () => {
-      if (isSearchExpanded) {
-        // If search is expanded and has content, navigate to search page
-        if (searchQuery.trim()) {
-          window.location.href = `/search?q=${encodeURIComponent(searchQuery.trim())}`;
-        } else {
-          handleSearchClose(); // If no content, close search
-        }
-      } else {
-        // Expand search and focus input after animation delay
-        setIsSearchExpanded(true);
-        setTimeout(() => searchInputRef.current?.focus(), 200);
-      }
-    };
-  
-    // Close search bar and clear query
-    const handleSearchClose = () => {
-      setIsSearchExpanded(false);
-      setSearchQuery('');
-    };
-  
-    // Handle search form submission - navigate to search page
-    const handleSearchSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (searchQuery.trim()) {
-        window.location.href = `/search?q=${encodeURIComponent(searchQuery.trim())}`;
-      }
-    };
-  
-    // Handle keyboard events in search input (Escape to close)
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === 'Escape') handleSearchClose();
-    };
-  
-    // Add click outside listener to close search when clicking elsewhere
+    // Keep navbar visible when search overlay is open
     useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
-          handleSearchClose();
-        }
-      };
-  
-      // Only add listener when search is expanded
-      if (isSearchExpanded) document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [isSearchExpanded]);
-  
+      if (isSearchOpen) setScrollDirection('up');
+    }, [isSearchOpen]);
+
     // Calculate and set navbar height as CSS custom property for layout calculations
     useEffect(() => {
       const updateNavbarHeight = () => {
@@ -286,54 +241,28 @@ const UserMenu = () => {
           </Link>
         </div>
   
-        {/* Right side icons - user menu, cart, and search functionality */}
-        <div ref={searchContainerRef} className="flex items-center gap-16 relative pr-4 justify-end">
-          {/* User menu - hidden when search is expanded */}
-          <div className={`transition-opacity duration-500 ${mounted && isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-            <UserMenu />
-          </div>
-          
-          {/* Cart icon - hidden when search is expanded */}
-          <Link href="/cart" className={`hover:opacity-70 transition-opacity duration-500 cursor-pointer ${mounted && isSearchExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+        {/* Right side icons - user menu, cart, and search */}
+        <div className="flex items-center gap-16 relative pr-4 justify-end">
+          <UserMenu />
+
+          <Link href="/cart" className="hover:opacity-70 transition-opacity cursor-pointer">
             <CartIcon />
           </Link>
-          
-          {/* Search functionality with expandable input field */}
-          <div className="relative">
-            {/* Search icon button */}
-            <button onClick={handleSearchClick} className="hover:opacity-70 transition-opacity cursor-pointer bg-transparent border-none p-0 relative z-20">
-              <SearchIcon />
-            </button>
-            
-            {/* Expandable search input container */}
-            <div className={`absolute top-1/2 -translate-y-1/2 flex items-center transition-all duration-1000 ease-out ${isSearchExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} style={{ width: isSearchExpanded ? '450px' : '20px', right: '0px', overflow: 'hidden' }}>
-              <form onSubmit={handleSearchSubmit} className="flex items-center relative w-full">
-                {/* Search input field with styling and animations */}
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Search luxury brands and watches..."
-                  className={`w-full px-8 py-5 pr-20 bg-transparent border-0 border-b-2 border-white border-opacity-40 text-white placeholder-white placeholder-opacity-50 focus:outline-none focus:border-opacity-90 focus:placeholder-opacity-70 font-inter font-light tracking-wide text-xl transition-all duration-1000 ease-out hover:border-opacity-70 ${isSearchExpanded ? 'opacity-100' : 'opacity-0'}`}
-                  style={{
-                    background: 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)',
-                    backdropFilter: 'blur(12px)',
-                    height: '68px',
-                    color: '#f5f5dc',
-                    fontSize: '20px',
-                    borderRadius: '12px',
-                  }}
-                />
-                
-                {/* Animated underline effects for search input */}
-                <div className="absolute -bottom-2 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 scale-x-0 transition-transform duration-700 focus-within:scale-x-100 blur-sm"></div>
-                <div className="absolute -bottom-2 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-white to-transparent opacity-60 scale-x-0 transition-transform duration-700 focus-within:scale-x-100"></div>
-              </form>
-            </div>
-          </div>
+
+          {/* Search icon - opens overlay */}
+          <button
+            onClick={() => setIsSearchOpen(true)}
+            className="hover:opacity-70 transition-opacity cursor-pointer bg-transparent border-none p-0"
+          >
+            <SearchIcon />
+          </button>
         </div>
+
+        {/* Search overlay */}
+        <SearchOverlay
+          isOpen={isSearchOpen}
+          onClose={() => setIsSearchOpen(false)}
+        />
       </nav>
     );
   }

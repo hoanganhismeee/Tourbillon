@@ -630,6 +630,12 @@ export default function SmartSearchClient() {
   const [wristFit, setWristFit] = useState('');
   const [editQuery, setEditQuery] = useState(query);
 
+  // Keyword search results — arrive fast (<100ms) before AI results (~4s)
+  const [kwBrands, setKwBrands] = useState<Array<{ id: number; name: string }>>([]);
+  const [kwCollections, setKwCollections] = useState<Array<{ id: number; name: string; brand?: { name: string } }>>([]);
+  // Normalized Watch[] so SmartCard can render them during AI loading
+  const [kwWatches, setKwWatches] = useState<Watch[]>([]);
+
   // Load filter metadata immediately (fast DB queries) so the filter bar renders during the AI call.
   // watchFinderSearch is slow (~4s) and runs separately — filter pills appear right away.
   useEffect(() => {
@@ -686,6 +692,36 @@ export default function SmartSearchClient() {
       // sessionStorage unavailable (private browsing, storage full) — proceed with fetch
     }
 
+    // Keyword search runs in parallel — fast (<100ms), populates watch grid immediately + brand/collection pills
+    setKwBrands([]);
+    setKwCollections([]);
+    setKwWatches([]);
+    fetch(`/api/search?q=${encodeURIComponent(query)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: {
+        watches?: Array<{ id: number; name: string; description?: string; currentPrice?: number; image?: string; specs?: string; brand: { id: number; name: string }; collection?: { id: number; name: string } }>;
+        brands?: Array<{ id: number; name: string }>;
+        collections?: Array<{ id: number; name: string; brand?: { name: string } }>;
+      } | null) => {
+        if (data) {
+          setKwBrands(data.brands?.slice(0, 5) ?? []);
+          setKwCollections(data.collections?.slice(0, 5) ?? []);
+          // Normalize to Watch type so SmartCard renders them without changes
+          const normalized: Watch[] = (data.watches ?? []).map(kw => ({
+            id: kw.id,
+            name: kw.name,
+            description: kw.description ?? '',
+            image: kw.image ?? '',
+            currentPrice: kw.currentPrice ?? 0,
+            brandId: kw.brand.id,
+            collectionId: kw.collection?.id ?? null,
+            specs: kw.specs ?? null,
+          }));
+          setKwWatches(normalized);
+        }
+      })
+      .catch(() => {});
+
     watchFinderSearch(query)
       .then(res => {
         setResult(res);
@@ -722,16 +758,23 @@ export default function SmartSearchClient() {
     return Array.from(sizes).sort((a, b) => a - b).map(n => `${n}mm`);
   }, [result]);
 
-  // Client-side filter + split top / others
+  // Client-side filter + split top / others.
+  // Keyword-exclusive watches (exact ref matches like "4063" not found by AI) go first —
+  // if the user typed a reference number, that's what they want. For semantic queries
+  // ("dress watch for wedding"), kwExclusive is typically empty so AI results lead naturally.
   const { topWatches, otherWatches } = useMemo(() => {
     if (!result) return { topWatches: [], otherWatches: [] };
     const topIds = new Set(result.watches.map(w => w.id));
-    const all = applyFilters([...result.watches, ...result.otherCandidates], filters, wristFit);
+    const aiIds = new Set([...result.watches, ...result.otherCandidates].map(w => w.id));
+    const kwExclusive = kwWatches.filter(w => !aiIds.has(w.id));
+    const kwExclusiveIds = new Set(kwExclusive.map(w => w.id));
+    // Keyword-exclusive first (exact ref matches), then AI ranked results
+    const all = applyFilters([...kwExclusive, ...result.watches, ...result.otherCandidates], filters, wristFit);
     return {
-      topWatches: all.filter(w => topIds.has(w.id)),
-      otherWatches: all.filter(w => !topIds.has(w.id)),
+      topWatches: all.filter(w => topIds.has(w.id) || kwExclusiveIds.has(w.id)),
+      otherWatches: all.filter(w => !topIds.has(w.id) && !kwExclusiveIds.has(w.id)),
     };
-  }, [result, filters, wristFit]);
+  }, [result, filters, wristFit, kwWatches]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -831,6 +874,33 @@ export default function SmartSearchClient() {
           </p>
         )}
       </div>
+
+      {/* ── Keyword matches: brands & collections ── */}
+      {(kwBrands.length > 0 || kwCollections.length > 0) && (
+        <div className="flex items-center gap-2 flex-wrap mb-5">
+          <span className="text-xs font-inter text-white/30 uppercase tracking-widest mr-1 flex-shrink-0">
+            Jump to
+          </span>
+          {kwBrands.map(b => (
+            <a
+              key={`brand-${b.id}`}
+              href={`/brands/${b.id}`}
+              className="px-3 py-1 text-xs font-inter text-white/60 hover:text-white border border-white/15 hover:border-white/35 rounded-full bg-white/5 hover:bg-white/10 transition-all"
+            >
+              {b.name}
+            </a>
+          ))}
+          {kwCollections.map(c => (
+            <a
+              key={`col-${c.id}`}
+              href={`/collections/${c.id}`}
+              className="px-3 py-1 text-xs font-inter text-white/50 hover:text-white/80 border border-white/10 hover:border-white/25 rounded-full bg-white/3 hover:bg-white/8 transition-all"
+            >
+              {c.brand ? `${c.brand.name} ${c.name}` : c.name}
+            </a>
+          ))}
+        </div>
+      )}
 
       {/* ── Filter Bar ── */}
       <div className="pb-5 mb-6 border-b border-white/8">
@@ -951,7 +1021,24 @@ export default function SmartSearchClient() {
       )}
 
       {/* ── Results Grid ── */}
-      {status === 'loading' && <SkeletonGrid count={20} />}
+      {status === 'loading' && (
+        kwWatches.length > 0 ? (
+          <>
+            {/* AI still running — show keyword matches immediately with a subtle indicator */}
+            <div className="flex items-center gap-2 mb-6">
+              <div className="w-3.5 h-3.5 rounded-full border-2 border-white/20 border-t-white/55 animate-spin flex-shrink-0" />
+              <span className="text-xs font-inter text-white/35">AI analysis running…</span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+              {kwWatches.map(w => (
+                <SmartCard key={w.id} watch={w} brands={brands} collections={collections} currentPage={1} wristFit={wristFit} />
+              ))}
+            </div>
+          </>
+        ) : (
+          <SkeletonGrid count={20} />
+        )
+      )}
 
       {status === 'error' && (
         <div className="text-center py-20">

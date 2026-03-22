@@ -7,14 +7,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const SUGGESTIONS = [
+export const SUGGESTIONS = [
   'Vacheron Dress Watch 39–40mm dial',
   'Perpetual Calendar watches',
   'Patek Calatrava',
   'Sport Watches under 100k',
   'AP Royal Oak',
-  'Tourbillon Watches'
-
+  'Tourbillon Watches',
 ];
 
 export default function WatchFinderSearch() {
