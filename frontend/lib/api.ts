@@ -150,6 +150,8 @@ export interface QueryIntent {
   collectionId: number | null;
   maxPrice: number | null;
   minPrice: number | null;
+  minDiameterMm: number | null;
+  maxDiameterMm: number | null;
 }
 
 export interface WatchFinderResult {

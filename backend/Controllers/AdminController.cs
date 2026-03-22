@@ -1147,6 +1147,39 @@ public class AdminController : ControllerBase
         "Glashütte Original PanoMaticLunar",
         "thin dress watch white gold under 50k",
         "sport watch steel bracelet under 30k",
+
+        // Case material
+        "steel automatic watch 40mm",
+        "steel watch 38mm dress",
+        "steel watch 42mm sport chronograph",
+        "titanium automatic watch 42mm",
+        "titanium lightweight sport watch under 30k",
+        "gold dress watch 38mm manual winding",
+        "gold automatic watch 40mm",
+        "platinum dress watch under 100k",
+        "ceramic bezel sport watch steel",
+        "carbon composite case watch",
+
+        // Diameter — specific sizes
+        "dress watch 36mm steel",
+        "dress watch 37mm gold manual",
+        "automatic watch 38mm steel",
+        "sport watch 42mm titanium",
+        "watch 43mm automatic chronograph",
+        "small dress watch under 34mm",
+
+        // Water resistance buckets
+        "dress watch water resistant 30m",
+        "everyday watch 100m water resistant automatic",
+        "sport watch 150m water resistant steel",
+        "dive watch 300m automatic steel",
+        "professional dive watch 600m",
+
+        // Movement × material
+        "automatic steel dress watch under 20k",
+        "manual winding gold dress watch",
+        "self-winding platinum watch",
+        "Spring Drive automatic steel Grand Seiko",
     ];
 
     /// Runs the seed query list through the full finder pipeline, caching each result.

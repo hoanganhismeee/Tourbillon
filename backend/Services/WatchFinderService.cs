@@ -48,6 +48,10 @@ public class QueryIntent
     public int? CollectionId { get; set; }
     public decimal? MaxPrice { get; set; }
     public decimal? MinPrice { get; set; }
+    /// Parsed diameter range in mm — frontend uses these to pre-select the Diameter filter.
+    /// Not applied as SQL WHERE (diameter is stored in Watch.Specs JSON, not a column).
+    public double? MinDiameterMm { get; set; }
+    public double? MaxDiameterMm { get; set; }
 }
 
 public class WatchFinderResult
@@ -320,17 +324,26 @@ public class WatchFinderService
     // Brand alias map — short names users commonly type to the canonical DB brand name.
     private static readonly Dictionary<string, string> _brandAliases = new(StringComparer.OrdinalIgnoreCase)
     {
+        // Abbreviations
         ["JLC"]  = "Jaeger-LeCoultre",
         ["AP"]   = "Audemars Piguet",
         ["VC"]   = "Vacheron Constantin",
         ["PP"]   = "Patek Philippe",
         ["ALS"]  = "A. Lange & Söhne",
-        ["Lange"] = "A. Lange & Söhne",
         ["GS"]   = "Grand Seiko",
         ["GO"]   = "Glashütte Original",
         ["FC"]   = "Frederique Constant",
-        ["FP Journe"] = "F.P.Journe",
-        ["FPJourne"]  = "F.P.Journe",
+        // Common shorthand (first word or popular nickname)
+        ["Vacheron"]   = "Vacheron Constantin",
+        ["Patek"]      = "Patek Philippe",
+        ["Audemars"]   = "Audemars Piguet",
+        ["Lange"]      = "A. Lange & Söhne",
+        ["Glashutte"]  = "Glashütte Original",
+        ["Glashütte"]  = "Glashütte Original",
+        ["Frederique"] = "Frederique Constant",
+        ["FP Journe"]  = "F.P.Journe",
+        ["FPJourne"]   = "F.P.Journe",
+        ["Journe"]     = "F.P.Journe",
     };
 
     // Extracts brand, collection, and price constraints from the raw query text.
@@ -395,37 +408,66 @@ public class WatchFinderService
         // Patterns: "under 50k", "below $50,000", "between 20k and 50k"
         var q = query;
 
-        // "between Xk and Yk" / "between X and Y"
+        // "between Xk and Yk" / "between X and Y" — (?!mm) prevents matching diameter values
         var between = Regex.Match(q,
-            @"between\s*\$?\s*(\d[\d,]*)\s*k?\s*and\s*\$?\s*(\d[\d,]*)\s*(k?)",
+            @"between\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)\s*and\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
             RegexOptions.IgnoreCase);
         if (between.Success)
         {
-            var lo = ParsePriceToken(between.Groups[1].Value, between.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase) is false && between.Groups[3].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
-            var hi = ParsePriceToken(between.Groups[2].Value, between.Groups[3].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
+            // Groups: 1=lo_digits, 2=lo_k, 3=hi_digits, 4=hi_k
+            var lo = ParsePriceToken(between.Groups[1].Value, between.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
+            var hi = ParsePriceToken(between.Groups[3].Value, between.Groups[4].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
             if (lo > 0) intent.MinPrice = lo;
             if (hi > 0) intent.MaxPrice = hi;
         }
         else
         {
-            // "under / below / less than $Xk" or "$X,000"
+            // "under / below / less than $Xk" or "$X,000" — (?!mm) prevents matching diameter values
             var upper = Regex.Match(q,
-                @"(?:under|below|less\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)",
+                @"(?:under|below|less\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
                 RegexOptions.IgnoreCase);
             if (upper.Success)
                 intent.MaxPrice = ParsePriceToken(upper.Groups[1].Value, upper.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
 
-            // "over / above / more than $Xk"
+            // "over / above / more than $Xk" — (?!mm) prevents matching diameter values
             var lower = Regex.Match(q,
-                @"(?:over|above|more\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)",
+                @"(?:over|above|more\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
                 RegexOptions.IgnoreCase);
             if (lower.Success)
                 intent.MinPrice = ParsePriceToken(lower.Groups[1].Value, lower.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
         }
 
+        // ── Diameter matching via regex ───────────────────────────────────────────
+        // Patterns: "39-40mm", "39–40mm" (range), or "39mm" (exact)
+        var diamRange = Regex.Match(q,
+            @"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*mm",
+            RegexOptions.IgnoreCase);
+        if (diamRange.Success)
+        {
+            if (double.TryParse(diamRange.Groups[1].Value, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var lo))
+                intent.MinDiameterMm = lo;
+            if (double.TryParse(diamRange.Groups[2].Value, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var hi))
+                intent.MaxDiameterMm = hi;
+        }
+        else
+        {
+            // Single "39mm" — treat as exact match
+            var diamExact = Regex.Match(q, @"(\d+(?:\.\d+)?)\s*mm", RegexOptions.IgnoreCase);
+            if (diamExact.Success && double.TryParse(diamExact.Groups[1].Value,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var ex))
+            {
+                intent.MinDiameterMm = ex;
+                intent.MaxDiameterMm = ex;
+            }
+        }
+
         // Return null if nothing was extracted — no hard filters to apply
         if (intent.BrandId == null && intent.CollectionId == null
-            && intent.MaxPrice == null && intent.MinPrice == null)
+            && intent.MaxPrice == null && intent.MinPrice == null
+            && intent.MinDiameterMm == null && intent.MaxDiameterMm == null)
             return null;
 
         return intent;
