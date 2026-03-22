@@ -229,7 +229,7 @@ public class WatchFinderService
             {
                 using var scope = _scopeFactory.CreateScope();
                 var cacheService = scope.ServiceProvider.GetRequiredService<QueryCacheService>();
-                await cacheService.StoreAsync(query, capturedEmbedding, capturedResult);
+                await cacheService.StoreAsync(query, capturedEmbedding, capturedResult, "watch_finder");
             });
         }
 
@@ -243,9 +243,10 @@ public class WatchFinderService
         var queryVector = new Vector(queryEmbedding);
 
         // Push distance filter and LIMIT to DB — skips mismatches without a full table scan.
+        // Scoped to "watch_finder" embeddings so editorial/rag_chat chunks don't pollute results.
         // Project distance alongside WatchId so we capture the best distance in one round-trip.
         var orderedRows = await _context.WatchEmbeddings
-            .Where(e => e.Embedding != null && e.Embedding.CosineDistance(queryVector) < MaxDistance)
+            .Where(e => e.Feature == "watch_finder" && e.Embedding != null && e.Embedding.CosineDistance(queryVector) < MaxDistance)
             .OrderBy(e => e.Embedding!.CosineDistance(queryVector))
             .Select(e => new { e.WatchId, Distance = (float)e.Embedding!.CosineDistance(queryVector) })
             .Take(150)

@@ -33,17 +33,18 @@ public class QueryCacheService
         _logger = logger;
     }
 
-    /// Finds the nearest cached result by cosine similarity.
+    /// Finds the nearest cached result by cosine similarity, scoped to a feature.
     /// Returns null on miss or if similarity is below threshold.
-    public async Task<WatchFinderResult?> LookupAsync(float[] queryEmbedding)
+    public async Task<WatchFinderResult?> LookupAsync(float[] queryEmbedding, string feature = "watch_finder")
     {
-        var count = await _context.QueryCaches.CountAsync();
+        var count = await _context.QueryCaches.Where(q => q.Feature == feature).CountAsync();
         if (count == 0) return null;
 
         var queryVector = new Vector(queryEmbedding);
 
-        // ORDER BY cosine distance — pgvector translates to <=> operator
+        // ORDER BY cosine distance within the feature scope — pgvector translates to <=> operator
         var nearest = await _context.QueryCaches
+            .Where(q => q.Feature == feature)
             .OrderBy(q => q.QueryEmbedding.CosineDistance(queryVector))
             .FirstOrDefaultAsync();
 
@@ -61,13 +62,13 @@ public class QueryCacheService
         return JsonSerializer.Deserialize<WatchFinderResult>(nearest.ResultJson, _jsonOptions);
     }
 
-    /// Stores a query result in the cache. Skips if a very similar entry already exists.
-    public async Task StoreAsync(string queryText, float[] queryEmbedding, WatchFinderResult result)
+    /// Stores a query result in the cache, tagged by feature. Skips if a very similar entry already exists.
+    public async Task StoreAsync(string queryText, float[] queryEmbedding, WatchFinderResult result, string feature = "watch_finder")
     {
         try
         {
             // Don't duplicate if already cached (similarity > 0.99 = near-identical)
-            var existing = await LookupAsync(queryEmbedding);
+            var existing = await LookupAsync(queryEmbedding, feature);
             if (existing != null) return;
 
             // Strip ParsedIntent — it's object? and complicates serialisation
@@ -84,6 +85,7 @@ public class QueryCacheService
                 QueryText = queryText,
                 QueryEmbedding = new Vector(queryEmbedding),
                 ResultJson = JsonSerializer.Serialize(toCache, _jsonOptions),
+                Feature = feature,
                 CreatedAt = DateTime.UtcNow,
             });
 
@@ -96,8 +98,11 @@ public class QueryCacheService
         }
     }
 
-    /// Returns total number of cached queries.
-    public async Task<int> GetCountAsync() => await _context.QueryCaches.CountAsync();
+    /// Returns total number of cached queries, optionally scoped to a feature.
+    public async Task<int> GetCountAsync(string? feature = null) =>
+        feature == null
+            ? await _context.QueryCaches.CountAsync()
+            : await _context.QueryCaches.Where(q => q.Feature == feature).CountAsync();
 
     /// Clears all cached query results.
     public async Task ClearAsync()

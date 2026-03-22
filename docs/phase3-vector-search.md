@@ -152,7 +152,8 @@ Fallback (embed call fails):
 | EF Core package | `Pgvector.EntityFrameworkCore` 0.3.0 | `Vector` type, column type `vector(768)` |
 | Similarity metric | Cosine similarity | Standard for text embeddings |
 | Migration | `20260320120000_AddWatchEmbeddings.cs` | Creates `WatchEmbeddings` table + unique index |
-| HNSW index migration | `20260321010000_AddWatchEmbeddingsHnswIndex.cs` | ANN index for sub-10ms vector search at scale |
+| HNSW index — WatchEmbeddings | `20260321010000_AddWatchEmbeddingsHnswIndex.cs` | ANN index for sub-10ms vector search at scale |
+| Feature column + HNSW — QueryCaches | `20260322041322_AddFeatureColumnAndQueryCacheHnswIndex.cs` | Feature-scoped lookups + HNSW on QueryCaches (was missing) |
 
 **Critical rule: same embedding model in dev and production.** Embeddings from different models are incompatible — different dimensions, different vector space. Using `nomic-embed-text` in both environments ensures the seeded vectors are valid in production.
 
@@ -167,9 +168,11 @@ CREATE TABLE "WatchEmbeddings" (
   "ChunkType" text NOT NULL,   -- 'full' | 'brand_style' | 'specs' | 'use_case'
   "ChunkText" text NOT NULL,
   "Embedding" vector(768),
+  "Feature"   text NOT NULL DEFAULT 'watch_finder',  -- 'watch_finder' | 'editorial' | 'rag_chat'
   "UpdatedAt" timestamptz NOT NULL
 );
 CREATE UNIQUE INDEX ON "WatchEmbeddings" ("WatchId", "ChunkType");
+CREATE INDEX ix_watch_embeddings_hnsw ON "WatchEmbeddings" USING hnsw ("Embedding" vector_cosine_ops);
 ```
 
 ### Four chunk types per watch
@@ -258,9 +261,13 @@ CREATE TABLE "QueryCaches" (
   "QueryText"      text NOT NULL,
   "QueryEmbedding" vector(768) NOT NULL,
   "ResultJson"     text NOT NULL,        -- full WatchFinderResult as JSON
+  "Feature"        text NOT NULL DEFAULT 'watch_finder',  -- 'watch_finder' | 'rag_chat'
   "CreatedAt"      timestamptz NOT NULL
 );
+CREATE INDEX ix_query_caches_hnsw ON "QueryCaches" USING hnsw ("QueryEmbedding" vector_cosine_ops);
 ```
+
+`Feature` scopes cache lookups so Watch Finder queries never accidentally match Phase 5 RAG chatbot entries cached in the same table. `LookupAsync` filters `WHERE Feature = feature` before running the cosine distance scan.
 
 ### Key files
 
@@ -278,7 +285,7 @@ The cache self-populates from real traffic — every search that misses the cach
 Pre-seeding is an optional cost/speed optimization: warm the cache before deploy so common queries skip the LLM rerank from day one.
 
 ```
-POST /api/admin/query-cache/seed   → runs 115 built-in queries, caches results
+POST /api/admin/query-cache/seed   → runs 65 built-in brand/spec/price queries, tags Feature = "watch_finder"
 ```
 
 With Phase 3B active, **watch chunk embeddings handle all queries semantically** regardless of whether QueryCaches has seen them before. QueryCaches only saves the LLM rerank step on repeated/similar queries.
@@ -288,17 +295,34 @@ With Phase 3B active, **watch chunk embeddings handle all queries semantically**
 After a major catalog update (new brands, price changes), clear and re-seed:
 
 ```
-DELETE /api/admin/query-cache   → clears all entries
-POST   /api/admin/query-cache/seed → re-warms with 115 queries
+DELETE /api/admin/query-cache       → clears all entries (all features)
+POST   /api/admin/query-cache/seed  → re-warms with 65 watch_finder queries
 ```
+
+### HNSW Index — How It Works and Why It Matters
+
+Both `WatchEmbeddings` and `QueryCaches` have an HNSW index on their vector columns. Here is what that means.
+
+**Without an index:**
+Every similarity lookup scans the entire table, computing cosine distance against every row in order — O(n). At 34 rows this is imperceptible. At 10,000 cached queries it becomes a bottleneck. `QueryCaches` originally had no index; every cache lookup was a full table scan.
+
+**HNSW = Hierarchical Navigable Small World.**
+It pre-builds a multi-layer graph where each vector is connected to its nearest neighbors. At query time, the search starts at a coarse top layer (fast, approximate) and hops down through increasingly fine layers until it lands near the target. This is O(log n) instead of O(n).
+
+The "small world" intuition: any two vectors in the graph are reachable in a small number of hops — the same way any two people on Earth are connected through roughly six acquaintances. The hierarchy just makes the traversal faster by starting coarse.
+
+**Trade-offs:**
+- Approximate, not exact — can occasionally miss the true nearest neighbor
+- Slightly slower inserts (graph must be updated)
+- Needs a minimum number of rows before the graph structure outperforms a linear scan (~100+)
+
+For semantic similarity at threshold 0.92, the approximation error is negligible. A vector that is 0.93 similar is close enough; the index will find it.
+
+**Current state:**
+- `WatchEmbeddings` — HNSW index: `ix_watch_embeddings_hnsw` (added in `20260321010000_AddWatchEmbeddingsHnswIndex.cs`)
+- `QueryCaches` — HNSW index: `ix_query_caches_hnsw` (added in `20260322041322_AddFeatureColumnAndQueryCacheHnswIndex.cs`, was missing before)
 
 ### Scaling
-
-At 1000+ watches, the `QueryCaches` table will have at most a few hundred rows — one per unique query fired. Linear scan is fast at this size. If query volume grows to tens of thousands, add an `ivfflat` index on `QueryEmbedding`:
-
-```sql
-CREATE INDEX ON "QueryCaches" USING ivfflat ("QueryEmbedding" vector_cosine_ops) WITH (lists = 10);
-```
 
 ---
 
