@@ -1056,70 +1056,79 @@ public class AdminController : ControllerBase
 
     // ── Query cache endpoints ──────────────────────────────────────────────────
 
-    // 115 diverse queries covering all watch styles, occasions, and specs.
-    // Run through the full pipeline and stored in QueryCache so users never
-    // trigger a cold-start LLM call on the first real search.
+    // Brand/spec/price queries scoped to the Watch Finder feature.
+    // Occasion and lifestyle queries belong to Phase 5 RAG chatbot — see phase5-rag-chatbot.md.
     private static readonly string[] _seedQueries =
     [
-        "dress watch for a wedding", "sporty diver watch under 10000",
-        "rose gold watch elegant", "pilot watch with chronograph",
-        "ultra thin dress watch", "automatic movement under 5000",
-        "stainless steel bracelet watch", "skeleton dial luxury watch",
-        "vintage style leather strap watch", "tool watch outdoor adventures",
-        "perpetual calendar complication", "moonphase dress watch",
-        "German engineering precision watch", "Swiss luxury under 20000",
-        "tonneau case unusual shape", "something a banker would wear",
-        "casual everyday reliable watch", "dive watch 300m water resistance",
-        "blue dial watch with date", "minimalist watch no complications",
-        "titanium lightweight sports watch", "grande complication tourbillon",
-        "rectangular cushion case watch", "integrated bracelet sports watch",
-        "white gold formal dress watch", "watch for small wrists under 36mm",
-        "oversized watch big case 44mm", "salmon pink dial watch",
-        "quiet luxury understated watch", "independent watchmaker boutique brand",
-        "alarm function complication", "GMT dual time zone world traveler",
-        "open caseback exhibition movement", "ceramic case scratch resistant",
-        "power reserve indicator display", "flyback chronograph racing",
-        "retrograde seconds display", "watch for client dinner formal event",
-        "affordable luxury under 3000", "AP Royal Oak style integrated bracelet",
-        "green dial sports watch", "annual calendar complication",
-        "see through skeleton open dial", "elegant watch black tie event",
-        "rose gold bracelet dress watch", "moon phase calendar watch",
-        "classic round dress watch", "Patek Philippe alternative budget",
-        "Rolex Submariner alternative", "Audemars Piguet style watch",
-        "Jaeger-LeCoultre Reverso style", "Glashütte German watch",
-        "IWC Portuguese style watch", "Blancpain Fifty Fathoms alternative",
-        "Omega Speedmaster style chronograph", "Longines heritage vintage watch",
-        "cushion case luxury sports", "panda dial chronograph",
-        "jumping hour unusual display", "petite seconde sub-dial",
-        "world timer multiple time zones", "yacht timer sailing watch",
-        "tactical military field watch", "dress watch under 2000",
-        "watch to pass down to children", "investment watch that holds value",
-        "watch for the office professional", "watch for summer vacation beach",
-        "watch for hiking trekking outdoor", "watch for black tie gala",
-        "watch gift for graduation", "watch for 40th birthday milestone",
-        "hand wound manual movement watch", "high beat movement 36000vph",
-        "co-axial escapement watch", "large date complication",
-        "full calendar day date month", "enamel dial hand painted watch",
-        "guilloché dial decorative pattern", "meteorite dial rare material",
-        "carbon fiber case modern", "ultra thin 5mm profile",
-        "dive watch with helium escape valve", "bi-color two tone watch",
-        "black PVD coated watch", "gold bracelet dress watch",
-        "milanese mesh strap watch", "rubber strap sport watch",
-        "alligator strap formal watch", "cushion shaped case watch",
-        "dress watch for petite wrist", "watch for large wrist 20mm lug",
-        "aviation chronograph with slide rule", "watch with tachymeter bezel",
-        "mystery dial floating hands", "watch with minute repeater chime",
-        "depth gauge diving watch", "Breguet classic collection",
-        "Vacheron Constantin dress watch", "Patek Philippe Calatrava style",
-        "A. Lange Söhne German precision", "Glashütte Original Senator",
-        "thin watch under 8mm profile", "sporty watch under 5000",
-        "watch with exhibition caseback", "blue sunburst dial watch",
-        "black dial tool watch", "silver dial dress watch",
-        "multi-function complication watch", "watch with date and day",
-        "modern minimalist no date watch", "heritage inspired vintage watch",
-        "watchmakers independent brand", "watch with moonphase and calendar",
-        "best value luxury watch", "watch that impresses clients",
-        "understated expensive watch", "loud statement luxury watch",
+        // Brand + collection
+        "Patek Philippe Calatrava white gold",
+        "Patek Philippe Nautilus steel 40mm",
+        "Patek Philippe Aquanaut rubber strap",
+        "Vacheron Constantin Patrimony ultra thin",
+        "Vacheron Constantin Overseas steel 41mm",
+        "Vacheron dress watch 39-40mm",
+        "AP Royal Oak steel 41mm",
+        "AP Royal Oak Offshore chronograph",
+        "JLC Reverso classic manual winding",
+        "JLC Reverso under 50k",
+        "JLC Master Ultra Thin",
+        "JLC Polaris sport watch",
+        "A. Lange Söhne Lange 1 gold",
+        "A. Lange Söhne Saxonia thin",
+        "A. Lange Söhne Datograph chronograph",
+        "A. Lange Söhne under 80k",
+        "Glashütte Original Senator panorama date",
+        "Glashütte Original PanoMatic Lunar",
+        "Breguet Classique manual winding",
+        "Breguet Marine chronograph",
+        "Omega Speedmaster Moonwatch manual",
+        "Omega Seamaster 300m steel",
+        "Rolex Submariner steel no date",
+        "Rolex Daytona chronograph steel",
+        "Rolex GMT-Master II ceramic bezel",
+        "Rolex Day-Date yellow gold",
+        "Grand Seiko Snowflake Spring Drive",
+        "Grand Seiko high beat steel",
+        "FP Journe independent watchmaker",
+        "Greubel Forsey double tourbillon",
+
+        // Price range
+        "sport watch under 100k",
+        "dress watch under 20k",
+        "watch under 10k",
+        "luxury watch under 5k",
+        "watch between 20k and 50k",
+        "watch over 100k",
+        "watch under 50k automatic",
+
+        // Specs
+        "ultra thin watch under 8mm",
+        "watch under 36mm diameter",
+        "steel integrated bracelet sport watch",
+        "white gold dress watch manual winding",
+        "rose gold dress watch",
+        "titanium lightweight sport watch",
+        "tourbillon complication luxury",
+        "perpetual calendar watch",
+        "minute repeater chiming watch",
+        "flyback chronograph",
+        "GMT dual timezone traveler watch",
+        "moonphase complication dress watch",
+        "annual calendar complication",
+        "skeleton movement open dial",
+        "guilloché enamel dial",
+        "power reserve indicator display",
+        "exhibition caseback open movement",
+        "large date panorama display",
+
+        // Brand + spec combination
+        "thin automatic dress watch under 25k",
+        "steel sport watch with date under 30k",
+        "German watch precision under 50k",
+        "slim gold dress watch Patek or Lange",
+        "integrated bracelet sport watch under 50k",
+        "Vacheron Patrimony 40mm white gold",
+        "AP Royal Oak 37mm steel",
     ];
 
     /// Runs the seed query list through the full finder pipeline, caching each result.
@@ -1151,13 +1160,15 @@ public class AdminController : ControllerBase
         return Ok(new { seeded, skipped, cached, total = _seedQueries.Length });
     }
 
-    /// Returns query cache stats.
+    /// Returns query cache stats broken down by feature.
     /// GET: api/admin/query-cache/status
     [HttpGet("query-cache/status")]
     public async Task<IActionResult> GetQueryCacheStatus()
     {
-        var count = await _queryCache.GetCountAsync();
-        return Ok(new { cached = count });
+        var total       = await _queryCache.GetCountAsync();
+        var watchFinder = await _queryCache.GetCountAsync("watch_finder");
+        var ragChat     = await _queryCache.GetCountAsync("rag_chat");
+        return Ok(new { total, watch_finder = watchFinder, rag_chat = ragChat });
     }
 
     /// Clears all cached query results. Use after major catalog changes.

@@ -79,6 +79,7 @@ public class WatchEmbeddingService
                 ChunkType = chunks[i].ChunkType,
                 ChunkText = chunks[i].Text,
                 Embedding = new Vector(embeddings[i]),
+                Feature = "watch_finder",
                 UpdatedAt = DateTime.UtcNow,
             });
         }

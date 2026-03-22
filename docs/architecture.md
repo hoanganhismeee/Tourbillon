@@ -316,6 +316,27 @@ User query
      [Background] store result in QueryCaches for next time
 ```
 
+### How similarity search is fast — HNSW index
+
+Finding the nearest vector in 768-dimensional space by brute force means computing cosine distance against every row — O(n). Fine at 100 rows, slow at 100,000.
+
+Both `WatchEmbeddings` and `QueryCaches` carry an **HNSW index** (Hierarchical Navigable Small World) on their vector columns. HNSW pre-builds a graph where each vector is connected to its approximate nearest neighbors. Lookup traverses the graph top-down: a coarse layer narrows the search space, finer layers home in on the answer. Result: O(log n), not O(n).
+
+The "small world" intuition: any two vectors are reachable in a small number of hops, the same way any two people on Earth are connected through ~6 acquaintances. The hierarchy just starts the search coarse so fewer hops are needed.
+
+HNSW is approximate — it can occasionally miss the true nearest neighbor. For semantic similarity at threshold 0.92, this is irrelevant. A vector at 0.93 similarity will still be found.
+
+### The Feature column — scoped lookups in shared tables
+
+Both `WatchEmbeddings` and `QueryCaches` carry a `Feature` column so multiple features can share the same table without cross-contamination:
+
+| Table | Feature values | Who writes | Who reads |
+|---|---|---|---|
+| `WatchEmbeddings` | `"watch_finder"` (current), `"editorial"`, `"rag_chat"` (future) | `WatchEmbeddingService` | `WatchFinderService`, future RAG service |
+| `QueryCaches` | `"watch_finder"`, `"rag_chat"` | `QueryCacheService` | Feature-scoped `LookupAsync(embedding, feature)` |
+
+Watch Finder lookups filter `WHERE Feature = 'watch_finder'`, so the 34 pre-seeded Phase 5 RAG chatbot queries cached as `"rag_chat"` are never returned to Watch Finder users.
+
 ### Why the same embedding model everywhere
 
 Vectors from different models are incompatible — they live in different spaces with different dimensions and learned meanings. A `nomic-embed-text` vector and a `text-embedding-3-small` vector cannot be compared. This is why the rule exists: `nomic-embed-text` in dev (Ollama) and `nomic-embed-text` in production (also Ollama, same container). The 100% watch coverage seeded in dev is valid in production because the model is identical.

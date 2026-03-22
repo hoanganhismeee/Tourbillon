@@ -21,5 +21,9 @@ public class WatchEmbedding
     /// 768-dim vector (nomic-embed-text). Null until embedding is generated.
     public Vector? Embedding { get; set; }
 
+    /// Feature this embedding serves. Allows filtering per-feature without a separate table.
+    /// Values: "watch_finder" | "editorial" | "rag_chat"
+    public string Feature { get; set; } = "watch_finder";
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
