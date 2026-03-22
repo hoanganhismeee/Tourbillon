@@ -41,14 +41,20 @@ builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
 .AddRoleManager<RoleManager<IdentityRole<int>>>() // Enable role management
 .AddDefaultTokenProviders(); // Required for external login token validation
 
-// Add Google OAuth — ClientId/Secret loaded from user-secrets in dev, env vars in prod
-builder.Services.AddAuthentication()
-    .AddGoogle(options =>
-    {
-        options.ClientId     = builder.Configuration["Authentication:Google:ClientId"]!;
-        options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"]!;
-        // Default callback path is /signin-google; handled automatically by the middleware
-    });
+// Add Google OAuth only when credentials are available (user-secrets in dev, env vars in prod).
+// Skipping when absent prevents the auth middleware from crashing on every request.
+var googleClientId     = builder.Configuration["Authentication:Google:ClientId"];
+var googleClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
+if (!string.IsNullOrEmpty(googleClientId) && !string.IsNullOrEmpty(googleClientSecret))
+{
+    builder.Services.AddAuthentication()
+        .AddGoogle(options =>
+        {
+            options.ClientId     = googleClientId;
+            options.ClientSecret = googleClientSecret;
+            // Default callback path is /signin-google; handled automatically by the middleware
+        });
+}
 
 // Configure authorization policies
 builder.Services.AddAuthorization(options =>

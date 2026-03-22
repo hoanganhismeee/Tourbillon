@@ -1,7 +1,7 @@
 COMPOSE := docker compose
 
 .PHONY: up down reset dev logs frontend \
-        up-cpu up-nvidia detect-gpu gpu-detect help
+        up-cpu up-nvidia detect-gpu gpu-detect seed-editorial help
 
 # ---- Auto-detect GPU and start the right stack ----
 
@@ -84,6 +84,14 @@ gpu-detect:
 		echo "ai-service container not running"; \
 	fi
 
+# ---- Editorial seeding ----
+
+# Stop qwen, start gemma2:9b (GPU), seed editorial content, restore qwen.
+# Run once before deploy. Stack (db + backend) must be up first.
+seed-editorial:
+	@echo "==> Starting editorial seed (gemma2:9b)..."
+	bash scripts/seed_editorial.sh
+
 # ---- Other helpers ----
 
 # Follow logs for all services. Pass service= to filter, e.g.:  make logs service=backend
@@ -106,4 +114,5 @@ help:
 	@echo "  make gpu-detect  Verbose GPU check (driver, CUDA, Docker runtime, Ollama)"
 	@echo "  make logs        Follow all logs  (service=backend to filter)"
 	@echo "  make frontend    Start Next.js dev server only"
+	@echo "  make seed-editorial  Swap to gemma2:9b, seed story content, restore qwen"
 	@echo ""

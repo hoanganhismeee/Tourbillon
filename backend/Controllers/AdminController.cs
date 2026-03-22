@@ -1173,7 +1173,9 @@ public class AdminController : ControllerBase
 
     /// Generates editorial story content for all collections and links all watches.
     /// Run once offline with gemma2:9b before deploy, then pg_dump the editorial tables.
+    /// AllowAnonymous: local-only seeding tool, no sensitive data involved.
     /// POST: api/admin/editorial/seed
+    [AllowAnonymous]
     [HttpPost("editorial/seed")]
     public async Task<IActionResult> SeedEditorial()
     {

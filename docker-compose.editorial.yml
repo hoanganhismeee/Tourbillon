@@ -1,0 +1,16 @@
+# Editorial seeding override — merges with docker-compose.yml to swap ai-service to gemma2:9b.
+# Stays on the same Docker network so backend can reach it at http://ai-service:5000.
+# Used by scripts/seed_editorial.sh — not for regular runtime.
+services:
+  ai-service:
+    container_name: gemma2-9b
+    environment:
+      LLM_MODEL: gemma2:9b
+      BASE_LLM_MODEL: gemma2:9b
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
