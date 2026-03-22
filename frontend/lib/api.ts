@@ -145,11 +145,19 @@ export interface WatchMatchDetail {
   score: number;
 }
 
+export interface QueryIntent {
+  brandId: number | null;
+  collectionId: number | null;
+  maxPrice: number | null;
+  minPrice: number | null;
+}
+
 export interface WatchFinderResult {
   watches: Watch[];
   otherCandidates: Watch[];
   matchDetails: Record<number, WatchMatchDetail>;
   parsedIntent: Record<string, unknown> | null;
+  queryIntent: QueryIntent | null;
 }
 
 export interface FilterOptions {

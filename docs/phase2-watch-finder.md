@@ -7,28 +7,67 @@ AI-powered natural language watch search. Users describe what they want in plain
 
 ---
 
-## Pipeline
+## Pipeline (Phase 3B — current)
 
 ```
 User query (plain text)
   ↓
-1. PARSE   — ai-service /watch-finder/parse
-             NL query → structured JSON intent (price, material, style, complications, etc.)
+0a. PARSE INTENT — ParseQueryIntentAsync (no LLM)
+                   regex + DB name lookup → brand, collection, price hard constraints
   ↓
-2. FILTER  — backend SQL (WatchFilterMapper)
-             Apply parsed intent as predicates → up to 30 candidates (brand-spread)
+0b. EMBED QUERY — nomic-embed-text (~50ms)
   ↓
-3. RERANK  — ai-service /watch-finder/rerank (scores only, no explanations)
-             Score each candidate 0–100
+0c. CACHE CHECK — QueryCaches cosine similarity ≥ 0.92
+  ├─ hit  → attach QueryIntent → return immediately (~200ms)
+  └─ miss
+       ↓
+1. VECTOR SEARCH — WatchEmbeddings cosine similarity < 0.55
+                   Hard SQL pre-filters from QueryIntent applied first
+                   (brand WHERE, collection WHERE, price WHERE)
+                   Cosine ranking within filtered pool → up to 50 candidates
   ↓
-4. SPLIT   — backend
-             Top matches: score ≥ 60, capped at 8 → top section
-             All others (lower-scored + unscored) → "Also interested in"
+2. TIER ROUTING
+   Tier 2: best distance < 0.20 → return top 15 by vector order (no LLM)
+   Tier 3: best distance 0.20–0.55 → LLM rerank on top 15
+   Tier 4: no candidates → return empty
   ↓
-5. EMBED   — background fire-and-forget
-             WatchEmbeddingService generates vectors for all returned watches
+3. SPLIT   — backend
+             Top matches: score ≥ 60, capped at 15 → top section
+             All others → "Timepieces you may also be interested in"
   ↓
-Response to frontend → /smart-search?q=...
+4. EMBED   — background fire-and-forget
+             WatchEmbeddingService generates vectors for returned watches
+  ↓
+Response to frontend → /smart-search?q=... (includes QueryIntent)
+```
+
+**Fallback (embed call fails):** LLM parse → SQL filter → LLM rerank
+
+---
+
+## Hybrid Filtering (Elasticsearch bool+kNN pattern)
+
+Every query is split into two parallel processing tracks:
+
+**Structured track** — `ParseQueryIntentAsync` extracts hard constraints using regex + DB name matching (no LLM):
+- Brand: alias map (`JLC` → Jaeger-LeCoultre, `AP` → Audemars Piguet) + full-name substring
+- Collection: scoped to matched brand first, then all collections
+- Price: regex patterns (`under 50k`, `below $50,000`, `between 20k and 50k`)
+
+These constraints become SQL `WHERE` clauses applied to the `WatchEmbeddings` join with `Watches` before cosine distance is calculated. Non-matching watches are physically excluded — they never appear in results regardless of vector similarity.
+
+**Semantic track** — the full query text is embedded as-is and cosine-ranked within the filtered pool. Nuanced descriptors (`dress`, `ultra-thin`, `moonphase`) that aren't hard constraints still drive the similarity ranking.
+
+**Result:** `QueryIntent` is returned to the frontend alongside watch results. The Smart Search page reads it and pre-populates the filter bar (Brand, Collection, Price buckets) to match what the query implied.
+
+Example — "JLC Reverso under 50k":
+```
+Structured → Brand=Jaeger-LeCoultre (4), Collection=Reverso (13), MaxPrice=50000
+             Applied as SQL WHERE before cosine sort
+Semantic   → "JLC Reverso under 50k" embedded → cosine sort within JLC Reverso pool
+Frontend   → Brand filter pre-selected: Jaeger-LeCoultre
+             Collection filter pre-selected: Reverso
+             Price filter pre-selected: Under $10k, $10k–$25k, $25k–$50k
 ```
 
 **On-demand explain:** `POST /api/watch/explain` → ai-service `/watch-finder/explain` — called only when user requests "Why this watch?" Single-sentence explanation, cached.

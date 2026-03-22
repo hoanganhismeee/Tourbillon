@@ -58,7 +58,7 @@ Entry point: `backend/Program.cs`
 - `BrandScraperService` — Legacy per-brand XPath scraper. Superseded.
 
 **AI Watch Finder (Phase 2+):**
-- `WatchFinderService` — Orchestrates the Phase 3B pipeline: embed query → check `QueryCache` → on miss: vector similarity search against `WatchEmbeddings` → LLM rerank → background cache store. Fallback to LLM parse + SQL filter if embed call fails. Top-8 cap, score ≥ 60 threshold.
+- `WatchFinderService` — Orchestrates the Phase 3B hybrid pipeline: (1) `ParseQueryIntentAsync` extracts brand/collection/price as hard SQL pre-filters (no LLM, ~5ms); (2) embed query → check `QueryCache`; (3) on miss: vector similarity search with pre-filters applied as WHERE on the `WatchEmbeddings` JOIN → LLM rerank → background cache store. Returns `QueryIntent` to frontend for filter bar pre-population. Fallback to LLM parse + SQL filter if embed fails.
 - `WatchFilterMapper` — Maps parsed LLM intent to SQL predicates.
 - `WatchEmbeddingService` — Builds 4 text chunks per watch, calls ai-service `/embed` in true batches (50 watches / 200 texts per HTTP call), upserts into `WatchEmbeddings`. Skips already-embedded watches on demand-driven calls.
 - `QueryCacheService` — Persistent semantic query cache. Looks up the nearest cached query by cosine similarity (threshold 0.92). On hit, returns stored JSON result immediately — no LLM call. On miss, stores the new result for future similar queries.
