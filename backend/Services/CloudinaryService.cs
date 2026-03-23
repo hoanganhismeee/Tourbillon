@@ -21,6 +21,12 @@ public interface ICloudinaryService
 
     /// Uploads an image from a stream to Cloudinary directly
     Task<string> UploadImageAsync(Stream imageStream, string filename, string folder = "watches");
+
+    /// Lists all asset public IDs under the given prefix, handling pagination automatically
+    Task<List<string>> ListAssetsByPrefixAsync(string prefix);
+
+    /// Renames a Cloudinary asset in-place (no re-upload). Returns true on success.
+    Task<bool> RenameAssetAsync(string fromPublicId, string toPublicId);
 }
 
 /// Cloudinary image upload service
@@ -139,6 +145,62 @@ public class CloudinaryService : ICloudinaryService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deleting image from Cloudinary: {PublicId}", publicId);
+            return false;
+        }
+    }
+
+    /// Lists all asset public IDs under a given prefix using the Search API.
+    /// The older ListResourcesByPrefixAsync SDK method omits the /upload resource type
+    /// qualifier and returns 0 results; Search API targets upload assets correctly.
+    public async Task<List<string>> ListAssetsByPrefixAsync(string prefix)
+    {
+        var publicIds = new List<string>();
+        string? nextCursor = null;
+
+        do
+        {
+            var search = _cloudinary.Search()
+                .Expression($"public_id:{prefix}*")
+                .MaxResults(500);
+
+            if (nextCursor != null)
+                search = search.NextCursor(nextCursor);
+
+            var result = await search.ExecuteAsync();
+
+            if (result.Resources != null)
+                publicIds.AddRange(result.Resources.Select(r => r.PublicId));
+
+            nextCursor = result.NextCursor;
+        }
+        while (!string.IsNullOrEmpty(nextCursor));
+
+        _logger.LogInformation("Listed {Count} Cloudinary assets under prefix '{Prefix}'", publicIds.Count, prefix);
+        return publicIds;
+    }
+
+    /// Renames a Cloudinary asset in-place without re-uploading the image data
+    public async Task<bool> RenameAssetAsync(string fromPublicId, string toPublicId)
+    {
+        try
+        {
+            var result = await _cloudinary.RenameAsync(new RenameParams(fromPublicId, toPublicId)
+            {
+                Overwrite = true
+            });
+
+            if (result.Error != null)
+            {
+                _logger.LogWarning("Cloudinary rename failed {From} → {To}: {Error}", fromPublicId, toPublicId, result.Error.Message);
+                return false;
+            }
+
+            _logger.LogInformation("Renamed Cloudinary asset {From} → {To}", fromPublicId, toPublicId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error renaming Cloudinary asset {From} → {To}", fromPublicId, toPublicId);
             return false;
         }
     }

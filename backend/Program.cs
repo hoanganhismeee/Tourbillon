@@ -126,7 +126,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.HttpOnly = true; // Prevents client-side scripts from accessing the cookie.
     options.Cookie.SameSite = SameSiteMode.Strict; // Restricts cookie to first-party context.
-    options.ExpireTimeSpan = TimeSpan.FromMinutes(30); // Sets cookie expiration time.
+    options.ExpireTimeSpan = TimeSpan.FromDays(7); // Sets cookie expiration time.
     options.SlidingExpiration = true; // Resets the expiration time on each request.
     options.Events.OnRedirectToLogin = context =>
     {

@@ -593,3 +593,42 @@ export const adminUploadWatchImage = async (file: File, slug?: string): Promise<
   return response.json();
 };
 
+export interface CloudinaryOrphansResult {
+  dryRun: boolean;
+  message: string;
+  totalCloudinaryAssets: number;
+  totalDbImages: number;
+  orphanCount: number;
+  orphans: string[];
+}
+
+export const adminMigrateImageUrls = async (dryRun = true): Promise<{ dryRun: boolean; message: string; count: number; changes: { watchId: number; watchName: string; oldImage: string; newImage: string }[] }> =>
+  fetchWithTimeout(`${API_BASE_URL}/admin/migrate-image-urls?dryRun=${dryRun}`, { method: 'POST', credentials: 'include' }).then(r => r.json());
+
+export const adminCleanCloudinaryOrphans = async (dryRun = true): Promise<CloudinaryOrphansResult> =>
+  fetchWithTimeout(`${API_BASE_URL}/admin/cloudinary-orphans?dryRun=${dryRun}`, { method: 'DELETE', credentials: 'include' }).then(r => r.json());
+
+export interface NormalizeImageNamesResult {
+  dryRun: boolean;
+  message: string;
+  total: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  changes: { watchId: number; watchName: string; oldImage: string; newImage: string }[];
+  failures: { id: number; name: string; image: string; reason: string }[];
+}
+
+export const adminNormalizeImageNames = async (dryRun = true): Promise<NormalizeImageNamesResult> =>
+  fetchWithTimeout(`${API_BASE_URL}/admin/normalize-image-names?dryRun=${dryRun}`, { method: 'POST', credentials: 'include' }).then(r => r.json());
+
+export const adminRevertImageNames = async (
+  changes: NormalizeImageNamesResult['changes']
+): Promise<{ message: string; reverted: number; cloudinaryFailures: number }> =>
+  fetchWithTimeout(`${API_BASE_URL}/admin/revert-image-names`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes)
+  }).then(r => r.json());
+
