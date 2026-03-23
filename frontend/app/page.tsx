@@ -1,20 +1,24 @@
-// Landing page: hero text + AI Watch Finder search bar + personalisation CTA for guests
+// Landing page: full-screen video hero + AI search bar below the fold.
+import VideoSection from "./components/sections/VideoSection";
 import WatchFinderSearch from "./components/WatchFinderSearch";
 import TasteCTA from "./components/TasteCTA";
 
 export default function Home() {
   return (
-    <div className="container mx-auto px-8 py-24 pt-32">
-      <div className="max-w-4xl mx-auto text-center">
-        <h1 className="text-6xl font-playfair font-bold mb-8 tourbillon-text-color">
-          Welcome to Tourbillon
-        </h1>
-        <p className="text-xl mb-12 tourbillon-text-color opacity-80 max-w-2xl mx-auto">
-          Experience the precision and elegance of mechanical timepieces. Discover our curated collection of luxury watches from the world&apos;s finest manufacturers.
-        </p>
-        <WatchFinderSearch />
-        <TasteCTA />
+    <>
+      <VideoSection />
+      <div className="container mx-auto px-8 pt-36 pb-32">
+        <div className="max-w-3xl mx-auto text-center">
+          <h1 className="text-6xl font-playfair font-light mb-5 tourbillon-text-color leading-tight">
+            The Art of Fine<br />Watchmaking
+          </h1>
+          <p className="text-base mb-12 tourbillon-text-color opacity-60 max-w-xl mx-auto">
+            Exceptional timepieces from the world&apos;s finest maisons, curated for the discerning collector.
+          </p>
+          <WatchFinderSearch />
+          <TasteCTA />
+        </div>
       </div>
-    </div>
+    </>
   );
 }

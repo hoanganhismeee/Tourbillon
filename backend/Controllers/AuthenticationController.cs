@@ -22,6 +22,7 @@ public class AuthenticationController : ControllerBase
     private readonly IMagicLoginService _magicLoginService;
     private readonly IRoleManagementService _roleManagement;
     private readonly ILogger<AuthenticationController> _logger;
+    private readonly Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider _schemes;
 
     public AuthenticationController(
         SignInManager<User> signInManager,
@@ -31,7 +32,8 @@ public class AuthenticationController : ControllerBase
         IPasswordResetService passwordResetService,
         IMagicLoginService magicLoginService,
         IRoleManagementService roleManagement,
-        ILogger<AuthenticationController> logger)
+        ILogger<AuthenticationController> logger,
+        Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider schemes)
     {
         _signInManager = signInManager;
         _userManager = userManager;
@@ -41,6 +43,7 @@ public class AuthenticationController : ControllerBase
         _magicLoginService = magicLoginService;
         _roleManagement = roleManagement;
         _logger = logger;
+        _schemes = schemes;
     }
 
     // POST: api/authentication/register
@@ -238,11 +241,15 @@ public class AuthenticationController : ControllerBase
 
     // GET: api/authentication/google
     // Initiates Google OAuth flow — full browser redirect, not XHR.
+    // Returns 503 if Google credentials are not configured (e.g. Docker without env vars).
     [HttpGet("google")]
     [AllowAnonymous]
-    public IActionResult GoogleLogin()
+    public async Task<IActionResult> GoogleLogin()
     {
-        // redirectUrl is where the OAuth middleware redirects AFTER it processes /signin-google
+        var scheme = await _schemes.GetSchemeAsync("Google");
+        if (scheme == null)
+            return StatusCode(503, new { Message = "Google login is not configured on this server." });
+
         var redirectUrl = Url.Action(nameof(GoogleCallback), "Authentication");
         var properties  = _signInManager.ConfigureExternalAuthenticationProperties("Google", redirectUrl);
         return Challenge(properties, "Google");

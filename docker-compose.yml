@@ -40,6 +40,8 @@ services:
       Smtp__FromAddress: ${SMTP_FROM_ADDRESS:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       AiService__BaseUrl: http://ai-service:5000
+      Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+      Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
     volumes:
       - backend-images:/app/Images
     healthcheck:
@@ -65,7 +67,7 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-ollama}
       OLLAMA_FLASH_ATTENTION: 1
       OLLAMA_KEEP_ALIVE: -1
-      OLLAMA_MAX_LOADED_MODELS: 2
+      OLLAMA_MAX_LOADED_MODELS: 1
     healthcheck:
       # Sentinel file written by entrypoint.sh only after both LLM and embed models are warm.
       # Backend depends on this — it will not start serving traffic until AI is ready.

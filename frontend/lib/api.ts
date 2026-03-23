@@ -465,6 +465,19 @@ export const adminUpdateWatch = async (id: number, data: UpdateWatchDto): Promis
   return response.json();
 };
 
+export const adminUpdateEditorial = async (watchId: number, data: WatchEditorialContent): Promise<void> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/admin/editorial/${watchId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    credentials: 'include'
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.Message || 'Failed to update editorial');
+  }
+};
+
 export interface CreateWatchDto {
   name: string;
   description: string;
@@ -579,3 +592,4 @@ export const adminUploadWatchImage = async (file: File, slug?: string): Promise<
   }
   return response.json();
 };
+

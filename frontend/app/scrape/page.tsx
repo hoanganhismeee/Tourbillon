@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { adminFetchWatches, fetchBrands, fetchCollections, deleteWatch, Watch, Brand, Collection } from '@/lib/api';
+import { adminFetchWatches, adminFetchWatchById, adminUpdateEditorial, fetchBrands, fetchCollections, deleteWatch, Watch, WatchEditorialContent, Brand, Collection } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import WatchEditorModal from './components/WatchEditorModal';
 import AddWatchModal from './components/AddWatchModal';
@@ -20,6 +20,13 @@ export default function ScrapeAdminPage() {
     const [loading, setLoading] = useState(true);
     const [editingWatch, setEditingWatch] = useState<Watch | null>(null);
     const [addingWatch, setAddingWatch] = useState(false);
+
+    // Inline editorial editing
+    const [editorialWatchId, setEditorialWatchId] = useState<number | null>(null);
+    const [editorialMap, setEditorialMap] = useState<Record<number, WatchEditorialContent>>({});
+    const [editorialLoading, setEditorialLoading] = useState(false);
+    const [editorialSaving, setEditorialSaving] = useState(false);
+    const [editorialError, setEditorialError] = useState('');
 
     const filteredWatches = useMemo(() => {
         return watches.filter(w => {
@@ -67,6 +74,33 @@ export default function ScrapeAdminPage() {
     const handleSave = () => {
         setEditingWatch(null);
         reloadWatches();
+    };
+
+    const handleToggleEditorial = async (watchId: number) => {
+        if (editorialWatchId === watchId) { setEditorialWatchId(null); return; }
+        setEditorialWatchId(watchId);
+        setEditorialError('');
+        if (!editorialMap[watchId]) {
+            setEditorialLoading(true);
+            try {
+                const data = await adminFetchWatchById(watchId);
+                setEditorialMap(prev => ({ ...prev, [watchId]: data.editorialContent ?? { whyItMatters: '', collectorAppeal: '', designLanguage: '', bestFor: '' } }));
+            } finally {
+                setEditorialLoading(false);
+            }
+        }
+    };
+
+    const handleSaveEditorial = async (watchId: number) => {
+        setEditorialSaving(true);
+        setEditorialError('');
+        try {
+            await adminUpdateEditorial(watchId, editorialMap[watchId]);
+        } catch (err: unknown) {
+            setEditorialError(err instanceof Error ? err.message : 'Failed to save');
+        } finally {
+            setEditorialSaving(false);
+        }
     };
 
     const handleDelete = async (w: Watch) => {
@@ -140,7 +174,8 @@ export default function ScrapeAdminPage() {
                     </thead>
                     <tbody>
                         {filteredWatches.map(w => (
-                            <tr key={w.id} className="border-b border-white/10 hover:bg-white/5">
+                            <React.Fragment key={w.id}>
+                            <tr className="border-b border-white/10 hover:bg-white/5">
                                 <td className="p-3">{w.id}</td>
                                 <td className="p-3">
                                     {w.image ? (
@@ -151,7 +186,6 @@ export default function ScrapeAdminPage() {
                                             height={60}
                                             className="rounded object-cover"
                                             onError={(e) => {
-                                                // Fallback if transformation fails
                                                 if (!e.currentTarget.src.includes('upload/')) {
                                                     e.currentTarget.src = w.image;
                                                 }
@@ -173,6 +207,12 @@ export default function ScrapeAdminPage() {
                                             Review / Edit
                                         </button>
                                         <button
+                                            className={`px-4 py-1 rounded font-medium transition-colors ${editorialWatchId === w.id ? 'bg-white/20 text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`}
+                                            onClick={() => handleToggleEditorial(w.id)}
+                                        >
+                                            Editorial
+                                        </button>
+                                        <button
                                             className="bg-red-900/60 text-red-200 px-4 py-1 rounded font-medium hover:bg-red-700 transition-colors"
                                             onClick={() => handleDelete(w)}
                                         >
@@ -181,6 +221,39 @@ export default function ScrapeAdminPage() {
                                     </div>
                                 </td>
                             </tr>
+                            {editorialWatchId === w.id && (
+                                <tr className="border-b border-white/10 bg-white/[0.02]">
+                                    <td colSpan={6} className="p-4">
+                                        {editorialLoading ? (
+                                            <div className="text-gray-400 text-sm">Loading...</div>
+                                        ) : (
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {(['whyItMatters', 'collectorAppeal', 'designLanguage', 'bestFor'] as const).map(key => (
+                                                    <div key={key}>
+                                                        <label className="block text-xs text-gray-500 mb-1 capitalize">{key.replace(/([A-Z])/g, ' $1')}</label>
+                                                        <textarea
+                                                            className="w-full h-28 bg-black/60 border border-white/20 rounded p-2 text-white text-sm resize-none"
+                                                            value={editorialMap[w.id]?.[key] ?? ''}
+                                                            onChange={e => setEditorialMap(prev => ({ ...prev, [w.id]: { ...prev[w.id], [key]: e.target.value } }))}
+                                                        />
+                                                    </div>
+                                                ))}
+                                                <div className="col-span-2 flex items-center justify-between">
+                                                    {editorialError && <span className="text-red-400 text-sm">{editorialError}</span>}
+                                                    <button
+                                                        className="ml-auto px-5 py-1.5 bg-[#f0e6d2] text-black rounded font-medium text-sm disabled:opacity-50"
+                                                        onClick={() => handleSaveEditorial(w.id)}
+                                                        disabled={editorialSaving}
+                                                    >
+                                                        {editorialSaving ? 'Saving...' : 'Save Editorial'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </td>
+                                </tr>
+                            )}
+                            </React.Fragment>
                         ))}
                     </tbody>
                 </table>

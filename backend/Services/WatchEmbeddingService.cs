@@ -1,5 +1,5 @@
 // Generates and stores semantic embeddings for watches using nomic-embed-text via ai-service.
-// Each watch gets 4 chunk types: full, brand_style, specs, use_case.
+// Each watch gets up to 5 chunk types: full, brand_style, specs, use_case, and editorial (when seeded).
 // Embeddings are stored in WatchEmbeddings (pgvector vector(768)) for future similarity search.
 
 using System.Net.Http.Json;
@@ -216,6 +216,86 @@ public class WatchEmbeddingService
         await _context.SaveChangesAsync();
         _logger.LogInformation("Deleted {Count} watch_finder embeddings for regeneration", existing.Count);
         return await GenerateMissingAsync();
+    }
+
+    /// Generates editorial embeddings (Feature="editorial", ChunkType="editorial") for watches
+    /// that have editorial content linked but no editorial embedding yet.
+    /// Called after SeedAllAsync completes — safe to re-run (skips already-embedded watches).
+    public async Task<int> GenerateEditorialChunksAsync()
+    {
+        const int BatchSize = 10;
+        var httpClient = _httpClientFactory.CreateClient("ai-service");
+
+        var alreadyHaveEditorial = await _context.WatchEmbeddings
+            .Where(e => e.ChunkType == "editorial")
+            .Select(e => e.WatchId)
+            .ToListAsync();
+
+        // Fetch watches with editorial content that don't yet have an editorial embedding
+        var watches = await _context.Watches
+            .Include(w => w.EditorialLink)
+                .ThenInclude(l => l!.EditorialContent)
+            .Where(w => w.EditorialLink != null && !alreadyHaveEditorial.Contains(w.Id))
+            .AsNoTracking()
+            .ToListAsync();
+
+        if (watches.Count == 0) return 0;
+
+        // Build one text blob per watch from all four editorial sections
+        var watchTexts = watches.Select(w =>
+        {
+            var ed = w.EditorialLink!.EditorialContent!;
+            var text = string.Join(" ", new[] { ed.WhyItMatters, ed.BestFor, ed.DesignLanguage, ed.CollectorAppeal }
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
+            return (Watch: w, Text: text);
+        }).ToList();
+
+        int count = 0;
+        for (int i = 0; i < watchTexts.Count; i += BatchSize)
+        {
+            var batch = watchTexts.Skip(i).Take(BatchSize).ToList();
+            var texts = batch.Select(wt => wt.Text).ToList();
+
+            List<float[]>? embeddings;
+            try
+            {
+                var resp = await httpClient.PostAsJsonAsync("/embed", new { texts });
+                if (!resp.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Editorial embed batch returned {Status}", resp.StatusCode);
+                    continue;
+                }
+                var json = await resp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
+                if (!json.TryGetProperty("embeddings", out var embEl)) continue;
+                embeddings = JsonSerializer.Deserialize<List<float[]>>(embEl.GetRawText(), _jsonOptions);
+                if (embeddings == null || embeddings.Count != texts.Count) continue;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Editorial embed call failed: {Err}", ex.Message);
+                continue;
+            }
+
+            var now = DateTime.UtcNow;
+            for (int j = 0; j < batch.Count; j++)
+            {
+                _context.WatchEmbeddings.Add(new WatchEmbedding
+                {
+                    WatchId    = batch[j].Watch.Id,
+                    ChunkType  = "editorial",
+                    ChunkText  = batch[j].Text,
+                    Embedding  = new Vector(embeddings[j]),
+                    Feature    = "editorial",
+                    UpdatedAt  = now,
+                });
+            }
+            await _context.SaveChangesAsync();
+            count += batch.Count;
+            _logger.LogInformation("Embedded editorial batch {Start}-{End} of {Total}",
+                i, i + batch.Count, watches.Count);
+        }
+
+        return count;
     }
 
     // ── Chunk builder ─────────────────────────────────────────────────────────
