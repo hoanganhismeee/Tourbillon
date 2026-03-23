@@ -1015,6 +1015,316 @@ public class AdminController : ControllerBase
         }
     }
 
+    /// Finds and optionally deletes Cloudinary assets in the "watches/" folder
+    /// that have no matching Watch.Image in the database (orphaned images).
+    /// DELETE: api/admin/cloudinary-orphans?dryRun=true
+    /// Use dryRun=true (default) to preview, dryRun=false to permanently delete
+    [HttpDelete("cloudinary-orphans")]
+    public async Task<IActionResult> CleanCloudinaryOrphans([FromQuery] bool dryRun = true)
+    {
+        try
+        {
+            var cloudinaryService = HttpContext.RequestServices.GetRequiredService<ICloudinaryService>();
+            var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+
+            // Fetch all asset public IDs in the watches folder from Cloudinary
+            var cloudinaryAssets = await cloudinaryService.ListAssetsByPrefixAsync("watches/");
+
+            // Fetch all Watch.Image values that use the watches/ prefix
+            var dbImages = (await context.Watches
+                .Where(w => w.Image != null && w.Image.StartsWith("watches/"))
+                .Select(w => w.Image!)
+                .ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // Orphans: exist in Cloudinary but not referenced by any watch
+            var orphans = cloudinaryAssets.Where(id => !dbImages.Contains(id)).ToList();
+
+            int deleted = 0;
+            if (!dryRun)
+            {
+                foreach (var orphan in orphans)
+                {
+                    if (await cloudinaryService.DeleteImageAsync(orphan))
+                        deleted++;
+                }
+                _logger.LogInformation("Deleted {Count}/{Total} orphaned Cloudinary assets", deleted, orphans.Count);
+            }
+
+            return Ok(new
+            {
+                DryRun = dryRun,
+                Message = dryRun
+                    ? $"Preview only — {orphans.Count} orphan(s) found. Pass ?dryRun=false to delete."
+                    : $"Deleted {deleted} of {orphans.Count} orphaned asset(s).",
+                TotalCloudinaryAssets = cloudinaryAssets.Count,
+                TotalDbImages = dbImages.Count,
+                OrphanCount = orphans.Count,
+                Orphans = orphans
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during Cloudinary orphan cleanup");
+            return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
+    /// Renames all watch images in Cloudinary to the canonical format:
+    /// watches/{BrandAcronym}_{CollectionName}_{SanitizedWatchName}
+    /// Handles full URLs (Cloudinary + external), existing public IDs, and root-level filenames.
+    /// POST: api/admin/normalize-image-names?dryRun=true
+    [HttpPost("normalize-image-names")]
+    public async Task<IActionResult> NormalizeImageNames([FromQuery] bool dryRun = true)
+    {
+        try
+        {
+            var cloudinaryService = HttpContext.RequestServices.GetRequiredService<ICloudinaryService>();
+            var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+
+            var watches = await context.Watches
+                .Include(w => w.Brand)
+                .Include(w => w.Collection)
+                .ToListAsync();
+
+            // Extract public ID from Cloudinary URL: skip optional version segment, capture the rest, strip extension
+            var cloudinaryUrlRegex = new System.Text.RegularExpressions.Regex(
+                @"https://res\.cloudinary\.com/[^/]+/image/upload(?:/v\d+)?/(.+?)(?:\.\w+)?$");
+
+            var changes = new List<object>();
+            var failures = new List<object>();
+            int skipped = 0;
+
+            foreach (var watch in watches)
+            {
+                if (string.IsNullOrEmpty(watch.Image))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                // Build canonical target public ID
+                var collectionPart = watch.Collection != null
+                    ? SanitizeSegment(watch.Collection.Name)
+                    : "NoCollection";
+                var target = $"watches/{GetBrandAcronym(watch.Brand.Name)}_{collectionPart}_{SanitizeWatchName(watch.Name)}";
+
+                // Determine current Cloudinary public ID
+                string? currentPublicId;
+                bool isExternalUrl = false;
+
+                if (watch.Image.StartsWith("https://res.cloudinary.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    var match = cloudinaryUrlRegex.Match(watch.Image);
+                    if (!match.Success)
+                    {
+                        failures.Add(new { watch.Id, watch.Name, watch.Image, Reason = "Could not parse Cloudinary URL" });
+                        continue;
+                    }
+                    // Strip file extension from extracted public ID
+                    currentPublicId = System.Text.RegularExpressions.Regex.Replace(match.Groups[1].Value, @"\.\w+$", "");
+                }
+                else if (watch.Image.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    // External URL (e.g. Vacheron website) — image not yet in Cloudinary
+                    currentPublicId = null;
+                    isExternalUrl = true;
+                }
+                else if (watch.Image.StartsWith("watches/", StringComparison.OrdinalIgnoreCase))
+                {
+                    currentPublicId = watch.Image;
+                }
+                else
+                {
+                    // Root-level filename like "PP5227G.png" — strip extension
+                    currentPublicId = Path.GetFileNameWithoutExtension(watch.Image);
+                }
+
+                changes.Add(new { WatchId = watch.Id, WatchName = watch.Name, OldImage = watch.Image, NewImage = target });
+
+                if (dryRun) continue;
+
+                if (isExternalUrl)
+                {
+                    // Download from external URL and upload to Cloudinary with the target name
+                    var targetWithoutFolder = target.Substring("watches/".Length);
+                    var newId = await cloudinaryService.UploadImageFromUrlAsync(watch.Image, targetWithoutFolder, "watches");
+                    if (!string.IsNullOrEmpty(newId))
+                        watch.Image = target;
+                    else
+                        failures.Add(new { watch.Id, watch.Name, watch.Image, Reason = "External URL upload failed" });
+                }
+                else if (currentPublicId == target)
+                {
+                    // Public ID already correct — just normalize the DB value (may have been stored as URL)
+                    watch.Image = target;
+                }
+                else
+                {
+                    var ok = await cloudinaryService.RenameAssetAsync(currentPublicId!, target);
+                    if (ok)
+                        watch.Image = target;
+                    else
+                        failures.Add(new { watch.Id, watch.Name, watch.Image, Reason = $"Cloudinary rename failed ({currentPublicId} → {target})" });
+                }
+            }
+
+            if (!dryRun)
+            {
+                await context.SaveChangesAsync();
+                _logger.LogInformation("NormalizeImageNames: {Updated} updated, {Skipped} skipped, {Failed} failed",
+                    changes.Count - failures.Count, skipped, failures.Count);
+            }
+
+            return Ok(new
+            {
+                DryRun = dryRun,
+                Message = dryRun
+                    ? $"Preview: {changes.Count} image(s) would be renamed. Pass ?dryRun=false to apply."
+                    : $"Done: {changes.Count - failures.Count} renamed, {failures.Count} failed.",
+                Total = watches.Count,
+                Updated = dryRun ? 0 : changes.Count - failures.Count,
+                Skipped = skipped,
+                Failed = failures.Count,
+                Changes = changes,
+                Failures = failures
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error normalizing image names");
+            return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
+    /// Reverts image renames performed by NormalizeImageNames.
+    /// Accepts the "changes" array from a previous normalize response as the request body.
+    /// Renames Cloudinary assets back and restores DB values. DB is always restored even if Cloudinary rename fails.
+    /// POST: api/admin/revert-image-names
+    [HttpPost("revert-image-names")]
+    public async Task<IActionResult> RevertImageNames([FromBody] List<ImageChangeDto> changes)
+    {
+        if (changes == null || changes.Count == 0)
+            return BadRequest(new { Message = "No changes provided." });
+
+        try
+        {
+            var cloudinaryService = HttpContext.RequestServices.GetRequiredService<ICloudinaryService>();
+            var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+
+            // Extract public ID from Cloudinary URL: skip optional version segment, capture path, strip extension
+            var cloudinaryUrlRegex = new System.Text.RegularExpressions.Regex(
+                @"https://res\.cloudinary\.com/[^/]+/image/upload(?:/v\d+)?/(.+?)(?:\.\w+)?$");
+
+            var reverted = new List<object>();
+            var failures = new List<object>();
+
+            foreach (var change in changes)
+            {
+                var watch = await context.Watches.FindAsync(change.WatchId);
+                if (watch == null)
+                {
+                    failures.Add(new { change.WatchId, Reason = "Watch not found" });
+                    continue;
+                }
+
+                // Attempt Cloudinary rename: newImage → original public ID derived from oldImage
+                string? targetPublicId = null;
+
+                if (change.OldImage.StartsWith("https://res.cloudinary.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    var match = cloudinaryUrlRegex.Match(change.OldImage);
+                    if (match.Success)
+                        targetPublicId = System.Text.RegularExpressions.Regex.Replace(match.Groups[1].Value, @"\.\w+$", "");
+                }
+                else if (change.OldImage.StartsWith("watches/", StringComparison.OrdinalIgnoreCase))
+                {
+                    targetPublicId = change.OldImage;
+                }
+                else if (!change.OldImage.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Root-level filename like "PP5227G.png"
+                    targetPublicId = Path.GetFileNameWithoutExtension(change.OldImage);
+                }
+                // else: external URL (e.g. VC website) — skip Cloudinary rename, just restore DB
+
+                if (targetPublicId != null && change.NewImage.StartsWith("watches/", StringComparison.OrdinalIgnoreCase))
+                {
+                    var ok = await cloudinaryService.RenameAssetAsync(change.NewImage, targetPublicId);
+                    if (!ok)
+                        failures.Add(new { change.WatchId, change.OldImage, change.NewImage, Reason = "Cloudinary rename failed — DB still restored" });
+                }
+
+                // Always restore the DB value
+                watch.Image = change.OldImage;
+                reverted.Add(new { change.WatchId, RestoredImage = change.OldImage });
+            }
+
+            await context.SaveChangesAsync();
+            _logger.LogInformation("RevertImageNames: {Reverted} DB entries restored, {Failed} Cloudinary failures", reverted.Count, failures.Count);
+
+            return Ok(new
+            {
+                Message = $"Reverted {reverted.Count} watch image(s). {failures.Count} Cloudinary rename failure(s) — DB values restored regardless.",
+                Reverted = reverted.Count,
+                CloudinaryFailures = failures.Count,
+                Failures = failures
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reverting image names");
+            return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
+    // Sanitizes a string for use as a Cloudinary public ID segment (collection/brand name).
+    // Decomposes unicode, strips diacritics, removes all non-alphanumeric chars, capitalizes first char.
+    private static string SanitizeSegment(string s)
+    {
+        var normalized = s.Normalize(System.Text.NormalizationForm.FormD);
+        var ascii = new System.Text.StringBuilder();
+        foreach (var c in normalized)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                ascii.Append(c);
+        }
+        var result = System.Text.RegularExpressions.Regex.Replace(ascii.ToString(), @"[^a-zA-Z0-9]", "");
+        if (result.Length > 0 && char.IsLower(result[0]))
+            result = char.ToUpper(result[0]) + result.Substring(1);
+        return result;
+    }
+
+    // Sanitizes a watch name for the public ID ref segment. Keeps hyphens, removes everything else non-alphanumeric.
+    private static string SanitizeWatchName(string s)
+    {
+        var normalized = s.Normalize(System.Text.NormalizationForm.FormD);
+        var ascii = new System.Text.StringBuilder();
+        foreach (var c in normalized)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                ascii.Append(c);
+        }
+        return System.Text.RegularExpressions.Regex.Replace(ascii.ToString(), @"[^a-zA-Z0-9\-]", "");
+    }
+
+    // Returns the short brand acronym for Cloudinary public ID prefixes.
+    private static string GetBrandAcronym(string brandName) => brandName switch
+    {
+        "Patek Philippe"       => "PP",
+        "Vacheron Constantin"  => "VC",
+        "Audemars Piguet"      => "AP",
+        "Jaeger-LeCoultre"     => "JLC",
+        "A. Lange & Söhne"     => "ALS",
+        "Glashütte Original"   => "GO",
+        "F.P.Journe"           => "FPJ",
+        "Greubel Forsey"       => "GF",
+        "Grand Seiko"          => "GS",
+        "Frederique Constant"  => "FC",
+        // Full name brands
+        _ => SanitizeSegment(brandName)
+    };
+
     private object? GetSpecsTemplate(int? collectionId)
     {
         if (!collectionId.HasValue) return null;
