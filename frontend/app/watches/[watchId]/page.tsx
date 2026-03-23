@@ -297,16 +297,16 @@ const WatchDetailPage = () => {
                             <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.whyItMatters}</p>
                         </div>
                         <div>
-                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Collector Appeal</h3>
-                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.collectorAppeal}</p>
+                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Best For</h3>
+                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.bestFor}</p>
                         </div>
                         <div>
                             <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Design Language</h3>
                             <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.designLanguage}</p>
                         </div>
                         <div>
-                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Best For</h3>
-                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.bestFor}</p>
+                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Collector Appeal</h3>
+                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.collectorAppeal}</p>
                         </div>
                     </div>
                 </div>

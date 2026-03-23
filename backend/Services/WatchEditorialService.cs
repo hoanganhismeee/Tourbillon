@@ -16,17 +16,20 @@ public class WatchEditorialService
     private readonly TourbillonContext _context;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<WatchEditorialService> _logger;
+    private readonly WatchEmbeddingService _embeddingService;
 
     private static readonly JsonSerializerOptions _json = new() { PropertyNameCaseInsensitive = true };
 
     public WatchEditorialService(
         TourbillonContext context,
         IHttpClientFactory httpClientFactory,
-        ILogger<WatchEditorialService> logger)
+        ILogger<WatchEditorialService> logger,
+        WatchEmbeddingService embeddingService)
     {
         _context = context;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _embeddingService = embeddingService;
     }
 
     /// Seeds editorial content for every collection and links all watches in each collection.
@@ -82,17 +85,14 @@ public class WatchEditorialService
                 _context.WatchEditorialContents.Add(content);
                 await _context.SaveChangesAsync();
 
-                // Link all watches in the collection (not just unwatched — idempotent on first run)
+                // Insert links; ON CONFLICT DO NOTHING makes this safe to re-run after a partial failure
                 foreach (var w in watches.Where(w => !alreadyLinked.Contains(w.Id)))
                 {
-                    _context.WatchEditorialLinks.Add(new WatchEditorialLink
-                    {
-                        WatchId = w.Id,
-                        EditorialContentId = content.Id,
-                    });
+                    await _context.Database.ExecuteSqlRawAsync(
+                        @"INSERT INTO ""WatchEditorialLinks"" (""WatchId"", ""EditorialContentId"")
+                          VALUES ({0}, {1}) ON CONFLICT DO NOTHING",
+                        w.Id, content.Id);
                 }
-                await _context.SaveChangesAsync();
-
                 seeded++;
                 linked += unwatched.Count;
                 _logger.LogInformation("Seeded editorial for collection {CollId} ({Count} watches linked)",
@@ -114,18 +114,20 @@ public class WatchEditorialService
                     _context.WatchEditorialContents.Add(content);
                     await _context.SaveChangesAsync();
 
-                    _context.WatchEditorialLinks.Add(new WatchEditorialLink
-                    {
-                        WatchId = w.Id,
-                        EditorialContentId = content.Id,
-                    });
-                    await _context.SaveChangesAsync();
+                    await _context.Database.ExecuteSqlRawAsync(
+                        @"INSERT INTO ""WatchEditorialLinks"" (""WatchId"", ""EditorialContentId"")
+                          VALUES ({0}, {1}) ON CONFLICT DO NOTHING",
+                        w.Id, content.Id);
 
                     seeded++;
                     linked++;
                 }
             }
         }
+
+        // Queue editorial embeddings for all newly-linked watches (fire-and-forget)
+        if (linked > 0)
+            _ = Task.Run(() => _embeddingService.GenerateEditorialChunksAsync());
 
         return (seeded, linked, skipped);
     }
@@ -223,6 +225,17 @@ public class WatchEditorialService
             }
 
             var json = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
+
+            // If the AI returned a description (only for watches with sparse/empty descriptions), save it
+            if (json.TryGetProperty("description", out var descEl))
+            {
+                var generated = descEl.GetString();
+                if (!string.IsNullOrWhiteSpace(generated))
+                {
+                    watch.Description = generated;
+                    await _context.SaveChangesAsync();
+                }
+            }
 
             return new WatchEditorialContent
             {

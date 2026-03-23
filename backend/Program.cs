@@ -107,7 +107,7 @@ builder.Services.AddScoped<SitemapScraperService>();
 builder.Services.AddHttpClient("ai-service", c =>
 {
     c.BaseAddress = new Uri(builder.Configuration["AiService:BaseUrl"] ?? "http://localhost:5000");
-    c.Timeout = TimeSpan.FromSeconds(25);
+    c.Timeout = TimeSpan.FromSeconds(360); // 6 min — covers gemma2:9b at 1200 tokens (~3-5 min)
 });
 builder.Services.AddSingleton<WatchFilterMapper>();
 builder.Services.AddScoped<WatchFinderService>();

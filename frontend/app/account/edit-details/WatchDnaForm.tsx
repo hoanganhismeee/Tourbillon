@@ -1,9 +1,10 @@
-// Watch DNA form — lets users describe their watch preferences in plain text (≤50 words).
+// Watch DNA form — lets users describe their watch preferences in plain text (≤10 words).
 // The backend sends the text to the AI service which extracts structured preferences,
 // then those preferences are used to personalise the All Watches grid.
 'use client';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { getTasteProfile, saveTasteProfile, TasteProfile } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 
@@ -54,6 +55,7 @@ function PreferenceChips({ profile, brands }: { profile: TasteProfile; brands?: 
 
 export default function WatchDnaForm() {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -73,12 +75,12 @@ export default function WatchDnaForm() {
   }
 
   const wordCount = countWords(text);
-  const overLimit = wordCount > 50;
+  const overLimit = wordCount > 10;
 
   const handleSave = async () => {
     if (!text.trim()) return;
     if (overLimit) {
-      setError('Please keep your description to 50 words or fewer.');
+      setError('Please keep your description to 10 words or fewer.');
       return;
     }
     setError('');
@@ -115,22 +117,22 @@ export default function WatchDnaForm() {
           placeholder="e.g. I love Vacheron dress watches, slim profile, blue dial, around 39mm"
           rows={3}
           disabled={profileLoading || saving}
-          className={`w-full px-4 py-3 rounded-md border bg-transparent text-[var(--light-cream)] placeholder-[var(--primary-brown)]/50 resize-none focus:outline-none transition
+          className={`w-full px-4 py-3 rounded-md border bg-transparent text-[var(--light-cream)] placeholder-[var(--primary-brown)]/10 resize-none focus:outline-none transition
             ${overLimit
               ? 'border-red-400/60 focus:border-red-400'
               : 'border-[var(--primary-brown)] focus:border-[var(--cream-gold)]'
             }
-            disabled:opacity-50`}
+            disabled:opacity-10`}
         />
         {/* Live word count */}
         <span className={`absolute bottom-3 right-4 text-xs ${overLimit ? 'text-red-400' : 'text-[var(--primary-brown)]/60'}`}>
-          {wordCount} / 50 words
+          {wordCount} / 10 words
         </span>
       </div>
 
       {/* Hard-coded budget note */}
-      <p className="text-xs text-[var(--primary-brown)]/50 mt-1.5 italic">
-        Limit to 50 words to save model token, cause I&apos;m broke
+      <p className="text-xs text-[var(--primary-brown)]/10 mt-1.5 italic">
+        Limit to 10 words to save model token, cause I&apos;m broke
       </p>
 
       {/* Save button */}
@@ -155,6 +157,15 @@ export default function WatchDnaForm() {
       {/* Extracted preferences chips */}
       {!saving && displayProfile && (
         <PreferenceChips profile={displayProfile} />
+      )}
+
+      {savedProfile && !saving && (
+        <button
+          onClick={() => router.push('/watches')}
+          className="mt-4 px-6 py-2.5 rounded-xl font-semibold text-sm border border-[var(--primary-brown)]/60 text-[var(--primary-brown)] hover:bg-[var(--primary-brown)]/10 transition"
+        >
+          View Your Personalised Collection →
+        </button>
       )}
     </div>
   );

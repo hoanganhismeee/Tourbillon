@@ -78,7 +78,7 @@ gpu-detect:
 	fi
 	@echo ""
 	@echo "=== Ollama GPU Usage (if running) ==="
-	@if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "qwen2.5-7b"; then \
+	@if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "ai-service\|qwen2.5-7b\|gemma2-9b"; then \
 		docker exec qwen2.5-7b ollama ps 2>/dev/null || echo "Ollama not responding"; \
 	else \
 		echo "ai-service container not running"; \

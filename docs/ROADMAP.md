@@ -14,11 +14,11 @@
 | Persistent Query Cache (semantic result cache, pre-seeded, survives deploys) | Done | 3A |
 | Vector Similarity Search + QueryIntent Hybrid Filtering | Done | 3B |
 | Category-Aware Embeddings + Spec-Level Filter Pre-Selection | Done | 3B |
-| Story-first Product Pages | Planned | 2 |
+| Story-first Product Pages | Done | 2 |
 | Watch DNA / Taste Profile | Done | 3C |
 | Google OAuth + Email Magic Login (passwordless OTP) | Done | 3C |
 | Role-Based Access Control (admin seeding, scrape page guard, nav link) | Done | 3.5 |
-| AI Discovery Pages (GEO/SEO) | Planned | 3 |
+| AI Discovery Pages (GEO/SEO) | Done | 3 |
 | Stripe Checkout (Test Mode) | Planned | 4 |
 | Save / Build Collection | Planned | 4 |
 

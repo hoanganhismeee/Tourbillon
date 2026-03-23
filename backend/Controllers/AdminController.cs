@@ -783,11 +783,15 @@ public class AdminController : ControllerBase
         try
         {
             var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
-            var watch = await context.Watches.FindAsync(id);
+            var watch = await context.Watches
+                .Include(w => w.EditorialLink)
+                    .ThenInclude(l => l!.EditorialContent)
+                .FirstOrDefaultAsync(w => w.Id == id);
 
             if (watch == null) return NotFound(new { Message = "Watch not found" });
 
-            return Ok(watch);
+            var dto = WatchDto.FromWatch(watch, editorial: watch.EditorialLink?.EditorialContent);
+            return Ok(dto);
         }
         catch (Exception ex)
         {
@@ -1360,33 +1364,34 @@ public class AdminController : ControllerBase
     /// Generates editorial story content for all collections and links all watches.
     /// Run once offline with gemma2:9b before deploy, then pg_dump the editorial tables.
     /// AllowAnonymous: local-only seeding tool, no sensitive data involved.
+    /// Fire-and-forget: returns immediately; generation runs in a background scope.
     /// POST: api/admin/editorial/seed
     [AllowAnonymous]
     [HttpPost("editorial/seed")]
-    public async Task<IActionResult> SeedEditorial()
+    public IActionResult SeedEditorial([FromServices] IServiceProvider sp)
     {
-        _logger.LogInformation("Admin: editorial seeding started");
-        try
+        _logger.LogInformation("Admin: editorial seeding started (background)");
+        _ = Task.Run(async () =>
         {
-            var (seeded, linked, skipped) = await _editorialService.SeedAllAsync();
-            return Ok(new
+            using var scope = sp.CreateScope();
+            var svc = scope.ServiceProvider.GetRequiredService<WatchEditorialService>();
+            try
             {
-                Success = true,
-                Seeded = seeded,
-                Linked = linked,
-                Skipped = skipped,
-                Timestamp = DateTime.UtcNow,
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Editorial seeding failed");
-            return StatusCode(500, new { Success = false, Message = ex.Message });
-        }
+                var (seeded, linked, skipped) = await svc.SeedAllAsync();
+                _logger.LogInformation("Editorial seeding complete — seeded:{Seeded} linked:{Linked} skipped:{Skipped}",
+                    seeded, linked, skipped);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Editorial seeding failed");
+            }
+        });
+        return Accepted(new { Message = "Seeding started. Poll GET /api/admin/editorial/status for progress." });
     }
 
     /// Returns editorial coverage stats.
     /// GET: api/admin/editorial/status
+    [AllowAnonymous]
     [HttpGet("editorial/status")]
     public async Task<IActionResult> GetEditorialStatus()
     {
@@ -1396,12 +1401,46 @@ public class AdminController : ControllerBase
 
     /// Deletes all editorial content and links. Use before re-seeding with a different model.
     /// DELETE: api/admin/editorial
+    [AllowAnonymous]
     [HttpDelete("editorial")]
     public async Task<IActionResult> ClearEditorial()
     {
         var deleted = await _editorialService.ClearAllAsync();
         return Ok(new { Success = true, Deleted = deleted });
     }
+
+    /// Updates the editorial content linked to a specific watch.
+    /// Because editorial is shared per-collection, this affects all watches in the same collection.
+    /// PUT: api/admin/editorial/{watchId}
+    [AllowAnonymous]
+    [HttpPut("editorial/{watchId:int}")]
+    public async Task<IActionResult> UpdateEditorial(int watchId, [FromBody] UpdateEditorialDto dto)
+    {
+        var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var link = await context.Set<WatchEditorialLink>()
+            .Include(l => l.EditorialContent)
+            .FirstOrDefaultAsync(l => l.WatchId == watchId);
+
+        if (link == null)
+            return NotFound(new { Message = $"No editorial found for watch {watchId}" });
+
+        link.EditorialContent.WhyItMatters    = dto.WhyItMatters;
+        link.EditorialContent.CollectorAppeal = dto.CollectorAppeal;
+        link.EditorialContent.DesignLanguage  = dto.DesignLanguage;
+        link.EditorialContent.BestFor         = dto.BestFor;
+
+        await context.SaveChangesAsync();
+        return Ok(new { Success = true });
+    }
+
+}
+
+public class UpdateEditorialDto
+{
+    public string WhyItMatters    { get; set; } = "";
+    public string CollectorAppeal { get; set; } = "";
+    public string DesignLanguage  { get; set; } = "";
+    public string BestFor         { get; set; } = "";
 }
 
 /// Request DTO for scraping multiple brands
