@@ -1,6 +1,7 @@
 // Passwordless email OTP sign-in service.
 // Generates a 6-character alphanumeric code, stores it in IMemoryCache with a 10-minute TTL,
 // and delivers it via IEmailService. VerifyAsync finds or auto-creates the user on success.
+using System.Security.Cryptography;
 using backend.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Caching.Memory;
@@ -122,9 +123,9 @@ public class MagicLoginService : IMagicLoginService
 
     private static string GenerateCode()
     {
-        var rng = new Random();
-        return new string(Enumerable.Range(0, CodeLength)
-            .Select(_ => CodeChars[rng.Next(CodeChars.Length)])
-            .ToArray());
+        var chars = new char[CodeLength];
+        for (int i = 0; i < CodeLength; i++)
+            chars[i] = CodeChars[RandomNumberGenerator.GetInt32(CodeChars.Length)];
+        return new string(chars);
     }
 }

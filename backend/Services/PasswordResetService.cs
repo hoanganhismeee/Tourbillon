@@ -1,6 +1,7 @@
 // password reset operations using 6-digit verification codes
 // Implements security best practices: rate limiting, code expiration, and fire-and-forget email delivery
 
+using System.Security.Cryptography;
 using backend.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Caching.Memory;
@@ -63,8 +64,7 @@ public class PasswordResetService : IPasswordResetService
             else
             {
                 // Generate new 6-digit code
-                var random = new Random();
-                code = random.Next(100000, 999999).ToString();
+                code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
 
                 // Store code in cache with expiration
                 var cacheOptions = new MemoryCacheEntryOptions
