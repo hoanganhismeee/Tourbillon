@@ -11,7 +11,7 @@ export default function MotionMain({ children, ...props }: HTMLMotionProps<"main
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 30 }}
-      transition={{ duration: 1, ease: "easeOut" }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
       {...props}
     >
       {children}

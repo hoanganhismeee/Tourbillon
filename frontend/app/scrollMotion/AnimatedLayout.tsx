@@ -8,7 +8,7 @@ export default function AnimatedLayout({ children }: { children: React.ReactNode
     <AnimatePresence mode="wait">
       <MotionMain
         className="relative z-10 pt-[50px]"
-        key={typeof window !== 'undefined' ? window.location.pathname : ''}
+        key={typeof window !== "undefined" ? window.location.pathname : ""}
       >
         {children}
       </MotionMain>
