@@ -14,11 +14,12 @@
 | Persistent Query Cache (semantic result cache, pre-seeded, survives deploys) | Done | 3A |
 | Vector Similarity Search + QueryIntent Hybrid Filtering | Done | 3B |
 | Category-Aware Embeddings + Spec-Level Filter Pre-Selection | Done | 3B |
-| Story-first Product Pages | Done | 2 |
+| Story-first Product Pages (editorial seeded 339/339, admin inline editor) | Done | 2 |
 | Watch DNA / Taste Profile | Done | 3C |
 | Google OAuth + Email Magic Login (passwordless OTP) | Done | 3C |
 | Role-Based Access Control (admin seeding, scrape page guard, nav link) | Done | 3.5 |
-| AI Discovery Pages (GEO/SEO) | Done | 3 |
+| Homepage Cinematic Video Hero | Done | 3.5 |
+| AI Discovery Pages (GEO/SEO) | Removed | — |
 | Stripe Checkout (Test Mode) | Planned | 4 |
 | Save / Build Collection | Planned | 4 |
 
@@ -27,9 +28,12 @@
 | Environment | Model | Cost | Usage |
 |---|---|---|---|
 | Production | Claude Haiku 4.5 | $0.25/1M input · $1.25/1M output | Intent parsing, ranking explanation, content generation |
-| Local dev | Qwen 2.5 7B (Ollama, inside ai-service container) | $0.00 | Prompt testing, API simulation, offline development |
+| Local dev (default) | Qwen 2.5 7B (Ollama, inside ai-service container) | $0.00 | Prompt testing, API simulation, offline development |
+| Editorial seeding only | gemma2:9b | $0.00 | One-time editorial content generation (`make seed-editorial`) |
 
 **Why use a weaker model locally:** Developing on Qwen 2.5 7B exposes prompt edge cases that stronger models hide. Prompts that work on Qwen are robust in production.
+
+**Editorial seeding:** `make seed-editorial` temporarily swaps the ai-service container to gemma2:9b (better long-form generation at 1200 tokens), seeds all collections, then restores qwen2.5:7b. Run once before deploy; results are stored in DB and served at zero AI cost at runtime.
 
 **Environment switching — single env var, no code change:**
 
@@ -48,7 +52,7 @@ LLM_MODEL=claude-haiku-4-5             # production
 
 - **Watch Finder + Concierge** — intent parsing (NL → structured filters) + result ranking + explanation
 - **Story-first Product Pages** — editorial content generation per watch (generated once, stored in DB)
-- **Discovery Pages** — editorial intro per theme (generated once, served as static)
+- **Story-first Product Pages** — editorial content per collection (generated once, stored in DB, served at zero cost)
 - **Chat Assistant** — conversational responses, product-aware answers
 
 ### Should use AI
@@ -105,14 +109,15 @@ AI-generated editorial content that transforms spec sheets into compelling narra
 - Content generated from specs + brand context, not generic filler
 
 **Tech approach:**
-- Claude Haiku generates editorial content per watch (~$0.001/watch)
-- Generated once, cached in DB (new column or separate table)
-- Triggered manually via admin panel or batch job for all watches
+- Local Ollama (gemma2:9b) generates editorial per collection — one record shared by all watches in that collection via `WatchEditorialLink`
+- Generated once via `make seed-editorial`, stored in `WatchEditorialContent` table, zero AI cost at runtime
+- Admin can manually override any watch's editorial inline from the scrape page (`PUT /api/admin/editorial/{watchId}`)
+- Coverage: 339/339 watches seeded
 
 **Files involved:**
-- Backend: new model/column for editorial content, generation endpoint
-- Frontend: new sections in `frontend/app/watches/[watchId]/page.tsx`
-- Existing: `ClaudeApiService.cs` pattern for Haiku calls
+- Backend: `WatchEditorialContent`, `WatchEditorialLink` models; `WatchEditorialService`; `PUT /api/admin/editorial/{watchId}`
+- Frontend: editorial sections in `frontend/app/watches/[watchId]/page.tsx`; inline editor in `frontend/app/scrape/page.tsx`
+- Seeding: `make seed-editorial` (swaps to gemma2:9b, seeds, restores qwen)
 
 ---
 
@@ -147,10 +152,11 @@ Semantic result cache stored in `QueryCaches` table. Every search embeds the que
 
 ### Watch DNA / Taste Profile (COMPLETE — Phase 3C)
 
-Registered users describe their watch preferences in plain text (≤50 words). The AI extracts structured signals; those signals drive rule-based scoring that floats preferred watches to the top of the All Watches grid.
+Registered users describe their watch preferences in plain text (≤10 words). The AI extracts structured signals; those signals drive rule-based scoring that floats preferred watches to the top of the All Watches grid.
 
 **What it does:**
-- Free-text textarea on Edit Details page (≤50 words, live word count, hard-coded budget note)
+- Free-text textarea on Edit Details page (≤10 words, live word count)
+- "View Your Personalised Collection →" button appears after successful save, navigates to `/watches`
 - LLM extracts: preferred brands, materials, dial colors, case size bucket, price range
 - Rule-based scoring: +3 brand · +2 material · +2 dial color · +1 case size · +1 price = 9 max
 - Matched watches sorted DESC, unmatched tail keeps interleaved-by-brand shuffle
@@ -167,30 +173,19 @@ Registered users describe their watch preferences in plain text (≤50 words). T
 
 ---
 
-### AI Discovery Pages (GEO/SEO)
+### AI Discovery Pages (GEO/SEO) — REMOVED
 
-Auto-generated curated pages optimized for both traditional SEO and AI search citation.
+Removed in favour of a cinematic video hero homepage. The discovery theme approach was redundant with the existing smart search + watch listing page.
 
-**What it does:**
-- Pages like: "Best Salmon Dial Watches", "Best Watches for Small Wrists", "Quiet Luxury Dress Watches", "German Alternatives to Rolex"
-- Each page: editorial intro + curated watch grid filtered from DB
-- Optimized for GEO (Generative Engine Optimization) — structured to be cited by AI search engines
+---
 
-**Tech approach:**
-- Define page themes as DB queries (e.g., salmon dial = `dial.color LIKE '%salmon%'`, small wrist = `diameter < 38mm`)
-- Claude Haiku generates editorial content per theme (~$0.001/page)
-- Next.js SSG (Static Site Generation) for performance and SEO
-- Generate once, rebuild periodically or on data changes
+### Homepage Cinematic Video Hero (COMPLETE)
+
+Full-screen `tourbillon.mp4` fills the first viewport on the homepage. Scrolling down reveals the existing headline + AI search bar. Provides a strong brand statement for new visitors without blocking returning users.
 
 **Files involved:**
-- New Next.js pages under `frontend/app/discover/[slug]/`
-- Backend endpoint to query watches by theme criteria
-- Content generation via Claude Haiku
-- Sitemap integration for SEO
-
-**Why this matters (resume):**
-- GEO is a new and growing trend in ecommerce
-- Shows understanding of AI + SEO intersection, programmatic content generation
+- `frontend/app/components/sections/VideoSection.tsx` — full-screen video component with bottom gradient fade and scroll hint
+- `frontend/app/page.tsx` — VideoSection above existing hero+search section
 
 ---
 
