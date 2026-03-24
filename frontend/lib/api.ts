@@ -157,6 +157,8 @@ export interface QueryIntent {
   movementType: string | null;
   waterResistance: string | null;
   style?: string | null;
+  complications?: string[];
+  powerReserves?: string[];
 }
 
 export interface WatchFinderResult {
