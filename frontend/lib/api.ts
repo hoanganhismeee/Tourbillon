@@ -671,6 +671,9 @@ export interface CreateAppointmentRequest {
   lastName: string;
   email: string;
   phone?: string;
+  phoneRegionCode?: string;
+  notifyByEmail: boolean;
+  notifyBySms: boolean;
   boutiqueName: string;
   visitPurpose: string;
   brandName?: string;

@@ -23,6 +23,12 @@ public class CreateAppointmentDto
     [MaxLength(30)]
     public string? Phone { get; set; }
 
+    [MaxLength(10)]
+    public string? PhoneRegionCode { get; set; }
+
+    public bool NotifyByEmail { get; set; } = true;
+    public bool NotifyBySms { get; set; }
+
     [Required]
     public string BoutiqueName { get; set; } = string.Empty;
 
