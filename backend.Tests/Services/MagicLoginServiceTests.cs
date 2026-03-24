@@ -30,6 +30,8 @@ public class MagicLoginServiceTests
         return mock;
     }
 
+    private static Mock<IRoleManagementService> MockRoleManagement() => new();
+
     // ── RequestAsync ──────────────────────────────────────────────────────────
 
     [Fact]
@@ -39,7 +41,7 @@ public class MagicLoginServiceTests
         userMgr.Setup(u => u.FindByEmailAsync("test@example.com")).ReturnsAsync((User?)null);
 
         var cache   = NewCache();
-        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, NullLogger<MagicLoginService>.Instance);
+        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
 
         await service.RequestAsync("test@example.com");
 
@@ -56,7 +58,7 @@ public class MagicLoginServiceTests
     {
         var userMgr = MockUserManager();
         var cache   = NewCache(); // empty — no code stored
-        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, NullLogger<MagicLoginService>.Instance);
+        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
 
         var result = await service.VerifyAsync("test@example.com", "ABCDEF");
 
@@ -70,7 +72,7 @@ public class MagicLoginServiceTests
         var cache   = NewCache();
         cache.Set("magic:test@example.com", "ZZZZZZ");
 
-        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, NullLogger<MagicLoginService>.Instance);
+        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
 
         var result = await service.VerifyAsync("test@example.com", "ABCDEF");
 
@@ -87,7 +89,7 @@ public class MagicLoginServiceTests
         var cache = NewCache();
         cache.Set("magic:test@example.com", "ABC123");
 
-        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, NullLogger<MagicLoginService>.Instance);
+        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
 
         var result = await service.VerifyAsync("test@example.com", "abc123"); // lowercase — service uppercases
 
@@ -105,7 +107,7 @@ public class MagicLoginServiceTests
         var cache = NewCache();
         cache.Set("magic:test@example.com", "XYZ999");
 
-        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, NullLogger<MagicLoginService>.Instance);
+        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
 
         var first  = await service.VerifyAsync("test@example.com", "XYZ999");
         var second = await service.VerifyAsync("test@example.com", "XYZ999");

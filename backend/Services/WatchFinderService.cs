@@ -60,6 +60,13 @@ public class QueryIntent
     /// Style category — "sport", "dress", "diver". Resolved to collection IDs via DB taxonomy.
     /// Applied as SQL WHERE CollectionId IN (collections with matching Style).
     public string? Style { get; set; }
+    /// Complication labels from query text (e.g. "Chronograph", "Perpetual Calendar").
+    /// Client-side filter only — complications live in Watch.Specs JSON, not a DB column.
+    /// Labels must match frontend COMPLICATION_OPTIONS labels exactly.
+    public List<string> Complications { get; set; } = [];
+    /// Power reserve bucket labels from query text (e.g. "48h – 72h", "Over 100h").
+    /// Client-side filter only. Labels must match frontend POWER_RESERVE_OPTIONS exactly.
+    public List<string> PowerReserves { get; set; } = [];
 }
 
 public class WatchFinderResult
@@ -442,17 +449,32 @@ public class WatchFinderService
         if (matchedCollection != null)
             intent.CollectionId = matchedCollection.Id;
 
-        // ── Price matching via regex ──────────────────────────────────────────────
-        // Patterns: "under 50k", "below $50,000", "between 20k and 50k"
+        ApplyRegexFilters(query, intent);
+
+        // Return null if nothing was extracted — no filters to apply
+        if (intent.BrandId == null && intent.CollectionId == null
+            && intent.MaxPrice == null && intent.MinPrice == null
+            && intent.MinDiameterMm == null && intent.MaxDiameterMm == null
+            && intent.CaseMaterial == null && intent.MovementType == null
+            && intent.WaterResistance == null && intent.Style == null
+            && intent.Complications.Count == 0 && intent.PowerReserves.Count == 0)
+            return null;
+
+        return intent;
+    }
+
+    // Pure regex extraction — all non-DB parsing (price, diameter, material, movement,
+    // water resistance, style, complications, power reserve). Extracted for unit testing.
+    internal static void ApplyRegexFilters(string query, QueryIntent intent)
+    {
         var q = query;
 
-        // "between Xk and Yk" / "between X and Y" — (?!mm) prevents matching diameter values
+        // ── Price matching ──────────────────────────────────────────────────────────
         var between = Regex.Match(q,
             @"between\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)\s*and\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
             RegexOptions.IgnoreCase);
         if (between.Success)
         {
-            // Groups: 1=lo_digits, 2=lo_k, 3=hi_digits, 4=hi_k
             var lo = ParsePriceToken(between.Groups[1].Value, between.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
             var hi = ParsePriceToken(between.Groups[3].Value, between.Groups[4].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
             if (lo > 0) intent.MinPrice = lo;
@@ -460,14 +482,12 @@ public class WatchFinderService
         }
         else
         {
-            // "under / below / less than $Xk" or "$X,000" — (?!mm) prevents matching diameter values
             var upper = Regex.Match(q,
                 @"(?:under|below|less\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
                 RegexOptions.IgnoreCase);
             if (upper.Success)
                 intent.MaxPrice = ParsePriceToken(upper.Groups[1].Value, upper.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
 
-            // "over / above / more than $Xk" — (?!mm) prevents matching diameter values
             var lower = Regex.Match(q,
                 @"(?:over|above|more\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
                 RegexOptions.IgnoreCase);
@@ -475,8 +495,7 @@ public class WatchFinderService
                 intent.MinPrice = ParsePriceToken(lower.Groups[1].Value, lower.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
         }
 
-        // ── Diameter matching via regex ───────────────────────────────────────────
-        // Patterns: "39-40mm", "39–40mm" (range), or "39mm" (exact)
+        // ── Diameter matching ───────────────────────────────────────────────────────
         var diamRange = Regex.Match(q,
             @"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*mm",
             RegexOptions.IgnoreCase);
@@ -491,7 +510,6 @@ public class WatchFinderService
         }
         else
         {
-            // Single "39mm" — treat as exact match
             var diamExact = Regex.Match(q, @"(\d+(?:\.\d+)?)\s*mm", RegexOptions.IgnoreCase);
             if (diamExact.Success && double.TryParse(diamExact.Groups[1].Value,
                     System.Globalization.NumberStyles.Any,
@@ -502,7 +520,7 @@ public class WatchFinderService
             }
         }
 
-        // ── Case material matching ────────────────────────────────────────────────
+        // ── Case material matching ──────────────────────────────────────────────────
         var materialMap = new (string pattern, string label)[]
         {
             (@"\b(?:stainless\s+)?steel\b", "Steel"),
@@ -521,7 +539,7 @@ public class WatchFinderService
             }
         }
 
-        // ── Movement type matching ───────────────────────────────────────────────
+        // ── Movement type matching ──────────────────────────────────────────────────
         if (Regex.IsMatch(q, @"\b(?:automatic|self[- ]winding)\b", RegexOptions.IgnoreCase))
             intent.MovementType = "Automatic";
         else if (Regex.IsMatch(q, @"\b(?:manual|hand[- ]wound)\b", RegexOptions.IgnoreCase))
@@ -529,17 +547,14 @@ public class WatchFinderService
         else if (Regex.IsMatch(q, @"\bquartz\b", RegexOptions.IgnoreCase))
             intent.MovementType = "Quartz";
 
-        // ── Water resistance matching ────────────────────────────────────────────
-        // "300m water resistance", "100m waterproof", or standalone "300m" (only if not diameter)
+        // ── Water resistance matching ───────────────────────────────────────────────
         var wrMatch = Regex.Match(q,
             @"(\d+)\s*m\s*(?:water\s*resist|waterproof|WR)",
             RegexOptions.IgnoreCase);
         if (wrMatch.Success)
             intent.WaterResistance = wrMatch.Groups[1].Value;
 
-        // ── Style matching ───────────────────────────────────────────────────────
-        // Maps natural-language style keywords to DB taxonomy values (sport/dress/diver).
-        // Chronograph is a complication detected via specs — not a collection-level style.
+        // ── Style matching ──────────────────────────────────────────────────────────
         if (Regex.IsMatch(q, @"\b(?:sport|sporty)\b", RegexOptions.IgnoreCase))
             intent.Style = "sport";
         else if (Regex.IsMatch(q, @"\b(?:dress|formal|elegant|elegance)\b", RegexOptions.IgnoreCase))
@@ -547,23 +562,51 @@ public class WatchFinderService
         else if (Regex.IsMatch(q, @"\b(?:dive|diver|diving|waterproof)\b", RegexOptions.IgnoreCase))
             intent.Style = "diver";
 
-        // Return null if nothing was extracted — no hard filters to apply
-        if (intent.BrandId == null && intent.CollectionId == null
-            && intent.MaxPrice == null && intent.MinPrice == null
-            && intent.MinDiameterMm == null && intent.MaxDiameterMm == null
-            && intent.CaseMaterial == null && intent.MovementType == null
-            && intent.WaterResistance == null && intent.Style == null)
-            return null;
+        // ── Complication matching ───────────────────────────────────────────────────
+        var complicationMap = new (string pattern, string label)[]
+        {
+            (@"\b(?:chronograph|chrono)\b",                "Chronograph"),
+            (@"\bperpetual\s+calendar\b",                  "Perpetual Calendar"),
+            (@"\bannual\s+calendar\b",                     "Annual Calendar"),
+            (@"\b(?:moonphase|moon\s*phase)\b",            "Moonphase"),
+            (@"\btourbillon\b",                            "Tourbillon"),
+            (@"\bminute\s+repeater\b",                     "Minute Repeater"),
+            (@"\b(?:gmt|world\s+time|dual\s+time)\b",     "GMT / World Time"),
+        };
+        foreach (var (pattern, label) in complicationMap)
+        {
+            if (Regex.IsMatch(q, pattern, RegexOptions.IgnoreCase))
+                intent.Complications.Add(label);
+        }
 
-        return intent;
+        // ── Power reserve matching ──────────────────────────────────────────────────
+        var prHours = Regex.Match(q, @"(\d+)\s*(?:hours?|hrs?|h)\b", RegexOptions.IgnoreCase);
+        var prDays  = Regex.Match(q, @"(\d+)\s*days?\b", RegexOptions.IgnoreCase);
+        int? parsedHours = null;
+        if (prHours.Success && int.TryParse(prHours.Groups[1].Value, out var hrs)) parsedHours = hrs;
+        else if (prDays.Success && int.TryParse(prDays.Groups[1].Value, out var days)) parsedHours = days * 24;
+
+        if (parsedHours != null)
+        {
+            if (parsedHours < 48) intent.PowerReserves.Add("Under 48h");
+            else if (parsedHours < 72) intent.PowerReserves.Add("48h \u2013 72h");
+            else if (parsedHours < 100) intent.PowerReserves.Add("72h \u2013 100h");
+            else intent.PowerReserves.Add("Over 100h");
+        }
+        else if (Regex.IsMatch(q, @"\blong\s+power\s+reserve\b", RegexOptions.IgnoreCase))
+        {
+            intent.PowerReserves.AddRange(new[] { "48h \u2013 72h", "72h \u2013 100h", "Over 100h" });
+        }
     }
 
     // Parses a price token like "50" with isK=true → 50000, or "50000" with isK=false → 50000.
-    private static decimal ParsePriceToken(string digits, bool isK)
+    // Luxury context heuristic: bare numbers < 1000 are thousands ("under 100" = $100k).
+    internal static decimal ParsePriceToken(string digits, bool isK)
     {
         var clean = digits.Replace(",", "");
         if (!decimal.TryParse(clean, out var value)) return 0;
-        return isK ? value * 1000 : value;
+        if (isK) return value * 1000;
+        return value < 1000 ? value * 1000 : value;
     }
 
     // Embeds the query text using nomic-embed-text via ai-service.

@@ -128,10 +128,16 @@ const COMPLICATION_LABELS = COMPLICATION_OPTIONS.map(c => c.label);
 
 // Converts a QueryIntent (brand/collection/price from the backend) into a Filters object
 // so the filter bar is pre-populated to match what the query implied.
-function buildFiltersFromIntent(intent: QueryIntent): Filters {
+function buildFiltersFromIntent(intent: QueryIntent, collections: Collection[]): Filters {
   const f = { ...EMPTY_FILTERS };
   if (intent.brandId)       f.brandIds      = [intent.brandId];
   if (intent.collectionId)  f.collectionIds = [intent.collectionId];
+  // Style → collection IDs: restrict results to collections tagged with that style in the DB.
+  // This filters out keyword-exclusive watches from non-matching collections (e.g. Calatrava for "sport").
+  if (intent.style && !intent.collectionId && collections.length > 0) {
+    const styleIds = collections.filter(c => c.style === intent.style).map(c => c.id);
+    if (styleIds.length > 0) f.collectionIds = styleIds;
+  }
   if (intent.minDiameterMm !== null || intent.maxDiameterMm !== null) {
     const min = Math.floor(intent.minDiameterMm ?? 1);
     const max = Math.floor(intent.maxDiameterMm ?? 200);
@@ -140,9 +146,11 @@ function buildFiltersFromIntent(intent: QueryIntent): Filters {
     f.diameterBuckets = labels;
   }
   if (intent.maxPrice) {
+    // Always include PoR — backend never excludes PoR from price-filtered searches,
+    // so the client-side filter must match. PoR watches are sorted after priced ones.
     f.priceBuckets = PRICE_BUCKETS
       .filter(b => {
-        if (b.label === 'Price on Request') return false;
+        if (b.label === 'Price on Request') return true;
         if (b.label === 'Under $5k')    return intent.maxPrice! > 0;
         if (b.label === '$5k – $10k')   return intent.maxPrice! >= 5_000;
         if (b.label === '$10k – $25k')  return intent.maxPrice! >= 10_000;
@@ -159,6 +167,14 @@ function buildFiltersFromIntent(intent: QueryIntent): Filters {
     const m = parseInt(intent.waterResistance);
     const bucket = WATER_RESISTANCE_BUCKETS.find(b => b.test(m));
     if (bucket) f.waterResistances = [bucket.label];
+  }
+  if (intent.complications && intent.complications.length > 0) {
+    const validLabels = new Set(COMPLICATION_LABELS);
+    f.complications = intent.complications.filter(c => validLabels.has(c));
+  }
+  if (intent.powerReserves && intent.powerReserves.length > 0) {
+    const validLabels = new Set(POWER_RESERVE_OPTIONS);
+    f.powerReserves = intent.powerReserves.filter(p => validLabels.has(p));
   }
   return f;
 }
@@ -683,7 +699,7 @@ export default function SmartSearchClient() {
         const { result: cachedResult, ts } = JSON.parse(cached) as { result: WatchFinderResult; ts: number };
         if (Date.now() - ts < CACHE_TTL) {
           setResult(cachedResult);
-          if (cachedResult.queryIntent) setFilters(buildFiltersFromIntent(cachedResult.queryIntent));
+          if (cachedResult.queryIntent) setFilters(buildFiltersFromIntent(cachedResult.queryIntent, collections));
           setStatus('success');
           return;
         }
@@ -725,15 +741,19 @@ export default function SmartSearchClient() {
     watchFinderSearch(query)
       .then(res => {
         setResult(res);
-        if (res.queryIntent) setFilters(buildFiltersFromIntent(res.queryIntent));
+        if (res.queryIntent) setFilters(buildFiltersFromIntent(res.queryIntent, collections));
         setStatus('success');
-        try {
-          sessionStorage.setItem(cacheKey, JSON.stringify({ result: res, ts: Date.now() }));
-        } catch {
-          // ignore storage errors
+        // Only cache non-empty results — empty results are often transient (threshold tuning, cold start)
+        if (res.watches.length > 0 || res.otherCandidates.length > 0) {
+          try {
+            sessionStorage.setItem(cacheKey, JSON.stringify({ result: res, ts: Date.now() }));
+          } catch {
+            // ignore storage errors
+          }
         }
       })
       .catch(() => setStatus('error'));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- collections is read but must not re-trigger the search
   }, [query]);
 
   const setFilter = useCallback(<K extends keyof Filters>(key: K, value: Filters[K]) => {
@@ -794,9 +814,14 @@ export default function SmartSearchClient() {
   const PAGE_SIZE = 20;
 
   // Flatten into a single ordered list: top matches first, then others.
+  // PoR watches (price = 0) are pushed after priced watches within each group —
+  // priced watches answer the query directly, PoR is supplementary context.
   // When wrist fit is active, sort by fit score descending (best fit first).
   const allWatches = useMemo(() => {
-    const combined = [...topWatches, ...otherWatches];
+    // Stable sort: priced watches first (preserving AI rank), then PoR (preserving AI rank)
+    const priced = [...topWatches.filter(w => w.currentPrice > 0), ...otherWatches.filter(w => w.currentPrice > 0)];
+    const por    = [...topWatches.filter(w => w.currentPrice === 0), ...otherWatches.filter(w => w.currentPrice === 0)];
+    const combined = [...priced, ...por];
     const wristCm = wristFit ? parseFloat(wristFit) : null;
     if (wristCm !== null && !isNaN(wristCm)) {
       combined.sort((a, b) => {
@@ -1022,22 +1047,13 @@ export default function SmartSearchClient() {
 
       {/* ── Results Grid ── */}
       {status === 'loading' && (
-        kwWatches.length > 0 ? (
-          <>
-            {/* AI still running — show keyword matches immediately with a subtle indicator */}
-            <div className="flex items-center gap-2 mb-6">
-              <div className="w-3.5 h-3.5 rounded-full border-2 border-white/20 border-t-white/55 animate-spin flex-shrink-0" />
-              <span className="text-xs font-inter text-white/35">AI analysis running…</span>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-              {kwWatches.map(w => (
-                <SmartCard key={w.id} watch={w} brands={brands} collections={collections} currentPage={1} wristFit={wristFit} />
-              ))}
-            </div>
-          </>
-        ) : (
+        <>
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-3.5 h-3.5 rounded-full border-2 border-white/20 border-t-white/55 animate-spin flex-shrink-0" />
+            <span className="text-xs font-inter text-white/35">AI analysis running…</span>
+          </div>
           <SkeletonGrid count={20} />
-        )
+        </>
       )}
 
       {status === 'error' && (
