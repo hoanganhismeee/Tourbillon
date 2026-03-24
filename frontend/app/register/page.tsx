@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { registerUser } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import StaggeredFade from "../scrollMotion/StaggeredFade";
@@ -11,6 +11,8 @@ const GOOGLE_AUTH_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:
 export default function RegisterPage() {
   const router = useRouter();
   const { login } = useAuth();
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get('redirect');
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -106,7 +108,7 @@ export default function RegisterPage() {
         phoneNumber: formData.phoneNumber,
       });
       await login(); // Trigger a state refresh in the context
-      router.push("/");
+      router.push(redirect || '/');
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -260,7 +262,7 @@ export default function RegisterPage() {
           {/* Sign in */}
                      <p className="text-center text-sm text-[var(--primary-brown)] mt-2">
              Already have an account?{" "}
-             <Link href="/login" className="underline hover:text-[var(--light-cream)] cursor-pointer">
+             <Link href={`/login${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ''}`} className="underline hover:text-[var(--light-cream)] cursor-pointer">
                Sign In
              </Link>
            </p>

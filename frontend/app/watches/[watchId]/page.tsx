@@ -4,7 +4,7 @@
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
@@ -35,6 +35,7 @@ const WatchDetailPage = () => {
     const [appointmentOpen, setAppointmentOpen] = useState(false);
     const [registerInterestOpen, setRegisterInterestOpen] = useState(false);
     const { navigationState } = useNavigation();
+    const panelOpenedRef = useRef(false);
 
     const { data: watch, isLoading, error } = useQuery({
         queryKey: ['watch', numericWatchId],
@@ -56,6 +57,21 @@ const WatchDetailPage = () => {
     useEffect(() => {
         if (watch?.imageUrl) setImgSrc(watch.imageUrl);
     }, [watch?.imageUrl]);
+
+    // Auto-open panel when returning from login/register with ?panel=... in URL
+    useEffect(() => {
+        const panel = searchParams.get('panel');
+        if (!panel || panelOpenedRef.current || isLoading || !watch) return;
+        panelOpenedRef.current = true;
+        if (panel === 'appointment') setAppointmentOpen(true);
+        if (panel === 'register-interest') setRegisterInterestOpen(true);
+        // Remove the param so refreshing doesn't re-trigger the panel
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete('panel');
+        const newSearch = params.toString();
+        router.replace(`/watches/${watchId}${newSearch ? `?${newSearch}` : ''}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isLoading, watch]);
 
     // Handle back navigation with position restoration
     const handleBackClick = () => {
@@ -248,7 +264,7 @@ const WatchDetailPage = () => {
                         <motion.button
                             whileTap={{ scale: 0.97 }}
                             onClick={() => setAppointmentOpen(true)}
-                            className="py-4 px-8 rounded-xl font-semibold border border-[#bfa68a] text-[#bfa68a] hover:bg-[#bfa68a]/10 transition">
+                            className="py-4 px-8 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition">
                             Book an Appointment
                         </motion.button>
                         <CompareToggle watch={watch} variant="button" />

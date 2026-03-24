@@ -1,7 +1,7 @@
 // This file defines the Login page for the application.
 "use client";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { loginUser } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,6 +15,8 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const { login } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const redirect = searchParams.get('redirect');
 
     // Prevent scrolling for login page
     useEffect(() => {
@@ -34,7 +36,7 @@ export default function LoginPage() {
         try {
             await loginUser({ email, password });
             await login(); // Trigger a state refresh in the context
-            router.push("/");
+            router.push(redirect || '/');
         } catch (err) {
             setError("Failed to login. Please check your credentials.");
             console.error(err);
@@ -99,7 +101,7 @@ export default function LoginPage() {
                     </form>
                     <p className="text-sm text-center text-[#bfa68a]">
                         Don&apos;t have an account?{" "}
-                        <Link href="/register" className="underline hover:text-[#F9F6F2] cursor-pointer">
+                        <Link href={`/register${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ''}`} className="underline hover:text-[#F9F6F2] cursor-pointer">
                             Sign Up
                         </Link>
                     </p>
