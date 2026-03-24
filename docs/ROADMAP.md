@@ -20,8 +20,9 @@
 | Role-Based Access Control (admin seeding, scrape page guard, nav link) | Done | 3.5 |
 | Homepage Cinematic Video Hero | Done | 3.5 |
 | AI Discovery Pages (GEO/SEO) | Removed | — |
-| Stripe Checkout (Test Mode) | Planned | 4 |
-| Save / Build Collection | Planned | 4 |
+| Stripe Checkout (Test Mode) | Done | 4 |
+| Contact Advisor (PoR Inquiry) | Done | 4 |
+| Save / Build Collection | Planned | 5 |
 
 ## Model Strategy
 
@@ -189,37 +190,78 @@ Full-screen `tourbillon.mp4` fills the first viewport on the homepage. Scrolling
 
 ---
 
-## Phase 4: Polish
+## Phase 4: Commerce + Contact (COMPLETE)
 
-### Stripe Checkout (Test Mode)
+### Stripe Checkout — Test Mode
 
-Full purchase flow using Stripe's test environment — real UX, no actual charges.
+Full purchase flow using Stripe's test environment — real UX, no actual charges. Supports both **authenticated** and **guest** checkout.
 
 **What it does:**
-- User proceeds from cart to a checkout page
-- Stripe Elements renders the card input form (hosted, PCI-compliant)
-- Payment intent created on the backend; confirmed in the browser
-- On success: order confirmation page with order summary
-- On failure: card error displayed inline, user can retry
-- Stripe test cards (e.g. `4242 4242 4242 4242`) exercise the full flow without charging
+- "Add to Cart" button on priced watches (`CurrentPrice > 0`); PoR watches excluded
+- Zustand cart store persisted to localStorage (survives reloads, SSR-safe via `skipHydration`)
+- Cart page with Framer Motion add/remove animations, order summary sidebar
+- Two-phase checkout: (1) shipping form (pre-filled from profile for signed-in users, manual entry for guests) → (2) Stripe `CardElement` payment
+- Webhook-driven order confirmation — order status set by server on `payment_intent.succeeded`, never by client callback
+- Confirmation page polls order status every 2s until webhook confirms; animated checkmark on success
+- Cart badge on NavBar with live item count
 
 **Tech approach:**
-- Backend: `POST /api/orders` creates a Stripe PaymentIntent and returns `client_secret`
-- Frontend: Stripe.js + `@stripe/react-stripe-js` renders `<CardElement>`, calls `stripe.confirmCardPayment(clientSecret)`
-- Order saved to DB on webhook confirmation (`payment_intent.succeeded`) — never on client callback alone
-- Stripe keys: `STRIPE_SECRET_KEY=sk_test_...` in .NET user-secrets; `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...` in frontend env
+- Backend: `POST /api/order` creates `Order` entity (Pending) + Stripe `PaymentIntent`, returns `clientSecret`
+- Frontend: `@stripe/react-stripe-js` `<CardElement>` calls `stripe.confirmCardPayment(clientSecret)`
+- Webhook: `POST /api/order/webhook` — verifies Stripe signature, handles 3 events:
+  - `payment_intent.succeeded` → order confirmed (idempotent)
+  - `payment_intent.payment_failed` → order marked failed
+  - `payment_intent.canceled` → order marked failed
+- `Order.UserId` is nullable — guest checkout creates orders without a user account
+- Watch prices and details snapshotted into `OrderItem` at purchase time (immune to later price changes or watch edits)
+- Shipping address snapshotted into `Order` (not FK to user profile)
+- Stripe keys: `Stripe:SecretKey` + `Stripe:WebhookSecret` in .NET user-secrets; `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` in frontend env
 
 **Files involved:**
-- Backend: `OrderController`, `StripeService`, new `Orders` and `OrderItems` tables
-- Frontend: `app/checkout/page.tsx`, `app/checkout/confirmation/page.tsx`
-- Webhook: `POST /api/orders/webhook` — verifies Stripe signature, finalises order
+- Backend: `Order.cs`, `OrderItem.cs`, `OrderStatus.cs` (models); `StripeService`, `OrderService` (services); `OrderController`; EF Core migration
+- Frontend: `stores/cartStore.ts`, `providers/StripeProvider.tsx`, `app/cart/page.tsx`, `app/checkout/page.tsx`, `app/checkout/CheckoutForm.tsx`, `app/checkout/confirmation/page.tsx`
 
 **Why this matters (resume):**
-- Payment integration is a core e-commerce skill — Stripe is the industry standard
-- Webhook-driven order confirmation demonstrates async event handling and idempotency
-- Test mode shows the full flow without real credentials
+- **Payment integration** — Stripe is the industry standard; PaymentIntent API with webhook-driven confirmation is the production-grade pattern
+- **Async event handling** — webhook idempotency (same event delivered twice = no-op), signature verification for security
+- **Guest checkout architecture** — nullable FK pattern, dual-path order creation without code duplication
+- **State management** — Zustand with localStorage persistence + SSR hydration guard (same pattern used in compare feature)
+- **UX polish** — two-phase checkout with real-time validation, Framer Motion transitions, responsive cart layout
 
 ---
+
+### Contact Advisor (PoR Inquiry)
+
+Inquiry flow for "Price on Request" watches — requires authentication, sends dual emails (user confirmation + admin notification).
+
+**What it does:**
+- "Contact Advisor" button on PoR watches (`CurrentPrice = 0`) as primary action; also available as secondary action on priced watches
+- Clicking navigates to `/contact?watchId=X`; if not authenticated, redirects to `/login?redirect=/contact?watchId=X` then returns seamlessly after login
+- Watch-specific inquiry shows watch card preview (image, name, reference, price)
+- General inquiry mode (`/contact` without watchId) also supported
+- Free-text message textarea (max 2000 chars)
+- On send: user receives confirmation email ("Inquiry Received"), admin receives notification email ("New Advisor Inquiry")
+- Both emails use the Tourbillon email theme (gold `#bfa68a` on cream `#f0e6d2`)
+- Inquiry persisted to `ContactInquiries` table regardless of email delivery success
+
+**Tech approach:**
+- Backend: `POST /api/contact/inquiry` (requires `[Authorize]`) → `ContactInquiryService` saves record + fires emails via existing `IEmailService`
+- Emails sent fire-and-forget after DB save — user gets instant response even if SMTP is slow
+- Admin email destination: `AdminSettings:SeedAdminEmail` from config
+- Inquiry snapshots user name/email and watch name/reference for audit trail
+
+**Files involved:**
+- Backend: `ContactInquiry.cs` (model); `ContactInquiryService` (service); `ContactController`
+- Frontend: `app/contact/page.tsx` (replaced stub)
+
+**Why this matters (resume):**
+- **Auth-gated UX flow** — redirect-to-login with seamless return via query params
+- **Transactional email** — dual-recipient notification pattern with HTML templates, fire-and-forget for resilience
+- **Data snapshot pattern** — inquiry records are self-contained (no broken references if user or watch changes later)
+
+---
+
+## Phase 5: Social
 
 ### Save / Build Collection
 
@@ -327,4 +369,4 @@ python generate_discovery_pages.py  # ~$0.02 total for all themes
 
 ## Resume Keywords Covered
 
-AI/LLM integration, semantic search, recommendation systems, personalization engine, conversational commerce, retrieval-augmented generation (RAG), GEO/SEO optimization, programmatic content generation, full-stack implementation, rule-based scoring systems, NLP-to-SQL query pipeline, cost engineering (quota limits, cache strategy, pre-generation).
+AI/LLM integration, semantic search, recommendation systems, personalization engine, conversational commerce, retrieval-augmented generation (RAG), programmatic content generation, full-stack implementation, rule-based scoring systems, NLP-to-SQL query pipeline, cost engineering (quota limits, cache strategy, pre-generation), Stripe payment integration (PaymentIntent API, webhook-driven confirmation, idempotency), guest checkout architecture, transactional email (dual-recipient notification), client-side state management (Zustand + localStorage persistence), SSR hydration strategies, responsive UI with motion design (Framer Motion), PCI-compliant card handling (Stripe Elements), async event-driven architecture (webhook processing).

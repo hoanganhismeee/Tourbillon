@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePathname } from 'next/navigation';
+import { useCart } from '@/stores/cartStore';
 import SearchOverlay from './SearchOverlay';
 
 // Custom SVG icon components for consistent styling and easy maintenance
@@ -131,7 +132,11 @@ const UserMenu = () => {
     const pathname = usePathname(); // Current pathname for route change detection, Debug function
     const [scrollY, setScrollY] = useState(0); // Current scroll position for background opacity
     const [mounted, setMounted] = useState(false); // Hydration state to prevent SSR/client mismatch
-    
+    const cartItems = useCart(s => s.items);
+
+    // Rehydrate cart + set mounted state after component mounts (prevents hydration errors)
+    useEffect(() => { useCart.persist.rehydrate(); }, []);
+
     // Set mounted state to true after component mounts (prevents hydration errors)
     useEffect(() => {
       setMounted(true);
@@ -245,8 +250,13 @@ const UserMenu = () => {
         <div className="flex items-center gap-16 relative pr-4 justify-end">
           <UserMenu />
 
-          <Link href="/cart" className="hover:opacity-70 transition-opacity cursor-pointer">
+          <Link href="/cart" className="relative hover:opacity-70 transition-opacity cursor-pointer">
             <CartIcon />
+            {mounted && cartItems.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-[#bfa68a] text-black text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                {cartItems.length}
+              </span>
+            )}
           </Link>
 
           {/* Search icon - opens overlay */}

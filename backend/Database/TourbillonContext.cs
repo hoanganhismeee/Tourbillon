@@ -20,6 +20,9 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
     public DbSet<UserTasteProfile> UserTasteProfiles { get; set; }
     public DbSet<WatchEditorialContent> WatchEditorialContents { get; set; }
     public DbSet<WatchEditorialLink> WatchEditorialLinks { get; set; }
+    public DbSet<Order> Orders { get; set; }
+    public DbSet<OrderItem> OrderItems { get; set; }
+    public DbSet<ContactInquiry> ContactInquiries { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -55,6 +58,26 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
         {
             // WatchId is the PK — one editorial per watch
             entity.HasKey(e => e.WatchId);
+        });
+
+        modelBuilder.Entity<Order>(entity =>
+        {
+            entity.HasIndex(e => e.StripePaymentIntentId).IsUnique();
+            entity.HasIndex(e => e.UserId);
+            entity.Property(e => e.TotalAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Status).HasConversion<string>();
+            // UserId is nullable for guest checkout
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).IsRequired(false);
+        });
+
+        modelBuilder.Entity<OrderItem>(entity =>
+        {
+            entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
+        });
+
+        modelBuilder.Entity<ContactInquiry>(entity =>
+        {
+            entity.HasIndex(e => e.UserId);
         });
     }
 }
