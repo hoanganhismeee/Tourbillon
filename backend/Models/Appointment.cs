@@ -15,6 +15,11 @@ public class Appointment
     public string CustomerLastName { get; set; } = string.Empty;
     public string CustomerEmail { get; set; } = string.Empty;
     public string? CustomerPhone { get; set; }
+    public string? PhoneRegionCode { get; set; }
+
+    // Notification preferences
+    public bool NotifyByEmail { get; set; } = true;
+    public bool NotifyBySms { get; set; }
 
     public string BoutiqueName { get; set; } = string.Empty;
     public string VisitPurpose { get; set; } = string.Empty;

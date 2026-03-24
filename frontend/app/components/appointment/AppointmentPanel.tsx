@@ -26,6 +26,68 @@ const TIME_SLOTS = [
   '4:00 PM',  '4:30 PM',  '5:00 PM',
 ];
 
+const PHONE_REGIONS = [
+  { code: '+61', label: 'Australia' },
+  { code: '+93', label: 'Afghanistan' },
+  { code: '+355', label: 'Albania' },
+  { code: '+213', label: 'Algeria' },
+  { code: '+1', label: 'United States' },
+  { code: '+44', label: 'United Kingdom' },
+  { code: '+33', label: 'France' },
+  { code: '+49', label: 'Germany' },
+  { code: '+39', label: 'Italy' },
+  { code: '+34', label: 'Spain' },
+  { code: '+351', label: 'Portugal' },
+  { code: '+41', label: 'Switzerland' },
+  { code: '+43', label: 'Austria' },
+  { code: '+32', label: 'Belgium' },
+  { code: '+31', label: 'Netherlands' },
+  { code: '+46', label: 'Sweden' },
+  { code: '+47', label: 'Norway' },
+  { code: '+45', label: 'Denmark' },
+  { code: '+358', label: 'Finland' },
+  { code: '+48', label: 'Poland' },
+  { code: '+420', label: 'Czech Republic' },
+  { code: '+36', label: 'Hungary' },
+  { code: '+40', label: 'Romania' },
+  { code: '+30', label: 'Greece' },
+  { code: '+90', label: 'Turkey' },
+  { code: '+7', label: 'Russia' },
+  { code: '+380', label: 'Ukraine' },
+  { code: '+81', label: 'Japan' },
+  { code: '+82', label: 'South Korea' },
+  { code: '+86', label: 'China' },
+  { code: '+852', label: 'Hong Kong' },
+  { code: '+886', label: 'Taiwan' },
+  { code: '+65', label: 'Singapore' },
+  { code: '+60', label: 'Malaysia' },
+  { code: '+66', label: 'Thailand' },
+  { code: '+84', label: 'Vietnam' },
+  { code: '+62', label: 'Indonesia' },
+  { code: '+63', label: 'Philippines' },
+  { code: '+91', label: 'India' },
+  { code: '+92', label: 'Pakistan' },
+  { code: '+880', label: 'Bangladesh' },
+  { code: '+971', label: 'UAE' },
+  { code: '+966', label: 'Saudi Arabia' },
+  { code: '+974', label: 'Qatar' },
+  { code: '+972', label: 'Israel' },
+  { code: '+20', label: 'Egypt' },
+  { code: '+27', label: 'South Africa' },
+  { code: '+234', label: 'Nigeria' },
+  { code: '+254', label: 'Kenya' },
+  { code: '+55', label: 'Brazil' },
+  { code: '+54', label: 'Argentina' },
+  { code: '+56', label: 'Chile' },
+  { code: '+52', label: 'Mexico' },
+  { code: '+57', label: 'Colombia' },
+  { code: '+64', label: 'New Zealand' },
+  { code: '+353', label: 'Ireland' },
+  { code: '+354', label: 'Iceland' },
+  { code: '+352', label: 'Luxembourg' },
+  { code: '+377', label: 'Monaco' },
+];
+
 const DAY_HEADERS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
 const MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
@@ -91,6 +153,11 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
   const [lastName, setLastName]   = useState('');
   const [email, setEmail]         = useState('');
   const [phone, setPhone]         = useState('');
+  const [phoneRegion, setPhoneRegion] = useState('+61');
+  const [regionDropdownOpen, setRegionDropdownOpen] = useState(false);
+
+  // Email notification is always on
+  const notifyByEmail = true;
 
   // Submit
   const [submitting, setSubmitting] = useState(false);
@@ -121,6 +188,9 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
         setLastName('');
         setEmail('');
         setPhone('');
+        setPhoneRegion('+61');
+        setRegionDropdownOpen(false);
+
         setSubmitting(false);
         setSubmitted(false);
         setError(null);
@@ -175,6 +245,9 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
         lastName: lastName.trim(),
         email: email.trim(),
         phone: phone.trim() || undefined,
+        phoneRegionCode: phone.trim() ? phoneRegion : undefined,
+        notifyByEmail,
+        notifyBySms: false,
         boutiqueName: 'Tourbillon Sydney',
         visitPurpose: 'discover_brand',
         brandName: brandName || 'Tourbillon',
@@ -517,7 +590,7 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
             />
             <div
               className="overflow-hidden transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
-              style={{ maxHeight: activeSection === 4 ? 600 : 0, opacity: activeSection === 4 ? 1 : 0 }}
+              style={{ maxHeight: activeSection === 4 ? 800 : 0, opacity: activeSection === 4 ? 1 : 0 }}
             >
               <div className="pt-2 pb-6">
                 {/* Sign-in prompt for guests */}
@@ -564,16 +637,65 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
                       placeholder="Email address"
                     />
                   </div>
+                  {/* Notify Me By */}
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">
+                      Notify me by *
+                    </label>
+                    <div className="flex gap-4">
+                      {/* Email is always enabled — non-interactive */}
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-[18px] h-[18px] rounded-full border-2 border-[#bfa68a] flex items-center justify-center">
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#bfa68a]" />
+                        </span>
+                        <span className="text-sm text-white/70">Email</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Phone with region code */}
                   <div>
                     <label className="block text-sm text-white/60 mb-2">
-                      Phone <span className="text-white/30">(Optional)</span>
+                      Mobile Number <span className="text-white/30">(Optional)</span>
                     </label>
-                    <input
-                      type="tel" value={phone}
-                      onChange={e => setPhone(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-[#bfa68a]/50 transition-colors"
-                      placeholder="Phone number"
-                    />
+                    <div className="flex gap-2">
+                      {/* Region code dropdown */}
+                      <div className="relative flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setRegionDropdownOpen(!regionDropdownOpen)}
+                          className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-white text-sm hover:border-white/20 focus:outline-none focus:border-[#bfa68a]/50 transition-colors min-w-[90px]"
+                        >
+                          <span>{phoneRegion}</span>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-white/40 ml-auto">
+                            <path d="M6 9l6 6 6-6"/>
+                          </svg>
+                        </button>
+                        {regionDropdownOpen && (
+                          <div className="absolute top-full left-0 mt-1 w-56 max-h-52 overflow-y-auto bg-[#252220] border border-white/10 rounded-xl shadow-xl z-10">
+                            {PHONE_REGIONS.map(r => (
+                              <button
+                                key={r.code + r.label}
+                                type="button"
+                                onClick={() => { setPhoneRegion(r.code); setRegionDropdownOpen(false); }}
+                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-white/5 ${
+                                  phoneRegion === r.code ? 'text-[#ecddc8] bg-white/5 font-medium' : 'text-white/70'
+                                }`}
+                              >
+                                <span className="font-medium">{r.code}</span>{' '}
+                                <span className="text-white/50">{r.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="tel" value={phone}
+                        onChange={e => setPhone(e.target.value)}
+                        className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-[#bfa68a]/50 transition-colors"
+                        placeholder="Mobile number"
+                      />
+                    </div>
                   </div>
                 </div>
 
