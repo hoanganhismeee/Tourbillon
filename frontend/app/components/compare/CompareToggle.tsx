@@ -35,10 +35,10 @@ const CompareToggle = ({ watch, variant = 'icon', className = '' }: CompareToggl
         data-compare-toggle="true"
         className={`py-4 px-8 rounded-xl font-semibold transition-all duration-300 flex items-center gap-2.5 ${
           active
-            ? 'bg-[#f0e6d2]/15 text-[#f0e6d2] border border-[#f0e6d2]/25'
+            ? 'bg-[#bfa68a]/20 text-[#ecddc8] border border-[#bfa68a]'
             : disabled
-              ? 'bg-white/5 text-white/25 cursor-not-allowed border border-white/5'
-              : 'bg-white/10 text-white hover:bg-white/15 border border-white/10'
+              ? 'border border-white/10 text-white/25 cursor-not-allowed'
+              : 'border border-[#bfa68a] text-[#bfa68a] hover:bg-[#bfa68a]/10'
         } ${className}`}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
