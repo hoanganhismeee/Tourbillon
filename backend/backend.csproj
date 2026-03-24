@@ -23,6 +23,7 @@
     <PackageReference Include="Pgvector.EntityFrameworkCore" Version="0.3.0" />
     <PackageReference Include="Selenium.WebDriver" Version="4.38.0" />
     <PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="142.0.7444.16200" />
+    <PackageReference Include="Stripe.net" Version="50.4.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
   </ItemGroup>
 

@@ -636,3 +636,102 @@ export const adminRevertImageNames = async (
     body: JSON.stringify(changes)
   }).then(r => r.json());
 
+// --- Orders / Checkout ---
+
+export interface CreateOrderRequest {
+  items: { watchId: number; quantity: number }[];
+  shippingFirstName?: string;
+  shippingLastName?: string;
+  shippingEmail?: string;
+  shippingAddress?: string;
+  shippingCity?: string;
+  shippingState?: string;
+  shippingCountry?: string;
+  guestEmail?: string;
+}
+
+export interface CreateOrderResponse {
+  orderId: number;
+  clientSecret: string;
+}
+
+export interface OrderItemResponse {
+  watchId: number;
+  watchName: string;
+  watchDescription: string | null;
+  watchImageUrl: string | null;
+  unitPrice: number;
+  quantity: number;
+}
+
+export interface OrderResponse {
+  id: number;
+  status: string;
+  totalAmount: number;
+  currency: string;
+  createdAt: string;
+  confirmedAt: string | null;
+  shipping: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    address: string;
+    city: string;
+    state: string;
+    country: string;
+  };
+  items: OrderItemResponse[];
+}
+
+export const createOrder = async (data: CreateOrderRequest): Promise<CreateOrderResponse> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/order`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: 'Failed to create order' }));
+    throw new Error(err.message || 'Failed to create order');
+  }
+  return response.json();
+};
+
+export const fetchOrder = async (id: number): Promise<OrderResponse> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/order/${id}`, { credentials: 'include' });
+  if (!response.ok) throw new Error('Failed to fetch order');
+  return response.json();
+};
+
+export const fetchMyOrders = async (): Promise<OrderResponse[]> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/order`, { credentials: 'include' });
+  if (!response.ok) throw new Error('Failed to fetch orders');
+  return response.json();
+};
+
+// --- Contact Advisor ---
+
+export interface CreateContactInquiryRequest {
+  watchId?: number;
+  message: string;
+}
+
+export interface ContactInquiryResponse {
+  id: number;
+  createdAt: string;
+}
+
+export const submitContactInquiry = async (data: CreateContactInquiryRequest): Promise<ContactInquiryResponse> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/contact/inquiry`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: 'Failed to submit inquiry' }));
+    throw new Error(err.message || 'Failed to submit inquiry');
+  }
+  return response.json();
+};
+
