@@ -16,6 +16,7 @@ import { parseStructuredSpecs, parseFlatSpecs, buildSpecSections } from '@/lib/s
 import { DYNAMIC_ROUTES } from '@/app/constants/routes';
 import CompareToggle from '../../components/compare/CompareToggle';
 import WristFitWidget from '../../components/wristfit/WristFitWidget';
+import AppointmentPanel from '../../components/appointment/AppointmentPanel';
 import Image from 'next/image';
 
 
@@ -31,6 +32,7 @@ const WatchDetailPage = () => {
     const [imageLoading, setImageLoading] = useState(true);
     const [imgSrc, setImgSrc] = useState<string | null>(null);
     const [retryCount, setRetryCount] = useState<number>(0);
+    const [appointmentOpen, setAppointmentOpen] = useState(false);
     const { navigationState } = useNavigation();
 
     const { data: watch, isLoading, error } = useQuery({
@@ -136,6 +138,7 @@ const WatchDetailPage = () => {
     const specSections = structuredSpecs ? buildSpecSections(structuredSpecs) : [];
 
     return (
+        <>
         <div className="container mx-auto px-4 sm:px-8 py-8 pt-28 pb-28 text-white">
             {/* Back Navigation Button */}
             <div className="mb-8">
@@ -240,6 +243,12 @@ const WatchDetailPage = () => {
                             className="py-4 px-8 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition">
                             Contact Advisor
                         </motion.button>
+                        <motion.button
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => setAppointmentOpen(true)}
+                            className="py-4 px-8 rounded-xl font-semibold border border-[#bfa68a] text-[#bfa68a] hover:bg-[#bfa68a]/10 transition">
+                            Book an Appointment
+                        </motion.button>
                         <CompareToggle watch={watch} variant="button" />
                     </div>
 
@@ -316,6 +325,14 @@ const WatchDetailPage = () => {
                 </div>
             )}
         </div>
+
+        <AppointmentPanel
+            isOpen={appointmentOpen}
+            onClose={() => setAppointmentOpen(false)}
+            watchId={numericWatchId}
+            brandName={brands.find(b => b.id === watch.brandId)?.name}
+        />
+        </>
     );
 };
 
