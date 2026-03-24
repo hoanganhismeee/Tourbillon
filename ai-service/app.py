@@ -167,7 +167,13 @@ def watch_finder_parse():
 # ── Rerank endpoint ───────────────────────────────────────────────────────────
 
 RERANK_SYSTEM_PROMPT = """You are a luxury watch expert. Score EVERY watch 0-100 for fit with the query. 100=perfect match, 0=irrelevant.
-Match the watch's functional category to the query: a "dress watch" is thin, minimalist, time-only or with simple complications — chronographs, divers, and sport watches are NOT dress watches regardless of case material.
+
+Category guidance — apply strictly:
+- "dress watch": thin, minimalist, time-only or simple complications. Chronographs, divers, and sport watches are NOT dress watches regardless of case material or price.
+- "sport watch": integrated bracelet design, robust case, often with date window. The AP Royal Oak, Patek Nautilus, Vacheron Overseas, Frederique Constant Highlife are classic sport watches — score them 80+ for sport queries regardless of precious metal or high price.
+- "diver": high water resistance (100m+), rotating or fixed bezel, legible dial. Score 80+ for dive/waterproof queries.
+- "chronograph": stopwatch complication present in movement functions. Score 80+ for chronograph queries.
+
 You MUST include one entry per watch — do not skip any.
 Return ONLY a JSON array with exactly as many entries as watches provided, no markdown, no preamble:
 [{"watch_id": 42, "score": 92}]

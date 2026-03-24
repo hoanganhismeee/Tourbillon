@@ -57,6 +57,9 @@ public class QueryIntent
     public string? CaseMaterial { get; set; }
     public string? MovementType { get; set; }
     public string? WaterResistance { get; set; }
+    /// Style category — "sport", "dress", "diver". Resolved to collection IDs via DB taxonomy.
+    /// Applied as SQL WHERE CollectionId IN (collections with matching Style).
+    public string? Style { get; set; }
 }
 
 public class WatchFinderResult
@@ -121,7 +124,8 @@ public class WatchFinderService
         // Skip cache when QueryIntent has hard SQL filters — a cached "dress watch" result
         // must not be reused for "Vacheron dress watch" (which needs brand pre-filtering).
         var hasHardFilters = queryIntent?.BrandId != null || queryIntent?.CollectionId != null
-            || queryIntent?.MaxPrice != null || queryIntent?.MinPrice != null;
+            || queryIntent?.MaxPrice != null || queryIntent?.MinPrice != null
+            || queryIntent?.Style != null;
         var queryEmbedding = await EmbedQueryAsync(httpClient, query);
         if (queryEmbedding != null && !hasHardFilters)
         {
@@ -150,7 +154,7 @@ public class WatchFinderService
         {
             // Embed unavailable — fall back to Phase 2 pipeline
             var parseTask = ParseIntentAsync(httpClient, query);
-            var dbTask    = _context.Watches.Include(w => w.Brand).AsNoTracking().ToListAsync();
+            var dbTask    = _context.Watches.Include(w => w.Brand).Include(w => w.Collection).AsNoTracking().ToListAsync();
             await Task.WhenAll(parseTask, dbTask);
             intent = await parseTask;
             var allWatches = await dbTask;
@@ -168,6 +172,7 @@ public class WatchFinderService
             ParsedIntent = null
         };
 
+        result.QueryIntent = queryIntent;
         if (candidates.Count == 0) return result;
 
         // Tier 3: LLM rerank — skipped when vector match is already decisive (Tier 2)
@@ -297,6 +302,19 @@ public class WatchFinderService
         if (intent?.MaxPrice     != null) q = q.Where(e => e.Watch.CurrentPrice == 0 || e.Watch.CurrentPrice <= intent.MaxPrice);
         if (intent?.MinPrice     != null) q = q.Where(e => e.Watch.CurrentPrice == 0 || e.Watch.CurrentPrice >= intent.MinPrice);
 
+        // Style filter: resolve style keyword → collection IDs from DB taxonomy → SQL IN.
+        // Graceful degradation: if no collections are tagged yet, the filter silently skips.
+        if (intent?.Style != null)
+        {
+            var styleCollectionIds = await _context.Collections
+                .Where(c => c.Style == intent.Style)
+                .Select(c => c.Id)
+                .ToListAsync();
+            if (styleCollectionIds.Count > 0)
+                q = q.Where(e => e.Watch.CollectionId != null
+                              && styleCollectionIds.Contains((int)e.Watch.CollectionId));
+        }
+
         // Push distance order and LIMIT to DB — project WatchId + distance in one round-trip.
         var orderedRows = await q
             .OrderBy(e => e.Embedding!.CosineDistance(queryVector))
@@ -318,7 +336,14 @@ public class WatchFinderService
             }
         }
 
-        if (topIds.Count == 0 || bestDist >= MinRelevance)
+        // When hard SQL filters are active (style, price, brand, collection), the candidate
+        // pool is already deterministically narrowed — skip the MinRelevance quality gate,
+        // which exists only to reject noise in unconstrained queries.
+        var hasHardFilters = intent?.BrandId != null || intent?.CollectionId != null
+            || intent?.MaxPrice != null || intent?.MinPrice != null
+            || intent?.Style != null;
+
+        if (topIds.Count == 0 || (!hasHardFilters && bestDist >= MinRelevance))
             return ([], float.MaxValue);
 
         // Load Watch objects and restore similarity order (IN has no guaranteed order)
@@ -512,12 +537,22 @@ public class WatchFinderService
         if (wrMatch.Success)
             intent.WaterResistance = wrMatch.Groups[1].Value;
 
+        // ── Style matching ───────────────────────────────────────────────────────
+        // Maps natural-language style keywords to DB taxonomy values (sport/dress/diver).
+        // Chronograph is a complication detected via specs — not a collection-level style.
+        if (Regex.IsMatch(q, @"\b(?:sport|sporty)\b", RegexOptions.IgnoreCase))
+            intent.Style = "sport";
+        else if (Regex.IsMatch(q, @"\b(?:dress|formal|elegant|elegance)\b", RegexOptions.IgnoreCase))
+            intent.Style = "dress";
+        else if (Regex.IsMatch(q, @"\b(?:dive|diver|diving|waterproof)\b", RegexOptions.IgnoreCase))
+            intent.Style = "diver";
+
         // Return null if nothing was extracted — no hard filters to apply
         if (intent.BrandId == null && intent.CollectionId == null
             && intent.MaxPrice == null && intent.MinPrice == null
             && intent.MinDiameterMm == null && intent.MaxDiameterMm == null
             && intent.CaseMaterial == null && intent.MovementType == null
-            && intent.WaterResistance == null)
+            && intent.WaterResistance == null && intent.Style == null)
             return null;
 
         return intent;
