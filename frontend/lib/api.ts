@@ -663,3 +663,38 @@ export const submitContactInquiry = async (data: CreateContactInquiryRequest): P
   return response.json();
 };
 
+// --- Appointment Booking ---
+
+export interface CreateAppointmentRequest {
+  watchId?: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  boutiqueName: string;
+  visitPurpose: string;
+  brandName?: string;
+  appointmentDate: string; // ISO 8601 UTC
+}
+
+export interface AppointmentResponse {
+  id: number;
+  appointmentDate: string;
+  status: string;
+  createdAt: string;
+}
+
+export const submitAppointment = async (data: CreateAppointmentRequest): Promise<AppointmentResponse> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/appointment/book`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: 'Failed to book appointment' }));
+    throw new Error(err.message || 'Failed to book appointment');
+  }
+  return response.json();
+};
+

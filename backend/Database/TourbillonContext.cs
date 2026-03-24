@@ -21,6 +21,7 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
     public DbSet<WatchEditorialContent> WatchEditorialContents { get; set; }
     public DbSet<WatchEditorialLink> WatchEditorialLinks { get; set; }
     public DbSet<ContactInquiry> ContactInquiries { get; set; }
+    public DbSet<Appointment> Appointments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -61,6 +62,12 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
         modelBuilder.Entity<ContactInquiry>(entity =>
         {
             entity.HasIndex(e => e.UserId);
+        });
+
+        modelBuilder.Entity<Appointment>(entity =>
+        {
+            entity.HasIndex(e => e.CustomerEmail);
+            entity.HasIndex(e => e.AppointmentDate);
         });
     }
 }

@@ -124,6 +124,9 @@ builder.Services.AddScoped<IMagicLoginService, MagicLoginService>();
 // Register contact inquiry service (advisor inquiries + email notifications)
 builder.Services.AddScoped<IContactInquiryService, ContactInquiryService>();
 
+// Register appointment booking service
+builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
 {

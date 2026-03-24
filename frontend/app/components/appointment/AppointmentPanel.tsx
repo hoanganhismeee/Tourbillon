@@ -1,0 +1,601 @@
+// Sliding appointment booking panel — vertical accordion with 4 collapsible sections.
+// Uses portal + double-RAF + pure CSS transitions (same pattern as SearchOverlay).
+'use client';
+
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
+import { submitAppointment } from '@/lib/api';
+
+interface AppointmentPanelProps {
+  isOpen: boolean;
+  onClose: () => void;
+  watchId?: number;
+  brandName?: string;
+}
+
+// Easing curves — same as SearchOverlay
+const ENTER = 'cubic-bezier(0.16, 1, 0.3, 1)';
+const EXIT  = 'cubic-bezier(0.4, 0, 1, 1)';
+
+const TIME_SLOTS = [
+  '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM',
+  '12:00 PM', '12:30 PM', '1:00 PM',  '1:30 PM',
+  '2:00 PM',  '2:30 PM',  '3:00 PM',  '3:30 PM',
+  '4:00 PM',  '4:30 PM',  '5:00 PM',
+];
+
+const DAY_HEADERS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+const MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function parseTimeSlot(slot: string): { hours: number; minutes: number } {
+  const [time, period] = slot.split(' ');
+  let [hours, minutes] = time.split(':').map(Number);
+  if (period === 'PM' && hours !== 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  return { hours, minutes };
+}
+
+// Build calendar grid for a given month: array of 6 rows x 7 cols (Mon-Sun)
+function buildCalendarGrid(year: number, month: number): (Date | null)[][] {
+  const firstDay = new Date(year, month, 1);
+  // getDay() is 0=Sun..6=Sat; shift to Mon=0..Sun=6
+  let startOffset = firstDay.getDay() - 1;
+  if (startOffset < 0) startOffset = 6;
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const rows: (Date | null)[][] = [];
+  let day = 1 - startOffset;
+
+  for (let r = 0; r < 6; r++) {
+    const row: (Date | null)[] = [];
+    for (let c = 0; c < 7; c++) {
+      if (day >= 1 && day <= daysInMonth) {
+        row.push(new Date(year, month, day));
+      } else {
+        row.push(null);
+      }
+      day++;
+    }
+    // Skip row if entirely empty
+    if (row.every(d => d === null)) break;
+    rows.push(row);
+  }
+  return rows;
+}
+
+export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }: AppointmentPanelProps) {
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+
+  const [shouldRender, setShouldRender] = useState(false);
+  const [visible, setVisible]           = useState(false);
+
+  // Which section is currently expanded (1-4), 0 = none (submitted)
+  const [activeSection, setActiveSection] = useState(1);
+
+  // Calendar state
+  const today = new Date();
+  const [calMonth, setCalMonth] = useState(today.getMonth());
+  const [calYear, setCalYear]   = useState(today.getFullYear());
+
+  // Selections
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedTime, setSelectedTime] = useState('');
+
+  // Personal info
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName]   = useState('');
+  const [email, setEmail]         = useState('');
+  const [phone, setPhone]         = useState('');
+
+  // Submit
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted]   = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+
+  // Track which sections have been confirmed
+  const [confirmed, setConfirmed] = useState<Set<number>>(new Set());
+
+  // Double-RAF: mount -> paint invisible -> transition to visible
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRender(true);
+      const r1 = requestAnimationFrame(() => {
+        requestAnimationFrame(() => setVisible(true));
+      });
+      return () => cancelAnimationFrame(r1);
+    } else {
+      setVisible(false);
+      const t = setTimeout(() => {
+        setShouldRender(false);
+        setActiveSection(1);
+        setCalMonth(today.getMonth());
+        setCalYear(today.getFullYear());
+        setSelectedDate(null);
+        setSelectedTime('');
+        setFirstName('');
+        setLastName('');
+        setEmail('');
+        setPhone('');
+        setSubmitting(false);
+        setSubmitted(false);
+        setError(null);
+        setConfirmed(new Set());
+      }, 400);
+      return () => clearTimeout(t);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // Lock body scroll
+  useEffect(() => {
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [isOpen]);
+
+  // Auto-fill from user when section 4 becomes active
+  useEffect(() => {
+    if (activeSection === 4 && user) {
+      setFirstName(prev => prev || user.firstName || '');
+      setLastName(prev => prev || user.lastName || '');
+      setEmail(user.email || '');
+      setPhone(prev => prev || user.phoneNumber || '');
+    }
+  }, [activeSection, user]);
+
+  const confirmSection = (section: number) => {
+    setConfirmed(prev => new Set(prev).add(section));
+    if (section < 4) setActiveSection(section + 1);
+  };
+
+  const editSection = (section: number) => {
+    setActiveSection(section);
+  };
+
+  const canConfirmSection3 = selectedDate !== null && selectedTime !== '';
+  const canSubmit = firstName.trim() !== '' && lastName.trim() !== '' && email.trim() !== '';
+
+  const handleSubmit = async () => {
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const { hours, minutes } = parseTimeSlot(selectedTime);
+      const appointmentDate = new Date(selectedDate!);
+      appointmentDate.setHours(hours, minutes, 0, 0);
+
+      await submitAppointment({
+        watchId,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        phone: phone.trim() || undefined,
+        boutiqueName: 'Tourbillon Sydney',
+        visitPurpose: 'discover_brand',
+        brandName: brandName || 'Tourbillon',
+        appointmentDate: appointmentDate.toISOString(),
+      });
+      setSubmitted(true);
+      setActiveSection(0);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Navigate calendar
+  const prevMonth = () => {
+    if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1); }
+    else setCalMonth(calMonth - 1);
+  };
+  const nextMonth = () => {
+    if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1); }
+    else setCalMonth(calMonth + 1);
+  };
+
+  // Is a calendar day selectable? Must be tomorrow or later, not Sunday
+  const isSelectable = (date: Date) => {
+    const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    return date >= tomorrow && date.getDay() !== 0;
+  };
+
+  // Can we go to previous month? Only if it's the current month or later
+  const canGoPrev = calYear > today.getFullYear() || (calYear === today.getFullYear() && calMonth > today.getMonth());
+
+  if (!shouldRender) return null;
+
+  const purposeLabel = brandName
+    ? `Discover the ${brandName} collections`
+    : 'Discover the Tourbillon collections';
+
+  const formattedDate = selectedDate
+    ? `${DAY_NAMES[selectedDate.getDay()]}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`
+    : '';
+
+  const calendarGrid = buildCalendarGrid(calYear, calMonth);
+
+  // Accordion section wrapper
+  const SectionHeader = ({ num, title, summary, isActive, isConfirmed: done, onEdit }: {
+    num: number; title: string; summary?: string;
+    isActive: boolean; isConfirmed: boolean; onEdit?: () => void;
+  }) => {
+    const isReachable = num <= activeSection || done;
+    return (
+      <div className={`border-b border-white/8 ${!isReachable ? 'opacity-40' : ''}`}>
+        <div className="flex items-center justify-between py-5">
+          <div>
+            <p className={`text-sm font-medium ${isActive ? 'text-[#ecddc8]' : 'text-white/70'}`}>
+              <span className="text-white/30 mr-2">{num}.</span>{title}
+            </p>
+            {done && !isActive && summary && (
+              <p className="text-sm text-white/50 mt-1 ml-5">{summary}</p>
+            )}
+          </div>
+          {done && !isActive && onEdit && (
+            <button
+              onClick={onEdit}
+              className="text-sm text-[#bfa68a] hover:text-[#d4c4a8] transition-colors underline underline-offset-2"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Book an appointment"
+      onKeyDown={e => e.key === 'Escape' && onClose()}
+    >
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+          backgroundColor: visible ? 'rgba(4,2,0,0.25)' : 'rgba(4,2,0,0)',
+          transition: visible
+            ? `background-color 400ms ${ENTER}`
+            : `background-color 250ms ${EXIT}`,
+        }}
+      />
+
+      {/* Panel — slides from right */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201,
+          width: '100%', maxWidth: 520,
+          background: '#1a1613',
+          borderLeft: '1px solid rgba(255,255,255,0.08)',
+          overflowY: 'auto',
+          transform: visible ? 'translateX(0)' : 'translateX(100%)',
+          transition: visible
+            ? `transform 500ms ${ENTER}`
+            : `transform 350ms ${EXIT}`,
+          willChange: 'transform',
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-8 pt-8 pb-2">
+          <h2 className="font-playfair text-xl text-[#ecddc8]">
+            {submitted ? 'Appointment Confirmed' : 'Book an Appointment'}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-white/20 hover:text-white/50 transition-colors p-1"
+            aria-label="Close"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        {submitted ? (
+          /* Success State */
+          <div className="flex flex-col items-center text-center px-8 pt-12 pb-8">
+            <div className="w-16 h-16 rounded-full border-2 border-[#bfa68a] flex items-center justify-center mb-6">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#bfa68a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6L9 17l-5-5"/>
+              </svg>
+            </div>
+            <p className="text-white/90 text-lg font-medium mb-2">
+              {formattedDate} at {selectedTime}
+            </p>
+            <p className="text-white/50 text-sm mb-1">Tourbillon Sydney</p>
+            <p className="text-white/50 text-sm">123 George Street, Sydney NSW 2000</p>
+            <p className="text-white/40 text-sm mt-6">
+              A confirmation has been sent to {email}.
+            </p>
+            <button
+              onClick={onClose}
+              className="mt-10 py-3.5 px-12 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        ) : (
+          <div className="px-8 pb-8">
+            {/* --- Section 1: Select a Boutique --- */}
+            <SectionHeader
+              num={1} title="Select a boutique"
+              summary="Tourbillon Sydney"
+              isActive={activeSection === 1}
+              isConfirmed={confirmed.has(1)}
+              onEdit={() => editSection(1)}
+            />
+            <div
+              className="overflow-hidden transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+              style={{ maxHeight: activeSection === 1 ? 300 : 0, opacity: activeSection === 1 ? 1 : 0 }}
+            >
+              <div className="pt-2 pb-6">
+                <div className="border border-[#bfa68a]/40 bg-[#bfa68a]/5 rounded-xl p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 w-4 h-4 rounded-full border-2 border-[#bfa68a] flex items-center justify-center flex-shrink-0">
+                      <div className="w-2 h-2 rounded-full bg-[#bfa68a]" />
+                    </div>
+                    <div>
+                      <p className="text-white/90 font-medium">Tourbillon Sydney</p>
+                      <p className="text-white/50 text-sm mt-1">123 George Street</p>
+                      <p className="text-white/50 text-sm">Sydney, NSW 2000</p>
+                      <p className="text-white/40 text-xs mt-2">Mon - Sat: 10:00 AM - 6:00 PM</p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => confirmSection(1)}
+                  className="w-full mt-4 py-3 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition-colors text-sm"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+
+            {/* --- Section 2: Purpose of Visit --- */}
+            <SectionHeader
+              num={2} title="Purpose of your visit"
+              summary={purposeLabel}
+              isActive={activeSection === 2}
+              isConfirmed={confirmed.has(2)}
+              onEdit={() => editSection(2)}
+            />
+            <div
+              className="overflow-hidden transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+              style={{ maxHeight: activeSection === 2 ? 200 : 0, opacity: activeSection === 2 ? 1 : 0 }}
+            >
+              <div className="pt-2 pb-6">
+                <div className="border border-[#bfa68a]/40 bg-[#bfa68a]/5 rounded-xl p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 w-4 h-4 rounded-full border-2 border-[#bfa68a] flex items-center justify-center flex-shrink-0">
+                      <div className="w-2 h-2 rounded-full bg-[#bfa68a]" />
+                    </div>
+                    <p className="text-white/90 font-medium">{purposeLabel}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => confirmSection(2)}
+                  className="w-full mt-4 py-3 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition-colors text-sm"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+
+            {/* --- Section 3: Appointment Details (Calendar + Time) --- */}
+            <SectionHeader
+              num={3} title="Appointment details"
+              summary={selectedDate && selectedTime ? `${formattedDate} at ${selectedTime}` : undefined}
+              isActive={activeSection === 3}
+              isConfirmed={confirmed.has(3)}
+              onEdit={() => editSection(3)}
+            />
+            <div
+              className="overflow-hidden transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+              style={{ maxHeight: activeSection === 3 ? 800 : 0, opacity: activeSection === 3 ? 1 : 0 }}
+            >
+              <div className="pt-2 pb-6">
+                {/* Calendar header */}
+                <label className="block text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Date *</label>
+                <div className="flex items-center justify-between mb-4">
+                  <button
+                    onClick={prevMonth}
+                    disabled={!canGoPrev}
+                    className="text-white/40 hover:text-white/70 disabled:opacity-20 disabled:cursor-not-allowed transition-colors p-1"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+                  </button>
+                  <span className="text-sm font-semibold uppercase tracking-widest text-white/70">
+                    {MONTH_FULL[calMonth]} {calYear}
+                  </span>
+                  <button
+                    onClick={nextMonth}
+                    className="text-white/40 hover:text-white/70 transition-colors p-1"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                </div>
+
+                {/* Day headers */}
+                <div className="grid grid-cols-7 mb-1">
+                  {DAY_HEADERS.map(d => (
+                    <div key={d} className="text-center text-[10px] font-semibold uppercase tracking-wider text-white/30 py-1">
+                      {d}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Calendar grid */}
+                <div className="grid grid-cols-7">
+                  {calendarGrid.flat().map((date, i) => {
+                    if (!date) return <div key={`empty-${i}`} className="py-2" />;
+
+                    const selectable = isSelectable(date);
+                    const isSelected = selectedDate?.toDateString() === date.toDateString();
+                    const isToday = date.toDateString() === today.toDateString();
+                    const isSunday = date.getDay() === 0;
+
+                    return (
+                      <button
+                        key={date.toISOString()}
+                        onClick={() => { if (selectable) { setSelectedDate(date); setSelectedTime(''); } }}
+                        disabled={!selectable}
+                        className={`relative py-2 text-sm text-center transition-colors rounded-lg mx-0.5 my-0.5
+                          ${isSelected
+                            ? 'bg-[#bfa68a]/20 text-[#ecddc8] font-semibold'
+                            : selectable
+                              ? 'text-white/70 hover:bg-white/5 hover:text-white/90'
+                              : isSunday
+                                ? 'text-white/15 cursor-not-allowed'
+                                : 'text-white/20 cursor-not-allowed'
+                          }
+                          ${isToday && !isSelected ? 'font-semibold text-white/90' : ''}
+                        `}
+                      >
+                        {date.getDate()}
+                        {isSelected && (
+                          <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#bfa68a]" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Time slots — appear after date is selected */}
+                {selectedDate && (
+                  <div className="mt-5" style={{ animation: 'apptFadeUp 250ms ease-out' }}>
+                    <style>{`@keyframes apptFadeUp { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }`}</style>
+                    <label className="block text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Available Time *</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {TIME_SLOTS.map(slot => {
+                        const isSelected = selectedTime === slot;
+                        return (
+                          <button
+                            key={slot}
+                            onClick={() => setSelectedTime(slot)}
+                            className={`py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                              isSelected
+                                ? 'border-[#bfa68a] bg-[#bfa68a]/15 text-[#ecddc8]'
+                                : 'border-white/10 bg-white/5 text-white/50 hover:border-white/20 hover:text-white/70'
+                            }`}
+                          >
+                            {slot}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => confirmSection(3)}
+                  disabled={!canConfirmSection3}
+                  className="w-full mt-5 py-3 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+
+            {/* --- Section 4: Personal Information --- */}
+            <SectionHeader
+              num={4} title="Personal information"
+              summary={firstName && lastName ? `${firstName} ${lastName}` : undefined}
+              isActive={activeSection === 4}
+              isConfirmed={confirmed.has(4)}
+            />
+            <div
+              className="overflow-hidden transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+              style={{ maxHeight: activeSection === 4 ? 600 : 0, opacity: activeSection === 4 ? 1 : 0 }}
+            >
+              <div className="pt-2 pb-6">
+                {/* Sign-in prompt for guests */}
+                {!authLoading && !isAuthenticated && (
+                  <div className="flex items-center gap-2 mb-5 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
+                    <span className="text-white/50 text-sm">Already joined Tourbillon?</span>
+                    <Link
+                      href={`/login?redirect=${encodeURIComponent(`/watches/${watchId}`)}`}
+                      className="text-[#bfa68a] hover:text-[#d4c4a8] text-sm font-medium transition-colors"
+                    >
+                      Sign in
+                    </Link>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-white/60 mb-2">First Name *</label>
+                    <input
+                      type="text" value={firstName}
+                      onChange={e => setFirstName(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-[#bfa68a]/50 transition-colors"
+                      placeholder="First name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-white/60 mb-2">Last Name *</label>
+                    <input
+                      type="text" value={lastName}
+                      onChange={e => setLastName(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-[#bfa68a]/50 transition-colors"
+                      placeholder="Last name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-white/60 mb-2">Email *</label>
+                    <input
+                      type="email" value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      readOnly={isAuthenticated && !!user?.email}
+                      className={`w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-[#bfa68a]/50 transition-colors ${
+                        isAuthenticated && user?.email ? 'opacity-60 cursor-not-allowed' : ''
+                      }`}
+                      placeholder="Email address"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-white/60 mb-2">
+                      Phone <span className="text-white/30">(Optional)</span>
+                    </label>
+                    <input
+                      type="tel" value={phone}
+                      onChange={e => setPhone(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-[#bfa68a]/50 transition-colors"
+                      placeholder="Phone number"
+                    />
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="mt-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSubmit}
+                  disabled={!canSubmit || submitting}
+                  className="w-full mt-5 py-3 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Booking...' : 'Book Appointment'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
