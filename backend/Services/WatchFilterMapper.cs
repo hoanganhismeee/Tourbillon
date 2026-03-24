@@ -23,10 +23,20 @@ public class WatchFilterMapper
                 && MatchesMaxThickness(specs, intent.MaxThicknessMm)
                 && MatchesMaxDiameter(specs, intent.MaxDiameterMm)
                 && MatchesPrice(w, intent.MinPrice, intent.MaxPrice)
-                && MatchesComplications(specs, intent.Complications);
+                && MatchesComplications(specs, intent.Complications)
+                && MatchesStyle(w.Collection?.Style, intent.Style);
         }).ToList();
 
         return filtered.Count > 3 ? filtered : watches;
+    }
+
+    // Style filter: compares collection's DB-stored style tag against the query style.
+    // Null collection style (uncategorized) is never excluded — falls through to LLM reranker.
+    private static bool MatchesStyle(string? collectionStyle, string? queryStyle)
+    {
+        if (queryStyle == null) return true;
+        if (collectionStyle == null) return true;
+        return string.Equals(collectionStyle, queryStyle, StringComparison.OrdinalIgnoreCase);
     }
 
     // Case material must contain at least one of the requested materials

@@ -11,11 +11,9 @@ import Image from 'next/image';
 import {
   watchFinderSearch,
   fetchBrands,
-  fetchFilterOptions,
   fetchCollections,
   WatchFinderResult,
   QueryIntent,
-  FilterOptions,
   Brand,
   Collection,
   Watch,
@@ -69,6 +67,8 @@ const PRICE_BUCKETS = [
   { label: '$50k – $100k',     test: (p: number) => p >= 50_000 && p < 100_000 },
   { label: '$25k – $50k',      test: (p: number) => p >= 25_000 && p < 50_000 },
   { label: '$10k – $25k',      test: (p: number) => p >= 10_000 && p < 25_000 },
+  { label: '$5k – $10k',       test: (p: number) => p >= 5_000  && p < 10_000 },
+  { label: 'Under $5k',        test: (p: number) => p > 0       && p < 5_000  },
 ];
 
 // Curated case material options — majority coverage; niche values fall under "Other"
@@ -143,6 +143,8 @@ function buildFiltersFromIntent(intent: QueryIntent): Filters {
     f.priceBuckets = PRICE_BUCKETS
       .filter(b => {
         if (b.label === 'Price on Request') return false;
+        if (b.label === 'Under $5k')    return intent.maxPrice! > 0;
+        if (b.label === '$5k – $10k')   return intent.maxPrice! >= 5_000;
         if (b.label === '$10k – $25k')  return intent.maxPrice! >= 10_000;
         if (b.label === '$25k – $50k')  return intent.maxPrice! >= 25_000;
         if (b.label === '$50k – $100k') return intent.maxPrice! >= 50_000;
@@ -625,7 +627,6 @@ export default function SmartSearchClient() {
   const [result, setResult] = useState<WatchFinderResult | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
-  const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [wristFit, setWristFit] = useState('');
   const [editQuery, setEditQuery] = useState(query);
@@ -639,10 +640,9 @@ export default function SmartSearchClient() {
   // Load filter metadata immediately (fast DB queries) so the filter bar renders during the AI call.
   // watchFinderSearch is slow (~4s) and runs separately — filter pills appear right away.
   useEffect(() => {
-    Promise.all([fetchBrands(), fetchFilterOptions(), fetchCollections()])
-      .then(([br, fo, cols]) => {
+    Promise.all([fetchBrands(), fetchCollections()])
+      .then(([br, cols]) => {
         setBrands(br);
-        setFilterOptions(fo);
         setCollections(cols);
       })
       .catch(() => {});

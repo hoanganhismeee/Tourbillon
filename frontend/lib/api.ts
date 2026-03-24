@@ -31,6 +31,7 @@ export interface Collection {
   description: string;
   image: string;
   brandId: number;
+  style?: string | null;
 }
 
 export interface WatchEditorialContent {
@@ -155,6 +156,7 @@ export interface QueryIntent {
   caseMaterial: string | null;
   movementType: string | null;
   waterResistance: string | null;
+  style?: string | null;
 }
 
 export interface WatchFinderResult {
