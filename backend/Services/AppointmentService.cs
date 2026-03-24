@@ -83,7 +83,7 @@ public class AppointmentService : IAppointmentService
         {
             try
             {
-                await SendUserConfirmationEmail(appointment, watch);
+                await SendUserConfirmationEmail(appointment);
                 await SendAdminNotificationEmail(appointment, watch);
             }
             catch (Exception ex)
@@ -95,40 +95,12 @@ public class AppointmentService : IAppointmentService
         return appointment;
     }
 
-    private async Task SendUserConfirmationEmail(Appointment appt, Watch? watch)
+    private async Task SendUserConfirmationEmail(Appointment appt)
     {
         var displayName = !string.IsNullOrEmpty(appt.CustomerFirstName) ? appt.CustomerFirstName : "there";
         var fullName = $"{appt.CustomerFirstName} {appt.CustomerLastName}".Trim();
         var dateStr = appt.AppointmentDate.ToString("dddd, d MMMM yyyy");
         var timeStr = appt.AppointmentDate.ToString("h:mm tt");
-        var watchLine = "";
-        if (watch != null)
-        {
-            var imageUrl = watch.GetImageUrl();
-            var brandName = watch.Brand?.Name ?? "";
-            var refNumber = System.Net.WebUtility.HtmlEncode(watch.Name);
-            var priceStr = watch.CurrentPrice == 0
-                ? "Price on Request"
-                : $"AUD {watch.CurrentPrice:N0}";
-            var imgTag = !string.IsNullOrEmpty(imageUrl)
-                ? $@"<img src=""{imageUrl}"" alt=""{refNumber}"" width=""120"" height=""120"" style=""display:block;border-radius:8px;object-fit:cover;background:#f0e8dc;"" />"
-                : "";
-
-            watchLine = $@"
-<tr><td style=""padding:20px;border-bottom:1px solid #e8dcc8;"">
-    <span style=""color:#8a7a66;font-size:13px;text-transform:uppercase;letter-spacing:1px;"">Watch of Interest</span>
-    <table cellpadding=""0"" cellspacing=""0"" style=""margin-top:12px;width:100%;"">
-        <tr>
-            {(!string.IsNullOrEmpty(imgTag) ? $@"<td style=""width:120px;vertical-align:top;padding-right:16px;"">{imgTag}</td>" : "")}
-            <td style=""vertical-align:top;"">
-                <p style=""margin:0 0 4px;color:#8a7a66;font-size:12px;text-transform:uppercase;letter-spacing:1px;"">{System.Net.WebUtility.HtmlEncode(brandName)}</p>
-                <p style=""margin:0 0 10px;color:#6a6460;font-size:13px;font-family:monospace;"">Ref. {refNumber}</p>
-                <p style=""margin:0;display:inline-block;background:#1a1613;color:#ecddc8;font-size:13px;padding:6px 14px;border-radius:20px;letter-spacing:0.5px;"">{priceStr}</p>
-            </td>
-        </tr>
-    </table>
-</td></tr>";
-        }
         var notifyLine = "email";
 
         var body = $@"
@@ -176,7 +148,6 @@ public class AppointmentService : IAppointmentService
                             <strong style=""color:#1a1613;"">{System.Net.WebUtility.HtmlEncode(appt.BoutiqueName)}</strong><br>
                             <span style=""color:#6a6460;font-size:14px;"">123 George Street, Sydney NSW 2000</span>
                         </td></tr>
-                        {watchLine}
                         <tr><td style=""padding:14px 20px;"">
                             <span style=""color:#8a7a66;font-size:13px;text-transform:uppercase;letter-spacing:1px;"">Notifications</span><br>
                             <strong style=""color:#1a1613;"">Via {notifyLine}</strong>

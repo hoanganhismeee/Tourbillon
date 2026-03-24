@@ -126,6 +126,7 @@ builder.Services.AddScoped<IContactInquiryService, ContactInquiryService>();
 
 // Register appointment booking service
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+builder.Services.AddScoped<IRegisterInterestService, RegisterInterestService>();
 
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>

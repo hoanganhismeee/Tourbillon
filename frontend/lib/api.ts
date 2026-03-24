@@ -701,3 +701,37 @@ export const submitAppointment = async (data: CreateAppointmentRequest): Promise
   return response.json();
 };
 
+// --- Register Your Interest ---
+
+export interface CreateRegisterInterestRequest {
+  salutation: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  phoneRegionCode?: string;
+  message?: string;
+  watchId?: number;
+  brandName?: string;
+  collectionName?: string;
+}
+
+export interface RegisterInterestResponse {
+  id: number;
+  createdAt: string;
+}
+
+export const submitRegisterInterest = async (data: CreateRegisterInterestRequest): Promise<RegisterInterestResponse> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/register-interest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: 'Failed to submit registration' }));
+    throw new Error(err.message || 'Failed to submit registration');
+  }
+  return response.json();
+};
+
