@@ -121,9 +121,7 @@ builder.Services.AddScoped<ITasteProfileService, TasteProfileService>();
 // Register magic login (passwordless OTP) service
 builder.Services.AddScoped<IMagicLoginService, MagicLoginService>();
 
-// Register Stripe checkout and order services (Phase 4)
-builder.Services.AddScoped<IStripeService, StripeService>();
-builder.Services.AddScoped<IOrderService, OrderService>();
+// Register contact inquiry service (advisor inquiries + email notifications)
 builder.Services.AddScoped<IContactInquiryService, ContactInquiryService>();
 
 // Configures the application's cookie for handling authentication sessions.

@@ -12,9 +12,7 @@ import { motion } from 'framer-motion';
 import { fetchWatchById, fetchBrands, fetchCollections } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
-import { useAuth } from '@/contexts/AuthContext';
 import { parseStructuredSpecs, parseFlatSpecs, buildSpecSections } from '@/lib/specs';
-import { useCart } from '@/stores/cartStore';
 import { DYNAMIC_ROUTES } from '@/app/constants/routes';
 import CompareToggle from '../../components/compare/CompareToggle';
 import WristFitWidget from '../../components/wristfit/WristFitWidget';
@@ -33,14 +31,7 @@ const WatchDetailPage = () => {
     const [imageLoading, setImageLoading] = useState(true);
     const [imgSrc, setImgSrc] = useState<string | null>(null);
     const [retryCount, setRetryCount] = useState<number>(0);
-    const [cartAdded, setCartAdded] = useState(false);
-
     const { navigationState } = useNavigation();
-    const { isAuthenticated } = useAuth();
-    const cartStore = useCart();
-
-    // Rehydrate cart from localStorage on mount (SSR-safe)
-    useEffect(() => { useCart.persist.rehydrate(); }, []);
 
     const { data: watch, isLoading, error } = useQuery({
         queryKey: ['watch', numericWatchId],
@@ -243,40 +234,12 @@ const WatchDetailPage = () => {
                     </div>
 
                     <div className="flex items-center gap-4 mb-10">
-                        {watch.currentPrice > 0 ? (
-                            <>
-                                {cartStore.isInCart(watch.id) ? (
-                                    <Link href="/cart"
-                                        className="py-4 px-8 rounded-xl font-semibold bg-[#bfa68a]/20 text-[#bfa68a] border border-[#bfa68a]/30 transition hover:bg-[#bfa68a]/30">
-                                        In Cart — View
-                                    </Link>
-                                ) : (
-                                    <motion.button
-                                        whileTap={{ scale: 0.97 }}
-                                        onClick={() => {
-                                            const brandName = brands.find((b: { id: number; name: string }) => b.id === watch.brandId)?.name ?? '';
-                                            cartStore.addItem(watch, brandName);
-                                            setCartAdded(true);
-                                            setTimeout(() => setCartAdded(false), 2000);
-                                        }}
-                                        className="py-4 px-8 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition">
-                                        {cartAdded ? 'Added' : 'Add to Cart'}
-                                    </motion.button>
-                                )}
-                                <button
-                                    onClick={() => router.push(DYNAMIC_ROUTES.CONTACT_ADVISOR(watch.id))}
-                                    className="py-4 px-8 rounded-xl font-semibold bg-white/10 text-white hover:bg-white/20 transition">
-                                    Contact Advisor
-                                </button>
-                            </>
-                        ) : (
-                            <motion.button
-                                whileTap={{ scale: 0.97 }}
-                                onClick={() => router.push(DYNAMIC_ROUTES.CONTACT_ADVISOR(watch.id))}
-                                className="py-4 px-8 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition">
-                                Contact Advisor
-                            </motion.button>
-                        )}
+                        <motion.button
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => router.push(DYNAMIC_ROUTES.CONTACT_ADVISOR(watch.id))}
+                            className="py-4 px-8 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition">
+                            Contact Advisor
+                        </motion.button>
                         <CompareToggle watch={watch} variant="button" />
                     </div>
 
