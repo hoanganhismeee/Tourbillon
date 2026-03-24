@@ -16,8 +16,6 @@ export const ROUTES = {
   CONTACT: '/contact',
   STORIES: '/stories',
   TREND: '/trend',
-  CART: '/cart',
-  CHECKOUT: '/checkout',
 } as const;
 
 export const DYNAMIC_ROUTES = {
@@ -25,6 +23,5 @@ export const DYNAMIC_ROUTES = {
   BRAND_DETAIL: (id: number | string) => `/brands/${id}`,
   COLLECTION_DETAIL: (id: number | string) => `/collections/${id}`,
   SEARCH_RESULTS: (query: string) => `/search?q=${encodeURIComponent(query)}`,
-  ORDER_CONFIRMATION: (orderId: number) => `/checkout/confirmation?orderId=${orderId}`,
   CONTACT_ADVISOR: (watchId: number) => `/contact?watchId=${watchId}`,
-} as const; 
+} as const;

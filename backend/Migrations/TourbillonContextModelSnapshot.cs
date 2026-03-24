@@ -259,118 +259,6 @@ namespace backend.Migrations
                     b.ToTable("ContactInquiries");
                 });
 
-            modelBuilder.Entity("backend.Models.Order", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime?>("ConfirmedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsGuest")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("ShippingAddress")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ShippingCity")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ShippingCountry")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ShippingEmail")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ShippingFirstName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ShippingLastName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ShippingState")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("StripePaymentIntentId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("TotalAmount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<int?>("UserId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StripePaymentIntentId")
-                        .IsUnique();
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("Orders");
-                });
-
-            modelBuilder.Entity("backend.Models.OrderItem", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("OrderId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal>("UnitPrice")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("WatchDescription")
-                        .HasColumnType("text");
-
-                    b.Property<int>("WatchId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("WatchImage")
-                        .HasColumnType("text");
-
-                    b.Property<string>("WatchName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrderId");
-
-                    b.HasIndex("WatchId");
-
-                    b.ToTable("OrderItems");
-                });
-
             modelBuilder.Entity("backend.Models.PriceTrend", b =>
                 {
                     b.Property<int>("Id")
@@ -776,34 +664,6 @@ namespace backend.Migrations
                     b.Navigation("Watch");
                 });
 
-            modelBuilder.Entity("backend.Models.Order", b =>
-                {
-                    b.HasOne("backend.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("backend.Models.OrderItem", b =>
-                {
-                    b.HasOne("backend.Models.Order", "Order")
-                        .WithMany("Items")
-                        .HasForeignKey("OrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("backend.Models.Watch", "Watch")
-                        .WithMany()
-                        .HasForeignKey("WatchId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Order");
-
-                    b.Navigation("Watch");
-                });
-
             modelBuilder.Entity("backend.Models.PriceTrend", b =>
                 {
                     b.HasOne("backend.Models.Watch", "Watches")
@@ -892,11 +752,6 @@ namespace backend.Migrations
             modelBuilder.Entity("backend.Models.Collection", b =>
                 {
                     b.Navigation("Watches");
-                });
-
-            modelBuilder.Entity("backend.Models.Order", b =>
-                {
-                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("backend.Models.Watch", b =>
