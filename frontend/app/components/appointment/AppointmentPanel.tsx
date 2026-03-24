@@ -2,7 +2,7 @@
 // Uses portal + double-RAF + pure CSS transitions (same pattern as SearchOverlay).
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -96,7 +96,9 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 function parseTimeSlot(slot: string): { hours: number; minutes: number } {
   const [time, period] = slot.split(' ');
-  let [hours, minutes] = time.split(':').map(Number);
+  const [hoursStr, minutesStr] = time.split(':');
+  let hours = Number(hoursStr);
+  const minutes = Number(minutesStr);
   if (period === 'PM' && hours !== 12) hours += 12;
   if (period === 'AM' && hours === 12) hours = 0;
   return { hours, minutes };
@@ -155,6 +157,8 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
   const [phone, setPhone]         = useState('');
   const [phoneRegion, setPhoneRegion] = useState('+61');
   const [regionDropdownOpen, setRegionDropdownOpen] = useState(false);
+  const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
+  const regionBtnRef = useRef<HTMLButtonElement>(null);
 
   // Email notification is always on
   const notifyByEmail = true;
@@ -190,6 +194,7 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
         setPhone('');
         setPhoneRegion('+61');
         setRegionDropdownOpen(false);
+        setDropdownRect(null);
 
         setSubmitting(false);
         setSubmitted(false);
@@ -347,6 +352,7 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
       {/* Panel — slides from right */}
       <div
         onClick={e => e.stopPropagation()}
+        onScroll={() => setRegionDropdownOpen(false)}
         style={{
           position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201,
           width: '100%', maxWidth: 520,
@@ -659,11 +665,15 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
                       Mobile Number <span className="text-white/30">(Optional)</span>
                     </label>
                     <div className="flex gap-2">
-                      {/* Region code dropdown */}
-                      <div className="relative flex-shrink-0">
+                      {/* Region code trigger — dropdown rendered as fixed sibling outside scroll container */}
+                      <div className="flex-shrink-0">
                         <button
+                          ref={regionBtnRef}
                           type="button"
-                          onClick={() => setRegionDropdownOpen(!regionDropdownOpen)}
+                          onClick={() => {
+                            if (regionBtnRef.current) setDropdownRect(regionBtnRef.current.getBoundingClientRect());
+                            setRegionDropdownOpen(prev => !prev);
+                          }}
                           className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-white text-sm hover:border-white/20 focus:outline-none focus:border-[#bfa68a]/50 transition-colors min-w-[90px]"
                         >
                           <span>{phoneRegion}</span>
@@ -671,23 +681,6 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
                             <path d="M6 9l6 6 6-6"/>
                           </svg>
                         </button>
-                        {regionDropdownOpen && (
-                          <div className="absolute top-full left-0 mt-1 w-56 max-h-52 overflow-y-auto bg-[#252220] border border-white/10 rounded-xl shadow-xl z-10">
-                            {PHONE_REGIONS.map(r => (
-                              <button
-                                key={r.code + r.label}
-                                type="button"
-                                onClick={() => { setPhoneRegion(r.code); setRegionDropdownOpen(false); }}
-                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-white/5 ${
-                                  phoneRegion === r.code ? 'text-[#ecddc8] bg-white/5 font-medium' : 'text-white/70'
-                                }`}
-                              >
-                                <span className="font-medium">{r.code}</span>{' '}
-                                <span className="text-white/50">{r.label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
                       </div>
                       <input
                         type="tel" value={phone}
@@ -717,6 +710,41 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
           </div>
         )}
       </div>
+
+      {/* Phone region dropdown — fixed, rendered outside scroll container to avoid overflow clipping */}
+      {regionDropdownOpen && dropdownRect && (
+        <div
+          style={{
+            position: 'fixed',
+            top: dropdownRect.top,
+            left: dropdownRect.left - 248,
+            width: 240,
+            maxHeight: 208,
+            overflowY: 'auto',
+            background: '#252220',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 12,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            zIndex: 300,
+          }}
+        >
+          {PHONE_REGIONS.map(r => (
+            <button
+              key={r.code + r.label}
+              type="button"
+              onClick={() => { setPhoneRegion(r.code); setRegionDropdownOpen(false); }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 16px', fontSize: 14,
+                background: phoneRegion === r.code ? 'rgba(255,255,255,0.05)' : 'transparent',
+                color: phoneRegion === r.code ? '#ecddc8' : 'rgba(255,255,255,0.7)',
+                fontWeight: phoneRegion === r.code ? 600 : 400,
+                border: 'none', cursor: 'pointer' }}
+            >
+              <span style={{ fontWeight: 600 }}>{r.code}</span>{' '}
+              <span style={{ color: 'rgba(255,255,255,0.5)' }}>{r.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>,
     document.body
   );

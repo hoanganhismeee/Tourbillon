@@ -13,10 +13,10 @@ import { fetchWatchById, fetchBrands, fetchCollections } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { parseStructuredSpecs, parseFlatSpecs, buildSpecSections } from '@/lib/specs';
-import { DYNAMIC_ROUTES } from '@/app/constants/routes';
 import CompareToggle from '../../components/compare/CompareToggle';
 import WristFitWidget from '../../components/wristfit/WristFitWidget';
 import AppointmentPanel from '../../components/appointment/AppointmentPanel';
+import RegisterInterestPanel from '../../components/appointment/RegisterInterestPanel';
 import Image from 'next/image';
 
 
@@ -33,6 +33,7 @@ const WatchDetailPage = () => {
     const [imgSrc, setImgSrc] = useState<string | null>(null);
     const [retryCount, setRetryCount] = useState<number>(0);
     const [appointmentOpen, setAppointmentOpen] = useState(false);
+    const [registerInterestOpen, setRegisterInterestOpen] = useState(false);
     const { navigationState } = useNavigation();
 
     const { data: watch, isLoading, error } = useQuery({
@@ -136,6 +137,7 @@ const WatchDetailPage = () => {
     const structuredSpecs = parseStructuredSpecs(watch.specs);
     const flatSpecRows = structuredSpecs ? null : parseFlatSpecs(watch.specs);
     const specSections = structuredSpecs ? buildSpecSections(structuredSpecs) : [];
+    const collectionName = collections.find(c => c.id === watch.collectionId)?.name;
 
     return (
         <>
@@ -239,9 +241,9 @@ const WatchDetailPage = () => {
                     <div className="flex items-center gap-4 mb-10">
                         <motion.button
                             whileTap={{ scale: 0.97 }}
-                            onClick={() => router.push(DYNAMIC_ROUTES.CONTACT_ADVISOR(watch.id))}
+                            onClick={() => setRegisterInterestOpen(true)}
                             className="py-4 px-8 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition">
-                            Contact Advisor
+                            Register Your Interest
                         </motion.button>
                         <motion.button
                             whileTap={{ scale: 0.97 }}
@@ -331,6 +333,16 @@ const WatchDetailPage = () => {
             onClose={() => setAppointmentOpen(false)}
             watchId={numericWatchId}
             brandName={brands.find(b => b.id === watch.brandId)?.name}
+        />
+        <RegisterInterestPanel
+            isOpen={registerInterestOpen}
+            onClose={() => setRegisterInterestOpen(false)}
+            watchId={numericWatchId}
+            brandName={brands.find(b => b.id === watch.brandId)?.name}
+            collectionName={collectionName}
+            watchReference={watch.name}
+            watchImageUrl={watch.imageUrl}
+            watchPrice={watch.currentPrice}
         />
         </>
     );
