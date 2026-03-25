@@ -35,16 +35,16 @@ function renderMarkdown(text: string): React.ReactNode[] {
       }
 
       if (match[0].startsWith('**')) {
-        parts.push(<strong key={match.index}>{match[2]}</strong>);
+        parts.push(<strong key={`${lineIdx}-${match.index}`}>{match[2]}</strong>);
       } else if (match[0].startsWith('*')) {
-        parts.push(<em key={match.index}>{match[3]}</em>);
+        parts.push(<em key={`${lineIdx}-${match.index}`}>{match[3]}</em>);
       } else {
         // Link — internal links use Next router, external open in new tab
         const href = match[5];
         const isInternal = href.startsWith('/');
         parts.push(
           <a
-            key={match.index}
+            key={`${lineIdx}-${match.index}`}
             href={href}
             target={isInternal ? undefined : '_blank'}
             rel={isInternal ? undefined : 'noopener noreferrer'}
