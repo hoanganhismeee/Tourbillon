@@ -10,7 +10,11 @@ export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
-    login().then(() => router.replace('/'));
+    login().then(() => {
+      const dest = sessionStorage.getItem('authRedirect') || '/';
+      sessionStorage.removeItem('authRedirect');
+      router.replace(dest);
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

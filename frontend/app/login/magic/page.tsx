@@ -3,7 +3,7 @@
 // Step 2 — user enters the 6 boxes; on confirm the session cookie is set and they are redirected home.
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { requestMagicLogin, verifyMagicLogin } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,6 +15,8 @@ const RESEND_COOLDOWN = 30; // seconds
 export default function MagicLoginPage() {
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get('redirect');
 
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
@@ -104,7 +106,7 @@ export default function MagicLoginPage() {
     try {
       await verifyMagicLogin({ email: email.trim(), code });
       await login();
-      router.replace('/');
+      router.replace(redirect || '/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid or expired code.');
       setChars(Array(CODE_LENGTH).fill(''));
