@@ -550,6 +550,70 @@ def generate_discovery_intro():
     return jsonify(result)
 
 
+# ── Chat concierge endpoint ───────────────────────────────────────────────────
+
+CHAT_SYSTEM_PROMPT = """You are a knowledgeable luxury watch concierge for Tourbillon, a high-end watch boutique.
+Your role is to help clients discover, compare, and learn about luxury timepieces with authority and warmth.
+
+When referencing specific watches, link them as [Watch Name](/watches/{id}).
+When referencing brands, link them as [Brand Name](/brands/{id}).
+Keep responses under 200 words. Be direct and specific — no generic filler.
+Use markdown for emphasis and structure where helpful."""
+
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    """Conversational RAG endpoint for the chat concierge.
+    Input: { query, context[], history[], enableWebSearch }
+    Output: { message }"""
+    data = request.get_json(silent=True) or {}
+    query = (data.get("query") or "").strip()
+    context = data.get("context") or []
+    history = data.get("history") or []
+    enable_web_search = data.get("enableWebSearch", False)
+
+    if not query:
+        return jsonify({"error": "query is required"}), 400
+
+    web_snippets = []
+    if enable_web_search:
+        try:
+            from duckduckgo_search import DDGS
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=3))
+            web_snippets = [r["body"] for r in results if r.get("body")]
+        except Exception as e:
+            print(f"Web search failed (proceeding without): {e}")
+
+    # Build message list with system prompt, optional context injection, then history + query
+    messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+
+    context_block = "\n\n".join(context)
+    if context_block:
+        messages.append({"role": "user", "content": f"Relevant product context:\n{context_block}"})
+        messages.append({"role": "assistant", "content": "Understood, I have the context."})
+
+    if web_snippets:
+        web_block = "\n\n".join(web_snippets)
+        messages.append({"role": "user", "content": f"Web search results:\n{web_block}"})
+        messages.append({"role": "assistant", "content": "Noted the web context."})
+
+    # Append conversation history (role/content pairs from the client)
+    messages.extend(history)
+    messages.append({"role": "user", "content": query})
+
+    try:
+        resp = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            max_tokens=400,
+            temperature=0.3,
+        )
+        return jsonify({"message": resp.choices[0].message.content.strip()})
+    except Exception as e:
+        return jsonify({"error": f"Chat LLM call failed: {str(e)}"}), 502
+
+
 # ── Readiness + health checks ─────────────────────────────────────────────────
 
 @app.route("/ready")

@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { WatchesPageProvider } from "@/contexts/WatchesPageContext";
 import { NavigationProvider } from "@/contexts/NavigationContext";
 import { CursorProvider } from "@/contexts/CursorContext";
+import { ChatProvider } from "@/contexts/ChatContext";
 import "./globals.css";
 import NavBar from "./components/layout/NavBar";
 import AnimatedLayout from "./scrollMotion/AnimatedLayout";
@@ -56,12 +57,14 @@ export default function RootLayout({
             <WatchesPageProvider>
               <NavigationProvider>
                 <CursorProvider>
-                  <NavBar />
-                  <AnimatedLayout>
-                    {children}
-                  </AnimatedLayout>
-                  <CompareIndicator />
-                  <ChatWidget />
+                  <ChatProvider>
+                    <NavBar />
+                    <AnimatedLayout>
+                      {children}
+                    </AnimatedLayout>
+                    <CompareIndicator />
+                    <ChatWidget />
+                  </ChatProvider>
                   <CursorSelector />
                   <CustomCursor />
                 </CursorProvider>

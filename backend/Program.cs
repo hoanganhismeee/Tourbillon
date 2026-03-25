@@ -5,6 +5,7 @@ using backend.Middleware;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using System.Collections.Concurrent;
 using System.IO;
 using Npgsql;
 using Pgvector.EntityFrameworkCore;
@@ -111,6 +112,10 @@ builder.Services.AddScoped<WatchFinderService>();
 builder.Services.AddScoped<WatchEmbeddingService>();
 builder.Services.AddScoped<QueryCacheService>();
 builder.Services.AddScoped<WatchEditorialService>();
+
+// Register chat concierge services
+builder.Services.AddSingleton<ConcurrentDictionary<string, ChatSession>>();
+builder.Services.AddScoped<ChatService>();
 
 // Register taste profile service for Watch DNA personalization
 builder.Services.AddScoped<ITasteProfileService, TasteProfileService>();
