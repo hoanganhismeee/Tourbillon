@@ -2,13 +2,13 @@
 // Warm amber glass pill at bottom-8 right-8 — sits below the compare pill at bottom-24.
 'use client';
 
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import SlidingPanel from '@/app/components/appointment/SlidingPanel';
 import ChatPanel from './ChatPanel';
+import { useChat } from '@/contexts/ChatContext';
 
 export default function ChatWidget() {
-  const [isOpen, setIsOpen] = useState(false);
+  const { isOpen, openChat, closeChat } = useChat();
 
   return (
     <>
@@ -19,7 +19,7 @@ export default function ChatWidget() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           whileHover={{ scale: 1.04 }}
           whileTap={{ scale: 0.97 }}
-          onClick={() => setIsOpen(true)}
+          onClick={openChat}
           className="flex items-center gap-3 px-5 py-3.5 rounded-2xl border border-[#bfa68a]/50 shadow-xl shadow-black/40 cursor-pointer"
           style={{
             background: 'rgba(191,166,138,0.18)',
@@ -45,7 +45,7 @@ export default function ChatWidget() {
       {/* Sliding panel */}
       <SlidingPanel
         isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
+        onClose={closeChat}
         title="Chat Concierge"
       >
         <ChatPanel />

@@ -735,3 +735,51 @@ export const submitRegisterInterest = async (data: CreateRegisterInterestRequest
   return response.json();
 };
 
+// ── Chat concierge ────────────────────────────────────────────────────────────
+
+export interface ChatWatchCard {
+  id: number;
+  name: string;
+  description: string | null;
+  image: string | null;
+  imageUrl: string | null;
+  currentPrice: number;
+  brandId: number;
+}
+
+export interface ChatApiResponse {
+  message: string;
+  watchCards: ChatWatchCard[];
+  rateLimited?: boolean;
+  dailyUsed?: number | null;
+  dailyLimit?: number | null;
+}
+
+export const sendChatMessage = async (
+  sessionId: string,
+  message: string,
+): Promise<ChatApiResponse> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/chat/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, message }),
+    credentials: 'include',
+    timeoutMs: 30000,
+  });
+  if (response.status === 429) {
+    const data = await response.json();
+    return { ...data, rateLimited: true };
+  }
+  if (!response.ok) {
+    throw new Error('Chat request failed');
+  }
+  return response.json();
+};
+
+export const clearChatSession = async (sessionId: string): Promise<void> => {
+  await fetchWithTimeout(`${API_BASE_URL}/chat/session/${sessionId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+};
+
