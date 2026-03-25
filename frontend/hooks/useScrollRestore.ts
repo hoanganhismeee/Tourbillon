@@ -19,6 +19,7 @@ export function useScrollRestore(isReady: boolean) {
 
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
+      let restored = false;
       if (raw) {
         const saved = JSON.parse(raw);
         // Only restore if the checkpoint belongs to this page — not a stale checkpoint
@@ -29,8 +30,13 @@ export function useScrollRestore(isReady: boolean) {
         ) {
           window.scrollTo(0, saved.scrollPosition);
           clearNavigationState();
+          restored = true;
         }
       }
+      // On fresh forward navigation (no matching checkpoint), force scroll to top.
+      // Browser scroll restoration can wrongly resume a prior position when the same
+      // URL still exists in the history stack.
+      if (!restored) window.scrollTo(0, 0);
     } catch { /* corrupt data — ignore */ }
 
     // Let the scroll position settle for one frame, then fade the page in unhurriedly.

@@ -28,7 +28,7 @@ const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value);
 
 // Check if URL is from a luxury watch brand (known to have CDN issues)
 const isWatchBrandUrl = (url: string): boolean => {
-  const watchBrands = ['vacheron-constantin.com', 'patek.com', 'audemarspiguet.com', 'jaeger-lecoultre.com'];
+  const watchBrands = ['patek.com', 'audemarspiguet.com', 'jaeger-lecoultre.com'];
   return watchBrands.some(brand => url.includes(brand));
 };
 
@@ -89,9 +89,9 @@ export const imageTransformations = {
     // Try with transformations first, fallback to simple URL for small images
     try {
       return getOptimizedImageUrl(normalizedValue, {
-        width: 400,
-        height: 400,
-        crop: 'fill',
+        width: 800,
+        height: 800,
+        crop: 'fit',
         quality: 'auto',
         format: 'auto'
       });
@@ -106,9 +106,9 @@ export const imageTransformations = {
     const normalizedValue = normalizePublicId(value);
     try {
       return getOptimizedImageUrl(normalizedValue, {
-        width: 600,
-        height: 600,
-        crop: 'fill',
+        width: 800,
+        height: 800,
+        crop: 'fit',
         quality: 'auto',
         format: 'auto'
       });
@@ -124,7 +124,7 @@ export const imageTransformations = {
       return getOptimizedImageUrl(normalizedValue, {
         width: 1200,
         height: 1200,
-        crop: 'fill',
+        crop: 'fit',
         quality: 'auto',
         format: 'auto'
       });
@@ -140,7 +140,7 @@ export const imageTransformations = {
       return getOptimizedImageUrl(normalizedValue, {
         width: 200,
         height: 200,
-        crop: 'fill',
+        crop: 'fit',
         quality: 'auto',
         format: 'auto'
       });

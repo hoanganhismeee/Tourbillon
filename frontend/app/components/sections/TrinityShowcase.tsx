@@ -99,7 +99,7 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
                         Array.from({ length: 3 }, (_, index) => {
                             const watch = watches[index];
                             if (watch) {
-                                return <WatchCard key={watch.id} watch={watch} />;
+                                return <WatchCard key={watch.id} watch={watch} imageFit="cover" />;
                             } else {
                                 return renderPlaceholderCard(index);
                             }

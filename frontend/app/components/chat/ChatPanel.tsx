@@ -4,7 +4,8 @@
 
 const EXAMPLE_PROMPTS = [
   'Compare the Aquanaut and the Overseas',
-  'Tell me about Vacheron Constantin',
+  'Tell me more about Vacheron Constantin',
+  'As a girl, should I wear round or square dial'
 ];
 
 export default function ChatPanel() {
