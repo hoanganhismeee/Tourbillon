@@ -48,9 +48,9 @@ const WatchCard = ({ watch, brands, collections, isPriority = false, currentPage
     if (retryCount < 1) {
       setRetryCount(1);
       const fallback = getOptimizedImageUrl(watch.image, {
-        width: 400,
-        height: 400,
-        crop: 'fill',
+        width: 800,
+        height: 800,
+        crop: 'fit',
         quality: 'auto',
         format: 'jpg',
       }) + `?r=${Date.now()}`;
@@ -85,7 +85,7 @@ const WatchCard = ({ watch, brands, collections, isPriority = false, currentPage
                 width={400}
                 height={400}
                 sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"
-                className="w-full h-full object-cover rounded-xl"
+                className="w-full h-full object-contain rounded-xl"
                 priority={isPriority}
                 fetchPriority={isPriority ? 'high' as const : 'auto'}
                 placeholder="blur"

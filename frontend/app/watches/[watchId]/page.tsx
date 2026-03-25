@@ -58,6 +58,12 @@ const WatchDetailPage = () => {
         if (watch?.imageUrl) setImgSrc(watch.imageUrl);
     }, [watch?.imageUrl]);
 
+    // Always start at the top — browser scroll restoration can wrongly resume a prior
+    // scroll position when the same URL still exists in the history stack.
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
+
     // Auto-open panel when returning from login/register with ?panel=... in URL
     useEffect(() => {
         const panel = searchParams.get('panel');
@@ -189,7 +195,7 @@ const WatchDetailPage = () => {
                                       width={1200}
                                       height={1200}
                                       sizes="(min-width: 1024px) 600px, 90vw"
-                                      className={`w-full h-full object-cover rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+                                      className={`w-full h-full object-contain rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
                                       onError={handleImageError}
                                       onLoad={handleImageLoad}
                                       priority

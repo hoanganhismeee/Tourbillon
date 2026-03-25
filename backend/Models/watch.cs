@@ -29,17 +29,17 @@ public class Watch
         if (string.IsNullOrEmpty(Image))
             return null;
 
-        // If it's already a full URL, return as-is
+        // External URLs returned as-is — these will be replaced with Cloudinary public IDs
         if (Image.StartsWith("http://") || Image.StartsWith("https://"))
             return Image;
 
         // If it looks like a Cloudinary public ID (contains / or matches watch pattern), build full URL
         if (Image.Contains("/") || Image.StartsWith("watches/"))
         {
-            return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_400,h_400,c_fill,g_auto/{Image}";
+            return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_800,h_800,c_fit/{Image}";
         }
 
         // Otherwise assume it's a filename that needs the watches/ prefix and full URL
-        return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_600,h_600,c_fill,g_auto/{Image}";
+        return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_800,h_800,c_fit/{Image}";
     }
 }

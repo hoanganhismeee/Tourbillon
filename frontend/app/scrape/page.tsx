@@ -184,7 +184,7 @@ export default function ScrapeAdminPage() {
                                             alt={w.name}
                                             width={60}
                                             height={60}
-                                            className="rounded object-cover"
+                                            className="rounded object-contain"
                                             onError={(e) => {
                                                 if (!e.currentTarget.src.includes('upload/')) {
                                                     e.currentTarget.src = w.image;

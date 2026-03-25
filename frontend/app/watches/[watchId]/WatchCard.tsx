@@ -17,9 +17,10 @@ interface WatchCardProps {
   watch: Watch;
   className?: string;
   hrefSuffix?: string;  // appended to /watches/[id], e.g. "?wristFit=17"
+  imageFit?: 'cover' | 'contain';  // cover for showcase hero cards, contain to show full watch
 }
 
-const WatchCard = ({ watch, className = "", hrefSuffix = "" }: WatchCardProps) => {
+const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain' }: WatchCardProps) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [collection, setCollection] = useState<Collection | null>(null);
@@ -111,7 +112,7 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "" }: WatchCardProps) =
                   width={600}
                   height={600}
                   sizes="(min-width: 1024px) 300px, 80vw"
-                  className={`w-full h-full object-cover rounded-xl transition-opacity duration-500 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+                  className={`w-full h-full ${imageFit === 'cover' ? 'object-cover' : 'object-contain'} rounded-xl transition-opacity duration-500 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
                   onError={handleImageError}
                   onLoad={handleImageLoad}
                 />
