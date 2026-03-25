@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using backend.Database;
 using backend.Models;
@@ -15,6 +16,15 @@ using Pgvector.EntityFrameworkCore;
 namespace backend.Services;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
+
+// Used when serializing conversation history to ai-service — explicit type avoids
+// System.Text.Json object-erasure when the payload is typed as List<object>.
+// JsonPropertyName ensures lowercase keys match the Python side's expected format.
+public class ChatHistoryEntry
+{
+    [JsonPropertyName("role")]    public string Role    { get; set; } = "";
+    [JsonPropertyName("content")] public string Content { get; set; } = "";
+}
 
 public class ChatMessageRequest
 {
@@ -120,33 +130,41 @@ public class ChatService
             session.LastActivity = DateTime.UtcNow;
         }
 
-        // Last 10 turns capped to stay within ai-service token budget
+        // Last 10 turns — typed DTO avoids System.Text.Json object-erasure with anonymous types
         var history = session.History
             .TakeLast(10)
-            .Select(m => new { role = m.Role, content = m.Content })
-            .Cast<object>()
+            .Select(m => new ChatHistoryEntry { Role = m.Role, Content = m.Content })
             .ToList();
 
-        // ── Query type detection ──────────────────────────────────────────────────
+        // ── Query type detection + context fetch (wrapped to prevent 500s) ─────────
         var httpClient = _httpClientFactory.CreateClient("ai-service");
-        var (queryType, matchedBrandId, matchedCollectionId) = await DetectQueryTypeAsync(message);
-
-        // ── Fetch context ─────────────────────────────────────────────────────────
         List<string> contextStrings;
         var enableWebSearch = false;
+        QueryType queryType;
+        int? matchedBrandId, matchedCollectionId;
 
-        switch (queryType)
+        try
         {
-            case QueryType.Product:
-                contextStrings = await FetchProductContextAsync(matchedCollectionId, message);
-                break;
-            case QueryType.Brand:
-                contextStrings = await FetchBrandContextAsync(matchedBrandId!.Value);
-                enableWebSearch = true;
-                break;
-            default:
-                contextStrings = await FetchGeneralContextAsync(httpClient, message);
-                break;
+            (queryType, matchedBrandId, matchedCollectionId) = await DetectQueryTypeAsync(message);
+
+            switch (queryType)
+            {
+                case QueryType.Product:
+                    contextStrings = await FetchProductContextAsync(matchedCollectionId, message);
+                    break;
+                case QueryType.Brand:
+                    contextStrings = await FetchBrandContextAsync(matchedBrandId!.Value);
+                    enableWebSearch = true;
+                    break;
+                default:
+                    contextStrings = await FetchGeneralContextAsync(httpClient, message);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Context fetch failed: {Err}", ex.Message);
+            contextStrings = [];
         }
 
         // ── Call ai-service /chat ─────────────────────────────────────────────────

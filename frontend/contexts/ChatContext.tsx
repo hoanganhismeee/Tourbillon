@@ -2,7 +2,7 @@
 // SessionID persisted in sessionStorage so history survives navigations but resets on hard reload.
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
 import { sendChatMessage, clearChatSession, type ChatWatchCard } from '@/lib/api';
 
 export interface ChatMessage {
@@ -31,10 +31,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [dailyUsed, setDailyUsed] = useState<number | null>(null);
   const [dailyLimit, setDailyLimit] = useState<number | null>(null);
+  // Init session ID synchronously on first render (client only) to avoid a race condition
+  // where the user sends a message before the async useEffect sets the ID.
   const sessionIdRef = useRef<string>('');
-
-  // Initialise session ID from sessionStorage (or generate new UUID)
-  useEffect(() => {
+  if (typeof window !== 'undefined' && !sessionIdRef.current) {
     const stored = sessionStorage.getItem('chat_session_id');
     if (stored) {
       sessionIdRef.current = stored;
@@ -43,7 +43,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       sessionStorage.setItem('chat_session_id', id);
       sessionIdRef.current = id;
     }
-  }, []);
+  }
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
