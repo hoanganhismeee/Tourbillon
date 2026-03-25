@@ -11,6 +11,7 @@ import "./globals.css";
 import NavBar from "./components/layout/NavBar";
 import AnimatedLayout from "./scrollMotion/AnimatedLayout";
 import CompareIndicator from "./components/compare/CompareIndicator";
+import ChatWidget from "./components/chat/ChatWidget";
 import CustomCursor from "./components/cursor/CustomCursor";
 import CursorSelector from "./components/cursor/CursorSelector";
 
@@ -60,6 +61,7 @@ export default function RootLayout({
                     {children}
                   </AnimatedLayout>
                   <CompareIndicator />
+                  <ChatWidget />
                   <CursorSelector />
                   <CustomCursor />
                 </CursorProvider>
