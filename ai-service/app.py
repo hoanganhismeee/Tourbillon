@@ -552,13 +552,14 @@ def generate_discovery_intro():
 
 # ── Chat concierge endpoint ───────────────────────────────────────────────────
 
-CHAT_SYSTEM_PROMPT = """You are a knowledgeable luxury watch concierge for Tourbillon, a high-end watch boutique.
-Your role is to help clients discover, compare, and learn about luxury timepieces with authority and warmth.
+CHAT_SYSTEM_PROMPT = """You are a luxury watch concierge for Tourbillon.
 
-When referencing specific watches, link them as [Watch Name](/watches/{id}).
-When referencing brands, link them as [Brand Name](/brands/{id}).
-Keep responses under 200 words. Be direct and specific — no generic filler.
-Use markdown for emphasis and structure where helpful."""
+Rules:
+- Max 100 words. No exceptions.
+- For brand or collection questions: share 1-2 genuinely interesting or surprising facts (avoid generic founding-year bios — the user can read that on the page). End with a link to the page.
+- Link brands as [Brand Name →](/brands/{id}), collections as [Collection Name →](/collections/{id}), watches as [Watch Name](/watches/{id}).
+- IDs are provided in the context — always use them.
+- Be direct, specific, and warm. No bullet-list overload."""
 
 
 @app.route("/chat", methods=["POST"])
@@ -606,7 +607,7 @@ def chat():
         resp = client.chat.completions.create(
             model=LLM_MODEL,
             messages=messages,
-            max_tokens=400,
+            max_tokens=200,
             temperature=0.3,
         )
         return jsonify({"message": resp.choices[0].message.content.strip()})
