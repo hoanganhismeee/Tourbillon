@@ -17,22 +17,26 @@
 | Story-first Product Pages (editorial seeded 339/339, admin inline editor) | Done | 2 |
 | Watch DNA / Taste Profile | Done | 3C |
 | Google OAuth + Email Magic Login (passwordless OTP) | Done | 3C |
+| Post-login redirect — magic link and Google OAuth paths | Done | 3C |
 | Role-Based Access Control (admin seeding, scrape page guard, nav link) | Done | 3.5 |
 | Homepage Cinematic Video Hero | Done | 3.5 |
 | AI Discovery Pages (GEO/SEO) | Removed | — |
 | Stripe Checkout (Test Mode) | Done | 4 |
 | Contact Advisor (PoR Inquiry) | Done | 4 |
+| Chat Concierge — floating widget + product comparison RAG | Planned | 5 |
+| Chat Concierge — web search + brand knowledge answers | Planned | 5 |
+| Brand & Collection Embeddings | Planned | 5 |
 | Save / Build Collection | Planned | 5 |
 
 ## Model Strategy
 
 | Environment | Model | Cost | Usage |
 |---|---|---|---|
-| Production | Claude Haiku 4.5 | $0.25/1M input · $1.25/1M output | Intent parsing, ranking explanation, content generation |
+| Production | Claude Haiku 4.5-20251001 | $0.25/1M input · $1.25/1M output | Intent parsing, ranking explanation, content generation |
 | Local dev (default) | Qwen 2.5 7B (Ollama, inside ai-service container) | $0.00 | Prompt testing, API simulation, offline development |
 | Editorial seeding only | gemma2:9b | $0.00 | One-time editorial content generation (`make seed-editorial`) |
 
-**Why use a weaker model locally:** Developing on Qwen 2.5 7B exposes prompt edge cases that stronger models hide. Prompts that work on Qwen are robust in production.
+**Why Qwen locally:** Free and runs fully offline — adequate for testing pipeline plumbing and API contracts. Qwen lacks watch domain knowledge, so style-ambiguous queries ("ladies watch", "pilot aesthetic") return weaker results locally. This is expected. `ParseQueryIntentAsync` handles all explicit terms (brand, price, material, complications) via regex + DB lookups — no model involved, same result regardless of LLM. Haiku in production handles remaining style/occasion ambiguity without prompt-level category definitions.
 
 **Editorial seeding:** `make seed-editorial` temporarily swaps the ai-service container to gemma2:9b (better long-form generation at 1200 tokens), seeds all collections, then restores qwen2.5:7b. Run once before deploy; results are stored in DB and served at zero AI cost at runtime.
 
@@ -40,10 +44,27 @@
 
 ```
 LLM_BASE_URL=http://localhost:11434/v1   # local
-LLM_BASE_URL=https://api.anthropic.com  # production
-LLM_MODEL=qwen2.5:7b                    # local
-LLM_MODEL=claude-haiku-4-5             # production
+LLM_BASE_URL=https://api.anthropic.com/v1  # production
+LLM_MODEL=qwen2.5:7b                       # local
+LLM_MODEL=claude-haiku-4-5-20251001        # production
 ```
+
+**Production activation — docker-compose env vars (ai-service only, no code changes required):**
+```yaml
+ai-service:
+  environment:
+    LLM_BASE_URL: https://api.anthropic.com/v1
+    LLM_MODEL: claude-haiku-4-5-20251001
+    LLM_API_KEY: ${ANTHROPIC_API_KEY}
+```
+The warmup in `app.py` auto-detects non-Ollama URLs and skips model pull. No other changes needed.
+
+**When switching to Haiku — one prompt cleanup:**
+`ai-service/app.py` lines 171–175 contain hardcoded dress/sport/diver/chronograph narrative guidance for the reranker. These become redundant once Haiku handles them natively — remove after confirming correct scores in staging. Keep all scoring thresholds (`score 80+`). Do NOT remove `PARSE_SYSTEM_PROMPT` category lists (occasion, material, strap, etc.) — they constrain structured JSON output format and are model-agnostic.
+
+**`Collection.Style` DB column:** SQL pre-filter for query speed — not a knowledge proxy. Keep regardless of model.
+
+**Scraping dead code:** `backend/Services/ClaudeApiService.cs` was unused — scraping complete. Deleted. The ai-service `LLM_API_KEY` is independent and must be provisioned at deploy time.
 
 ---
 
@@ -263,6 +284,46 @@ Inquiry flow for "Price on Request" watches — requires authentication, sends d
 
 ## Phase 5: Social
 
+### RAG Chat Concierge
+
+Floating conversational assistant available on every page — handles both specific watch comparisons and brand knowledge questions. Distinct from Watch Finder (discovery from vague intent → grid); this is informed conversation about specific watches, brands, or collections.
+
+**What it does:**
+- Floating pill at bottom-right on all pages; panel slides up on click
+- Product comparison: "I like the Overseas and the Aquanaut, I go to the beach, which should I choose?" → specs analysis + recommendation + watch thumbnail cards
+- Brand knowledge: "Tell me about Vacheron's history" → web search + DB description blended → narrative with brand page link
+- Conversation-aware: follow-ups reference earlier turns in session; state survives in-app navigation (layout.tsx mount, never unmounted on soft nav)
+
+**Architecture — reuses Phase 3 infrastructure:**
+- `ParseQueryIntentAsync` (no LLM) pre-filters brand/collection/reference number signals for query type routing
+- PRODUCT query (collection/watch name in query): fetch watch records → ai-service `/chat`
+- BRAND query (brand name, no model match): fetch DB description → web search → ai-service `/chat`
+- GENERAL query (neither): vector search top-5 watches as context → ai-service `/chat`
+- `QueryCacheService` caches first-turn (history-free) responses at cosine ≥ 0.92 — not applied to multi-turn
+- Rate limit: 5/day deployed (`ChatSettings:DailyLimit`); `DisableLimitInDev: true` for local
+
+**New infrastructure:**
+- `BrandEmbeddings` + `CollectionEmbeddings` tables (new EF migration, 768-dim pgvector)
+- In-memory session store via `ConcurrentDictionary` (MVP; upgrade to Redis for horizontal scale)
+- `POST /chat` endpoint in ai-service — web search via `duckduckgo-search` (no API key)
+- Pill UI matches `CompareIndicator` design; chat pill `bottom-8`, compare pill moves to `bottom-24`
+
+**Full spec:** `docs/phase5-rag-chatbot.md`
+
+**Files involved:**
+- `ai-service/app.py` — `POST /chat` + `CHAT_SYSTEM_PROMPT` + web search tool
+- `ai-service/requirements.txt` — add `duckduckgo-search`
+- `backend/Controllers/ChatController.cs` — `POST /api/chat/message`, `DELETE /api/chat/session/{id}`
+- `backend/Services/ChatService.cs` — orchestration pipeline
+- `backend/Models/` — `ChatSession.cs`, `BrandEmbedding.cs`, `CollectionEmbedding.cs`
+- `backend/Services/WatchEmbeddingService.cs` — extend with brand/collection embed methods
+- `backend/Database/TourbillonContext.cs` — add new DbSets
+- `frontend/components/ChatWidget.tsx`, `frontend/contexts/ChatContext.tsx`
+- `frontend/app/layout.tsx` — mount ChatWidget
+- `frontend/lib/api.ts` — `sendChatMessage()`, `clearChatSession()`
+
+---
+
 ### Save / Build Collection
 
 User-curated watch collections with sharing.
@@ -291,7 +352,7 @@ User-curated watch collections with sharing.
 | Watch Finder | 5 searches / user / day | Cache hits are free and do not consume quota |
 | Watch DNA save | 1 LLM call per save | Rule-based scoring at browse time is free |
 | Compare Mode explanation | 10 / user / day | Raw comparison is unlimited |
-| Chat Assistant | 20 messages / user / day | Optional feature |
+| Chat Concierge | 5 / user / day (deployed); unlimited (local, env-gated) | Separate quota from Watch Finder |
 | Story Content | No runtime limit | Pre-generated — zero API cost |
 | Discovery Pages | No runtime limit | Static generation — zero API cost |
 

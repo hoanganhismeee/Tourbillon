@@ -17,16 +17,13 @@ public class SitemapScraperService
 {
     private readonly ILogger<SitemapScraperService> _logger;
     private readonly ICloudinaryService _cloudinaryService;
-    private readonly IClaudeApiService _claudeApiService;
 
     public SitemapScraperService(
         ILogger<SitemapScraperService> logger,
-        ICloudinaryService cloudinaryService,
-        IClaudeApiService claudeApiService)
+        ICloudinaryService cloudinaryService)
     {
         _logger = logger;
         _cloudinaryService = cloudinaryService;
-        _claudeApiService = claudeApiService;
     }
 
     /// Scrapes a single watch product page by URL
@@ -420,92 +417,10 @@ public class SitemapScraperService
                 return null;
             }
 
-            // Send to Claude API for extraction
-            var watchData = await _claudeApiService.ExtractWatchPageDataAsync(html, url, ct);
-            if (watchData == null)
-            {
-                _logger.LogWarning("Claude API returned null for {Url}", url);
-                return null;
-            }
+            // Scraping pipeline retired — ClaudeApiService removed post-completion
+            _logger.LogWarning("Watch page extraction not available — scraping pipeline retired for {Url}", url);
+            return null;
 
-            if (string.IsNullOrEmpty(watchData.ReferenceNumber) && string.IsNullOrEmpty(watchData.WatchName))
-            {
-                _logger.LogWarning("No reference number or name extracted for {Url}", url);
-                return null;
-            }
-
-            // Upload image to Cloudinary
-            var imageUrl = watchData.ImageUrl ?? string.Empty;
-            if (!string.IsNullOrEmpty(imageUrl) && imageUrl.StartsWith("http"))
-            {
-                var sanitizedRef = Regex.Replace(watchData.ReferenceNumber ?? "unknown", @"[^a-zA-Z0-9_\-]", "");
-                var sanitizedBrand = Regex.Replace(brandName, @"[^a-zA-Z0-9_\-]", "");
-                var publicId = $"{sanitizedBrand}_{sanitizedRef}";
-
-                var cloudinaryId = await _cloudinaryService.UploadImageFromUrlAsync(imageUrl, publicId, "watches");
-                if (!string.IsNullOrEmpty(cloudinaryId))
-                {
-                    imageUrl = cloudinaryId;
-                    _logger.LogInformation("Uploaded to Cloudinary: {PublicId}", cloudinaryId);
-                }
-            }
-
-            // Serialize specs to JSON
-            var specsJson = watchData.Specs != null
-                ? JsonSerializer.Serialize(watchData.Specs, new JsonSerializerOptions
-                {
-                    WriteIndented = false,
-                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-                })
-                : "{}";
-
-            // Build name: "RefNumber Variant" (e.g., "1-36-01-02-05-61 Excellence")
-            // Strip collection prefix from watchName since collection is displayed separately
-            var collectionName = ExtractCollectionFromWatchName(watchData.WatchName) ?? "Unknown";
-            var displayName = watchData.WatchName ?? watchData.ReferenceNumber ?? "Unknown";
-            var variantName = StripCollectionPrefix(displayName, collectionName);
-
-            // If watchName starts with the ref number, strip it to avoid duplication
-            // e.g., watchName="SBGE255 Drive GMT Sport Collection", ref="SBGE255" → variant="Drive GMT Sport Collection"
-            if (!string.IsNullOrEmpty(watchData.ReferenceNumber) &&
-                variantName.StartsWith(watchData.ReferenceNumber, StringComparison.OrdinalIgnoreCase))
-            {
-                variantName = variantName[watchData.ReferenceNumber.Length..].TrimStart();
-            }
-
-            // Strip trailing collection name from variant (e.g., "Drive GMT Sport Collection" → "Drive GMT")
-            if (!string.IsNullOrEmpty(collectionName) &&
-                variantName.EndsWith(collectionName, StringComparison.OrdinalIgnoreCase))
-            {
-                variantName = variantName[..^collectionName.Length].TrimEnd();
-            }
-            // Also strip generic suffixes like "Collection"
-            foreach (var suffix in new[] { "Collection", "Watches" })
-            {
-                if (variantName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                {
-                    variantName = variantName[..^suffix.Length].TrimEnd();
-                }
-            }
-
-            var name = !string.IsNullOrEmpty(watchData.ReferenceNumber)
-                ? string.IsNullOrWhiteSpace(variantName)
-                    ? watchData.ReferenceNumber
-                    : $"{watchData.ReferenceNumber} {variantName}"
-                : displayName;
-
-            return new ScrapedWatchDto
-            {
-                Name = name,
-                BrandName = brandName,
-                CollectionName = collectionName,
-                CurrentPrice = watchData.Price ?? "Price on request",
-                Description = watchData.Description ?? string.Empty,
-                Specs = specsJson,
-                ImageUrl = imageUrl,
-                ReferenceNumber = watchData.ReferenceNumber,
-                SourceUrl = url
-            };
         }
         catch (Exception ex)
         {
@@ -955,27 +870,6 @@ public class SitemapScraperService
             }
 
             _logger.LogInformation("Filtered to {Count} product URLs for {Brand}", productUrls.Count, brandName);
-
-            // Fallback: If no product URLs found via <a> tags, use Claude to extract URLs from page HTML
-            if (productUrls.Count == 0)
-            {
-                _logger.LogInformation("No product URLs from <a> tags, using Claude to extract URLs from listing page HTML");
-                var pageHtml = driver.PageSource;
-                var claudeUrls = await _claudeApiService.ExtractProductUrlsFromListingAsync(
-                    pageHtml, listingUrl, brandName, ct);
-                productUrls = claudeUrls
-                    .Where(u => !string.IsNullOrEmpty(u) && u.StartsWith("http"))
-                    .Select(u => u!)
-                    .Distinct()
-                    .ToList();
-
-                if (!string.IsNullOrEmpty(filterCollection))
-                {
-                    productUrls = PreFilterUrlsByCollection(productUrls, filterCollection);
-                }
-
-                _logger.LogInformation("Claude extracted {Count} product URLs for {Brand}", productUrls.Count, brandName);
-            }
 
             if (productUrls.Count == 0)
             {
