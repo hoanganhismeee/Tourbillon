@@ -54,6 +54,7 @@ export default function LoginPage() {
                     {/* Google sign-in — full navigation, not fetch (SameSite cookie is set on response) */}
                     <a
                         href={GOOGLE_AUTH_URL}
+                        onClick={() => { if (redirect) sessionStorage.setItem('authRedirect', redirect); }}
                         className="flex items-center justify-center gap-3 w-full py-2 rounded-xl border border-[#bfa68a] text-[#bfa68a] hover:bg-white/5 transition text-sm font-medium"
                     >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
@@ -112,7 +113,7 @@ export default function LoginPage() {
                         </Link>
                     </p>
                     <p className="text-sm text-center text-[#bfa68a]">
-                        <Link href="/login/magic" className="underline hover:text-[#F9F6F2] cursor-pointer">
+                        <Link href={`/login/magic${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ''}`} className="underline hover:text-[#F9F6F2] cursor-pointer">
                             Sign in without a password
                         </Link>
                     </p>
