@@ -767,11 +767,17 @@ export const sendChatMessage = async (
     timeoutMs: 30000,
   });
   if (response.status === 429) {
-    const data = await response.json();
-    return { ...data, rateLimited: true };
+    const data = await response.json().catch(() => ({}));
+    return { message: 'Daily message limit reached.', watchCards: [], ...data, rateLimited: true };
   }
   if (!response.ok) {
-    throw new Error('Chat request failed');
+    // Return a graceful error response rather than throwing — avoids Next.js error overlay
+    const errText = await response.text().catch(() => '');
+    const backendMsg = (() => { try { return JSON.parse(errText)?.message || JSON.parse(errText)?.error || ''; } catch { return ''; } })();
+    return {
+      message: backendMsg || `I'm having trouble processing your request right now (${response.status}). Please try again.`,
+      watchCards: [],
+    };
   }
   return response.json();
 };
