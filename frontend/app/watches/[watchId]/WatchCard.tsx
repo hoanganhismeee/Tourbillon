@@ -10,6 +10,7 @@ import { Watch, Collection, fetchCollectionsByBrand } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
 import CompareToggle from '../../components/compare/CompareToggle';
+import FavouriteToggle from '../../components/favourites/FavouriteToggle';
 import Image from 'next/image';
 
 
@@ -18,9 +19,10 @@ interface WatchCardProps {
   className?: string;
   hrefSuffix?: string;  // appended to /watches/[id], e.g. "?wristFit=17"
   imageFit?: 'cover' | 'contain';  // cover for showcase hero cards, contain to show full watch
+  collectionLabels?: string[];  // shown as pills on /favourites page
 }
 
-const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain' }: WatchCardProps) => {
+const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain', collectionLabels }: WatchCardProps) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [collection, setCollection] = useState<Collection | null>(null);
@@ -131,6 +133,7 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
         </Link>
         {/* Action button field — bottom-right of image, visible on hover. Extend with more buttons here. */}
         <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <FavouriteToggle watchId={watch.id} />
           <CompareToggle watch={watch} />
         </div>
       </div>
@@ -156,6 +159,15 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
           <p className="text-lg text-white/90 font-playfair font-medium">
             {watch.currentPrice === 0 ? 'Price on request' : `$${watch.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           </p>
+          {collectionLabels && collectionLabels.length > 0 && (
+            <div className="flex flex-wrap gap-1 justify-center">
+              {collectionLabels.map(label => (
+                <span key={label} className="text-[10px] font-inter text-[#bfa68a]/70 border border-[#bfa68a]/20 rounded-full px-2 py-0.5">
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </Link>
     </div>
