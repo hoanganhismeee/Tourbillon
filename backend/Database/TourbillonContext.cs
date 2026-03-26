@@ -23,6 +23,9 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
     public DbSet<ContactInquiry> ContactInquiries { get; set; }
     public DbSet<Appointment> Appointments { get; set; }
     public DbSet<RegisterInterest> RegisterInterests { get; set; }
+    public DbSet<UserFavourite> UserFavourites { get; set; }
+    public DbSet<UserCollection> UserCollections { get; set; }
+    public DbSet<UserCollectionWatch> UserCollectionWatches { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -74,6 +77,22 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
         modelBuilder.Entity<RegisterInterest>(entity =>
         {
             entity.HasIndex(e => e.CustomerEmail);
+        });
+
+        modelBuilder.Entity<UserFavourite>(entity =>
+        {
+            entity.HasKey(e => new { e.UserId, e.WatchId });
+            entity.HasIndex(e => e.UserId);
+        });
+
+        modelBuilder.Entity<UserCollection>(entity =>
+        {
+            entity.HasIndex(e => e.UserId);
+        });
+
+        modelBuilder.Entity<UserCollectionWatch>(entity =>
+        {
+            entity.HasKey(e => new { e.UserCollectionId, e.WatchId });
         });
     }
 }

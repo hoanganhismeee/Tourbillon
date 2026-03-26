@@ -26,7 +26,7 @@
 | Chat Concierge — floating widget + product comparison RAG | Planned | 5 |
 | Chat Concierge — web search + brand knowledge answers | Planned | 5 |
 | Brand & Collection Embeddings | Planned | 5 |
-| Save / Build Collection | Planned | 5 |
+| Favourites & Collections | In Progress | 5.5 |
 
 ## Model Strategy
 
@@ -345,6 +345,35 @@ User-curated watch collections with sharing.
 - New EF Core migration for collection tables
 - New controller and service
 - Frontend: collection management UI, share page
+
+---
+
+## Phase 5.5: Favourites & Collections (IN PROGRESS)
+
+### Favourites & Collections
+
+Spotify-style save-to-favourites and named user collections for authenticated users.
+
+**What it does:**
+- Heart icon in navbar links to `/favourites` page (replaces non-functional cart icon placeholder)
+- Heart toggle on every watch card — fills gold when the watch is saved anywhere (Favourites or any collection)
+- Clicking the heart opens a portal popup: one-tap toggle for Favourites + named collection rows with tick indicators
+- Create new named collections inline from the popup (no separate page needed)
+- `/favourites` page shows all saved watches in the SmartSearch grid layout with a horizontal collections row above
+- Filter grid by one or more collections; sort by Recently Saved, Brand A–Z, Price High–Low, Price Low–High
+- Collection labels shown as small pills on watch cards on the `/favourites` page
+
+**Tech approach:**
+- Pure CRUD — no AI, no API cost
+- Three new EF Core tables: `UserFavourites` (composite PK), `UserCollections`, `UserCollectionWatches` (junction)
+- `FavouritesService` / `FavouritesController` — eight REST endpoints covering state, favourites, collections, and membership
+- Zustand store (`favouritesStore`) without localStorage persist — server-side state, auth-gated, reset on logout
+- Optimistic UI: snapshot → apply locally → await API → revert on error
+- Portal popup (`SaveToCollectionPopup`) positioned via `getBoundingClientRect`, Framer Motion animation, click-outside + Escape close
+
+**Services and controllers:**
+- `FavouritesService`, `FavouritesController`
+- `favouritesStore` (Zustand), `FavouriteToggle`, `SaveToCollectionPopup`
 
 ---
 
