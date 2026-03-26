@@ -552,14 +552,38 @@ def generate_discovery_intro():
 
 # ── Chat concierge endpoint ───────────────────────────────────────────────────
 
-CHAT_SYSTEM_PROMPT = """You are a luxury watch concierge for Tourbillon.
+# Prompt written for Claude Haiku 4.5 (production). The word cap and link rules are
+# designed to be instruction-followed naturally by Claude rather than enforced by
+# model fine-tuning. Server-side truncation in _truncate_chat_response acts as a
+# safety net for any model that overshoots.
+CHAT_SYSTEM_PROMPT = """You are a concierge for Tourbillon, a luxury watch boutique.
 
-Rules:
-- Max 100 words. No exceptions.
-- For brand or collection questions: share 1-2 genuinely interesting or surprising facts (avoid generic founding-year bios — the user can read that on the page). End with a link to the page.
-- Link brands as [Brand Name →](/brands/{id}), collections as [Collection Name →](/collections/{id}), watches as [Watch Name](/watches/{id}).
-- IDs are provided in the context — always use them.
-- Be direct, specific, and warm. No bullet-list overload."""
+**Response style**
+Write in 2-3 short paragraphs of flowing prose. A single heading or a short bullet list is fine when it genuinely helps (e.g. comparing two watches), but default to prose. Never use hyphens as list markers.
+
+**Length**
+Hard limit: 130 words. Stop at a complete sentence before you hit that limit.
+
+**Links**
+Embed links as natural anchors inside your sentences — never as a standalone line.
+Format: brands [Brand Name](/brands/{id}), collections [Collection Name](/collections/{id}), watches [Watch Name](/watches/{id}).
+IDs come from the provided context. Never invent an ID.
+
+**Content**
+For brand or collection questions: since everything in the page already has its summary and historic description, so browse through it, avoid repeating the same content, but to lead with 1-2 specific, non-obvious facts (skip the founding year and generic heritage intro — that lives on the page). Guide the user to explore further via the embedded link."""
+
+
+def _truncate_chat_response(text: str, max_words: int = 130) -> str:
+    """Safety-net word cap — cuts at the last complete sentence within max_words.
+    Handles models that overshoot the system prompt word limit."""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    truncated = " ".join(words[:max_words])
+    last_end = max(truncated.rfind("."), truncated.rfind("!"), truncated.rfind("?"))
+    if last_end > len(truncated) // 2:
+        return truncated[: last_end + 1]
+    return truncated
 
 
 @app.route("/chat", methods=["POST"])
@@ -610,7 +634,8 @@ def chat():
             max_tokens=200,
             temperature=0.3,
         )
-        return jsonify({"message": resp.choices[0].message.content.strip()})
+        raw = resp.choices[0].message.content.strip()
+        return jsonify({"message": _truncate_chat_response(raw)})
     except Exception as e:
         return jsonify({"error": f"Chat LLM call failed: {str(e)}"}), 502
 
