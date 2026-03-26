@@ -7,15 +7,46 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePathname } from 'next/navigation';
 import SearchOverlay from './SearchOverlay';
+import { useFavourites } from '@/stores/favouritesStore';
 
 // Custom SVG icon components for consistent styling and easy maintenance
 
-// Cart icon - shopping bag
-const CartIcon = () => (
-<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M33.75 10H27.5C27.5 8.01088 26.7098 6.10322 25.3033 4.6967C23.8968 3.29018 21.9891 2.5 20 2.5C18.0109 2.5 16.1032 3.29018 14.6967 4.6967C13.2902 6.10322 12.5 8.01088 12.5 10H6.25C5.58696 10 4.95107 10.2634 4.48223 10.7322C4.01339 11.2011 3.75 11.837 3.75 12.5V31.25C3.75 31.913 4.01339 32.5489 4.48223 33.0178C4.95107 33.4866 5.58696 33.75 6.25 33.75H33.75C34.413 33.75 35.0489 33.4866 35.5178 33.0178C35.9866 32.5489 36.25 31.913 36.25 31.25V12.5C36.25 11.837 35.9866 11.2011 35.5178 10.7322C35.0489 10.2634 34.413 10 33.75 10ZM20 5C21.3261 5 22.5979 5.52678 23.5355 6.46447C24.4732 7.40215 25 8.67392 25 10H15C15 8.67392 15.5268 7.40215 16.4645 6.46447C17.4021 5.52678 18.6739 5 20 5ZM33.75 31.25H6.25V12.5H12.5V15C12.5 15.3315 12.6317 15.6495 12.8661 15.8839C13.1005 16.1183 13.4185 16.25 13.75 16.25C14.0815 16.25 14.3995 16.1183 14.6339 15.8839C14.8683 15.6495 15 15.3315 15 15V12.5H25V15C25 15.3315 25.1317 15.6495 25.3661 15.8839C25.6005 16.1183 25.9185 16.25 26.25 16.25C26.5815 16.25 26.8995 16.1183 27.1339 15.8839C27.3683 15.6495 27.5 15.3315 27.5 15V12.5H33.75V31.25Z" fill="black"/>
-</svg>
-)
+// Cart icon - kept for future use when cart is wired to /cart page
+// const CartIcon = () => (
+// <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+// <path d="M33.75 10H27.5C27.5 8.01088 26.7098 6.10322 25.3033 4.6967C23.8968 3.29018 21.9891 2.5 20 2.5C18.0109 2.5 16.1032 3.29018 14.6967 4.6967C13.2902 6.10322 12.5 8.01088 12.5 10H6.25C5.58696 10 4.95107 10.2634 4.48223 10.7322C4.01339 11.2011 3.75 11.837 3.75 12.5V31.25C3.75 31.913 4.01339 32.5489 4.48223 33.0178C4.95107 33.4866 5.58696 33.75 6.25 33.75H33.75C34.413 33.75 35.0489 33.4866 35.5178 33.0178C35.9866 32.5489 36.25 31.913 36.25 31.25V12.5C36.25 11.837 35.9866 11.2011 35.5178 10.7322C35.0489 10.2634 34.413 10 33.75 10ZM20 5C21.3261 5 22.5979 5.52678 23.5355 6.46447C24.4732 7.40215 25 8.67392 25 10H15C15 8.67392 15.5268 7.40215 16.4645 6.46447C17.4021 5.52678 18.6739 5 20 5ZM33.75 31.25H6.25V12.5H12.5V15C12.5 15.3315 12.6317 15.6495 12.8661 15.8839C13.1005 16.1183 13.4185 16.25 13.75 16.25C14.0815 16.25 14.3995 16.1183 14.6339 15.8839C14.8683 15.6495 15 15.3315 15 15V12.5H25V15C25 15.3315 25.1317 15.6495 25.3661 15.8839C25.6005 16.1183 25.9185 16.25 26.25 16.25C26.5815 16.25 26.8995 16.1183 27.1339 15.8839C27.3683 15.6495 27.5 15.3315 27.5 15V12.5H33.75V31.25Z" fill="black"/>
+// </svg>
+// )
+
+// Heart icon for favourites nav link
+const HeartNavIcon = () => (
+  <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M20 34.9C9.45 25.08 3.33 19.5 3.33 13.67 3.33 9.42 6.76 7.5 9.69 7.5c1.8 0 5.69.69 7.85 6.11C19.7 8.17 23.63 7.5 25.44 7.5c3.49 0 7.23 2.23 7.23 6.17 0 5.8-7.06 11.84-12.67 21.23z" fill="black"/>
+  </svg>
+);
+
+// Favourites nav link — goes to /favourites for authed users, /login otherwise
+const HeartNavLink = () => {
+  const { isAuthenticated } = useAuth();
+  const { favouriteWatchIds, isLoaded } = useFavourites();
+  const count = favouriteWatchIds.size;
+
+  return (
+    <div className="relative">
+      <Link
+        href={isAuthenticated ? '/favourites' : '/login?redirect=/favourites'}
+        className="hover:opacity-70 transition-all duration-300 block"
+      >
+        <HeartNavIcon />
+      </Link>
+      {isAuthenticated && isLoaded && count > 0 && (
+        <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-[#bfa68a] text-[#1a1008] text-[9px] font-inter font-bold rounded-full flex items-center justify-center px-1 leading-none">
+          {count > 99 ? '99+' : count}
+        </span>
+      )}
+    </div>
+  );
+};
 
 // Search icon - magnifying glass design for the search functionality
 const SearchIcon = () => ( 
@@ -241,9 +272,7 @@ const UserMenu = () => {
         <div className="flex items-center gap-16 relative pr-4 justify-end">
           <UserMenu />
 
-          <div className="hover:opacity-70 transition-opacity cursor-pointer">
-            <CartIcon />
-          </div>
+          <HeartNavLink />
 
           {/* Search icon - opens overlay */}
           <button
