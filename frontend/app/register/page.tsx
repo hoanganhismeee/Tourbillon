@@ -1,7 +1,7 @@
-// Register page — split-panel layout matching the login page
+// Register page — split-panel layout matching login
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -72,6 +72,16 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Lock page scroll — no reason to scroll on an auth screen
+  useEffect(() => {
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
     const newValue = name === 'phoneNumber'
@@ -118,76 +128,69 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex overflow-y-auto lg:overflow-hidden" style={{ background: 'linear-gradient(135deg, #1e1512 0%, #2a211c 50%, #3b2f26 100%)' }}>
+    <div className="flex h-[calc(100vh-3rem-50px)] overflow-hidden">
 
-      {/* Left brand panel — typographic, no image */}
-      <div className="hidden lg:flex flex-col justify-between w-[38%] shrink-0 relative overflow-hidden border-r border-[#bfa68a]/10 px-16 py-14">
-        {/* Ambient glow */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse 70% 60% at 30% 60%, rgba(191,166,138,0.07) 0%, transparent 70%)' }}
-          aria-hidden
-        />
-        <Link href="/" className="relative font-playfair text-[#f0e6d2]/80 text-2xl font-light tracking-wide hover:text-[#f0e6d2] transition">
-          Tourbillon
-        </Link>
+      {/* Left brand panel */}
+      <div className="hidden lg:flex flex-col justify-center w-[38%] shrink-0 relative border-r border-[#bfa68a]/10 px-16 py-10">
+        <div className="w-10 h-px bg-[#bfa68a]/50 mb-7" />
+        <p className="text-[10px] uppercase tracking-[0.5em] text-[#bfa68a]/70 mb-4">New Member</p>
+        <h2 className="font-playfair text-[3.5rem] font-light text-[#f0e6d2] leading-[1.1] mb-6">
+          Join<br />Tourbillon
+        </h2>
+        <p className="text-white/40 text-sm leading-relaxed max-w-[260px] mb-9">
+          Explore exclusive collections, save favourites, and speak with our private advisors.
+        </p>
 
-        <div className="relative">
-          <div className="w-8 h-px bg-[#bfa68a]/50 mb-8" />
-          <p className="text-[10px] uppercase tracking-[0.5em] text-[#bfa68a]/70 mb-5">New Member</p>
-          <h2 className="font-playfair text-[3.5rem] font-light text-[#f0e6d2] leading-[1.1] mb-7">
-            Join<br />Tourbillon
-          </h2>
-          <p className="text-white/30 text-sm leading-relaxed max-w-[240px]">
-            Explore exclusive collections, save favourites, and speak with our private advisors.
-          </p>
+        <div className="space-y-4 mb-10">
+          {[
+            ['Exclusive Access', 'Browse over 500 timepieces from 13 prestige manufactures'],
+            ['Watch DNA Profile', "Tell us your style — we'll curate pieces that match"],
+          ].map(([title, desc]) => (
+            <div key={title} className="flex gap-3.5">
+              <div className="w-px h-10 bg-[#bfa68a]/25 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-[11px] text-[#f0e6d2]/70 font-medium tracking-wide">{title}</p>
+                <p className="text-[11px] text-white/25 leading-relaxed mt-0.5">{desc}</p>
+              </div>
+            </div>
+          ))}
         </div>
 
-        <p className="relative text-white/15 text-xs">
-          &copy; {new Date().getFullYear()} Tourbillon
-        </p>
+        <blockquote className="border-l border-[#bfa68a]/30 pl-5">
+          <p className="text-white/30 text-[13px] italic leading-relaxed font-playfair">
+            &ldquo;A watch is more than a timepiece — it is a statement of values.&rdquo;
+          </p>
+        </blockquote>
       </div>
 
-      {/* Right form panel — scrollable */}
-      <div className="flex-1 flex items-start lg:items-center justify-center px-8 py-12 lg:py-0 overflow-y-auto relative" style={{ background: '#211510' }}>
-        {/* Corner glow */}
-        <div
-          className="absolute top-0 right-0 w-80 h-80 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse at top right, rgba(191,166,138,0.07) 0%, transparent 60%)' }}
-          aria-hidden
-        />
-
+      {/* Right form panel */}
+      <div className="flex-1 flex items-center justify-center px-8">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
           className="w-full max-w-[420px] relative"
         >
-          {/* Mobile logo */}
-          <Link href="/" className="lg:hidden block font-playfair text-[#f0e6d2]/80 text-xl mb-10">
-            Tourbillon
-          </Link>
-
-          <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/80 mb-3">Create Account</p>
-          <h1 className="font-playfair text-[2rem] font-light text-[#f0e6d2] mb-9">Your Details</h1>
+          <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/80 mb-2">Create Account</p>
+          <h1 className="font-playfair text-[2rem] font-light text-[#f0e6d2] mb-6">Your Details</h1>
 
           {/* Google */}
           <a
             href={GOOGLE_AUTH_URL}
-            className="flex items-center justify-center gap-3 w-full py-[11px] border border-white/8 text-white/50 hover:border-[#bfa68a]/25 hover:text-white/70 transition text-[10px] uppercase tracking-[0.2em] mb-6"
+            className="flex items-center justify-center gap-3 w-full py-[11px] border border-white/12 text-white/55 hover:border-[#bfa68a]/30 hover:text-white/75 transition text-[10px] uppercase tracking-[0.2em] mb-5"
           >
             <GoogleIcon />
             Continue with Google
           </a>
 
           {/* Divider */}
-          <div className="flex items-center gap-4 mb-7">
-            <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
-            <span className="text-[9px] uppercase tracking-[0.25em] text-white/18">or</span>
-            <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+          <div className="flex items-center gap-4 mb-5">
+            <div className="flex-1 h-px bg-white/8" />
+            <span className="text-[9px] uppercase tracking-[0.25em] text-white/22">or</span>
+            <div className="flex-1 h-px bg-white/8" />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-5">
               <Field label="First Name" name="firstName" value={formData.firstName} onChange={handleChange} placeholder="First" />
               <Field label="Last Name" name="lastName" value={formData.lastName} onChange={handleChange} placeholder="Last" />
@@ -235,7 +238,7 @@ export default function RegisterPage() {
             </button>
           </form>
 
-          <p className="mt-7 text-[11px] text-white/22 text-center">
+          <p className="mt-5 text-[11px] text-white/22 text-center">
             Already a member?{' '}
             <Link
               href={`/login${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}
