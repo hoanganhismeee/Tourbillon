@@ -1,195 +1,148 @@
-// Contact advisor page — watch-specific inquiry (/contact?watchId=X) or general inquiry (/contact)
-// Requires authentication; redirects to login if not signed in
+// Contact page — displays business contact information
+// Publicly accessible, no authentication required
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import Image from 'next/image';
-import { useQuery } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
-import { fetchWatchById, submitContactInquiry } from '@/lib/api';
-import { imageTransformations } from '@/lib/cloudinary';
-import { useAuth } from '@/contexts/AuthContext';
+import { motion } from 'framer-motion';
 import ScrollFade from '@/app/scrollMotion/ScrollFade';
 
+const contactItems = [
+  {
+    label: 'Email',
+    value: 'hoanganh31012005@gmail.com',
+    href: 'mailto:hoanganh31012005@gmail.com',
+  },
+  {
+    label: 'Phone',
+    value: '(+61) 40 606 2737',
+    href: null,
+  },
+  {
+    label: 'Address',
+    value: 'Sydney',
+    href: null,
+  },
+  {
+    label: 'Hours',
+    value: 'Monday – Saturday\n10:00 am – 6:00 pm',
+    href: null,
+  },
+];
+
 export default function ContactPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const { isAuthenticated, loading: authLoading } = useAuth();
-
-  const watchIdParam = searchParams.get('watchId');
-  const watchId = watchIdParam ? parseInt(watchIdParam, 10) : null;
-
-  const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Fetch watch data if watchId is provided
-  const { data: watch } = useQuery({
-    queryKey: ['watch', watchId],
-    queryFn: () => fetchWatchById(watchId!),
-    enabled: watchId !== null && !isNaN(watchId),
-  });
-
-  // Auth gate — redirect to login after auth loading completes
-  useEffect(() => {
-    if (authLoading) return;
-    if (!isAuthenticated) {
-      const redirect = watchId
-        ? `/contact?watchId=${watchId}`
-        : '/contact';
-      router.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
-    }
-  }, [isAuthenticated, authLoading, watchId, router]);
-
-  const handleSubmit = async () => {
-    if (!message.trim()) {
-      setError('Please enter a message.');
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      await submitContactInquiry({
-        watchId: watchId ?? undefined,
-        message: message.trim(),
-      });
-      setSubmitted(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send inquiry');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Show nothing while checking auth
-  if (authLoading || !isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-2 border-[#bfa68a] border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
   return (
     <ScrollFade>
-      <div className="min-h-screen bg-black text-white pt-32 pb-20 px-6 lg:px-16">
-        <div className="max-w-2xl mx-auto">
-          <AnimatePresence mode="wait">
-            {submitted ? (
-              /* Success state */
-              <motion.div
-                key="success"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center py-16"
-              >
+      <div className="min-h-screen text-white">
+
+        {/* Hero */}
+        <div className="relative flex flex-col justify-end px-10 lg:px-24 pt-44 pb-20 border-b border-white/5 overflow-hidden">
+          {/* Ambient glow */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{ background: 'radial-gradient(ellipse 55% 60% at 70% 40%, rgba(191,166,138,0.06) 0%, transparent 65%)' }}
+            aria-hidden
+          />
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="relative text-[10px] uppercase tracking-[0.45em] text-[#bfa68a]/80 mb-5"
+          >
+            Get in Touch
+          </motion.p>
+          <motion.h1
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.05 }}
+            className="relative font-playfair font-light text-[#f0e6d2] leading-none mb-6"
+            style={{ fontSize: 'clamp(3.5rem, 8vw, 7rem)' }}
+          >
+            Contact Us
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.7, delay: 0.15 }}
+            className="relative text-white/35 text-sm max-w-[320px] leading-relaxed"
+          >
+            Our advisors are available to assist with acquisitions, valuations,
+            and any enquiry about our collection.
+          </motion.p>
+        </div>
+
+        {/* Contact grid */}
+        <div className="px-10 lg:px-24 py-20 grid grid-cols-1 lg:grid-cols-2 gap-0">
+
+          {/* Left — contact details */}
+          <div className="lg:border-r border-[#bfa68a]/8 lg:pr-20 pb-16 lg:pb-0">
+            <p className="text-[9px] uppercase tracking-[0.4em] text-white/22 mb-10">Contact Information</p>
+            <div>
+              {contactItems.map((item, i) => (
                 <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-                  className="w-20 h-20 rounded-full border-2 border-[#bfa68a] flex items-center justify-center mx-auto mb-6"
+                  key={item.label}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.1 + i * 0.07 }}
+                  className="flex items-start justify-between py-6 border-b border-white/5 group"
                 >
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                    <path d="M5 13L9 17L19 7" stroke="#bfa68a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <span className="text-[9px] uppercase tracking-[0.35em] text-[#bfa68a]/75 w-20 shrink-0 pt-0.5">
+                    {item.label}
+                  </span>
+                  {item.href ? (
+                    <a
+                      href={item.href}
+                      target={item.href.startsWith('http') ? '_blank' : undefined}
+                      rel={item.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                      className="text-white/60 hover:text-[#f0e6d2] transition text-sm text-right leading-relaxed whitespace-pre-line"
+                    >
+                      {item.value}
+                    </a>
+                  ) : (
+                    <span className="text-white/60 text-sm text-right leading-relaxed whitespace-pre-line">
+                      {item.value}
+                    </span>
+                  )}
                 </motion.div>
-                <h1 className="text-3xl font-playfair font-bold text-[#f0e6d2] mb-3">Inquiry Sent</h1>
-                <p className="text-white/60 mb-2">
-                  Your message has been received. Check your email for a confirmation.
+              ))}
+            </div>
+          </div>
+
+          {/* Right — advisory note */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.25 }}
+            className="lg:pl-20 pt-16 lg:pt-0 flex flex-col justify-between"
+          >
+            <div>
+              <p className="text-[9px] uppercase tracking-[0.4em] text-white/22 mb-10">Private Advisory</p>
+
+              <blockquote className="border-l-2 border-[#bfa68a]/30 pl-6 mb-10">
+                <p className="text-[#f0e6d2]/65 font-playfair text-[1.35rem] leading-relaxed italic">
+                  &ldquo;Every great timepiece deserves a conversation.&rdquo;
                 </p>
-                <p className="text-white/40 text-sm mb-10">
-                  Our advisor team typically responds within 24-48 hours.
-                </p>
-                <button
-                  onClick={() => router.back()}
-                  className="py-3 px-8 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition"
-                >
-                  Back to Browsing
-                </button>
-              </motion.div>
-            ) : (
-              /* Form state */
-              <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                <h1 className="text-4xl font-playfair font-bold text-[#f0e6d2] mb-2">
-                  {watch ? 'Contact an Advisor' : 'Contact Us'}
-                </h1>
-                {watch && (
-                  <p className="text-white/50 mb-8">
-                    Inquire about {watch.description || watch.name}
-                  </p>
-                )}
-                {!watch && (
-                  <p className="text-white/50 mb-8">
-                    How can we help you?
-                  </p>
-                )}
+              </blockquote>
 
-                {/* Watch card preview */}
-                {watch && (
-                  <div className="flex gap-5 p-5 rounded-2xl border border-white/10 bg-white/[0.02] mb-8">
-                    <div className="w-24 h-24 rounded-xl overflow-hidden bg-white/5 shrink-0">
-                      {watch.image && (
-                        <Image
-                          src={imageTransformations.thumbnail(watch.image)}
-                          alt={watch.name}
-                          width={96} height={96}
-                          className="w-full h-full object-cover"
-                          unoptimized
-                        />
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-widest text-white/40 mb-1">
-                        {watch.description?.split(' ')[0] || 'Watch'}
-                      </p>
-                      <h3 className="font-semibold text-white">{watch.description || watch.name}</h3>
-                      <p className="text-xs text-white/40 mt-0.5">{watch.name}</p>
-                      <p className="text-[#bfa68a] font-semibold mt-2">
-                        {watch.currentPrice > 0
-                          ? `$${watch.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-                          : 'Price on Request'}
-                      </p>
-                    </div>
-                  </div>
-                )}
+              <p className="text-white/35 text-sm leading-relaxed mb-10 max-w-sm">
+                For personalised assistance — including bespoke acquisition requests,
+                watch valuations, or information about Price on Request timepieces —
+                reach out directly. Our specialists respond within 24–48 hours.
+              </p>
 
-                {/* Message textarea */}
-                <div className="mb-6">
-                  <label className="block text-sm text-white/60 mb-2">Your Message</label>
-                  <textarea
-                    value={message}
-                    onChange={e => setMessage(e.target.value)}
-                    maxLength={2000}
-                    rows={6}
-                    placeholder={watch
-                      ? 'Tell us about your interest in this timepiece...'
-                      : 'How can we help you?'}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-[#bfa68a]/50 transition resize-none"
-                  />
-                  <p className="text-xs text-white/30 text-right mt-1">{message.length}/2000</p>
-                </div>
+              <a
+                href="mailto:hoanganh31012005@gmail.com"
+                className="inline-flex items-center gap-3 text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] border border-[#bfa68a]/25 px-8 py-4 hover:bg-[#bfa68a]/8 hover:border-[#bfa68a]/40 transition group"
+              >
+                Send an Email
+                <span className="opacity-0 group-hover:opacity-100 transition translate-x-0 group-hover:translate-x-1 duration-200">→</span>
+              </a>
+            </div>
 
-                {error && (
-                  <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-                    {error}
-                  </div>
-                )}
+            <div className="hidden lg:flex items-center gap-4 mt-16 pt-8 border-t border-white/5">
+              <div className="h-px flex-1 bg-gradient-to-r from-[#bfa68a]/25 to-transparent" />
+              <span className="font-playfair text-white/12 text-base">Tourbillon</span>
+            </div>
+          </motion.div>
 
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={handleSubmit}
-                  disabled={submitting || !message.trim()}
-                  className="py-4 px-10 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? 'Sending...' : 'Send Inquiry'}
-                </motion.button>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
       </div>
     </ScrollFade>
