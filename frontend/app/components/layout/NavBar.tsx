@@ -18,18 +18,13 @@ import { useFavourites } from '@/stores/favouritesStore';
 // </svg>
 // )
 
-// Heart icon for favourites nav link
-const HeartNavIcon = () => (
-  <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M20 34.9C9.45 25.08 3.33 19.5 3.33 13.67 3.33 9.42 6.76 7.5 9.69 7.5c1.8 0 5.69.69 7.85 6.11C19.7 8.17 23.63 7.5 25.44 7.5c3.49 0 7.23 2.23 7.23 6.17 0 5.8-7.06 11.84-12.67 21.23z" fill="black"/>
-  </svg>
-);
-
-// Favourites nav link — goes to /favourites for authed users, /login otherwise
+// Favourites nav link — outline heart when nothing saved, solid when saves exist.
+// Matches the FavouriteToggle icon set (Heroicons).
 const HeartNavLink = () => {
   const { isAuthenticated } = useAuth();
   const { favouriteWatchIds, isLoaded } = useFavourites();
   const count = favouriteWatchIds.size;
+  const hasSaved = isAuthenticated && isLoaded && count > 0;
 
   return (
     <div className="relative">
@@ -37,9 +32,32 @@ const HeartNavLink = () => {
         href={isAuthenticated ? '/favourites' : '/login?redirect=/favourites'}
         className="hover:opacity-70 transition-all duration-300 block"
       >
-        <HeartNavIcon />
+        {/* Stacked outline + solid, crossfade on hasSaved */}
+        <span className="relative block w-10 h-10">
+          {/* Outline — shown when nothing is saved */}
+          <svg
+            width="40" height="40" viewBox="0 0 24 24"
+            fill="none" stroke="black" strokeWidth="1.5"
+            strokeLinecap="round" strokeLinejoin="round"
+            xmlns="http://www.w3.org/2000/svg"
+            className="absolute inset-0 transition-opacity duration-300"
+            style={{ opacity: hasSaved ? 0 : 1 }}
+          >
+            <path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+          </svg>
+          {/* Solid — shown when at least one watch is saved */}
+          <svg
+            width="40" height="40" viewBox="0 0 24 24"
+            fill="black"
+            xmlns="http://www.w3.org/2000/svg"
+            className="absolute inset-0 transition-opacity duration-300"
+            style={{ opacity: hasSaved ? 1 : 0 }}
+          >
+            <path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z" />
+          </svg>
+        </span>
       </Link>
-      {isAuthenticated && isLoaded && count > 0 && (
+      {hasSaved && (
         <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-[#bfa68a] text-[#1a1008] text-[9px] font-inter font-bold rounded-full flex items-center justify-center px-1 leading-none">
           {count > 99 ? '99+' : count}
         </span>
