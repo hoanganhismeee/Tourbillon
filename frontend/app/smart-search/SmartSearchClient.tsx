@@ -22,6 +22,7 @@ import { imageTransformations, getOptimizedImageUrl } from '@/lib/cloudinary';
 import { calculateFitScores, parseSpecMm } from '@/lib/wristfit';
 import { useNavigation } from '@/contexts/NavigationContext';
 import CompareToggle from '@/app/components/compare/CompareToggle';
+import FavouriteToggle from '@/app/components/favourites/FavouriteToggle';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -355,6 +356,7 @@ function SmartCard({
           </div>
         </Link>
         <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <FavouriteToggle watchId={watch.id} />
           <CompareToggle watch={watch} />
         </div>
       </div>

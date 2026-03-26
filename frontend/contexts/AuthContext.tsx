@@ -5,6 +5,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCurrentUser, logoutUser, User } from '@/lib/api';
+import { useFavourites } from '@/stores/favouritesStore';
 
 // Define the shape of the context
 interface AuthContextType {
@@ -34,6 +35,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         try {
             const userData = await getCurrentUser();
             setUser(userData);
+            // Eagerly populate favourites store after successful auth check
+            useFavourites.getState().loadFavourites();
         } catch (error) {
             // This is expected if the user is not logged in.
             // We only log errors that are not the "Not authenticated" message.
@@ -61,6 +64,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         try {
             await logoutUser();
             setUser(null);
+            useFavourites.getState().reset();
             router.push('/');
         } catch (error) {
             console.error('Logout failed', error);

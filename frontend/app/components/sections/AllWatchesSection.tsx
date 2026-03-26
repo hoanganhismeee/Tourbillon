@@ -16,6 +16,7 @@ import { useNavigation } from '@/contexts/NavigationContext';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useAuth } from '@/contexts/AuthContext';
 import CompareToggle from '../compare/CompareToggle';
+import FavouriteToggle from '../favourites/FavouriteToggle';
 
 
 // Individual watch card component for grid layout
@@ -99,6 +100,7 @@ const WatchCard = ({ watch, brands, collections, isPriority = false, currentPage
         </Link>
         {/* Action button field — bottom-right of image, visible on hover */}
         <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <FavouriteToggle watchId={watch.id} />
           <CompareToggle watch={watch} />
         </div>
       </div>
