@@ -34,13 +34,7 @@ export default function ContactPage() {
       <div className="min-h-screen text-white">
 
         {/* Hero */}
-        <div className="relative flex flex-col justify-end px-10 lg:px-24 pt-44 pb-20 border-b border-white/5 overflow-hidden">
-          {/* Ambient glow */}
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{ background: 'radial-gradient(ellipse 55% 60% at 70% 40%, rgba(191,166,138,0.06) 0%, transparent 65%)' }}
-            aria-hidden
-          />
+        <div className="relative flex flex-col justify-end px-10 lg:px-24 pt-44 pb-20 border-b border-white/5">
           <motion.p
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}

@@ -1,7 +1,7 @@
-// Login page — split-panel layout, warm brand panel left, form right
+// Login page — split-panel layout, brand panel left, form right, unified background
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -30,12 +30,13 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect');
 
+  // Lock page scroll — no reason to scroll on an auth screen
   useEffect(() => {
-    document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = '';
       document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
     };
   }, []);
 
@@ -55,59 +56,54 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex" style={{ background: 'linear-gradient(135deg, #1e1512 0%, #2a211c 50%, #3b2f26 100%)' }}>
+    <div className="flex h-[calc(100vh-3rem-50px)] overflow-hidden">
 
       {/* Left brand panel */}
-      <div className="hidden lg:flex flex-col justify-between w-[42%] shrink-0 relative overflow-hidden border-r border-[#bfa68a]/10 px-16 py-14">
-        {/* Ambient glow */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse 70% 60% at 30% 60%, rgba(191,166,138,0.08) 0%, transparent 70%)' }}
-          aria-hidden
-        />
+      <div className="hidden lg:flex flex-col justify-center w-[42%] shrink-0 relative border-r border-[#bfa68a]/10 px-16 py-10">
+        <div className="w-10 h-px bg-[#bfa68a]/50 mb-7" />
+        <p className="text-[10px] uppercase tracking-[0.5em] text-[#bfa68a] mb-4">Member Access</p>
+        <h2 className="font-playfair text-[3.5rem] font-light text-[#f0e6d2] leading-[1.1] mb-6">
+          Welcome<br />Back
+        </h2>
+        <p className="text-white/40 text-sm leading-relaxed max-w-[260px] mb-9">
+          Access your collection, track orders, and connect with our private advisors.
+        </p>
 
-        <Link href="/" className="relative font-playfair text-[#f0e6d2]/80 text-2xl font-light tracking-wide hover:text-[#f0e6d2] transition">
-          Tourbillon
-        </Link>
-
-        <div className="relative">
-          <div className="w-8 h-px bg-[#bfa68a]/50 mb-8" />
-          <p className="text-[10px] uppercase tracking-[0.5em] text-[#bfa68a] mb-5">Member Access</p>
-          <h2 className="font-playfair text-[3.5rem] font-light text-[#f0e6d2] leading-[1.1] mb-7">
-            Welcome<br />Back
-          </h2>
-          <p className="text-white/45 text-sm leading-relaxed max-w-[240px]">
-            Access your collection, track orders, and connect with our private advisors.
-          </p>
+        <div className="space-y-4 mb-10">
+          {[
+            ['Curated Collections', 'Hand-selected timepieces from the Holy Trinity and beyond'],
+            ['Personal Advisors', 'One-on-one guidance from certified horological experts'],
+          ].map(([title, desc]) => (
+            <div key={title} className="flex gap-3.5">
+              <div className="w-px h-10 bg-[#bfa68a]/25 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-[11px] text-[#f0e6d2]/70 font-medium tracking-wide">{title}</p>
+                <p className="text-[11px] text-white/25 leading-relaxed mt-0.5">{desc}</p>
+              </div>
+            </div>
+          ))}
         </div>
 
-        <p className="relative text-white/20 text-xs">
-          &copy; {new Date().getFullYear()} Tourbillon
-        </p>
+        <blockquote className="border-l border-[#bfa68a]/30 pl-5">
+          <p className="text-white/30 text-[13px] italic leading-relaxed font-playfair">
+            &ldquo;Time is the most valuable thing a man can spend.&rdquo;
+          </p>
+          <cite className="block text-[10px] uppercase tracking-[0.3em] text-[#bfa68a]/40 mt-2.5 not-italic">
+            Theophrastus
+          </cite>
+        </blockquote>
       </div>
 
       {/* Right form panel */}
-      <div className="flex-1 flex items-center justify-center px-8 overflow-y-auto relative" style={{ background: '#211510' }}>
-        {/* Corner ambient glow */}
-        <div
-          className="absolute top-0 right-0 w-80 h-80 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse at top right, rgba(191,166,138,0.08) 0%, transparent 60%)' }}
-          aria-hidden
-        />
-
+      <div className="flex-1 flex items-center justify-center px-8">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
-          className="w-full max-w-[340px] py-12 relative"
+          className="w-full max-w-[340px] relative"
         >
-          {/* Mobile logo */}
-          <Link href="/" className="lg:hidden block font-playfair text-[#f0e6d2]/80 text-xl mb-10">
-            Tourbillon
-          </Link>
-
           <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a] mb-3">Sign In</p>
-          <h1 className="font-playfair text-[2rem] font-light text-[#f0e6d2] mb-9">Your Account</h1>
+          <h1 className="font-playfair text-[2rem] font-light text-[#f0e6d2] mb-8">Your Account</h1>
 
           {/* Google */}
           <a
@@ -120,7 +116,7 @@ export default function LoginPage() {
           </a>
 
           {/* Divider */}
-          <div className="flex items-center gap-4 mb-7">
+          <div className="flex items-center gap-4 mb-6">
             <div className="flex-1 h-px bg-white/10" />
             <span className="text-[9px] uppercase tracking-[0.25em] text-white/30">or</span>
             <div className="flex-1 h-px bg-white/10" />
@@ -167,9 +163,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {error && (
-              <p className="text-[#e07575] text-xs">{error}</p>
-            )}
+            {error && <p className="text-[#e07575] text-xs">{error}</p>}
 
             <button
               type="submit"
