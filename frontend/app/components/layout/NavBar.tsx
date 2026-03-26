@@ -68,51 +68,47 @@ const UserMenu = () => {
       };
     }, []);
   
+    // Unauthenticated: direct link to sign in, no dropdown
+    if (!isAuthenticated) {
+      return (
+        <Link href="/login" className="hover:opacity-70 transition-all duration-300 cursor-pointer">
+          <UserIcon />
+        </Link>
+      );
+    }
+
     return (
-      <div 
-        className="relative" 
+      <div
+        className="relative"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        {/* User icon that triggers dropdown on hover */}
-        <Link href={!isAuthenticated ? "/login" : "#"} className="hover:opacity-70 transition-all duration-300 cursor-pointer">
+        <button className="hover:opacity-70 transition-all duration-300 cursor-pointer bg-transparent border-none p-0">
           <UserIcon />
-        </Link>
-        
-                 {/* Dropdown menu - only show when isOpen is true */}
-         {isOpen && (
-           <div 
-             className="absolute right-0 mt-2 w-48 bg-white/5 border border-[#bfa68a] rounded-xl shadow-lg py-2 z-50 backdrop-blur-md"
-             onMouseEnter={handleMouseEnter}
-             onMouseLeave={handleMouseLeave}
-           >
-             {isAuthenticated ? (
-               // Authenticated user menu options
-               <>
-                 <div className="px-3 py-2 text-sm text-[#bfa68a] border-b border-[#bfa68a]/30 font-medium text-center">
-                   Welcome, {user?.firstName}
-                 </div>
-                 <Link href="/account/edit-details" className="block px-3 py-2 mt-1 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
-                   Edit Details
-                 </Link>
-                 {isAdmin && (
-                   <Link href="/scrape" className="block px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
-                     Scrape
-                   </Link>
-                 )}
-                 <button onClick={logout} className="block w-full px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
-                   Logout
-                 </button>
-               </>
-             ) : (
-               // Non-authenticated user menu options
-               <>
-                 <Link href="/login" className="block px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">Sign In</Link>
-                 <Link href="/register" className="block px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">Join Us</Link>
-               </>
-             )}
-           </div>
-         )}
+        </button>
+
+        {isOpen && (
+          <div
+            className="absolute right-0 mt-2 w-48 bg-white/5 border border-[#bfa68a] rounded-xl shadow-lg py-2 z-50 backdrop-blur-md"
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
+            <div className="px-3 py-2 text-sm text-[#bfa68a] border-b border-[#bfa68a]/30 font-medium text-center">
+              Welcome, {user?.firstName}
+            </div>
+            <Link href="/account/edit-details" className="block px-3 py-2 mt-1 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
+              Edit Details
+            </Link>
+            {isAdmin && (
+              <Link href="/scrape" className="block px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
+                Scrape
+              </Link>
+            )}
+            <button onClick={logout} className="block w-full px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
+              Logout
+            </button>
+          </div>
+        )}
       </div>
     );
   };
