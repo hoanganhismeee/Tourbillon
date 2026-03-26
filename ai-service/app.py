@@ -570,7 +570,7 @@ Format: brands [Brand Name](/brands/{id}), collections [Collection Name](/collec
 IDs come from the provided context. Never invent an ID.
 
 **Content**
-For brand or collection questions: since everything in the page already has its summary and historic description, so browse through it, avoid repeating the same content, but to lead with 1-2 specific, non-obvious facts (skip the founding year and generic heritage intro — that lives on the page). Guide the user to explore further via the embedded link."""
+For brand or collection questions: lead with 1-2 specific, non-obvious facts (skip the founding year and generic heritage intro — that lives on the page). Guide the user to explore further via the embedded link."""
 
 
 def _truncate_chat_response(text: str, max_words: int = 130) -> str:
@@ -584,6 +584,58 @@ def _truncate_chat_response(text: str, max_words: int = 130) -> str:
     if last_end > len(truncated) // 2:
         return truncated[: last_end + 1]
     return truncated
+
+
+def _inject_entity_links(text: str, context: list) -> str:
+    """Parse brand/collection IDs from context and inject markdown links for bare mentions.
+    Only processes plain-text segments — skips text already inside a [link](url).
+    Safe for Haiku (which generates links itself) and fixes qwen (which ignores the instruction)."""
+    brands: dict = {}
+    collections: dict = {}
+
+    for item in context:
+        m = re.search(r'Brand "([^"]+)" \(ID: (\d+)\)', item)
+        if m:
+            brands[m.group(1)] = int(m.group(2))
+        m = re.search(r'Collection "([^"]+)" \(ID: (\d+)\)', item)
+        if m:
+            collections[m.group(1)] = int(m.group(2))
+
+    if not brands and not collections:
+        return text
+
+    # Build (name, replacement) pairs — longest names first to avoid partial matches
+    replacements = [(name, f"[{name}](/brands/{bid})") for name, bid in brands.items()]
+    replacements += [(name, f"[{name}](/collections/{cid})") for name, cid in collections.items()]
+    replacements.sort(key=lambda x: -len(x[0]))
+
+    # Split on existing markdown links so we never double-link
+    link_re = re.compile(r'\[([^\]]+)\]\([^)]+\)')
+    parts = []
+    last = 0
+    for lm in link_re.finditer(text):
+        parts.append(("plain", text[last:lm.start()]))
+        parts.append(("link",  lm.group(0)))
+        last = lm.end()
+    parts.append(("plain", text[last:]))
+
+    # Replace first occurrence of each entity across all plain segments
+    used: set = set()
+    result = []
+    for kind, segment in parts:
+        if kind == "link":
+            result.append(segment)
+            continue
+        for name, link in replacements:
+            if name in used:
+                continue
+            idx = segment.find(name)
+            if idx >= 0:
+                segment = segment[:idx] + link + segment[idx + len(name):]
+                used.add(name)
+        result.append(segment)
+
+    return "".join(result)
 
 
 @app.route("/chat", methods=["POST"])
@@ -635,7 +687,9 @@ def chat():
             temperature=0.3,
         )
         raw = resp.choices[0].message.content.strip()
-        return jsonify({"message": _truncate_chat_response(raw)})
+        trimmed = _truncate_chat_response(raw)
+        linked  = _inject_entity_links(trimmed, context)
+        return jsonify({"message": linked})
     except Exception as e:
         return jsonify({"error": f"Chat LLM call failed: {str(e)}"}), 502
 
