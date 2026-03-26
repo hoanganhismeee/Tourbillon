@@ -789,3 +789,108 @@ export const clearChatSession = async (sessionId: string): Promise<void> => {
   });
 };
 
+// ── Favourites & Collections ──────────────────────────────────────────────────
+
+export interface UserCollectionSummary {
+  id: number;
+  name: string;
+  watchIds: number[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FavouritesState {
+  favouriteWatchIds: number[];
+  collections: UserCollectionSummary[];
+}
+
+export interface FavouriteWatchesResponse {
+  watches: Watch[];
+  watchCollectionMembership: Record<number, number[]>;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export const getFavouritesState = async (): Promise<FavouritesState> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/favourites`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch favourites state');
+  return response.json();
+};
+
+export const addFavourite = async (watchId: number): Promise<void> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/favourites/${watchId}`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to add favourite');
+};
+
+export const removeFavourite = async (watchId: number): Promise<void> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/favourites/${watchId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to remove favourite');
+};
+
+export const getFavouriteWatches = async (params: {
+  page?: number;
+  pageSize?: number;
+  collectionIds?: number[];
+  sortBy?: string;
+}): Promise<FavouriteWatchesResponse> => {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.sortBy) query.set('sortBy', params.sortBy);
+  if (params.collectionIds?.length) {
+    params.collectionIds.forEach(id => query.append('collectionIds', String(id)));
+  }
+  const response = await fetchWithTimeout(`${API_BASE_URL}/favourites/watches?${query}`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch favourite watches');
+  return response.json();
+};
+
+export const createCollection = async (name: string): Promise<UserCollectionSummary> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/favourites/collections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: 'Failed to create collection' }));
+    throw new Error(err.message || 'Failed to create collection');
+  }
+  return response.json();
+};
+
+export const deleteCollection = async (id: number): Promise<void> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/favourites/collections/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to delete collection');
+};
+
+export const addToCollection = async (collectionId: number, watchId: number): Promise<void> => {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/favourites/collections/${collectionId}/watches/${watchId}`,
+    { method: 'PUT', credentials: 'include' }
+  );
+  if (!response.ok) throw new Error('Failed to add to collection');
+};
+
+export const removeFromCollection = async (collectionId: number, watchId: number): Promise<void> => {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/favourites/collections/${collectionId}/watches/${watchId}`,
+    { method: 'DELETE', credentials: 'include' }
+  );
+  if (!response.ok) throw new Error('Failed to remove from collection');
+};
+

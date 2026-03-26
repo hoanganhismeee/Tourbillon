@@ -126,6 +126,9 @@ builder.Services.AddScoped<IMagicLoginService, MagicLoginService>();
 // Register contact inquiry service (advisor inquiries + email notifications)
 builder.Services.AddScoped<IContactInquiryService, ContactInquiryService>();
 
+// Register favourites service (user favourites and named collections)
+builder.Services.AddScoped<IFavouritesService, FavouritesService>();
+
 // Register appointment booking service
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 builder.Services.AddScoped<IRegisterInterestService, RegisterInterestService>();
