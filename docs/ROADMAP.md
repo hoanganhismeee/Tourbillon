@@ -62,6 +62,9 @@ The warmup in `app.py` auto-detects non-Ollama URLs and skips model pull. No oth
 **When switching to Haiku — one prompt cleanup:**
 `ai-service/app.py` lines 171–175 contain hardcoded dress/sport/diver/chronograph narrative guidance for the reranker. These become redundant once Haiku handles them natively — remove after confirming correct scores in staging. Keep all scoring thresholds (`score 80+`). Do NOT remove `PARSE_SYSTEM_PROMPT` category lists (occasion, material, strap, etc.) — they constrain structured JSON output format and are model-agnostic.
 
+**Chat concierge prompt (`CHAT_SYSTEM_PROMPT`) — written for Haiku:**
+Style rules, word cap (130 words), and link format are expressed as plain instructions that Claude follows natively — no hardcoded narrative, no model-specific training. A server-side `_truncate_chat_response()` in `/chat` enforces the cap as a safety net for any model that overshoots. Do not add enumeration-heavy guidance; prose instructions are intentional and model-agnostic.
+
 **`Collection.Style` DB column:** SQL pre-filter for query speed — not a knowledge proxy. Keep regardless of model.
 
 **Scraping dead code:** `backend/Services/ClaudeApiService.cs` was unused — scraping complete. Deleted. The ai-service `LLM_API_KEY` is independent and must be provisioned at deploy time.
