@@ -6,6 +6,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
+import { flushSync } from 'react-dom';
 import Link from 'next/link';
 import { AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,23 +18,8 @@ interface FavouriteToggleProps {
   className?: string;
 }
 
-// Auto-dismissing tooltip that appears when unauthenticated users click the heart.
-// Second click on the heart closes it; it also closes itself after 1.5s.
 const SignInNudge = ({ anchorRect, onClose }: { anchorRect: DOMRect; onClose: () => void }) => {
   const ref = useRef<HTMLDivElement>(null);
-  const [barStarted, setBarStarted] = useState(false);
-
-  // Auto-dismiss after 1.5s
-  useEffect(() => {
-    const t = setTimeout(onClose, 1500);
-    return () => clearTimeout(t);
-  }, [onClose]);
-
-  // Start progress bar animation on next frame (allows CSS transition to fire)
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setBarStarted(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
 
   useEffect(() => {
     const handleOutside = (e: MouseEvent) => {
@@ -48,45 +34,32 @@ const SignInNudge = ({ anchorRect, onClose }: { anchorRect: DOMRect; onClose: ()
     };
   }, [onClose]);
 
-  const left = Math.max(8, Math.min(anchorRect.right - 168, window.innerWidth - 180));
+  const left = Math.max(8, Math.min(anchorRect.right - 160, window.innerWidth - 172));
   const top = anchorRect.bottom + 8;
 
   return ReactDOM.createPortal(
     <div
       ref={ref}
-      style={{ position: 'fixed', left, top, zIndex: 9999, width: 168 }}
-      className="rounded-xl overflow-hidden shadow-xl shadow-black/50"
+      style={{ position: 'fixed', left, top, zIndex: 9999, width: 160 }}
+      className="rounded-xl border border-[#bfa68a]/20 shadow-xl shadow-black/50 px-4 py-3 text-center"
       onClick={e => e.stopPropagation()}
     >
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 rounded-xl"
         style={{
           background: 'linear-gradient(160deg, rgba(42,33,28,0.97) 0%, rgba(30,21,18,0.98) 100%)',
           backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(191,166,138,0.15)',
-          borderRadius: 'inherit',
+          zIndex: -1,
         }}
       />
-      <div className="relative px-4 pt-3 pb-2.5 text-center">
-        <p className="text-xs text-white/55 font-inter mb-2">Sign in to save watches</p>
-        <Link
-          href="/login?redirect=/favourites"
-          onClick={onClose}
-          className="block text-xs font-inter font-semibold text-[#bfa68a] hover:text-[#d4b896] transition-colors"
-        >
-          Sign in
-        </Link>
-      </div>
-      {/* Shrinking progress bar showing time until auto-dismiss */}
-      <div className="relative h-[2px] bg-white/5">
-        <div
-          className="absolute inset-y-0 left-0 bg-[#bfa68a]/40"
-          style={{
-            width: barStarted ? '0%' : '100%',
-            transition: 'width 1.5s linear',
-          }}
-        />
-      </div>
+      <p className="text-xs text-white/60 font-inter mb-2">Sign in to save watches</p>
+      <Link
+        href="/login?redirect=/favourites"
+        onClick={onClose}
+        className="block text-xs font-inter font-semibold text-[#bfa68a] hover:text-[#d4b896] transition-colors"
+      >
+        Sign in
+      </Link>
     </div>,
     document.body
   );

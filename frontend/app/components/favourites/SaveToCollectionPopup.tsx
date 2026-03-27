@@ -1,7 +1,6 @@
 // Portal popup for saving a watch to Favourites or a named collection.
 // Spotify-style UX: auto-saves to Favourites on first open; popup lets user manage collections.
 // Positioned by measuring actual DOM height after mount to avoid incorrect viewport-flip.
-// Closes on scroll (>30px). Cancel/Done buttons for explicit control.
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -32,9 +31,6 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
   } = useFavourites();
 
   const popupRef = useRef<HTMLDivElement>(null);
-  // Capture state before any auto-save so Cancel can revert correctly
-  const wasAlreadySavedRef = useRef(isFavourited(watchId));
-  const manuallyToggledRef = useRef(false);
 
   // Positioning state — starts hidden until measured
   const [pos, setPos] = useState<{ left: number; top: number; origin: string } | null>(null);
@@ -49,6 +45,7 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
   // On mount: auto-save if needed, then measure and position the popup.
   // Runs after first paint so window/DOM are available.
   useEffect(() => {
+    // Auto-save to Favourites on first open if not already saved
     if (autoSave && !isFavourited(watchId)) {
       toggleFavourite(watchId);
     }
@@ -67,32 +64,23 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally only on mount
 
-  // Click-outside, Escape, and scroll-to-close (>30px threshold)
+  // Click-outside and Escape close
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(e.target as Node)) onClose();
     };
     const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-
-    const initialScrollY = window.scrollY;
-    const handleScroll = () => {
-      if (Math.abs(window.scrollY - initialScrollY) > 30) onClose();
-    };
-
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEscape);
-    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
-      window.removeEventListener('scroll', handleScroll);
     };
   }, [onClose]);
 
-  // Actions — mark manual interaction so Cancel won't revert collection changes
+  // Actions
   const handleFavouriteClick = async () => {
     if (updatingRows.has('fav')) return;
-    manuallyToggledRef.current = true;
     setUpdatingRows(prev => new Set(prev).add('fav'));
     try { await toggleFavourite(watchId); }
     finally { setUpdatingRows(prev => { const s = new Set(prev); s.delete('fav'); return s; }); }
@@ -101,7 +89,6 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
   const handleCollectionClick = async (collectionId: number) => {
     const key = `col-${collectionId}`;
     if (updatingRows.has(key)) return;
-    manuallyToggledRef.current = true;
     setUpdatingRows(prev => new Set(prev).add(key));
     try {
       if (isInCollection(collectionId, watchId)) await removeFromCollection(collectionId, watchId);
@@ -116,7 +103,6 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
     if (!trimmed || creatingCollection) return;
     setCreateError('');
     setCreatingCollection(true);
-    manuallyToggledRef.current = true;
     try {
       const newCol = await createCollection(trimmed);
       await addToCollection(newCol.id, watchId);
@@ -127,14 +113,6 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
     } finally {
       setCreatingCollection(false);
     }
-  };
-
-  // Cancel: undo the auto-save only if user never manually interacted and watch wasn't previously saved
-  const handleCancel = async () => {
-    if (!wasAlreadySavedRef.current && !manuallyToggledRef.current && isFavourited(watchId)) {
-      await toggleFavourite(watchId);
-    }
-    onClose();
   };
 
   const favActive = isFavourited(watchId);
@@ -308,23 +286,6 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
         {search && unsavedCollections.length === 0 && !showFavInSearch && (
           <p className="px-4 py-5 text-center text-xs text-white/30 font-inter">No collections found</p>
         )}
-      </div>
-
-      {/* Cancel / Done footer */}
-      <div className="h-px bg-white/8" />
-      <div className="flex items-center gap-2 px-3 py-2.5">
-        <button
-          onClick={handleCancel}
-          className="flex-1 py-2 rounded-xl text-xs font-inter font-medium text-white/45 hover:text-white/70 hover:bg-white/5 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={onClose}
-          className="flex-1 py-2 rounded-xl text-xs font-inter font-semibold bg-[#bfa68a]/15 text-[#bfa68a] hover:bg-[#bfa68a]/25 transition-colors"
-        >
-          Done
-        </button>
       </div>
     </motion.div>
   );
