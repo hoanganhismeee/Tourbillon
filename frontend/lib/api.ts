@@ -878,6 +878,20 @@ export const deleteCollection = async (id: number): Promise<void> => {
   if (!response.ok) throw new Error('Failed to delete collection');
 };
 
+export const renameCollection = async (id: number, name: string): Promise<UserCollectionSummary> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/favourites/collections/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message ?? 'Failed to rename collection');
+  }
+  return response.json();
+};
+
 export const addToCollection = async (collectionId: number, watchId: number): Promise<void> => {
   const response = await fetchWithTimeout(
     `${API_BASE_URL}/favourites/collections/${collectionId}/watches/${watchId}`,
