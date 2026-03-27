@@ -9,7 +9,6 @@ import {
   removeFavourite,
   createCollection as apiCreateCollection,
   deleteCollection as apiDeleteCollection,
-  renameCollection as apiRenameCollection,
   addToCollection as apiAddToCollection,
   removeFromCollection as apiRemoveFromCollection,
 } from '@/lib/api';
@@ -32,7 +31,6 @@ interface FavouritesStore {
   removeFromCollection: (collectionId: number, watchId: number) => Promise<void>;
   createCollection: (name: string) => Promise<UserCollectionSummary>;
   deleteCollection: (collectionId: number) => Promise<void>;
-  renameCollection: (collectionId: number, newName: string) => Promise<void>;
   reset: () => void;
 }
 
@@ -139,17 +137,6 @@ export const useFavourites = create<FavouritesStore>()((set, get) => ({
     set({ collections: collections.filter(c => c.id !== collectionId) });
     try {
       await apiDeleteCollection(collectionId);
-    } catch {
-      set({ collections });
-    }
-  },
-
-  renameCollection: async (collectionId, newName) => {
-    const { collections } = get();
-    // Optimistic update
-    set({ collections: collections.map(c => c.id === collectionId ? { ...c, name: newName } : c) });
-    try {
-      await apiRenameCollection(collectionId, newName);
     } catch {
       set({ collections });
     }
