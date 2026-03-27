@@ -17,7 +17,6 @@ public interface IFavouritesService
     Task DeleteCollectionAsync(int userId, int collectionId);
     Task AddToCollectionAsync(int userId, int collectionId, int watchId);
     Task RemoveFromCollectionAsync(int userId, int collectionId, int watchId);
-    Task<UserCollectionDto> RenameCollectionAsync(int userId, int collectionId, string newName);
 }
 
 public class FavouritesService : IFavouritesService
@@ -144,9 +143,8 @@ public class FavouritesService : IFavouritesService
         watchesQuery = (query.SortBy ?? "recent") switch
         {
             "brand"      => watchesQuery.OrderBy(w => w.BrandId).ThenBy(w => w.Name),
-            // PoR watches (CurrentPrice = 0) are pushed to the end in both sort directions
-            "price_desc" => watchesQuery.OrderBy(w => w.CurrentPrice == 0 ? 1 : 0).ThenByDescending(w => w.CurrentPrice),
-            "price_asc"  => watchesQuery.OrderBy(w => w.CurrentPrice == 0 ? 1 : 0).ThenBy(w => w.CurrentPrice),
+            "price_desc" => watchesQuery.OrderByDescending(w => w.CurrentPrice),
+            "price_asc"  => watchesQuery.OrderBy(w => w.CurrentPrice),
             _            => watchesQuery, // "recent": sort in memory by CreatedAt below
         };
 
@@ -288,42 +286,5 @@ public class FavouritesService : IFavouritesService
             collection.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
-    }
-
-    // Renames a collection; validates ownership and rejects duplicate names (case-insensitive).
-    public async Task<UserCollectionDto> RenameCollectionAsync(int userId, int collectionId, string newName)
-    {
-        newName = newName.Trim();
-        if (string.IsNullOrEmpty(newName))
-            throw new InvalidOperationException("Collection name cannot be empty.");
-
-        var collection = await _context.UserCollections
-            .Include(c => c.Watches)
-            .FirstOrDefaultAsync(c => c.Id == collectionId);
-
-        if (collection == null)
-            throw new InvalidOperationException("Collection not found.");
-
-        if (collection.UserId != userId)
-            throw new UnauthorizedAccessException("Not authorised to rename this collection.");
-
-        var duplicate = await _context.UserCollections
-            .AnyAsync(c => c.UserId == userId && c.Id != collectionId && c.Name.ToLower() == newName.ToLower());
-
-        if (duplicate)
-            throw new InvalidOperationException($"A collection named \"{newName}\" already exists.");
-
-        collection.Name = newName;
-        collection.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        return new UserCollectionDto
-        {
-            Id = collection.Id,
-            Name = collection.Name,
-            WatchIds = collection.Watches.Select(w => w.WatchId).ToArray(),
-            CreatedAt = collection.CreatedAt,
-            UpdatedAt = collection.UpdatedAt,
-        };
     }
 }

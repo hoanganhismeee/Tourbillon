@@ -1,7 +1,7 @@
 // Main client for /favourites — auth guard, collections row, filter/sort, paginated watch grid.
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -46,7 +46,7 @@ export default function FavouritesClient() {
   const searchParams = useSearchParams();
   const page = Number(searchParams.get('page') ?? '1');
 
-  const { collections, isLoaded, loadFavourites, deleteCollection, renameCollection } = useFavourites();
+  const { collections, isLoaded, loadFavourites, deleteCollection } = useFavourites();
 
   const [watchData, setWatchData] = useState<FavouriteWatchesResponse | null>(null);
   const [gridLoading, setGridLoading] = useState(false);
@@ -215,104 +215,36 @@ export default function FavouritesClient() {
             Collections
           </h2>
           <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-            {collections.map(col => {
-              const previews = collectionPreviewImages[col.id] ?? [];
-              const isEditing = editingCollectionId === col.id;
-              return (
-                <div
-                  key={col.id}
-                  className={`relative group/col shrink-0 cursor-pointer rounded-2xl border transition-all duration-300 min-w-[180px] overflow-hidden ${
-                    selectedCollectionIds.includes(col.id)
-                      ? 'border-[#bfa68a]/50 bg-[#bfa68a]/10'
-                      : 'border-white/10 bg-black/30 hover:border-white/25'
-                  }`}
-                  onClick={() => !isEditing && toggleCollectionFilter(col.id)}
+            {collections.map(col => (
+              <div
+                key={col.id}
+                className={`relative group/col shrink-0 cursor-pointer rounded-2xl border transition-all duration-300 px-5 py-4 min-w-[160px] ${
+                  selectedCollectionIds.includes(col.id)
+                    ? 'border-[#bfa68a]/50 bg-[#bfa68a]/10'
+                    : 'border-white/10 bg-black/30 hover:border-white/25'
+                }`}
+                onClick={() => toggleCollectionFilter(col.id)}
+              >
+                <p className="font-playfair text-[#f0e6d2] text-sm font-medium truncate pr-6">{col.name}</p>
+                <p className="text-xs text-white/40 font-inter mt-1">
+                  {col.watchIds.length} {col.watchIds.length === 1 ? 'piece' : 'pieces'}
+                </p>
+                <p className="text-[10px] text-white/25 font-inter mt-0.5">
+                  Updated {formatDate(col.updatedAt)}
+                </p>
+                {/* Delete button — appears on hover */}
+                <button
+                  onClick={e => { e.stopPropagation(); handleDeleteCollection(col.id); }}
+                  disabled={deletingId === col.id}
+                  className="absolute top-3 right-3 w-5 h-5 rounded-full bg-white/5 border border-white/10 flex items-center justify-center opacity-0 group-hover/col:opacity-100 transition-opacity hover:bg-white/15"
+                  title="Delete collection"
                 >
-                  {/* Preview images strip */}
-                  <div className="h-[72px] bg-black/30 flex items-center justify-center px-4">
-                    {previews.length > 0 ? (
-                      <div className="flex items-center">
-                        {previews.map((url, i) => (
-                          <div
-                            key={i}
-                            className="w-10 h-10 rounded-lg border border-white/10 overflow-hidden bg-black/50 shrink-0"
-                            style={{ marginLeft: i > 0 ? -10 : 0, zIndex: previews.length - i }}
-                          >
-                            <Image src={url} alt="" width={40} height={40} className="w-full h-full object-contain" />
-                          </div>
-                        ))}
-                        {col.watchIds.length > previews.length && (
-                          <div
-                            className="w-10 h-10 rounded-lg border border-white/10 bg-white/5 shrink-0 flex items-center justify-center"
-                            style={{ marginLeft: -10 }}
-                          >
-                            <span className="text-[10px] text-white/40 font-inter">+{col.watchIds.length - previews.length}</span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5">
-                          <path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Card content */}
-                  <div className="px-4 py-3">
-                    {isEditing ? (
-                      <input
-                        autoFocus
-                        value={editingName}
-                        onChange={e => setEditingName(e.target.value)}
-                        onKeyDown={e => {
-                          e.stopPropagation();
-                          if (e.key === 'Enter') handleRenameSubmit(col.id);
-                          if (e.key === 'Escape') setEditingCollectionId(null);
-                        }}
-                        onBlur={() => handleRenameSubmit(col.id)}
-                        onClick={e => e.stopPropagation()}
-                        disabled={renamingId === col.id}
-                        className="w-full bg-transparent border-b border-[#bfa68a]/50 text-[#f0e6d2] text-sm font-playfair font-medium outline-none pb-0.5 mb-1 disabled:opacity-50"
-                      />
-                    ) : (
-                      <p className="font-playfair text-[#f0e6d2] text-sm font-medium truncate pr-8">{col.name}</p>
-                    )}
-                    <p className="text-xs text-white/40 font-inter mt-1">
-                      {col.watchIds.length} {col.watchIds.length === 1 ? 'piece' : 'pieces'}
-                    </p>
-                    <p className="text-[10px] text-white/25 font-inter mt-0.5">
-                      Updated {formatDate(col.updatedAt)}
-                    </p>
-                  </div>
-
-                  {/* Hover action buttons — top-right */}
-                  <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 group-hover/col:opacity-100 transition-opacity">
-                    <button
-                      onClick={e => { e.stopPropagation(); startEditing(col.id, col.name); }}
-                      className="w-5 h-5 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/15"
-                      title="Rename collection"
-                    >
-                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeOpacity="0.5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={e => { e.stopPropagation(); handleDeleteCollection(col.id); }}
-                      disabled={deletingId === col.id}
-                      className="w-5 h-5 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/15 disabled:opacity-40"
-                      title="Delete collection"
-                    >
-                      <svg width="7" height="7" viewBox="0 0 8 8" fill="none" stroke="white" strokeOpacity="0.5" strokeWidth="1.5" strokeLinecap="round">
-                        <path d="M1 1l6 6M7 1l-6 6" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                  <svg width="7" height="7" viewBox="0 0 8 8" fill="none" stroke="white" strokeOpacity="0.5" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M1 1l6 6M7 1l-6 6" />
+                  </svg>
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}

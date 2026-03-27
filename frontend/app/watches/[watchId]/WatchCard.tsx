@@ -153,9 +153,6 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
       {/* Watch Details */}
       <Link href={watchHref} onClick={handleWatchClick}>
         <div className="space-y-3 text-center">
-          {watch.description && (
-            <p className="text-xs text-white/45 font-inter tracking-wide -mb-1">{watch.description}</p>
-          )}
           <h3 className="text-xl font-playfair font-semibold text-[#f0e6d2] group-hover:text-white transition-colors">
             {watch.name}
           </h3>
