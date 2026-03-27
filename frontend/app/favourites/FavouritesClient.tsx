@@ -7,8 +7,20 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavourites } from '@/stores/favouritesStore';
-import { getFavouriteWatches, FavouriteWatchesResponse } from '@/lib/api';
+import { getFavouriteWatches, fetchBrands, Brand, FavouriteWatchesResponse } from '@/lib/api';
 import WatchCard from '@/app/watches/[watchId]/WatchCard';
+import {
+  WatchFilters,
+  EMPTY_WATCH_FILTERS,
+  BrandDropdown,
+  FilterDropdown,
+  CASE_MATERIAL_OPTIONS,
+  MOVEMENT_OPTIONS,
+  WATER_RESISTANCE_OPTIONS,
+  COMPLICATION_LABELS,
+  PRICE_BUCKETS,
+  applyWatchFilters,
+} from '@/app/components/filters/WatchFilterBar';
 
 const PAGE_SIZE = 20;
 
@@ -41,6 +53,8 @@ export default function FavouritesClient() {
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<number[]>([]);
   const [sortBy, setSortBy] = useState('recent');
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [watchFilters, setWatchFilters] = useState<WatchFilters>(EMPTY_WATCH_FILTERS);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [editingCollectionId, setEditingCollectionId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
   const [renamingId, setRenamingId] = useState<number | null>(null);
@@ -59,14 +73,22 @@ export default function FavouritesClient() {
     }
   }, [isAuthenticated, isLoaded, loadFavourites]);
 
-  // Fetch paginated watch grid whenever filters/sort/page change
+  // Fetch brand list once for the filter bar
+  useEffect(() => {
+    fetchBrands().then(setBrands).catch(() => {});
+  }, []);
+
+  const hasWatchFilters = Object.values(watchFilters).some((v: string[] | number[]) => v.length > 0);
+
+  // When spec filters are active, fetch all (up to 500) so we can filter client-side.
+  // Otherwise use normal server-side pagination.
   const fetchGrid = useCallback(async () => {
     if (!isAuthenticated) return;
     setGridLoading(true);
     try {
       const result = await getFavouriteWatches({
-        page,
-        pageSize: PAGE_SIZE,
+        page: hasWatchFilters ? 1 : page,
+        pageSize: hasWatchFilters ? 500 : PAGE_SIZE,
         collectionIds: selectedCollectionIds.length > 0 ? selectedCollectionIds : undefined,
         sortBy,
       });
@@ -76,7 +98,7 @@ export default function FavouritesClient() {
     } finally {
       setGridLoading(false);
     }
-  }, [isAuthenticated, page, selectedCollectionIds, sortBy]);
+  }, [isAuthenticated, page, selectedCollectionIds, sortBy, hasWatchFilters]);
 
   useEffect(() => {
     fetchGrid();
@@ -145,7 +167,23 @@ export default function FavouritesClient() {
     }
   };
 
-  const totalPages = watchData ? Math.ceil(watchData.totalCount / PAGE_SIZE) : 0;
+  // Client-side filter application on top of the server-fetched data
+  const displayedWatches = useMemo(() => {
+    if (!watchData) return [];
+    return hasWatchFilters ? applyWatchFilters(watchData.watches, watchFilters) : watchData.watches;
+  }, [watchData, watchFilters, hasWatchFilters]);
+
+  const setFilter = <K extends keyof WatchFilters>(key: K, value: WatchFilters[K]) => {
+    setWatchFilters(prev => ({ ...prev, [key]: value }));
+    router.push('/favourites');
+  };
+
+  const clearWatchFilters = () => {
+    setWatchFilters(EMPTY_WATCH_FILTERS);
+    router.push('/favourites');
+  };
+
+  const totalPages = !hasWatchFilters && watchData ? Math.ceil(watchData.totalCount / PAGE_SIZE) : 0;
 
   if (authLoading || (!isAuthenticated && !authLoading)) return null;
 
@@ -279,7 +317,59 @@ export default function FavouritesClient() {
         </div>
       )}
 
-      {/* Divider + heading + filter bar */}
+      {/* Filter bar */}
+      <div className="pb-5 mb-6 border-b border-white/8">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-inter text-white/30 uppercase tracking-widest mr-1 flex-shrink-0 self-center">
+            Filters
+          </span>
+          <BrandDropdown
+            brands={brands}
+            selected={watchFilters.brandIds}
+            onChange={v => setFilter('brandIds', v)}
+          />
+          <FilterDropdown
+            label="Case Material"
+            options={CASE_MATERIAL_OPTIONS}
+            selected={watchFilters.caseMaterials}
+            onChange={v => setFilter('caseMaterials', v)}
+          />
+          <FilterDropdown
+            label="Movement"
+            options={MOVEMENT_OPTIONS}
+            selected={watchFilters.movementTypes}
+            onChange={v => setFilter('movementTypes', v)}
+          />
+          <FilterDropdown
+            label="Water Resistance"
+            options={WATER_RESISTANCE_OPTIONS}
+            selected={watchFilters.waterResistances}
+            onChange={v => setFilter('waterResistances', v)}
+          />
+          <FilterDropdown
+            label="Complications"
+            options={COMPLICATION_LABELS}
+            selected={watchFilters.complications}
+            onChange={v => setFilter('complications', v)}
+          />
+          <FilterDropdown
+            label="Price"
+            options={PRICE_BUCKETS.map(b => b.label)}
+            selected={watchFilters.priceBuckets}
+            onChange={v => setFilter('priceBuckets', v)}
+          />
+          {hasWatchFilters && (
+            <button
+              onClick={clearWatchFilters}
+              className="ml-1 text-xs font-inter text-white/35 hover:text-white/60 transition-colors flex-shrink-0"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Heading + sort */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
           <h2 className="font-playfair text-xl text-[#f0e6d2] font-light">{headingText}</h2>
@@ -310,11 +400,11 @@ export default function FavouritesClient() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
           {Array.from({ length: PAGE_SIZE }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
-      ) : watchData && watchData.watches.length > 0 ? (
+      ) : displayedWatches.length > 0 ? (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            {watchData.watches.map(watch => {
-              const membershipIds = watchData.watchCollectionMembership[watch.id] ?? [];
+            {displayedWatches.map(watch => {
+              const membershipIds = watchData?.watchCollectionMembership[watch.id] ?? [];
               const labels = membershipIds.map(id => getCollectionName(id)).filter(Boolean);
               return (
                 <WatchCard
@@ -359,16 +449,33 @@ export default function FavouritesClient() {
               />
             </svg>
           </div>
-          <p className="font-playfair text-xl text-[#f0e6d2]/60 mb-2">No watches saved yet</p>
-          <p className="text-sm text-white/30 font-inter mb-8">
-            Hover over any watch card and click the heart to save it here.
-          </p>
-          <Link
-            href="/watches"
-            className="px-6 py-3 rounded-xl border border-[#bfa68a]/30 text-[#bfa68a] text-sm font-inter hover:bg-[#bfa68a]/10 transition-colors"
-          >
-            Browse Timepieces
-          </Link>
+          {hasWatchFilters ? (
+            <>
+              <p className="font-playfair text-xl text-[#f0e6d2]/60 mb-2">No matches</p>
+              <p className="text-sm text-white/30 font-inter mb-8">
+                No saved watches match the selected filters.
+              </p>
+              <button
+                onClick={clearWatchFilters}
+                className="px-6 py-3 rounded-xl border border-[#bfa68a]/30 text-[#bfa68a] text-sm font-inter hover:bg-[#bfa68a]/10 transition-colors"
+              >
+                Clear filters
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="font-playfair text-xl text-[#f0e6d2]/60 mb-2">No watches saved yet</p>
+              <p className="text-sm text-white/30 font-inter mb-8">
+                Hover over any watch card and click the heart to save it here.
+              </p>
+              <Link
+                href="/watches"
+                className="px-6 py-3 rounded-xl border border-[#bfa68a]/30 text-[#bfa68a] text-sm font-inter hover:bg-[#bfa68a]/10 transition-colors"
+              >
+                Browse Timepieces
+              </Link>
+            </>
+          )}
         </div>
       )}
     </main>
