@@ -29,6 +29,14 @@ public class CreateCollectionDto
     public string Name { get; set; } = string.Empty;
 }
 
+// Body for PATCH /api/favourites/collections/{id}.
+public class RenameCollectionDto
+{
+    [Required]
+    [MaxLength(100)]
+    public string Name { get; set; } = string.Empty;
+}
+
 // Query parameters for GET /api/favourites/watches.
 public class FavouriteWatchesQueryDto
 {
