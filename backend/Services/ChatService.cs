@@ -335,7 +335,7 @@ public class ChatService
 
     private async Task<List<string>> FetchGeneralContextAsync(HttpClient httpClient, string query)
     {
-        // Embed query → cosine search against rag_chat feature embeddings
+        // Embed query → cosine search against watch_finder feature embeddings
         float[]? embedding = null;
         try
         {
@@ -359,7 +359,7 @@ public class ChatService
         var rows = await _context.WatchEmbeddings
             .Include(e => e.Watch).ThenInclude(w => w.Brand)
             .Include(e => e.Watch).ThenInclude(w => w.Collection)
-            .Where(e => e.Feature == "rag_chat" && e.Embedding != null)
+            .Where(e => e.Feature == "watch_finder" && e.Embedding != null)
             .OrderBy(e => e.Embedding!.CosineDistance(queryVector))
             .Take(25)
             .ToListAsync();
