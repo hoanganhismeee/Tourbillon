@@ -19,14 +19,15 @@
 | Google OAuth + Email Magic Login (passwordless OTP) | Done | 3C |
 | Post-login redirect — magic link and Google OAuth paths | Done | 3C |
 | Role-Based Access Control (admin seeding, scrape page guard, nav link) | Done | 3.5 |
-| Homepage Cinematic Video Hero | Done | 3.5 |
 | AI Discovery Pages (GEO/SEO) | Removed | — |
-| Stripe Checkout (Test Mode) | Done | 4 |
+| Homepage Cinematic Video Hero | Done | 3.5 |
+| Stripe Checkout (Test Mode) | Removed | — |
 | Contact Advisor (PoR Inquiry) | Done | 4 |
-| Chat Concierge — floating widget + product comparison RAG | Planned | 5 |
-| Chat Concierge — web search + brand knowledge answers | Planned | 5 |
-| Brand & Collection Embeddings | Planned | 5 |
-| Favourites & Collections | In Progress | 5.5 |
+| Chat Concierge — floating widget + product comparison RAG | Done | 5 |
+| Chat Concierge — web search + brand knowledge answers | Done | 5 |
+| Brand & Collection Embeddings | Removed | — |
+| Retrieval Quality Audit (chunk enrichment, vector ordering, index fix) | Done | 5 |
+| Favourites & Collections | Done | 6 |
 
 ## Model Strategy
 
@@ -83,12 +84,13 @@ Style rules, word cap (130 words), and link format are expressed as plain instru
 ### Should use AI
 
 - **Compare Mode** — backend handles the spec diff (SQL); AI generates the wearability and brand-character explanation
-- **Watch DNA / Taste Profile** — Phase A is rule-based (free); Phase B optionally uses local embeddings
+- **Watch DNA / Taste Profile** — LLM extracts structured preferences once on save; rule-based scoring at browse time (zero AI cost)
 
 ### Never use AI
 
 - Filtering and sorting (SQL)
 - Wrist-fit calculation (pure arithmetic)
+- Category/style classification (deterministic `InferCategory()`)
 - Product queries and CRUD
 - Authentication and session management
 
@@ -169,7 +171,7 @@ Semantic result cache stored in `QueryCaches` table. Every search embeds the que
 
 **Pre-deploy workflow:** run `POST /api/admin/query-cache/seed` in dev → `pg_dump` both `WatchEmbeddings` and `QueryCaches` → import to production. First user on prod hits a fully warm cache.
 
-**Phase 3B (COMPLETE):** Vector similarity search active. `WatchFinderService` uses hybrid filtering — `ParseQueryIntentAsync` extracts brand/collection/price/diameter/material/movement/WR as hard SQL pre-filters and frontend filter pre-selections (no LLM), cosine similarity ranks within the filtered pool. `QueryIntent` returned to frontend to pre-populate the filter bar. 208 seed queries covering natural-language, spec-based, and complication queries. Category-aware embeddings: `InferCategory` classifies each watch as dress/chronograph/sport/diver from collection name + specs; `InferOccasions` uses category to gate occasion labels (gold chronograph no longer tagged "formal"). BrandSpread applied to vector search candidates for brand diversity. Rerank prompt enhanced with category-matching guidance and collection name. Cache skipped when QueryIntent has hard SQL filters to prevent stale cross-category hits. Result filter bar includes: Brand, Collection, Case Material, Diameter, Movement, Water Resistance, Power Reserve, Complications (12 types: chronograph, perpetual/annual calendar, moonphase, tourbillon, repeater, GMT, flyback, power reserve, alarm, retrograde, equation of time), Price, and Wrist Fit. Wrist fit value persists across back navigation via sessionStorage.
+**Phase 3B (COMPLETE):** Vector similarity search active. `WatchFinderService` uses hybrid filtering — `ParseQueryIntentAsync` extracts brand/collection/price/diameter/material/movement/WR as hard SQL pre-filters and frontend filter pre-selections (no LLM), cosine similarity ranks within the filtered pool. `QueryIntent` returned to frontend to pre-populate the filter bar. 208 seed queries covering natural-language, spec-based, and complication queries. Category-aware embeddings: `InferCategory` classifies each watch as dress/chronograph/sport/diver from collection name + specs; `InferOccasions` uses category to gate occasion labels (gold chronograph no longer tagged "formal"). Vector results preserve cosine-distance relevance ordering (BrandSpread removed from vector path — retained only for Phase 2 SQL fallback). Chunk text enriched with watch-specific differentiators: `brand_style` includes dial finish, indices, hands, caliber, case back, production status; `use_case` includes diameter, material, WR, movement type, and non-trivial complications. Unique index expanded to `(WatchId, ChunkType, Feature)` for multi-feature support. Rerank prompt enhanced with category-matching guidance and collection name. Cache skipped when QueryIntent has hard SQL filters to prevent stale cross-category hits. Result filter bar includes: Brand, Collection, Case Material, Diameter, Movement, Water Resistance, Power Reserve, Complications (12 types: chronograph, perpetual/annual calendar, moonphase, tourbillon, repeater, GMT, flyback, power reserve, alarm, retrograde, equation of time), Price, and Wrist Fit. Wrist fit value persists across back navigation via sessionStorage.
 
 ---
 
@@ -287,7 +289,7 @@ Inquiry flow for "Price on Request" watches — requires authentication, sends d
 
 ## Phase 5: Social
 
-### RAG Chat Concierge
+### RAG Chat Concierge (COMPLETE)
 
 Floating conversational assistant available on every page — handles both specific watch comparisons and brand knowledge questions. Distinct from Watch Finder (discovery from vague intent → grid); this is informed conversation about specific watches, brands, or collections.
 
@@ -301,27 +303,24 @@ Floating conversational assistant available on every page — handles both speci
 - `ParseQueryIntentAsync` (no LLM) pre-filters brand/collection/reference number signals for query type routing
 - PRODUCT query (collection/watch name in query): fetch watch records → ai-service `/chat`
 - BRAND query (brand name, no model match): fetch DB description → web search → ai-service `/chat`
-- GENERAL query (neither): vector search top-5 watches as context → ai-service `/chat`
+- GENERAL query (neither): vector search top-5 `watch_finder` embeddings as context → ai-service `/chat`
 - `QueryCacheService` caches first-turn (history-free) responses at cosine ≥ 0.92 — not applied to multi-turn
 - Rate limit: 5/day deployed (`ChatSettings:DailyLimit`); `DisableLimitInDev: true` for local
 
-**New infrastructure:**
-- `BrandEmbeddings` + `CollectionEmbeddings` tables (new EF migration, 768-dim pgvector)
+**Infrastructure:**
 - In-memory session store via `ConcurrentDictionary` (MVP; upgrade to Redis for horizontal scale)
 - `POST /chat` endpoint in ai-service — web search via `duckduckgo-search` (no API key)
 - Pill UI matches `CompareIndicator` design; chat pill `bottom-8`, compare pill moves to `bottom-24`
+- Brand/collection detection uses direct DB substring matching — no dedicated embeddings needed for a 13-brand catalogue
 
 **Full spec:** `docs/phase5-rag-chatbot.md`
 
 **Files involved:**
 - `ai-service/app.py` — `POST /chat` + `CHAT_SYSTEM_PROMPT` + web search tool
-- `ai-service/requirements.txt` — add `duckduckgo-search`
+- `ai-service/requirements.txt` — `duckduckgo-search`
 - `backend/Controllers/ChatController.cs` — `POST /api/chat/message`, `DELETE /api/chat/session/{id}`
-- `backend/Services/ChatService.cs` — orchestration pipeline
-- `backend/Models/` — `ChatSession.cs`, `BrandEmbedding.cs`, `CollectionEmbedding.cs`
-- `backend/Services/WatchEmbeddingService.cs` — extend with brand/collection embed methods
-- `backend/Database/TourbillonContext.cs` — add new DbSets
-- `frontend/components/ChatWidget.tsx`, `frontend/contexts/ChatContext.tsx`
+- `backend/Services/ChatService.cs` — orchestration pipeline (PRODUCT/BRAND/GENERAL routing)
+- `frontend/app/components/chat/ChatWidget.tsx`, `ChatPanel.tsx`
 - `frontend/app/layout.tsx` — mount ChatWidget
 - `frontend/lib/api.ts` — `sendChatMessage()`, `clearChatSession()`
 
@@ -391,24 +390,26 @@ Spotify-style save-to-favourites and named user collections for authenticated us
 ## Request Flow
 
 ```
-User request
+User query
   ↓
-Check cache (key = normalised query string)
+ParseQueryIntentAsync — regex + DB lookup → brand/collection/price hard filters (no LLM, ~5ms)
   ↓
-  HIT  → return cached result       (quota not consumed)
-  MISS → check quota
-           ↓
-         Allowed → call Claude Haiku
-                     ↓
-                   store in cache
-                   consume 1 quota unit
-         Denied  → fallback to standard search
+Embed query — nomic-embed-text → float[768] (~50ms)
+  ↓
+QueryCaches — cosine similarity >= 0.92
+  ├─ HIT  → return cached result                   (quota not consumed, <200ms)
+  └─ MISS → check quota
+              ↓
+            Allowed → vector search + tier routing + optional LLM rerank
+                        ↓
+                      [Background] store in QueryCaches
+                      consume 1 quota unit
+            Denied  → fallback to standard search (no AI)
 ```
 
-**Cache key normalisation:**
-- Lowercase, strip punctuation, collapse whitespace
-- Synonym mapping: RG → rose gold, chrono → chronograph
-- Strong normalisation means 100 similar queries may produce 1 API call
+**Cache bypass:** When hard SQL filters are detected (brand, collection, price), cache is skipped to prevent stale cross-category hits.
+
+**Semantic matching:** Cache uses vector similarity (cosine >= 0.92), not string normalisation. "dress watch" and "dress watches" match (~0.96); "dress watch" and "dive watch" do not (~0.7).
 
 ---
 
@@ -460,6 +461,28 @@ python generate_discovery_pages.py  # ~$0.02 total for all themes
 
 ---
 
+## Retrieval Quality Audit (COMPLETE — Phase 5)
+
+Technical audit of the AI retrieval system identified and fixed issues across Smart Search, Chat Concierge, and the embedding infrastructure. Full details in `docs/AI_PLAN.md` section 11.
+
+**Bugs fixed:**
+- Chat GENERAL queries returned empty context (`Feature == "rag_chat"` had zero rows) — changed to `watch_finder`
+- BrandSpread destroyed vector relevance ordering in Tier 2 — removed from vector path
+- Unique index `(WatchId, ChunkType)` blocked multi-feature embeddings — expanded to include `Feature`
+- `use_case` and `brand_style` chunks near-identical within collections — enriched with 11 additional watch-specific fields
+
+**Concerns dismissed:**
+- 0.92 threshold is correctly scoped to `QueryCacheService` only (not confused with `WatchEmbeddings`)
+- Watch DNA / Taste Profile does not use embeddings (100% rule-based scoring)
+
+**Design principle established:** Deterministic category taxonomy (`InferCategory`, `InferOccasions`, `Collection.Style`) is permanent structured metadata. The LLM interprets and ranks on top — it never owns the ground truth.
+
+**Related docs:**
+- `docs/AI_PLAN.md` — full AI architecture and audit record
+- `docs/AI_CONCEPTS.md` — plain-language reference for embedding, semantic search, and vector concepts
+
+---
+
 ## Resume Keywords Covered
 
-AI/LLM integration, semantic search, recommendation systems, personalization engine, conversational commerce, retrieval-augmented generation (RAG), programmatic content generation, full-stack implementation, rule-based scoring systems, NLP-to-SQL query pipeline, cost engineering (quota limits, cache strategy, pre-generation), Stripe payment integration (PaymentIntent API, webhook-driven confirmation, idempotency), guest checkout architecture, transactional email (dual-recipient notification), client-side state management (Zustand + localStorage persistence), SSR hydration strategies, responsive UI with motion design (Framer Motion), PCI-compliant card handling (Stripe Elements), async event-driven architecture (webhook processing).
+AI/LLM integration, semantic search, vector embeddings (pgvector, HNSW indexing), recommendation systems, personalization engine, conversational commerce, retrieval-augmented generation (RAG), hybrid SQL + vector search, tiered retrieval routing, embedding quality auditing, programmatic content generation, full-stack implementation, rule-based scoring systems, NLP-to-SQL query pipeline, cost engineering (quota limits, semantic cache strategy, pre-generation), Stripe payment integration (PaymentIntent API, webhook-driven confirmation, idempotency), guest checkout architecture, transactional email (dual-recipient notification), client-side state management (Zustand + localStorage persistence), SSR hydration strategies, responsive UI with motion design (Framer Motion), PCI-compliant card handling (Stripe Elements), async event-driven architecture (webhook processing).
