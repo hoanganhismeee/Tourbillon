@@ -39,8 +39,8 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
             // 768 dimensions — nomic-embed-text output size
             entity.Property(e => e.Embedding).HasColumnType("vector(768)");
 
-            // One row per (watch, chunk_type) — upsert logic deletes + reinserts
-            entity.HasIndex(e => new { e.WatchId, e.ChunkType }).IsUnique();
+            // One row per (watch, chunk_type, feature) — allows multiple features per watch
+            entity.HasIndex(e => new { e.WatchId, e.ChunkType, e.Feature }).IsUnique();
         });
 
         modelBuilder.Entity<QueryCache>(entity =>
