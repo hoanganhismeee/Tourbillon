@@ -4,11 +4,10 @@
 // Authenticated first-click auto-saves to Favourites; popup lets user manage collections.
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { flushSync } from 'react-dom';
 import Link from 'next/link';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavourites } from '@/stores/favouritesStore';
 import SaveToCollectionPopup from './SaveToCollectionPopup';
@@ -19,29 +18,29 @@ interface FavouriteToggleProps {
 }
 
 const SignInNudge = ({ anchorRect, onClose }: { anchorRect: DOMRect; onClose: () => void }) => {
-  const ref = useRef<HTMLDivElement>(null);
-
+  // Auto-dismiss after 1.5 seconds
   useEffect(() => {
-    const handleOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Element)) onClose();
-    };
-    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('mousedown', handleOutside);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
+    const timer = setTimeout(onClose, 1500);
+    return () => clearTimeout(timer);
   }, [onClose]);
 
-  const left = Math.max(8, Math.min(anchorRect.right - 160, window.innerWidth - 172));
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
+  const left = Math.max(8, Math.min(anchorRect.right - 180, window.innerWidth - 192));
   const top = anchorRect.bottom + 8;
 
   return ReactDOM.createPortal(
-    <div
-      ref={ref}
-      style={{ position: 'fixed', left, top, zIndex: 9999, width: 160 }}
-      className="rounded-xl border border-[#bfa68a]/20 shadow-xl shadow-black/50 px-4 py-3 text-center"
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      style={{ position: 'fixed', left, top, zIndex: 9999, width: 180 }}
+      className="rounded-xl border border-[#bfa68a]/35 shadow-xl shadow-black/50 px-4 py-3 text-center"
       onClick={e => e.stopPropagation()}
     >
       <div
@@ -52,15 +51,28 @@ const SignInNudge = ({ anchorRect, onClose }: { anchorRect: DOMRect; onClose: ()
           zIndex: -1,
         }}
       />
-      <p className="text-xs text-white/60 font-inter mb-2">Sign in to save watches</p>
+      {/* Caret arrow pointing up to the button */}
+      <svg
+        width="12" height="7" viewBox="0 0 12 7" fill="none"
+        className="absolute -top-[7px] right-4"
+        aria-hidden="true"
+      >
+        <path
+          d="M0 7 L6 0 L12 7"
+          fill="rgba(42,33,28,0.97)"
+          stroke="rgba(191,166,138,0.35)"
+          strokeWidth="1"
+        />
+      </svg>
+      <p className="text-xs text-white/60 font-inter mb-2.5">Sign in to save watches</p>
       <Link
         href="/login?redirect=/favourites"
         onClick={onClose}
-        className="block text-xs font-inter font-semibold text-[#bfa68a] hover:text-[#d4b896] transition-colors"
+        className="inline-block px-4 py-1.5 rounded-lg bg-[#bfa68a]/15 border border-[#bfa68a]/30 text-xs font-inter font-semibold text-[#bfa68a] hover:bg-[#bfa68a]/25 hover:text-[#d4b896] transition-colors"
       >
         Sign in
       </Link>
-    </div>,
+    </motion.div>,
     document.body
   );
 };
@@ -71,18 +83,27 @@ const FavouriteToggle = ({ watchId, className = '' }: FavouriteToggleProps) => {
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [autoSave, setAutoSave] = useState(false);
   const [showNudge, setShowNudge] = useState(false);
+  // Ref mirrors the intended nudge toggle state so rapid clicks read the correct
+  // value even before React commits the previous setState.
+  const nudgeOpen = useRef(false);
 
   const active = isLoaded && isSavedAnywhere(watchId);
+
+  const closeNudge = useCallback(() => {
+    nudgeOpen.current = false;
+    setShowNudge(false);
+    setAnchorRect(null);
+  }, []);
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
 
     if (!isAuthenticated) {
-      if (showNudge) {
-        setShowNudge(false);
-        setAnchorRect(null);
+      if (nudgeOpen.current) {
+        closeNudge();
       } else {
+        nudgeOpen.current = true;
         setShowNudge(true);
         setAnchorRect(e.currentTarget.getBoundingClientRect());
       }
@@ -134,12 +155,15 @@ const FavouriteToggle = ({ watchId, className = '' }: FavouriteToggleProps) => {
         </span>
       </button>
 
-      {showNudge && anchorRect && (
-        <SignInNudge
-          anchorRect={anchorRect}
-          onClose={() => { setShowNudge(false); setAnchorRect(null); }}
-        />
-      )}
+      <AnimatePresence>
+        {showNudge && anchorRect && (
+          <SignInNudge
+            key="sign-in-nudge"
+            anchorRect={anchorRect}
+            onClose={closeNudge}
+          />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {!showNudge && anchorRect && (

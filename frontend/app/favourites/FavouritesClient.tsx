@@ -1,10 +1,9 @@
 // Main client for /favourites — auth guard, collections row, filter/sort, paginated watch grid.
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavourites } from '@/stores/favouritesStore';
 import { getFavouriteWatches, fetchBrands, Brand, FavouriteWatchesResponse } from '@/lib/api';
@@ -55,9 +54,6 @@ export default function FavouritesClient() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [watchFilters, setWatchFilters] = useState<WatchFilters>(EMPTY_WATCH_FILTERS);
   const [brands, setBrands] = useState<Brand[]>([]);
-  const [editingCollectionId, setEditingCollectionId] = useState<number | null>(null);
-  const [editingName, setEditingName] = useState('');
-  const [renamingId, setRenamingId] = useState<number | null>(null);
 
   // Auth guard — redirect to login if not authenticated
   useEffect(() => {
@@ -131,41 +127,6 @@ export default function FavouritesClient() {
     return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   };
 
-  // Derive up to 3 preview image URLs per collection from the currently loaded watch grid
-  const collectionPreviewImages = useMemo(() => {
-    if (!watchData) return {} as Record<number, string[]>;
-    const idToWatch = Object.fromEntries(watchData.watches.map(w => [w.id, w]));
-    const result: Record<number, string[]> = {};
-    Object.entries(watchData.watchCollectionMembership).forEach(([wId, colIds]) => {
-      const w = idToWatch[Number(wId)];
-      if (!w?.imageUrl) return;
-      colIds.forEach(cId => {
-        if (!result[cId]) result[cId] = [];
-        if (result[cId].length < 3) result[cId].push(w.imageUrl!);
-      });
-    });
-    return result;
-  }, [watchData]);
-
-  const startEditing = (id: number, name: string) => {
-    setEditingCollectionId(id);
-    setEditingName(name);
-  };
-
-  const handleRenameSubmit = async (id: number) => {
-    const trimmed = editingName.trim();
-    if (!trimmed || trimmed === collections.find(c => c.id === id)?.name) {
-      setEditingCollectionId(null);
-      return;
-    }
-    setRenamingId(id);
-    try {
-      await renameCollection(id, trimmed);
-    } finally {
-      setRenamingId(null);
-      setEditingCollectionId(null);
-    }
-  };
 
   // Client-side filter application on top of the server-fetched data
   const displayedWatches = useMemo(() => {
