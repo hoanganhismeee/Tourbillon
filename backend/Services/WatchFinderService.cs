@@ -154,8 +154,9 @@ public class WatchFinderService
 
         if (queryEmbedding != null)
         {
+            // Vector search returns watches ordered by cosine distance (best match first).
+            // Preserve this relevance ordering — BrandSpread would destroy it.
             (candidates, bestDistance) = await VectorSearchAsync(queryEmbedding, queryIntent);
-            candidates = BrandSpread(candidates, candidates.Count);
         }
         else
         {
