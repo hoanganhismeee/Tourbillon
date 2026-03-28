@@ -82,6 +82,28 @@ public class FavouritesController : ControllerBase
         }
     }
 
+    // PATCH /api/favourites/collections/{id} — rename a collection (owner only)
+    [HttpPatch("collections/{id:int}")]
+    public async Task<IActionResult> RenameCollection(int id, [FromBody] RenameCollectionDto dto)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        try
+        {
+            var collection = await _favouritesService.RenameCollectionAsync(userId.Value, id, dto.Name);
+            return Ok(collection);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
     // DELETE /api/favourites/collections/{id} — delete a collection (owner only)
     [HttpDelete("collections/{id:int}")]
     public async Task<IActionResult> DeleteCollection(int id)
