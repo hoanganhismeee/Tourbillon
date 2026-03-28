@@ -795,6 +795,7 @@ export interface UserCollectionSummary {
   id: number;
   name: string;
   watchIds: number[];
+  previewImages: string[]; // Up to 4 Cloudinary public IDs for the card mosaic
   createdAt: string;
   updatedAt: string;
 }
@@ -876,6 +877,20 @@ export const deleteCollection = async (id: number): Promise<void> => {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to delete collection');
+};
+
+export const renameCollection = async (id: number, name: string): Promise<UserCollectionSummary> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/favourites/collections/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: 'Failed to rename collection' }));
+    throw new Error(err.message || 'Failed to rename collection');
+  }
+  return response.json();
 };
 
 export const addToCollection = async (collectionId: number, watchId: number): Promise<void> => {

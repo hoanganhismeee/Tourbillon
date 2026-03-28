@@ -9,6 +9,7 @@ import {
   removeFavourite,
   createCollection as apiCreateCollection,
   deleteCollection as apiDeleteCollection,
+  renameCollection as apiRenameCollection,
   addToCollection as apiAddToCollection,
   removeFromCollection as apiRemoveFromCollection,
 } from '@/lib/api';
@@ -30,6 +31,7 @@ interface FavouritesStore {
   addToCollection: (collectionId: number, watchId: number) => Promise<void>;
   removeFromCollection: (collectionId: number, watchId: number) => Promise<void>;
   createCollection: (name: string) => Promise<UserCollectionSummary>;
+  renameCollection: (collectionId: number, newName: string) => Promise<void>;
   deleteCollection: (collectionId: number) => Promise<void>;
   reset: () => void;
 }
@@ -93,16 +95,20 @@ export const useFavourites = create<FavouritesStore>()((set, get) => ({
 
   addToCollection: async (collectionId, watchId) => {
     const { collections } = get();
-    // Optimistic update
-    const updatedCollections = collections.map(c =>
-      c.id === collectionId && !c.watchIds.includes(watchId)
-        ? { ...c, watchIds: [...c.watchIds, watchId], updatedAt: new Date().toISOString() }
-        : c
-    );
-    set({ collections: updatedCollections });
+    // Optimistic update — watchIds and count update instantly
+    set({
+      collections: collections.map(c =>
+        c.id === collectionId && !c.watchIds.includes(watchId)
+          ? { ...c, watchIds: [...c.watchIds, watchId], updatedAt: new Date().toISOString() }
+          : c
+      ),
+    });
 
     try {
       await apiAddToCollection(collectionId, watchId);
+      // Refresh full state so previewImages reflect the newly added watch (latest first)
+      const fresh = await getFavouritesState();
+      set({ collections: fresh.collections });
     } catch {
       set({ collections });
     }
@@ -111,15 +117,19 @@ export const useFavourites = create<FavouritesStore>()((set, get) => ({
   removeFromCollection: async (collectionId, watchId) => {
     const { collections } = get();
     // Optimistic update
-    const updatedCollections = collections.map(c =>
-      c.id === collectionId
-        ? { ...c, watchIds: c.watchIds.filter(id => id !== watchId), updatedAt: new Date().toISOString() }
-        : c
-    );
-    set({ collections: updatedCollections });
+    set({
+      collections: collections.map(c =>
+        c.id === collectionId
+          ? { ...c, watchIds: c.watchIds.filter(id => id !== watchId), updatedAt: new Date().toISOString() }
+          : c
+      ),
+    });
 
     try {
       await apiRemoveFromCollection(collectionId, watchId);
+      // Refresh so previewImages drop the removed watch
+      const fresh = await getFavouritesState();
+      set({ collections: fresh.collections });
     } catch {
       set({ collections });
     }
@@ -129,6 +139,23 @@ export const useFavourites = create<FavouritesStore>()((set, get) => ({
     const newCollection = await apiCreateCollection(name);
     set(state => ({ collections: [...state.collections, newCollection] }));
     return newCollection;
+  },
+
+  renameCollection: async (collectionId, newName) => {
+    const snapshot = get().collections;
+    // Optimistic update
+    set({ collections: snapshot.map(c => c.id === collectionId ? { ...c, name: newName } : c) });
+    try {
+      const updated = await apiRenameCollection(collectionId, newName);
+      // Reconcile with server response (server trims/normalizes the name)
+      set(state => ({
+        collections: state.collections.map(c =>
+          c.id === collectionId ? { ...c, name: updated.name, updatedAt: updated.updatedAt } : c
+        ),
+      }));
+    } catch {
+      set({ collections: snapshot });
+    }
   },
 
   deleteCollection: async (collectionId) => {

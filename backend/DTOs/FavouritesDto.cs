@@ -17,12 +17,21 @@ public class UserCollectionDto
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public int[] WatchIds { get; set; } = Array.Empty<int>();
+    public string[] PreviewImages { get; set; } = Array.Empty<string>(); // Up to 4 Cloudinary public IDs
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
 
 // Body for POST /api/favourites/collections.
 public class CreateCollectionDto
+{
+    [Required]
+    [MaxLength(100)]
+    public string Name { get; set; } = string.Empty;
+}
+
+// Body for PATCH /api/favourites/collections/{id} — rename a collection.
+public class RenameCollectionDto
 {
     [Required]
     [MaxLength(100)]

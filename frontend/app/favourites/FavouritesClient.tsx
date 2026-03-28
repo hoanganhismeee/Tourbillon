@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavourites } from '@/stores/favouritesStore';
 import { getFavouriteWatches, fetchBrands, fetchCollections, Brand, Collection, FavouriteWatchesResponse } from '@/lib/api';
+import { CollectionCard, AddCollectionCard } from '@/app/components/favourites/CollectionCard';
 import WatchCard from '@/app/watches/[watchId]/WatchCard';
 import {
   WatchFilters,
@@ -41,13 +42,18 @@ export default function FavouritesClient() {
   const searchParams = useSearchParams();
   const page = Number(searchParams.get('page') ?? '1');
 
-  const { collections, isLoaded, loadFavourites, deleteCollection } = useFavourites();
+  const { collections, isLoaded, loadFavourites, deleteCollection, createCollection, renameCollection } = useFavourites();
 
   const [watchData, setWatchData] = useState<FavouriteWatchesResponse | null>(null);
   const [gridLoading, setGridLoading] = useState(false);
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<number[]>([]);
   const [sortBy, setSortBy] = useState('recent');
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [isAddingCollection, setIsAddingCollection] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
   const [watchFilters, setWatchFilters] = useState<WatchFilters>(EMPTY_WATCH_FILTERS);
   const [wristFit, setWristFit] = useState('');
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -119,6 +125,30 @@ export default function FavouritesClient() {
     }
   };
 
+  const handleRenameCommit = async (collectionId: number, newName: string) => {
+    setRenamingId(null);
+    try {
+      await renameCollection(collectionId, newName);
+    } catch {
+      // store reverts optimistically on error
+    }
+  };
+
+  const handleAddCollection = async (name: string) => {
+    if (isCreating) return;
+    setIsCreating(true);
+    setCreateError('');
+    try {
+      await createCollection(name);
+      setIsAddingCollection(false);
+      setNewCollectionName('');
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Could not create collection');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   const getCollectionName = (id: number) =>
     collections.find(c => c.id === id)?.name ?? '';
 
@@ -181,46 +211,38 @@ export default function FavouritesClient() {
         )}
       </div>
 
-      {/* Collections row */}
-      {collections.length > 0 && (
-        <div className="mb-10">
-          <h2 className="text-xs font-inter font-semibold text-[#bfa68a]/60 uppercase tracking-[0.15em] mb-4">
-            Collections
-          </h2>
-          <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-            {collections.map(col => (
-              <div
-                key={col.id}
-                className={`relative group/col shrink-0 cursor-pointer rounded-2xl border transition-all duration-300 px-5 py-4 min-w-[160px] ${
-                  selectedCollectionIds.includes(col.id)
-                    ? 'border-[#bfa68a]/50 bg-[#bfa68a]/10'
-                    : 'border-white/10 bg-black/30 hover:border-white/25'
-                }`}
-                onClick={() => toggleCollectionFilter(col.id)}
-              >
-                <p className="font-playfair text-[#f0e6d2] text-sm font-medium truncate pr-6">{col.name}</p>
-                <p className="text-xs text-white/40 font-inter mt-1">
-                  {col.watchIds.length} {col.watchIds.length === 1 ? 'piece' : 'pieces'}
-                </p>
-                <p className="text-[10px] text-white/25 font-inter mt-0.5">
-                  Updated {formatDate(col.updatedAt)}
-                </p>
-                {/* Delete button — appears on hover */}
-                <button
-                  onClick={e => { e.stopPropagation(); handleDeleteCollection(col.id); }}
-                  disabled={deletingId === col.id}
-                  className="absolute top-3 right-3 w-5 h-5 rounded-full bg-white/5 border border-white/10 flex items-center justify-center opacity-0 group-hover/col:opacity-100 transition-opacity hover:bg-white/15"
-                  title="Delete collection"
-                >
-                  <svg width="7" height="7" viewBox="0 0 8 8" fill="none" stroke="white" strokeOpacity="0.5" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M1 1l6 6M7 1l-6 6" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
+      {/* Collections row — always shown so the Add card is visible even with no collections */}
+      <div className="mb-10">
+        <h2 className="text-xs font-inter font-semibold text-[#bfa68a]/60 uppercase tracking-[0.15em] mb-4">
+          Collections
+        </h2>
+        <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
+          {collections.map(col => (
+            <CollectionCard
+              key={col.id}
+              collection={col}
+              isSelected={selectedCollectionIds.includes(col.id)}
+              isRenaming={renamingId === col.id}
+              formattedDate={`Updated ${formatDate(col.updatedAt)}`}
+              onSelect={() => toggleCollectionFilter(col.id)}
+              onRenameStart={() => setRenamingId(col.id)}
+              onRenameCommit={name => handleRenameCommit(col.id, name)}
+              onRenameCancel={() => setRenamingId(null)}
+              onDelete={() => handleDeleteCollection(col.id)}
+              isDeleting={deletingId === col.id}
+            />
+          ))}
+          <AddCollectionCard
+            isAdding={isAddingCollection}
+            newName={newCollectionName}
+            createError={createError}
+            onStartAdding={() => { setIsAddingCollection(true); setCreateError(''); }}
+            onNameChange={setNewCollectionName}
+            onCommit={handleAddCollection}
+            onCancel={() => { setIsAddingCollection(false); setNewCollectionName(''); setCreateError(''); }}
+          />
         </div>
-      )}
+      </div>
 
       {/* Filter bar */}
       <WatchFilterBar

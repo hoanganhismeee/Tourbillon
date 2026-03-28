@@ -14,6 +14,7 @@ public interface IFavouritesService
     Task RemoveFavouriteAsync(int userId, int watchId);
     Task<FavouriteWatchesResponseDto> GetFavouriteWatchesAsync(int userId, FavouriteWatchesQueryDto query);
     Task<UserCollectionDto> CreateCollectionAsync(int userId, string name);
+    Task<UserCollectionDto> RenameCollectionAsync(int userId, int collectionId, string newName);
     Task DeleteCollectionAsync(int userId, int collectionId);
     Task AddToCollectionAsync(int userId, int collectionId, int watchId);
     Task RemoveFromCollectionAsync(int userId, int collectionId, int watchId);
@@ -42,6 +43,7 @@ public class FavouritesService : IFavouritesService
             .AsNoTracking()
             .Where(c => c.UserId == userId)
             .Include(c => c.Watches)
+                .ThenInclude(cw => cw.Watch)
             .OrderBy(c => c.CreatedAt)
             .ToListAsync();
 
@@ -53,6 +55,12 @@ public class FavouritesService : IFavouritesService
                 Id = c.Id,
                 Name = c.Name,
                 WatchIds = c.Watches.Select(w => w.WatchId).ToArray(),
+                PreviewImages = c.Watches
+                    .OrderByDescending(w => w.AddedAt)
+                    .Where(w => !string.IsNullOrEmpty(w.Watch?.Image))
+                    .Take(4)
+                    .Select(w => w.Watch!.Image!)
+                    .ToArray(),
                 CreatedAt = c.CreatedAt,
                 UpdatedAt = c.UpdatedAt,
             }).ToList(),
@@ -218,6 +226,50 @@ public class FavouritesService : IFavouritesService
             Id = collection.Id,
             Name = collection.Name,
             WatchIds = Array.Empty<int>(),
+            CreatedAt = collection.CreatedAt,
+            UpdatedAt = collection.UpdatedAt,
+        };
+    }
+
+    // Renames a collection; rejects empty names and case-insensitive duplicates (excluding the current collection).
+    public async Task<UserCollectionDto> RenameCollectionAsync(int userId, int collectionId, string newName)
+    {
+        newName = newName.Trim();
+        if (string.IsNullOrEmpty(newName))
+            throw new InvalidOperationException("Collection name cannot be empty.");
+
+        var collection = await _context.UserCollections
+            .Include(c => c.Watches)
+                .ThenInclude(cw => cw.Watch)
+            .FirstOrDefaultAsync(c => c.Id == collectionId);
+
+        if (collection == null)
+            throw new InvalidOperationException("Collection not found.");
+
+        if (collection.UserId != userId)
+            throw new UnauthorizedAccessException("Not authorised to rename this collection.");
+
+        var duplicate = await _context.UserCollections
+            .AnyAsync(c => c.UserId == userId && c.Id != collectionId && c.Name.ToLower() == newName.ToLower());
+
+        if (duplicate)
+            throw new InvalidOperationException($"A collection named \"{newName}\" already exists.");
+
+        collection.Name = newName;
+        collection.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return new UserCollectionDto
+        {
+            Id = collection.Id,
+            Name = collection.Name,
+            WatchIds = collection.Watches.Select(w => w.WatchId).ToArray(),
+            PreviewImages = collection.Watches
+                .OrderByDescending(w => w.AddedAt)
+                .Where(w => !string.IsNullOrEmpty(w.Watch?.Image))
+                .Take(4)
+                .Select(w => w.Watch!.Image!)
+                .ToArray(),
             CreatedAt = collection.CreatedAt,
             UpdatedAt = collection.UpdatedAt,
         };
