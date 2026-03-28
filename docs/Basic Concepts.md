@@ -35,20 +35,23 @@ Same text in, same vector out, every time. The model does not remember previous 
 
 Two vectors are compared using cosine similarity — the angle between them in 768-dimensional space.
 
-| Cosine similarity | Cosine distance | Meaning |
-|---|---|---|
-| 1.0 | 0.0 | Identical meaning |
-| 0.8 | 0.2 | Very similar |
-| 0.5 | 0.5 | Somewhat related |
-| 0.0 | 1.0 | Unrelated |
+
+| Cosine similarity | Cosine distance | Meaning           |
+| ----------------- | --------------- | ----------------- |
+| 1.0               | 0.0             | Identical meaning |
+| 0.8               | 0.2             | Very similar      |
+| 0.5               | 0.5             | Somewhat related  |
+| 0.0               | 1.0             | Unrelated         |
+
 
 Tourbillon uses **cosine distance** (lower = more similar) for WatchEmbeddings and **cosine similarity** (higher = more similar) for QueryCaches. They are the same metric inverted: `similarity = 1 - distance`.
 
 ---
 
-## 3. Semantic Search vs Keyword Search
+## 3. Semantic Search vs Keyword Search (important af)
 
 **Keyword search** matches exact text:
+
 ```
 query: "sport watch"
 -> only finds records containing the word "sport"
@@ -56,6 +59,7 @@ query: "sport watch"
 ```
 
 **Semantic search** matches meaning:
+
 ```
 query: "sport watch"
 -> embed query -> compare vectors -> sort by similarity
@@ -93,17 +97,21 @@ This is the most important concept. Semantic search quality depends on **how you
 The text you pass to the embedding model when you embed each watch. In Tourbillon, this is the chunk text in `WatchEmbeddingService.BuildChunks()`.
 
 If two watches have similar chunk text:
+
 ```
 Watch A use_case: "sport luxury watch. Ideal for active lifestyle."
 Watch B use_case: "sport luxury watch. Ideal for active lifestyle."
 ```
+
 Their vectors will be nearly identical. Semantic search cannot distinguish them.
 
 If chunk text includes watch-specific details:
+
 ```
 Watch A use_case: "sport luxury, 41mm steel, 50m WR, integrated bracelet, Date."
 Watch B use_case: "sport luxury, 40mm steel, 120m WR, Date, Sweep seconds."
 ```
+
 Their vectors will be different. Semantic search can now rank one above the other.
 
 ### What does NOT control quality
@@ -154,6 +162,7 @@ QueryCaches stores the full result JSON at the time the query was first run. If 
 - Watches removed -> cached results reference missing watches
 
 **Current solution:** After catalog changes (new scrape, price update, re-embedding), clear and re-seed:
+
 ```
 DELETE /api/admin/query-cache
 POST   /api/admin/query-cache/seed
@@ -213,12 +222,14 @@ The LLM is a tiebreaker for ambiguous cases, not a mandatory step. Strong matche
 
 A single embedding cannot capture all the ways a user might describe a watch. Four specialized chunks cover different query styles:
 
-| Chunk | Optimized for queries like |
-|---|---|
-| `full` | "Patek Philippe 38mm white gold" (specific reference) |
+
+| Chunk         | Optimized for queries like                            |
+| ------------- | ----------------------------------------------------- |
+| `full`        | "Patek Philippe 38mm white gold" (specific reference) |
 | `brand_style` | "rose gold sunburst dial alligator strap" (aesthetic) |
-| `specs` | "thin watch under 8mm with power reserve" (technical) |
-| `use_case` | "sport watch for active lifestyle" (functional) |
+| `specs`       | "thin watch under 8mm with power reserve" (technical) |
+| `use_case`    | "sport watch for active lifestyle" (functional)       |
+
 
 At search time, all four chunks are compared against the query. The best-matching chunk wins for each watch. A specs query finds the right watch through its `specs` chunk even if the `full` chunk is not the closest.
 
@@ -229,6 +240,7 @@ At search time, all four chunks are compared against the query. The best-matchin
 Watch categories (`dress watch`, `sport watch`, `diver's watch`, `chronograph`) are assigned by backend code (`InferCategory()`), not by the LLM.
 
 The mapping is deterministic:
+
 - Collection in `_diverCollections` set -> "diver's watch"
 - Water resistance >= 200m -> "diver's watch"
 - Chronograph in functions or name -> "chronograph"
@@ -256,16 +268,19 @@ Both `WatchEmbeddings` and `QueryCaches` have HNSW indexes on their vector colum
 
 ## 13. Summary Table
 
-| Concept | One-line definition |
-|---|---|
-| Embedding | A list of 768 numbers representing the meaning of text |
-| Cosine similarity | How close two vectors are (1.0 = identical, 0.0 = unrelated) |
-| Semantic search | Finding results by meaning, not exact text match |
-| Semantic ordering | Ranking results by how close their meaning is to the query |
-| WatchEmbeddings | Pre-computed vectors for every watch (the semantic index) |
-| QueryCaches | Stored results for past queries (the speed layer) |
-| Hybrid search | SQL filters + semantic ranking combined |
-| Chunk | One of four text descriptions per watch, each targeting a different query style |
-| HNSW | Fast approximate vector lookup index |
-| Category taxonomy | Deterministic labels (dress/sport/diver/chrono) assigned by code, not AI |
-| nomic-embed-text | The fixed embedding model — same input always produces same output |
+
+| Concept           | One-line definition                                                             |
+| ----------------- | ------------------------------------------------------------------------------- |
+| Embedding         | A list of 768 numbers representing the meaning of text                          |
+| Cosine similarity | How close two vectors are (1.0 = identical, 0.0 = unrelated)                    |
+| Semantic search   | Finding results by meaning, not exact text match                                |
+| Semantic ordering | Ranking results by how close their meaning is to the query                      |
+| WatchEmbeddings   | Pre-computed vectors for every watch (the semantic index)                       |
+| QueryCaches       | Stored results for past queries (the speed layer)                               |
+| Hybrid search     | SQL filters + semantic ranking combined                                         |
+| Chunk             | One of four text descriptions per watch, each targeting a different query style |
+| HNSW              | Fast approximate vector lookup index                                            |
+| Category taxonomy | Deterministic labels (dress/sport/diver/chrono) assigned by code, not AI        |
+| nomic-embed-text  | The fixed embedding model — same input always produces same output              |
+
+
