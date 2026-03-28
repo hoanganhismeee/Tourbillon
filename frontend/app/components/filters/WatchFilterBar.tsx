@@ -4,25 +4,30 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Brand, Collection, Watch } from '@/lib/api';
+import { calculateFitScores, parseSpecMm } from '@/lib/wristfit';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface WatchFilters {
   brandIds: number[];
+  collectionIds: number[];
   caseMaterials: string[];
   movementTypes: string[];
   waterResistances: string[];
   powerReserves: string[];
+  diameterBuckets: string[];
   priceBuckets: string[];
   complications: string[];
 }
 
 export const EMPTY_WATCH_FILTERS: WatchFilters = {
   brandIds: [],
+  collectionIds: [],
   caseMaterials: [],
   movementTypes: [],
   waterResistances: [],
   powerReserves: [],
+  diameterBuckets: [],
   priceBuckets: [],
   complications: [],
 };
@@ -111,12 +116,22 @@ export function parsePowerReserveH(raw: string | undefined): number | null {
   return m ? parseInt(m[1], 10) : null;
 }
 
+// Floor the mm value to match diameterLabel: 37.6mm → "37mm"
+function diameterLabel(mm: number): string {
+  return `${Math.floor(mm)}mm`;
+}
+
 // Apply WatchFilters to a Watch array. Pass wristFit='' to skip wrist fit scoring.
-export function applyWatchFilters(watches: Watch[], filters: WatchFilters): Watch[] {
+export function applyWatchFilters(watches: Watch[], filters: WatchFilters, wristFit = ''): Watch[] {
+  const wristCm = wristFit ? parseFloat(wristFit) : null;
+
   return watches.filter(w => {
     const specs = parseSpecs(w.specs);
 
     if (filters.brandIds.length > 0 && !filters.brandIds.includes(w.brandId)) return false;
+
+    if (filters.collectionIds.length > 0 &&
+        (w.collectionId === null || !filters.collectionIds.includes(w.collectionId))) return false;
 
     if (filters.caseMaterials.length > 0) {
       const mat = (specs?.case?.material as string | undefined)?.toLowerCase() ?? '';
@@ -150,6 +165,12 @@ export function applyWatchFilters(watches: Watch[], filters: WatchFilters): Watc
       if (!buckets.some(b => b.test(prH, prRaw))) return false;
     }
 
+    if (filters.diameterBuckets.length > 0) {
+      const mm = parseDiameterMm(specs?.case?.diameter as string | undefined);
+      if (mm === null) return false;
+      if (!filters.diameterBuckets.includes(diameterLabel(mm))) return false;
+    }
+
     if (filters.priceBuckets.length > 0) {
       const buckets = PRICE_BUCKETS.filter(b => filters.priceBuckets.includes(b.label));
       if (!buckets.some(b => b.test(w.currentPrice))) return false;
@@ -160,6 +181,18 @@ export function applyWatchFilters(watches: Watch[], filters: WatchFilters): Watc
       const funcsStr = (Array.isArray(funcsRaw) ? funcsRaw.join(', ') : String(funcsRaw ?? '')).toLowerCase();
       const selected = COMPLICATION_OPTIONS.filter(c => filters.complications.includes(c.label));
       if (!selected.some(c => c.keywords.some(k => funcsStr.includes(k)))) return false;
+    }
+
+    // Wrist fit: exclude watches that score below 40 ("Wearable" threshold)
+    if (wristCm !== null && !isNaN(wristCm)) {
+      const caseSpecs = specs?.case as { diameter?: string; thickness?: string } | undefined;
+      if (caseSpecs?.diameter) {
+        const diameterMm = parseSpecMm(caseSpecs.diameter);
+        if (diameterMm !== null) {
+          const fit = calculateFitScores(wristCm, caseSpecs);
+          if (fit !== null && fit.overall < 40) return false;
+        }
+      }
     }
 
     return true;
@@ -385,6 +418,114 @@ export function CollectionDropdown({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Assembled filter bar component ────────────────────────────────────────────
+
+interface WatchFilterBarProps {
+  filters: WatchFilters;
+  brands: Brand[];
+  collections: Collection[];  // CollectionDropdown is hidden when empty
+  diameterOptions: string[];  // Diameter dropdown is hidden when empty
+  wristFit: string;
+  hasActiveFilters: boolean;
+  onChange: <K extends keyof WatchFilters>(key: K, value: WatchFilters[K]) => void;
+  onWristFitChange: (value: string) => void;
+  onClear: () => void;
+}
+
+export function WatchFilterBar({
+  filters, brands, collections, diameterOptions, wristFit, hasActiveFilters, onChange, onWristFitChange, onClear,
+}: WatchFilterBarProps) {
+  return (
+    <div className="pb-5 mb-6 border-b border-white/8">
+      <div className="flex items-center gap-2 flex-wrap">
+
+        <span className="text-xs font-inter text-white/30 uppercase tracking-widest mr-1 flex-shrink-0 self-center">
+          Filters
+        </span>
+
+        <BrandDropdown
+          brands={brands}
+          selected={filters.brandIds}
+          onChange={v => onChange('brandIds', v)}
+        />
+        <CollectionDropdown
+          collections={collections}
+          selected={filters.collectionIds}
+          onChange={v => onChange('collectionIds', v)}
+        />
+
+        <FilterDropdown
+          label="Case Material"
+          options={CASE_MATERIAL_OPTIONS}
+          selected={filters.caseMaterials}
+          onChange={v => onChange('caseMaterials', v)}
+        />
+        <FilterDropdown
+          label="Diameter"
+          options={diameterOptions}
+          selected={filters.diameterBuckets}
+          onChange={v => onChange('diameterBuckets', v)}
+        />
+        <FilterDropdown
+          label="Movement"
+          options={MOVEMENT_OPTIONS}
+          selected={filters.movementTypes}
+          onChange={v => onChange('movementTypes', v)}
+        />
+        <FilterDropdown
+          label="Water Resistance"
+          options={WATER_RESISTANCE_OPTIONS}
+          selected={filters.waterResistances}
+          onChange={v => onChange('waterResistances', v)}
+        />
+        <FilterDropdown
+          label="Power Reserve"
+          options={POWER_RESERVE_OPTIONS}
+          selected={filters.powerReserves}
+          onChange={v => onChange('powerReserves', v)}
+        />
+        <FilterDropdown
+          label="Complications"
+          options={COMPLICATION_LABELS}
+          selected={filters.complications}
+          onChange={v => onChange('complications', v)}
+        />
+        <FilterDropdown
+          label="Price"
+          options={PRICE_BUCKETS.map(b => b.label)}
+          selected={filters.priceBuckets}
+          onChange={v => onChange('priceBuckets', v)}
+        />
+
+        {/* Wrist fit */}
+        <div className="flex items-center gap-2 px-3.5 py-2.5 bg-transparent border border-white/12 rounded-full flex-shrink-0">
+          <span className="text-sm font-inter text-white/50 whitespace-nowrap">Wrist</span>
+          <input
+            type="number"
+            min={10}
+            max={25}
+            step={0.5}
+            placeholder="17.0"
+            value={wristFit}
+            onChange={e => onWristFitChange(e.target.value)}
+            className="w-14 bg-transparent text-white text-sm font-inter placeholder-white/25 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          <span className="text-xs text-white/35">cm</span>
+        </div>
+
+        {hasActiveFilters && (
+          <button
+            onClick={onClear}
+            className="ml-2 text-xs font-inter text-white/35 hover:text-white/60 transition-colors flex-shrink-0"
+          >
+            Clear all
+          </button>
+        )}
+      </div>
     </div>
   );
 }
