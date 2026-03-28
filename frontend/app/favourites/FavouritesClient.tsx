@@ -147,13 +147,13 @@ export default function FavouritesClient() {
 
   const setFilter = <K extends keyof WatchFilters>(key: K, value: WatchFilters[K]) => {
     setWatchFilters(prev => ({ ...prev, [key]: value }));
-    router.push('/favourites');
   };
 
   const clearWatchFilters = () => {
     setWatchFilters(EMPTY_WATCH_FILTERS);
     setWristFit('');
-    router.push('/favourites');
+    // Reset to page 1 without scrolling so server-side pagination resumes from the start
+    if (page !== 1) router.replace('/favourites', { scroll: false });
   };
 
   const totalPages = !hasWatchFilters && watchData ? Math.ceil(watchData.totalCount / PAGE_SIZE) : 0;
@@ -276,6 +276,7 @@ export default function FavouritesClient() {
                 <WatchCard
                   key={watch.id}
                   watch={watch}
+                  brandName={brands.find(b => b.id === watch.brandId)?.name}
                   collectionLabels={labels.length > 0 ? labels : undefined}
                 />
               );

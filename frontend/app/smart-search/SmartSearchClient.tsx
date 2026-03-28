@@ -7,7 +7,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import {
   watchFinderSearch,
   fetchBrands,
@@ -18,11 +17,8 @@ import {
   Collection,
   Watch,
 } from '@/lib/api';
-import { imageTransformations, getOptimizedImageUrl } from '@/lib/cloudinary';
 import { calculateFitScores } from '@/lib/wristfit';
-import { useNavigation } from '@/contexts/NavigationContext';
-import CompareToggle from '@/app/components/compare/CompareToggle';
-import FavouriteToggle from '@/app/components/favourites/FavouriteToggle';
+import WatchCard from '@/app/watches/[watchId]/WatchCard';
 import {
   WatchFilters,
   EMPTY_WATCH_FILTERS,
@@ -91,120 +87,6 @@ function buildFiltersFromIntent(intent: QueryIntent, collections: Collection[]):
   return f;
 }
 
-// ── SmartCard — AllWatchesSection-style card sized for a 4-col grid ───────────
-
-function SmartCard({
-  watch,
-  brands,
-  collections,
-  currentPage,
-  wristFit,
-}: {
-  watch: Watch;
-  brands: Brand[];
-  collections: Collection[];
-  currentPage: number;
-  wristFit: string;
-}) {
-  const { saveNavigationState } = useNavigation();
-  const router = useRouter();
-
-  const watchHref = `/watches/${watch.id}${wristFit ? `?wristFit=${encodeURIComponent(wristFit)}` : ''}`;
-
-  const [src, setSrc] = useState<string>(watch.imageUrl || imageTransformations.card(watch.image));
-  const [retryCount, setRetryCount] = useState(0);
-
-  const handleImgError = () => {
-    if (retryCount < 1) {
-      setRetryCount(1);
-      const fallback = getOptimizedImageUrl(watch.image, {
-        width: 400, height: 400, crop: 'fill', quality: 'auto', format: 'jpg',
-      }) + `?r=${Date.now()}`;
-      setSrc(fallback);
-    }
-  };
-
-  const handleWatchClick = () => {
-    saveNavigationState({
-      scrollPosition: window.scrollY,
-      currentPage,
-      path: window.location.pathname + window.location.search,
-      timestamp: Date.now(),
-    });
-  };
-
-  const handleBrandClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    router.push(`/brands/${watch.brandId}`);
-  };
-
-  const handleCollectionClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (watch.collectionId) router.push(`/collections/${watch.collectionId}`);
-  };
-
-  const collectionName = watch.collectionId
-    ? collections.find(c => c.id === watch.collectionId)?.name
-    : null;
-
-  return (
-    <div className="group relative block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10">
-      {/* Image */}
-      <div className="relative mb-4">
-        <Link href={watchHref} onClick={handleWatchClick}>
-          <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl flex items-center justify-center border border-white/10 overflow-hidden cursor-pointer">
-            {watch.image ? (
-              <Image
-                src={src}
-                alt={watch.name}
-                width={400}
-                height={400}
-                sizes="(min-width: 1024px) 25vw, 50vw"
-                className="w-full h-full object-cover rounded-xl"
-                onError={handleImgError}
-              />
-            ) : (
-              <span className="text-white/60 text-xs font-light">{watch.name}</span>
-            )}
-          </div>
-        </Link>
-        <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-          <FavouriteToggle watchId={watch.id} />
-          <CompareToggle watch={watch} />
-        </div>
-      </div>
-
-      {/* Info — left-aligned, matching AllWatches card */}
-      <div className="space-y-2">
-        <button
-          onClick={handleBrandClick}
-          className="text-xs text-white/60 hover:text-white/90 font-inter font-light uppercase tracking-wide transition-colors cursor-pointer bg-transparent border-none p-0 text-left"
-        >
-          {brands.find(b => b.id === watch.brandId)?.name ?? ''}
-        </button>
-
-        {collectionName && (
-          <button
-            onClick={handleCollectionClick}
-            className="block text-xs text-white/50 hover:text-white/80 font-inter font-light transition-colors cursor-pointer bg-transparent border-none p-0 text-left"
-          >
-            {collectionName}
-          </button>
-        )}
-
-        <Link href={watchHref} onClick={handleWatchClick}>
-          <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate cursor-pointer">
-            {watch.name}
-          </h3>
-        </Link>
-
-        <p className="text-lg text-[#f0e6d2] font-inter font-semibold">
-          {watch.currentPrice === 0 ? 'Price on Request' : `$${watch.currentPrice.toLocaleString()}`}
-        </p>
-      </div>
-    </div>
-  );
-}
 
 function SkeletonGrid({ count = 20 }: { count?: number }) {
   return (
@@ -440,7 +322,7 @@ export default function SmartSearchClient() {
 
   if (!query) {
     return (
-      <div className="container mx-auto px-4 sm:px-8 py-28 text-center">
+      <div className="px-8 lg:px-16 py-28 text-center">
         <p className="text-white/50 font-inter">
           No query provided.{' '}
           <Link href="/" className="text-white/70 underline underline-offset-2">Go back.</Link>
@@ -449,10 +331,9 @@ export default function SmartSearchClient() {
     );
   }
 
-  const currentPage = activePage;
 
   return (
-    <div className="container mx-auto px-4 sm:px-8 py-8 pt-28 pb-28 text-white">
+    <div className="px-8 lg:px-16 py-8 pt-28 pb-28 text-white">
 
       {/* ── Header ── */}
       <div className="mb-6">
@@ -590,13 +471,11 @@ export default function SmartSearchClient() {
           {currentGrid.length > 0 ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
               {currentGrid.map(w => (
-                <SmartCard
+                <WatchCard
                   key={w.id}
                   watch={w}
-                  brands={brands}
-                  collections={collections}
-                  currentPage={currentPage}
-                  wristFit={wristFit}
+                  brandName={brands.find(b => b.id === w.brandId)?.name}
+                  hrefSuffix={wristFit ? `?wristFit=${encodeURIComponent(wristFit)}` : ''}
                 />
               ))}
             </div>

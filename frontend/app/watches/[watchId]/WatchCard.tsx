@@ -20,9 +20,10 @@ interface WatchCardProps {
   hrefSuffix?: string;  // appended to /watches/[id], e.g. "?wristFit=17"
   imageFit?: 'cover' | 'contain';  // cover for showcase hero cards, contain to show full watch
   collectionLabels?: string[];  // shown as pills on /favourites page
+  brandName?: string;           // shown above collection name when provided (e.g. favourites page)
 }
 
-const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain', collectionLabels }: WatchCardProps) => {
+const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain', collectionLabels, brandName }: WatchCardProps) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [collection, setCollection] = useState<Collection | null>(null);
@@ -137,6 +138,18 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
           <CompareToggle watch={watch} />
         </div>
       </div>
+
+      {/* Brand name — only shown when explicitly passed (e.g. favourites page) */}
+      {brandName && (
+        <div className="mb-1 text-center">
+          <button
+            onClick={e => { e.preventDefault(); e.stopPropagation(); router.push(`/brands/${watch.brandId}`); }}
+            className="text-xs font-inter text-white/50 uppercase tracking-widest hover:text-white/80 transition-colors bg-transparent border-none cursor-pointer"
+          >
+            {brandName}
+          </button>
+        </div>
+      )}
 
       {/* Collection Name - Clickable Button */}
       {collection && (
