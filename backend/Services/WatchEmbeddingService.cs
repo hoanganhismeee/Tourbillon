@@ -317,12 +317,18 @@ public class WatchEmbeddingService
         fullParts.Add($"Price: {price}");
         var full = string.Join(". ", fullParts);
 
-        // brand_style: aesthetic and identity positioning
-        var styleParts = new List<string> { $"{brand} luxury watch" };
+        // brand_style: aesthetic and identity positioning — watch-specific differentiators
+        var styleParts = new List<string> { $"{brand} {watch.Name}" };
         if (!string.IsNullOrEmpty(collection)) styleParts.Add($"{collection} collection");
         if (!string.IsNullOrEmpty(specs?.Case?.Material)) styleParts.Add($"{specs.Case.Material} case");
         if (!string.IsNullOrEmpty(specs?.Dial?.Color)) styleParts.Add($"{specs.Dial.Color} dial");
+        if (!string.IsNullOrEmpty(specs?.Dial?.Finish)) styleParts.Add($"{specs.Dial.Finish} finish");
+        if (!string.IsNullOrEmpty(specs?.Dial?.Indices)) styleParts.Add($"{specs.Dial.Indices} indices");
+        if (!string.IsNullOrEmpty(specs?.Dial?.Hands)) styleParts.Add($"{specs.Dial.Hands} hands");
         if (!string.IsNullOrEmpty(specs?.Strap?.Material)) styleParts.Add($"{specs.Strap.Material} strap");
+        if (!string.IsNullOrEmpty(specs?.Movement?.Caliber)) styleParts.Add($"Caliber {specs.Movement.Caliber}");
+        if (!string.IsNullOrEmpty(specs?.Case?.CaseBack)) styleParts.Add($"{specs.Case.CaseBack} case back");
+        if (!string.IsNullOrEmpty(specs?.ProductionStatus)) styleParts.Add(specs.ProductionStatus);
         var brandStyle = string.Join(", ", styleParts) + ".";
 
         // specs: technical specification sentence
@@ -336,10 +342,25 @@ public class WatchEmbeddingService
         if (specs?.Movement?.Functions?.Any() == true)          techParts.Add($"Functions: {string.Join(", ", specs.Movement.Functions)}");
         var specsText = $"{brand} {watch.Name} specifications: {string.Join(". ", techParts)}.";
 
-        // use_case: category label + occasion and wear context
+        // use_case: deterministic category + spec-grounded wear context per watch
         var category = InferCategory(watch, specs);
         var occasions = InferOccasions(watch, specs);
-        var useCase = $"{brand} {watch.Name} — {category}. Ideal for {string.Join(", ", occasions)}. Price: {price}.";
+        var useCaseParts = new List<string> { $"{brand} {watch.Name} — {category}" };
+        // Ground the category with watch-specific specs for intra-collection differentiation
+        if (!string.IsNullOrEmpty(specs?.Case?.Diameter)) useCaseParts.Add(specs.Case.Diameter);
+        if (!string.IsNullOrEmpty(specs?.Case?.Material)) useCaseParts.Add(specs.Case.Material);
+        if (!string.IsNullOrEmpty(specs?.Case?.WaterResistance)) useCaseParts.Add($"{specs.Case.WaterResistance} water resistance");
+        if (!string.IsNullOrEmpty(specs?.Movement?.Type)) useCaseParts.Add(specs.Movement.Type);
+        if (specs?.Movement?.Functions?.Any() == true)
+        {
+            var complications = specs.Movement.Functions
+                .Where(f => !f.Equals("Hours", StringComparison.OrdinalIgnoreCase)
+                         && !f.Equals("Minutes", StringComparison.OrdinalIgnoreCase)
+                         && !f.Equals("Seconds", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (complications.Count > 0) useCaseParts.Add(string.Join(", ", complications));
+        }
+        var useCase = $"{string.Join(", ", useCaseParts)}. Ideal for {string.Join(", ", occasions)}. Price: {price}.";
 
         return
         [
