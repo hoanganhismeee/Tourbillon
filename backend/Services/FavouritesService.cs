@@ -151,8 +151,9 @@ public class FavouritesService : IFavouritesService
         watchesQuery = (query.SortBy ?? "recent") switch
         {
             "brand"      => watchesQuery.OrderBy(w => w.BrandId).ThenBy(w => w.Name),
-            "price_desc" => watchesQuery.OrderByDescending(w => w.CurrentPrice),
-            "price_asc"  => watchesQuery.OrderBy(w => w.CurrentPrice),
+            // PoR (price = 0) is treated as highest — appears first on price_desc, last on price_asc.
+            "price_desc" => watchesQuery.OrderByDescending(w => w.CurrentPrice == 0).ThenByDescending(w => w.CurrentPrice),
+            "price_asc"  => watchesQuery.OrderBy(w => w.CurrentPrice == 0).ThenBy(w => w.CurrentPrice),
             _            => watchesQuery, // "recent": sort in memory by CreatedAt below
         };
 

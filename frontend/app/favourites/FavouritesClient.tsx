@@ -110,8 +110,8 @@ export default function FavouritesClient() {
     setSelectedCollectionIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
-    // Reset to page 1 on filter change
-    router.push('/favourites');
+    // Reset to page 1 without scrolling
+    router.push('/favourites', { scroll: false });
   };
 
   const handleDeleteCollection = async (collectionId: number) => {
@@ -263,7 +263,7 @@ export default function FavouritesClient() {
           <h2 className="font-playfair text-xl text-[#f0e6d2] font-light">{headingText}</h2>
           {selectedCollectionIds.length > 0 && (
             <button
-              onClick={() => { setSelectedCollectionIds([]); router.push('/favourites'); }}
+              onClick={() => { setSelectedCollectionIds([]); router.push('/favourites', { scroll: false }); }}
               className="text-xs text-white/35 font-inter hover:text-white/60 transition-colors"
             >
               Clear filter
@@ -274,7 +274,7 @@ export default function FavouritesClient() {
         {/* Sort dropdown */}
         <select
           value={sortBy}
-          onChange={e => { setSortBy(e.target.value); router.push('/favourites'); }}
+          onChange={e => { setSortBy(e.target.value); router.push('/favourites', { scroll: false }); }}
           className="bg-black/40 border border-white/15 text-white/70 text-sm font-inter rounded-xl px-4 py-2 outline-none cursor-pointer hover:border-white/30 transition-colors"
         >
           {SORT_OPTIONS.map(opt => (
