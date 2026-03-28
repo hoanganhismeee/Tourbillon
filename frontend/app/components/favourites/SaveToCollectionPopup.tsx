@@ -41,6 +41,8 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
   const [createError, setCreateError] = useState('');
   const [creatingCollection, setCreatingCollection] = useState(false);
   const [updatingRows, setUpdatingRows] = useState<Set<string>>(new Set());
+  const [pendingFav, setPendingFav] = useState<boolean | null>(null);
+  const [pendingCols, setPendingCols] = useState<Map<number, boolean>>(new Map());
 
   // On mount: auto-save if needed, then measure and position the popup.
   // Runs after first paint so window/DOM are available.
@@ -78,24 +80,57 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
     };
   }, [onClose]);
 
-  // Actions
-  const handleFavouriteClick = async () => {
+  // Actions — toggles update local pending state only; API calls are deferred to handleDone
+  const handleFavouriteClick = () => {
     if (updatingRows.has('fav')) return;
-    setUpdatingRows(prev => new Set(prev).add('fav'));
-    try { await toggleFavourite(watchId); }
-    finally { setUpdatingRows(prev => { const s = new Set(prev); s.delete('fav'); return s; }); }
+    const currentEffective = pendingFav !== null ? pendingFav : isFavourited(watchId);
+    const nextState = !currentEffective;
+    setPendingFav(nextState === isFavourited(watchId) ? null : nextState);
   };
 
-  const handleCollectionClick = async (collectionId: number) => {
+  const handleCollectionClick = (collectionId: number) => {
     const key = `col-${collectionId}`;
     if (updatingRows.has(key)) return;
-    setUpdatingRows(prev => new Set(prev).add(key));
+    const currentEffective = pendingCols.has(collectionId)
+      ? pendingCols.get(collectionId)!
+      : isInCollection(collectionId, watchId);
+    const nextState = !currentEffective;
+    setPendingCols(prev => {
+      const next = new Map(prev);
+      if (nextState === isInCollection(collectionId, watchId)) {
+        next.delete(collectionId); // net no-op: user toggled back to original state
+      } else {
+        next.set(collectionId, nextState);
+      }
+      return next;
+    });
+  };
+
+  const effectiveFavActive = pendingFav !== null ? pendingFav : isFavourited(watchId);
+  const getEffectiveColActive = (colId: number): boolean =>
+    pendingCols.has(colId) ? pendingCols.get(colId)! : isInCollection(colId, watchId);
+  const hasChanges = pendingFav !== null || pendingCols.size > 0;
+
+  const handleDone = async () => {
+    if (!hasChanges) { onClose(); return; }
+    const keys = new Set<string>();
+    if (pendingFav !== null) keys.add('fav');
+    pendingCols.forEach((_, colId) => keys.add(`col-${colId}`));
+    setUpdatingRows(keys);
     try {
-      if (isInCollection(collectionId, watchId)) await removeFromCollection(collectionId, watchId);
-      else await addToCollection(collectionId, watchId);
+      if (pendingFav !== null && pendingFav !== isFavourited(watchId)) {
+        await toggleFavourite(watchId);
+      }
+      for (const [colId, intendedState] of pendingCols.entries()) {
+        if (intendedState !== isInCollection(colId, watchId)) {
+          if (intendedState) await addToCollection(colId, watchId);
+          else await removeFromCollection(colId, watchId);
+        }
+      }
     } finally {
-      setUpdatingRows(prev => { const s = new Set(prev); s.delete(key); return s; });
+      setUpdatingRows(new Set());
     }
+    onClose();
   };
 
   const handleCreateCollection = async () => {
@@ -115,13 +150,12 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
     }
   };
 
-  const favActive = isFavourited(watchId);
   const showSearch = collections.length > 3;
-  const savedCollections = !search ? collections.filter(c => isInCollection(c.id, watchId)) : [];
+  const savedCollections = !search ? collections.filter(c => getEffectiveColActive(c.id)) : [];
   const unsavedCollections = !search
-    ? collections.filter(c => !isInCollection(c.id, watchId))
+    ? collections.filter(c => !getEffectiveColActive(c.id))
     : collections.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
-  const hasSaved = favActive || savedCollections.length > 0;
+  const hasSaved = effectiveFavActive || savedCollections.length > 0;
   const showFavInSearch = !search || 'favourites'.includes(search.toLowerCase());
 
   const content = (
@@ -232,24 +266,24 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
             }`}
           >
             <div className={`w-8 h-8 rounded-md shrink-0 flex items-center justify-center transition-colors ${
-              favActive ? 'bg-[#bfa68a]/20' : 'bg-white/7'
+              effectiveFavActive ? 'bg-[#bfa68a]/20' : 'bg-white/7'
             }`}>
               <svg width="12" height="12" viewBox="0 0 24 24">
                 <path
                   d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z"
-                  fill={favActive ? '#bfa68a' : 'none'}
-                  stroke={favActive ? '#bfa68a' : 'rgba(255,255,255,0.35)'}
-                  strokeWidth={favActive ? 0 : 1.5}
+                  fill={effectiveFavActive ? '#bfa68a' : 'none'}
+                  stroke={effectiveFavActive ? '#bfa68a' : 'rgba(255,255,255,0.35)'}
+                  strokeWidth={effectiveFavActive ? 0 : 1.5}
                 />
               </svg>
             </div>
             <div className="flex-1 min-w-0">
               <span className={`block text-sm font-inter transition-colors ${
-                favActive ? 'text-white/90' : 'text-white/60 group-hover:text-white/80'
+                effectiveFavActive ? 'text-white/90' : 'text-white/60 group-hover:text-white/80'
               }`}>Favourites</span>
               <span className="text-[11px] text-white/25 font-inter">{favouriteWatchIds.size} watches</span>
             </div>
-            {favActive && <CheckMark />}
+            {effectiveFavActive && <CheckMark />}
           </button>
         )}
 
@@ -259,7 +293,7 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
             key={col.id}
             name={col.name}
             count={col.watchIds.length}
-            inCol
+            inCol={getEffectiveColActive(col.id)}
             loading={updatingRows.has(`col-${col.id}`)}
             onClick={() => handleCollectionClick(col.id)}
           />
@@ -276,7 +310,7 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
             key={col.id}
             name={col.name}
             count={col.watchIds.length}
-            inCol={false}
+            inCol={getEffectiveColActive(col.id)}
             loading={updatingRows.has(`col-${col.id}`)}
             onClick={() => handleCollectionClick(col.id)}
           />
@@ -285,6 +319,26 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
         {/* Empty search state */}
         {search && unsavedCollections.length === 0 && !showFavInSearch && (
           <p className="px-4 py-5 text-center text-xs text-white/30 font-inter">No collections found</p>
+        )}
+      </div>
+
+      {/* Footer — Cancel always visible; Done appears when there are pending changes */}
+      <div className="h-px bg-white/8" />
+      <div className="flex items-center justify-end gap-2 px-3 py-2.5">
+        <button
+          onClick={onClose}
+          className="px-3.5 py-1.5 rounded-full text-xs font-inter font-semibold text-white/50 hover:text-white/75 hover:bg-white/6 transition-colors"
+        >
+          Cancel
+        </button>
+        {hasChanges && (
+          <button
+            onClick={handleDone}
+            disabled={updatingRows.size > 0}
+            className="px-3.5 py-1.5 rounded-full text-xs font-inter font-semibold bg-[#bfa68a]/20 text-[#bfa68a] hover:bg-[#bfa68a]/30 transition-colors disabled:opacity-40"
+          >
+            {updatingRows.size > 0 ? 'Saving...' : 'Done'}
+          </button>
         )}
       </div>
     </motion.div>
