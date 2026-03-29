@@ -1,7 +1,7 @@
 // Orchestrates the RAG chat concierge pipeline.
 // Detects query type (PRODUCT/BRAND/GENERAL), fetches DB context, calls ai-service /chat,
 // and returns the LLM response with extracted watch cards.
-using System.Collections.Concurrent;
+// Sessions are stored in Redis hashes with a 1-hour TTL.
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -9,7 +9,6 @@ using System.Text.RegularExpressions;
 using backend.Database;
 using backend.Models;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
 
@@ -58,12 +57,12 @@ public class ChatService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly TourbillonContext _context;
-    private readonly ConcurrentDictionary<string, ChatSession> _sessions;
-    private readonly IMemoryCache _cache;
+    private readonly IRedisService _redis;
     private readonly IConfiguration _config;
     private readonly ILogger<ChatService> _logger;
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(1);
 
     // Brand name aliases shared with WatchFinderService — short names users commonly type
     private static readonly Dictionary<string, string> _brandAliases = new(StringComparer.OrdinalIgnoreCase)
@@ -84,17 +83,30 @@ public class ChatService
     public ChatService(
         IHttpClientFactory httpClientFactory,
         TourbillonContext context,
-        ConcurrentDictionary<string, ChatSession> sessions,
-        IMemoryCache cache,
+        IRedisService redis,
         IConfiguration config,
         ILogger<ChatService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _context = context;
-        _sessions = sessions;
-        _cache = cache;
+        _redis = redis;
         _config = config;
         _logger = logger;
+    }
+
+    // Loads history from Redis; returns empty list if session doesn't exist.
+    private async Task<List<ChatMessage>> GetSessionHistoryAsync(string sessionId)
+    {
+        var json = await _redis.GetHashFieldAsync($"chat:session:{sessionId}", "history");
+        if (json == null) return [];
+        return JsonSerializer.Deserialize<List<ChatMessage>>(json, _jsonOptions) ?? [];
+    }
+
+    // Persists history to Redis, refreshing the 1-hour TTL.
+    private async Task SaveSessionHistoryAsync(string sessionId, List<ChatMessage> history)
+    {
+        var json = JsonSerializer.Serialize(history, _jsonOptions);
+        await _redis.SetHashFieldAsync($"chat:session:{sessionId}", "history", json, SessionTtl);
     }
 
     public async Task<ChatApiResponse> HandleMessageAsync(
@@ -106,8 +118,8 @@ public class ChatService
 
         if (!disableLimit)
         {
-            var rlKey = $"chat_rl_{userId ?? ipAddress ?? "anon"}";
-            _cache.TryGetValue(rlKey, out int used);
+            var rlKey = $"chat_rl:{userId ?? ipAddress ?? "anon"}";
+            var used = (int)(await _redis.GetCounterAsync(rlKey) ?? 0);
             if (used >= dailyLimit)
                 return new ChatApiResponse
                 {
@@ -118,20 +130,11 @@ public class ChatService
                 };
         }
 
-        // ── Session management ────────────────────────────────────────────────────
-        _sessions.TryGetValue(sessionId, out var session);
-        if (session == null)
-        {
-            session = new ChatSession { SessionId = sessionId, LastActivity = DateTime.UtcNow };
-            _sessions[sessionId] = session;
-        }
-        else
-        {
-            session.LastActivity = DateTime.UtcNow;
-        }
+        // ── Session management (Redis) ────────────────────────────────────────────
+        var sessionHistory = await GetSessionHistoryAsync(sessionId);
 
         // Last 10 turns — typed DTO avoids System.Text.Json object-erasure with anonymous types
-        var history = session.History
+        var history = sessionHistory
             .TakeLast(10)
             .Select(m => new ChatHistoryEntry { Role = m.Role, Content = m.Content })
             .ToList();
@@ -194,22 +197,18 @@ public class ChatService
         // ── Extract watch cards from response markdown links ──────────────────────
         var watchCards = await ExtractWatchCardsAsync(aiMessage);
 
-        // ── Persist turn to session ───────────────────────────────────────────────
-        session.History.Add(new ChatMessage { Role = "user",      Content = message  });
-        session.History.Add(new ChatMessage { Role = "assistant", Content = aiMessage });
+        // ── Persist turn to session (Redis) ──────────────────────────────────────
+        sessionHistory.Add(new ChatMessage { Role = "user",      Content = message  });
+        sessionHistory.Add(new ChatMessage { Role = "assistant", Content = aiMessage });
+        await SaveSessionHistoryAsync(sessionId, sessionHistory);
 
-        // ── Increment rate limit counter ──────────────────────────────────────────
+        // ── Increment rate limit counter (resets at midnight UTC) ────────────────
         int newUsed = 1;
         if (!disableLimit)
         {
-            var rlKey = $"chat_rl_{userId ?? ipAddress ?? "anon"}";
-            _cache.TryGetValue(rlKey, out int cur);
-            newUsed = cur + 1;
-            _cache.Set(rlKey, newUsed, new MemoryCacheEntryOptions
-            {
-                // Resets at midnight UTC
-                AbsoluteExpiration = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(1), TimeSpan.Zero)
-            });
+            var rlKey = $"chat_rl:{userId ?? ipAddress ?? "anon"}";
+            var ttlUntilMidnight = DateTime.UtcNow.Date.AddDays(1) - DateTime.UtcNow;
+            newUsed = (int)await _redis.IncrementAsync(rlKey, ttlUntilMidnight);
         }
 
         return new ChatApiResponse
@@ -221,8 +220,9 @@ public class ChatService
         };
     }
 
-    // Remove session from in-memory store
-    public void ClearSession(string sessionId) => _sessions.TryRemove(sessionId, out _);
+    // Remove session from Redis
+    public async Task ClearSessionAsync(string sessionId) =>
+        await _redis.RemoveHashAsync($"chat:session:{sessionId}");
 
     // ── Query type detection ──────────────────────────────────────────────────────
 

@@ -5,6 +5,7 @@ using backend.Database;
 using backend.DTOs;
 using backend.Models;
 using backend.Services;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -1674,29 +1675,15 @@ public class AdminController : ControllerBase
     /// Generates editorial story content for all collections and links all watches.
     /// Run once offline with gemma2:9b before deploy, then pg_dump the editorial tables.
     /// AllowAnonymous: local-only seeding tool, no sensitive data involved.
-    /// Fire-and-forget: returns immediately; generation runs in a background scope.
+    /// Enqueues a durable Hangfire job — progress visible at /hangfire dashboard.
     /// POST: api/admin/editorial/seed
     [AllowAnonymous]
     [HttpPost("editorial/seed")]
-    public IActionResult SeedEditorial([FromServices] IServiceProvider sp)
+    public IActionResult SeedEditorial()
     {
-        _logger.LogInformation("Admin: editorial seeding started (background)");
-        _ = Task.Run(async () =>
-        {
-            using var scope = sp.CreateScope();
-            var svc = scope.ServiceProvider.GetRequiredService<WatchEditorialService>();
-            try
-            {
-                var (seeded, linked, skipped) = await svc.SeedAllAsync();
-                _logger.LogInformation("Editorial seeding complete — seeded:{Seeded} linked:{Linked} skipped:{Skipped}",
-                    seeded, linked, skipped);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Editorial seeding failed");
-            }
-        });
-        return Accepted(new { Message = "Seeding started. Poll GET /api/admin/editorial/status for progress." });
+        _logger.LogInformation("Admin: editorial seeding enqueued");
+        BackgroundJob.Enqueue<WatchEditorialService>(x => x.SeedAllAsync());
+        return Accepted(new { Message = "Seeding enqueued. Monitor progress at /hangfire dashboard." });
     }
 
     /// Returns editorial coverage stats.

@@ -1,6 +1,7 @@
 // Handles Register Your Interest submissions — persists to DB, emails customer confirmation + admin notification
 using backend.Database;
 using backend.Models;
+using Hangfire;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,20 +11,17 @@ public class RegisterInterestService : IRegisterInterestService
 {
     private readonly TourbillonContext _context;
     private readonly UserManager<User> _userManager;
-    private readonly IEmailService _emailService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<RegisterInterestService> _logger;
 
     public RegisterInterestService(
         TourbillonContext context,
         UserManager<User> userManager,
-        IEmailService emailService,
         IConfiguration configuration,
         ILogger<RegisterInterestService> logger)
     {
         _context = context;
         _userManager = userManager;
-        _emailService = emailService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -85,24 +83,23 @@ public class RegisterInterestService : IRegisterInterestService
         _context.RegisterInterests.Add(entry);
         await _context.SaveChangesAsync();
 
-        // Send emails (fire-and-forget — record is already saved)
-        _ = Task.Run(async () =>
+        // Enqueue emails as durable Hangfire jobs — retried automatically on SMTP failure
+        var userBody = BuildUserConfirmationBody(entry, watch);
+        BackgroundJob.Enqueue<BackgroundEmailService>(x =>
+            x.SendAsync(entry.CustomerEmail, "Your Tourbillon Registration of Interest", userBody));
+
+        var adminEmail = _configuration["AdminSettings:SeedAdminEmail"];
+        if (!string.IsNullOrEmpty(adminEmail))
         {
-            try
-            {
-                await SendUserConfirmationEmail(entry, watch);
-                await SendAdminNotificationEmail(entry, watch);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send register-interest emails for entry {EntryId}", entry.Id);
-            }
-        });
+            var adminBody = BuildAdminNotificationBody(entry, watch);
+            BackgroundJob.Enqueue<BackgroundEmailService>(x =>
+                x.SendAsync(adminEmail, "New Registration of Interest — Tourbillon", adminBody));
+        }
 
         return entry;
     }
 
-    private async Task SendUserConfirmationEmail(RegisterInterest entry, Watch? watch)
+    private static string BuildUserConfirmationBody(RegisterInterest entry, Watch? watch)
     {
         var displayName = !string.IsNullOrEmpty(entry.CustomerFirstName) ? entry.CustomerFirstName : "there";
         var fullName = $"{entry.CustomerFirstName} {entry.CustomerLastName}".Trim();
@@ -203,14 +200,11 @@ public class RegisterInterestService : IRegisterInterestService
 </body>
 </html>";
 
-        await _emailService.SendEmailAsync(entry.CustomerEmail, "Your Tourbillon Registration of Interest", body);
+        return body;
     }
 
-    private async Task SendAdminNotificationEmail(RegisterInterest entry, Watch? watch)
+    private static string BuildAdminNotificationBody(RegisterInterest entry, Watch? watch)
     {
-        var adminEmail = _configuration["AdminSettings:SeedAdminEmail"];
-        if (string.IsNullOrEmpty(adminEmail)) return;
-
         var customerName = $"{entry.Salutation} {entry.CustomerFirstName} {entry.CustomerLastName}".Trim();
         var watchInfo = watch != null
             ? $"{System.Net.WebUtility.HtmlEncode(watch.Description ?? watch.Name)} ({watch.Name})"
@@ -245,6 +239,6 @@ public class RegisterInterestService : IRegisterInterestService
 </body>
 </html>";
 
-        await _emailService.SendEmailAsync(adminEmail, "New Registration of Interest — Tourbillon", body);
+        return body;
     }
 }

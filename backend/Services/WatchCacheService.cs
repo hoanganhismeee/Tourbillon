@@ -3,6 +3,7 @@
 using backend.Database;
 using backend.DTOs;
 using backend.Models;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 
 namespace backend.Services;
@@ -12,18 +13,15 @@ public class WatchCacheService
     private readonly TourbillonContext _context;
     private readonly ILogger<WatchCacheService> _logger;
     private readonly ICloudinaryService _cloudinaryService;
-    private readonly IServiceScopeFactory _scopeFactory;
 
     public WatchCacheService(
         TourbillonContext context,
         ILogger<WatchCacheService> logger,
-        ICloudinaryService cloudinaryService,
-        IServiceScopeFactory scopeFactory)
+        ICloudinaryService cloudinaryService)
     {
         _context = context;
         _logger = logger;
         _cloudinaryService = cloudinaryService;
-        _scopeFactory = scopeFactory;
     }
 
     /// Caches a list of already-scraped watches to the database
@@ -52,16 +50,11 @@ public class WatchCacheService
 
             await _context.SaveChangesAsync(); // IDs are assigned after this point
 
-            // Fire-and-forget embeddings for newly inserted watches
+            // Enqueue embedding generation for newly inserted watches as a durable Hangfire job
             if (newlyAdded.Count > 0)
             {
                 var idsToEmbed = newlyAdded.Select(w => w.Id).ToList();
-                _ = Task.Run(async () =>
-                {
-                    using var scope = _scopeFactory.CreateScope();
-                    var embeddingService = scope.ServiceProvider.GetRequiredService<WatchEmbeddingService>();
-                    await embeddingService.GenerateBulkAsync(idsToEmbed);
-                });
+                BackgroundJob.Enqueue<WatchEmbeddingService>(x => x.GenerateBulkAsync(idsToEmbed));
             }
 
             var successMessage = $"Successfully cached {watchesAdded} out of {scrapedWatches.Count} watches";

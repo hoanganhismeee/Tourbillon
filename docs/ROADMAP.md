@@ -30,8 +30,8 @@
 | Retrieval Quality Audit (chunk enrichment, vector ordering, index fix) | Done | 5 |
 | Favourites & Collections | Done | 6 |
 | CI/CD Pipeline (GitHub Actions, automated quality gates) | Done | 7 |
-| Durable Background Jobs (Hangfire, retry, monitoring dashboard) | Planned | 7.5 |
-| Redis (distributed cache, rate limiting, session storage) | Planned | 7.5 |
+| Durable Background Jobs (Hangfire, retry, monitoring dashboard) | Done | 7.5 |
+| Redis (distributed cache, rate limiting, session storage) | Done | 7.5 |
 | Observability (Serilog structured logging, ASP.NET health checks) | Planned | 8 |
 | Advisor CRM + Inquiry Pipeline (status tracking, follow-ups, unified view) | Planned | 8.5 |
 | Search & Recommendation Analytics Dashboard | Planned | 9 |
@@ -504,18 +504,26 @@ GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push and PR t
 
 Branch protection rules can be configured to block merging until CI passes.
 
-### Durable Background Jobs (Hangfire)
+### Durable Background Jobs (Hangfire) (COMPLETE)
 
-Replaces 7+ `_ = Task.Run()` fire-and-forget patterns with durable, retryable jobs stored in PostgreSQL. Automatic retry with exponential backoff (10 attempts over ~3 hours). Dashboard at `/hangfire` for monitoring. Affects: email sending (Appointment, Contact, RegisterInterest), embedding generation (WatchCache, WatchFinder, WatchEditorial).
+Replaces 8 `_ = Task.Run()` fire-and-forget patterns with durable, retryable jobs stored in PostgreSQL. Automatic retry with exponential backoff (10 attempts). Dashboard at `/hangfire` (open in Development, Admin-only in Production).
 
-### Redis: Cache + Rate Limiting + Session Storage
+- `BackgroundEmailService` — wraps `IEmailService`, throws on failure for Hangfire retry. Used by Contact, Appointment, RegisterInterest (2 jobs each).
+- Embedding jobs: `WatchFinderService`, `WatchCacheService` → `WatchEmbeddingService.GenerateBulkAsync`
+- Cache store: `WatchFinderService` → `QueryCacheService.StoreAsync`
+- Editorial embedding: `WatchEditorialService` → `WatchEmbeddingService.GenerateEditorialChunksAsync`
+- Editorial seeding: `AdminController` → `WatchEditorialService.SeedAllAsync`
+- `IServiceScopeFactory` removed from `WatchFinderService`, `WatchCacheService`, `WatchEditorialService` — Hangfire manages its own scope.
+- `HangfireDashboardAuthFilter` in `backend/Infrastructure/`
+
+### Redis: Distributed State (COMPLETE)
 
 Replaces four in-memory patterns that break on restart:
-- Rate limiting (`IMemoryCache` in `PasswordChangeRateLimitService`, `ChatService`) → Redis atomic counters with TTL
-- Chat sessions (`ConcurrentDictionary` singleton) → Redis hashes with auto-expiry
-- Auth codes (`IMemoryCache` in `MagicLoginService`, `PasswordResetService`) → Redis keys with TTL
+- Auth codes: `MagicLoginService`, `PasswordResetService` → Redis string keys with TTL (10 min / 30 s)
+- Rate limiting: `PasswordChangeRateLimitService`, `ChatService` → Redis atomic INCR counters with TTL
+- Chat sessions: `ConcurrentDictionary<string, ChatSession>` singleton → Redis hashes (`chat:session:{id}`) with 1-hour auto-expiry
 
-Adds `redis` service to `docker-compose.yml`. Backend uses `IDistributedCache` (Redis-backed).
+`IRedisService` / `RedisService` wrap `IConnectionMultiplexer` for testable atomic operations. `redis:7-alpine` service added to `docker-compose.yml` with health check and `redis_data` volume. Backend reads `Redis:ConnectionString` from config (default `localhost:6379`; overridden by `Redis__ConnectionString` env var in Docker).
 
 ### Observability
 

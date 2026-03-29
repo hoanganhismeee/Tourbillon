@@ -40,9 +40,9 @@ public class ChatController : ControllerBase
 
     // DELETE /api/chat/session/{sessionId}
     [HttpDelete("session/{sessionId}")]
-    public IActionResult ClearSession(string sessionId)
+    public async Task<IActionResult> ClearSession(string sessionId)
     {
-        _chatService.ClearSession(sessionId);
+        await _chatService.ClearSessionAsync(sessionId);
         return NoContent();
     }
 }

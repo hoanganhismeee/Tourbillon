@@ -1,6 +1,7 @@
 // Handles appointment bookings — persists to DB, emails user confirmation + admin notification
 using backend.Database;
 using backend.Models;
+using Hangfire;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,20 +11,17 @@ public class AppointmentService : IAppointmentService
 {
     private readonly TourbillonContext _context;
     private readonly UserManager<User> _userManager;
-    private readonly IEmailService _emailService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AppointmentService> _logger;
 
     public AppointmentService(
         TourbillonContext context,
         UserManager<User> userManager,
-        IEmailService emailService,
         IConfiguration configuration,
         ILogger<AppointmentService> logger)
     {
         _context = context;
         _userManager = userManager;
-        _emailService = emailService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -78,24 +76,23 @@ public class AppointmentService : IAppointmentService
         _context.Appointments.Add(appointment);
         await _context.SaveChangesAsync();
 
-        // Send emails (fire-and-forget — appointment is already saved)
-        _ = Task.Run(async () =>
+        // Enqueue emails as durable Hangfire jobs — retried automatically on SMTP failure
+        var userBody = BuildUserConfirmationBody(appointment);
+        BackgroundJob.Enqueue<BackgroundEmailService>(x =>
+            x.SendAsync(appointment.CustomerEmail, "Thank You for Your Tourbillon Appointment", userBody));
+
+        var adminEmail = _configuration["AdminSettings:SeedAdminEmail"];
+        if (!string.IsNullOrEmpty(adminEmail))
         {
-            try
-            {
-                await SendUserConfirmationEmail(appointment);
-                await SendAdminNotificationEmail(appointment, watch);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send appointment emails for appointment {AppointmentId}", appointment.Id);
-            }
-        });
+            var adminBody = BuildAdminNotificationBody(appointment, watch);
+            BackgroundJob.Enqueue<BackgroundEmailService>(x =>
+                x.SendAsync(adminEmail, "New Appointment Booking — Tourbillon", adminBody));
+        }
 
         return appointment;
     }
 
-    private async Task SendUserConfirmationEmail(Appointment appt)
+    private static string BuildUserConfirmationBody(Appointment appt)
     {
         var displayName = !string.IsNullOrEmpty(appt.CustomerFirstName) ? appt.CustomerFirstName : "there";
         var fullName = $"{appt.CustomerFirstName} {appt.CustomerLastName}".Trim();
@@ -172,14 +169,11 @@ public class AppointmentService : IAppointmentService
 </body>
 </html>";
 
-        await _emailService.SendEmailAsync(appt.CustomerEmail, "Thank You for Your Tourbillon Appointment", body);
+        return body;
     }
 
-    private async Task SendAdminNotificationEmail(Appointment appt, Watch? watch)
+    private static string BuildAdminNotificationBody(Appointment appt, Watch? watch)
     {
-        var adminEmail = _configuration["AdminSettings:SeedAdminEmail"];
-        if (string.IsNullOrEmpty(adminEmail)) return;
-
         var customerName = $"{appt.CustomerFirstName} {appt.CustomerLastName}".Trim();
         var dateStr = appt.AppointmentDate.ToString("dddd, d MMMM yyyy");
         var timeStr = appt.AppointmentDate.ToString("h:mm tt");
@@ -210,6 +204,6 @@ public class AppointmentService : IAppointmentService
 </body>
 </html>";
 
-        await _emailService.SendEmailAsync(adminEmail, "New Appointment Booking — Tourbillon", body);
+        return body;
     }
 }

@@ -1,10 +1,9 @@
 // password reset operations using 6-digit verification codes
-// Implements security best practices: rate limiting, code expiration, and fire-and-forget email delivery
+// Implements security best practices: cooldown, code expiration via Redis TTL, email delivery
 
 using System.Security.Cryptography;
 using backend.Models;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace backend.Services;
@@ -13,7 +12,7 @@ public class PasswordResetService : IPasswordResetService
 {
     private readonly UserManager<User> _userManager;
     private readonly IEmailService _emailService;
-    private readonly IMemoryCache _cache;
+    private readonly IRedisService _redis;
     private readonly ILogger<PasswordResetService> _logger;
     private const int CodeExpirationMinutes = 10;
     private const int CooldownSeconds = 30; // Prevent spam: minimum time between requests
@@ -21,12 +20,12 @@ public class PasswordResetService : IPasswordResetService
     public PasswordResetService(
         UserManager<User> userManager,
         IEmailService emailService,
-        IMemoryCache cache,
+        IRedisService redis,
         ILogger<PasswordResetService> logger)
     {
         _userManager = userManager;
         _emailService = emailService;
-        _cache = cache;
+        _redis = redis;
         _logger = logger;
     }
 
@@ -48,39 +47,30 @@ public class PasswordResetService : IPasswordResetService
             var cooldownKey = $"password_reset_cooldown_{email.ToLowerInvariant()}";
 
             // Check cooldown to prevent spam (30-second limit between requests)
-            if (_cache.TryGetValue(cooldownKey, out _))
+            if (await _redis.GetStringAsync(cooldownKey) != null)
             {
                 _logger.LogWarning("Cooldown in effect for password reset request: {Email}", email);
                 return (false, $"Please wait {CooldownSeconds} seconds before requesting another code.");
             }
 
-            // Check if a valid code already exists - reuse it instead of generating a new one
+            // Check if a valid code already exists — reuse it instead of generating a new one
             string code;
-            if (_cache.TryGetValue(cacheKey, out string? existingCode))
+            var existingCode = await _redis.GetStringAsync(cacheKey);
+            if (existingCode != null)
             {
-                code = existingCode!;
+                code = existingCode;
                 _logger.LogInformation("Reusing existing password reset code for {Email}", email);
             }
             else
             {
-                // Generate new 6-digit code
+                // Generate new 6-digit code and store with TTL
                 code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
-
-                // Store code in cache with expiration
-                var cacheOptions = new MemoryCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(CodeExpirationMinutes)
-                };
-                _cache.Set(cacheKey, code, cacheOptions);
+                await _redis.SetStringAsync(cacheKey, code, TimeSpan.FromMinutes(CodeExpirationMinutes));
                 _logger.LogInformation("Generated new password reset code for {Email}", email);
             }
 
             // Set cooldown timer to prevent rapid successive requests
-            var cooldownOptions = new MemoryCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(CooldownSeconds)
-            };
-            _cache.Set(cooldownKey, true, cooldownOptions);
+            await _redis.SetStringAsync(cooldownKey, "1", TimeSpan.FromSeconds(CooldownSeconds));
 
 // EMAIL SENT TO USER 
                 var emailBody = $@"
@@ -140,9 +130,10 @@ public class PasswordResetService : IPasswordResetService
                 return (false, "Invalid verification code.");
             }
 
-            // Verify code from cache
+            // Verify code from Redis
             var cacheKey = $"password_reset_{email.ToLowerInvariant()}";
-            if (!_cache.TryGetValue(cacheKey, out string? storedCode) || storedCode != code)
+            var storedCode = await _redis.GetStringAsync(cacheKey);
+            if (storedCode == null || storedCode != code)
             {
                 _logger.LogWarning("Invalid password reset code verification for {Email}", email);
                 return (false, "Invalid or expired verification code. Please request a new code.");
@@ -169,9 +160,10 @@ public class PasswordResetService : IPasswordResetService
                 return (false, "Invalid verification code.");
             }
 
-            // Verify code from cache
+            // Verify code from Redis
             var cacheKey = $"password_reset_{email.ToLowerInvariant()}";
-            if (!_cache.TryGetValue(cacheKey, out string? storedCode) || storedCode != code)
+            var storedCode = await _redis.GetStringAsync(cacheKey);
+            if (storedCode == null || storedCode != code)
             {
                 _logger.LogWarning("Invalid password reset code for {Email}", email);
                 return (false, "Invalid or expired verification code. Please request a new code.");
@@ -188,8 +180,8 @@ public class PasswordResetService : IPasswordResetService
                 return (false, errors);
             }
 
-            // Remove code from cache after successful reset
-            _cache.Remove(cacheKey);
+            // Remove code from Redis after successful reset
+            await _redis.RemoveAsync(cacheKey);
 
             _logger.LogInformation("Password reset successful for {Email}", email);
             return (true, "Password has been reset successfully.");
