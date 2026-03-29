@@ -29,7 +29,7 @@
 | Brand & Collection Embeddings | Removed | — |
 | Retrieval Quality Audit (chunk enrichment, vector ordering, index fix) | Done | 5 |
 | Favourites & Collections | Done | 6 |
-| CI/CD Pipeline (GitHub Actions, automated quality gates) | Planned | 7 |
+| CI/CD Pipeline (GitHub Actions, automated quality gates) | Done | 7 |
 | Durable Background Jobs (Hangfire, retry, monitoring dashboard) | Planned | 7.5 |
 | Redis (distributed cache, rate limiting, session storage) | Planned | 7.5 |
 | Observability (Serilog structured logging, ASP.NET health checks) | Planned | 8 |
@@ -494,11 +494,15 @@ Technical audit of the AI retrieval system identified and fixed issues across Sm
 
 ## Phase 7: Infrastructure & Operational Maturity
 
-Upgrades the project from "works locally" to "production-grade system." Each milestone adds a distinct engineering skill. Full concept explanations in `docs/INFRASTRUCTURE_CONCEPTS.md`.
+Upgrades the project from "works locally" to "production-grade system." Each milestone adds a distinct engineering skill. Full concept explanations in `docs/infra-concepts.md`.
 
-### CI/CD Pipeline (GitHub Actions)
+### CI/CD Pipeline (COMPLETE)
 
-Automated build + test + type-check on every push and PR. Quality gates block merge on failure. Stages: `dotnet build` + `dotnet test` + `npx tsc --noEmit`. Branch protection rules enforce passing CI before merge.
+GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push and PR to main. Two parallel jobs:
+- **Backend**: .NET 8 restore + build (Release) + 25 xUnit tests
+- **Frontend**: Node 20 install + TypeScript type-check (`tsc --noEmit`)
+
+Branch protection rules can be configured to block merging until CI passes.
 
 ### Durable Background Jobs (Hangfire)
 
