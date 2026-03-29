@@ -4,6 +4,7 @@
 
 | Feature | Status | Phase |
 |---|---|---|
+| Products | Done | 1 |
 | Compare Mode | Done | 1 |
 | Wrist-fit Recommender | Done | 1 |
 | AI Watch Finder — pipeline (parse + filter + rerank) | Done | 2 |
@@ -22,12 +23,20 @@
 | AI Discovery Pages (GEO/SEO) | Removed | — |
 | Homepage Cinematic Video Hero | Done | 3.5 |
 | Stripe Checkout (Test Mode) | Removed | — |
-| Contact Advisor (PoR Inquiry) | Done | 4 |
+| Contact Advisor/ Book an Appointment (PoR Inquiry) | Done | 4 |
 | Chat Concierge — floating widget + product comparison RAG | Done | 5 |
 | Chat Concierge — web search + brand knowledge answers | Done | 5 |
 | Brand & Collection Embeddings | Removed | — |
 | Retrieval Quality Audit (chunk enrichment, vector ordering, index fix) | Done | 5 |
 | Favourites & Collections | Done | 6 |
+| CI/CD Pipeline (GitHub Actions, automated quality gates) | Planned | 7 |
+| Durable Background Jobs (Hangfire, retry, monitoring dashboard) | Planned | 7.5 |
+| Redis (distributed cache, rate limiting, session storage) | Planned | 7.5 |
+| Observability (Serilog structured logging, ASP.NET health checks) | Planned | 8 |
+| Advisor CRM + Inquiry Pipeline (status tracking, follow-ups, unified view) | Planned | 8.5 |
+| Search & Recommendation Analytics Dashboard | Planned | 9 |
+| Storage Abstraction + S3 + CloudFront Migration | Planned | 9.5 |
+| Kubernetes (container orchestration, HPA, rolling deployments) | Planned | 10 |
 
 ## Model Strategy
 
@@ -483,6 +492,61 @@ Technical audit of the AI retrieval system identified and fixed issues across Sm
 
 ---
 
+## Phase 7: Infrastructure & Operational Maturity
+
+Upgrades the project from "works locally" to "production-grade system." Each milestone adds a distinct engineering skill. Full concept explanations in `docs/INFRASTRUCTURE_CONCEPTS.md`.
+
+### CI/CD Pipeline (GitHub Actions)
+
+Automated build + test + type-check on every push and PR. Quality gates block merge on failure. Stages: `dotnet build` + `dotnet test` + `npx tsc --noEmit`. Branch protection rules enforce passing CI before merge.
+
+### Durable Background Jobs (Hangfire)
+
+Replaces 7+ `_ = Task.Run()` fire-and-forget patterns with durable, retryable jobs stored in PostgreSQL. Automatic retry with exponential backoff (10 attempts over ~3 hours). Dashboard at `/hangfire` for monitoring. Affects: email sending (Appointment, Contact, RegisterInterest), embedding generation (WatchCache, WatchFinder, WatchEditorial).
+
+### Redis: Cache + Rate Limiting + Session Storage
+
+Replaces four in-memory patterns that break on restart:
+- Rate limiting (`IMemoryCache` in `PasswordChangeRateLimitService`, `ChatService`) → Redis atomic counters with TTL
+- Chat sessions (`ConcurrentDictionary` singleton) → Redis hashes with auto-expiry
+- Auth codes (`IMemoryCache` in `MagicLoginService`, `PasswordResetService`) → Redis keys with TTL
+
+Adds `redis` service to `docker-compose.yml`. Backend uses `IDistributedCache` (Redis-backed).
+
+### Observability
+
+- **Serilog** structured logging → JSON output, rolling file sink, request enrichment
+- **ASP.NET health checks** → `/health/ready` (checks PostgreSQL + Redis + AI service), `/health/live` (liveness probe)
+- **Metrics** — search tier distribution, cache hit rate, AI service latency, email delivery rate
+
+### Advisor CRM + Inquiry Pipeline
+
+Extends Contact Advisor, Register Interest, and Appointment from one-shot submissions into a unified CRM with:
+- Status pipeline: `New → Contacted → In Progress → Closed (Won/Lost/No Response)`
+- Advisor notes per inquiry
+- Follow-up reminders via Hangfire scheduled jobs
+- Unified admin view at `/admin/crm` across all inquiry types
+
+### Search & Recommendation Analytics Dashboard
+
+Event tracking for Smart Search and Chat Concierge:
+- Search queries with tier, result count, click-through
+- Cache hit rate over time
+- Popular watches (viewed, favourited, compared)
+- Chat query type distribution (PRODUCT/BRAND/GENERAL)
+
+Admin dashboard at `/admin/analytics` with Recharts visualizations.
+
+### Storage Abstraction + S3 + CloudFront
+
+Generic `IStorageService` interface with `CloudinaryStorageService` and `S3StorageService` implementations. Swappable via configuration. S3 bucket for image storage, CloudFront CDN for global delivery with 30-day edge caching.
+
+### Kubernetes (Optional)
+
+Convert Docker Compose to K8s manifests: Deployment, Service, Ingress, ConfigMap, Secret, HPA. StatefulSet for PostgreSQL. Rolling deployments with zero downtime. Honest note: overkill for single-instance deployment — value is resume/learning, not operational necessity.
+
+---
+
 ## Resume Keywords Covered
 
-AI/LLM integration, semantic search, vector embeddings (pgvector, HNSW indexing), recommendation systems, personalization engine, conversational commerce, retrieval-augmented generation (RAG), hybrid SQL + vector search, tiered retrieval routing, embedding quality auditing, programmatic content generation, full-stack implementation, rule-based scoring systems, NLP-to-SQL query pipeline, cost engineering (quota limits, semantic cache strategy, pre-generation), Stripe payment integration (PaymentIntent API, webhook-driven confirmation, idempotency), guest checkout architecture, transactional email (dual-recipient notification), client-side state management (Zustand + localStorage persistence), SSR hydration strategies, responsive UI with motion design (Framer Motion), PCI-compliant card handling (Stripe Elements), async event-driven architecture (webhook processing).
+AI/LLM integration, semantic search, vector embeddings (pgvector, HNSW indexing), recommendation systems, personalization engine, conversational commerce, retrieval-augmented generation (RAG), hybrid SQL + vector search, tiered retrieval routing, embedding quality auditing, programmatic content generation, full-stack implementation, rule-based scoring systems, NLP-to-SQL query pipeline, cost engineering (quota limits, semantic cache strategy, pre-generation), transactional email (dual-recipient notification), client-side state management (Zustand + localStorage persistence), SSR hydration strategies, responsive UI with motion design (Framer Motion), async event-driven architecture, durable background job processing (Hangfire, retry with exponential backoff), Redis (distributed caching, rate limiting, session storage), CI/CD pipeline (GitHub Actions, automated quality gates), structured logging (Serilog), health check probes, observability and operational metrics, CRM pipeline (status workflow, follow-up scheduling), search analytics (tier distribution, cache hit rate, click-through tracking), AWS S3 + CloudFront (storage abstraction, CDN), Kubernetes (container orchestration, HPA auto-scaling, rolling deployments), Docker Compose multi-service orchestration.
