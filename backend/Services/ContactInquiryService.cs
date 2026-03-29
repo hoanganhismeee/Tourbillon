@@ -1,6 +1,7 @@
 // Handles advisor inquiries — persists to DB, emails user confirmation + admin notification
 using backend.Database;
 using backend.Models;
+using Hangfire;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,20 +11,17 @@ public class ContactInquiryService : IContactInquiryService
 {
     private readonly TourbillonContext _context;
     private readonly UserManager<User> _userManager;
-    private readonly IEmailService _emailService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ContactInquiryService> _logger;
 
     public ContactInquiryService(
         TourbillonContext context,
         UserManager<User> userManager,
-        IEmailService emailService,
         IConfiguration configuration,
         ILogger<ContactInquiryService> logger)
     {
         _context = context;
         _userManager = userManager;
-        _emailService = emailService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -56,31 +54,34 @@ public class ContactInquiryService : IContactInquiryService
         _context.ContactInquiries.Add(inquiry);
         await _context.SaveChangesAsync();
 
-        // Send confirmation email to user (fire-and-forget — inquiry is already saved)
-        _ = Task.Run(async () =>
+        // Enqueue emails as durable Hangfire jobs — retried automatically on SMTP failure
+        var userEmail = user.Email;
+        if (!string.IsNullOrEmpty(userEmail))
         {
-            try
-            {
-                await SendUserConfirmationEmail(user, watch, dto.Message);
-                await SendAdminNotificationEmail(user, watch, dto.Message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send inquiry emails for inquiry {InquiryId}", inquiry.Id);
-            }
-        });
+            var userBody = BuildUserConfirmationBody(user, watch, dto.Message);
+            BackgroundJob.Enqueue<BackgroundEmailService>(x =>
+                x.SendAsync(userEmail, "Your Tourbillon Inquiry", userBody));
+        }
+
+        var adminEmail = _configuration["AdminSettings:SeedAdminEmail"];
+        if (!string.IsNullOrEmpty(adminEmail))
+        {
+            var adminBody = BuildAdminNotificationBody(user, watch, dto.Message);
+            BackgroundJob.Enqueue<BackgroundEmailService>(x =>
+                x.SendAsync(adminEmail, "New Advisor Inquiry — Tourbillon", adminBody));
+        }
 
         return inquiry;
     }
 
-    private async Task SendUserConfirmationEmail(User user, Watch? watch, string message)
+    private static string BuildUserConfirmationBody(User user, Watch? watch, string message)
     {
         var firstName = !string.IsNullOrEmpty(user.FirstName) ? user.FirstName : "there";
         var watchLine = watch != null
             ? $"about <strong>{watch.Description ?? watch.Name}</strong>"
             : "";
 
-        var body = $@"
+        return $@"
 <!DOCTYPE html>
 <html>
 <head>
@@ -101,22 +102,15 @@ public class ContactInquiryService : IContactInquiryService
     </div>
 </body>
 </html>";
-
-        var email = user.Email;
-        if (!string.IsNullOrEmpty(email))
-            await _emailService.SendEmailAsync(email, "Your Tourbillon Inquiry", body);
     }
 
-    private async Task SendAdminNotificationEmail(User user, Watch? watch, string message)
+    private static string BuildAdminNotificationBody(User user, Watch? watch, string message)
     {
-        var adminEmail = _configuration["AdminSettings:SeedAdminEmail"];
-        if (string.IsNullOrEmpty(adminEmail)) return;
-
         var watchInfo = watch != null
             ? $"<strong>{watch.Description ?? watch.Name}</strong> ({watch.Name})"
             : "General inquiry";
 
-        var body = $@"
+        return $@"
 <!DOCTYPE html>
 <html>
 <head>
@@ -138,7 +132,5 @@ public class ContactInquiryService : IContactInquiryService
     </div>
 </body>
 </html>";
-
-        await _emailService.SendEmailAsync(adminEmail, "New Advisor Inquiry — Tourbillon", body);
     }
 }

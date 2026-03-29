@@ -5,10 +5,13 @@ using backend.Middleware;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
-using System.Collections.Concurrent;
 using System.IO;
+using Hangfire;
+using Hangfire.PostgreSql;
 using Npgsql;
 using Pgvector.EntityFrameworkCore;
+using StackExchange.Redis;
+using backend.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,7 +20,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Add memory cache for rate limiting
+// Add memory cache (retained for framework-level caching)
 builder.Services.AddMemoryCache();
 
 // Add DbContext (PostgreSQL) with pgvector support
@@ -27,6 +30,20 @@ pgDataSourceBuilder.UseVector();
 var pgDataSource = pgDataSourceBuilder.Build();
 builder.Services.AddDbContext<TourbillonContext>(options =>
     options.UseNpgsql(pgDataSource, npgsqlOptions => npgsqlOptions.UseVector()));
+
+// Register Hangfire with PostgreSQL storage for durable background jobs
+builder.Services.AddHangfire(config => config
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UsePostgreSqlStorage(o => o.UseNpgsqlConnection(pgConnectionString)));
+builder.Services.AddHangfireServer();
+
+// Register Redis for distributed state (rate limiting, auth codes, chat sessions)
+var redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
+builder.Services.AddSingleton<IConnectionMultiplexer>(
+    ConnectionMultiplexer.Connect(redisConnectionString));
+builder.Services.AddSingleton<IRedisService, RedisService>();
 
 // Adds and configures ASP.NET Core Identity for user management and authentication.
 builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
@@ -81,6 +98,7 @@ builder.Services.Configure<backend.Services.SmtpOptions>(
 
 // Register email and password reset services
 builder.Services.AddScoped<backend.Services.IEmailService, backend.Services.EmailService>();
+builder.Services.AddScoped<backend.Services.BackgroundEmailService>();
 builder.Services.AddScoped<backend.Services.IPasswordResetService, backend.Services.PasswordResetService>();
 
 // Register role management service for managing user roles
@@ -113,8 +131,7 @@ builder.Services.AddScoped<WatchEmbeddingService>();
 builder.Services.AddScoped<QueryCacheService>();
 builder.Services.AddScoped<WatchEditorialService>();
 
-// Register chat concierge services
-builder.Services.AddSingleton<ConcurrentDictionary<string, ChatSession>>();
+// Register chat concierge services (sessions stored in Redis — no in-memory singleton needed)
 builder.Services.AddScoped<ChatService>();
 
 // Register taste profile service for Watch DNA personalization
@@ -182,6 +199,12 @@ app.UseCors("AllowFrontend");
 
 app.UseAuthentication(); // Enable authentication
 app.UseAuthorization();
+
+// Hangfire dashboard at /hangfire — open in Development, Admin-only in Production
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = [new HangfireDashboardAuthFilter()]
+});
 
 // Serve static image assets from the local Images/ directory at /images
 var imagesPath = Path.Combine(Directory.GetCurrentDirectory(), "Images");

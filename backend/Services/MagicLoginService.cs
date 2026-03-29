@@ -1,10 +1,9 @@
 // Passwordless email OTP sign-in service.
-// Generates a 6-character alphanumeric code, stores it in IMemoryCache with a 10-minute TTL,
+// Generates a 6-character alphanumeric code, stores it in Redis with a 10-minute TTL,
 // and delivers it via IEmailService. VerifyAsync finds or auto-creates the user on success.
 using System.Security.Cryptography;
 using backend.Models;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Caching.Memory;
 
 namespace backend.Services;
 
@@ -18,7 +17,7 @@ public class MagicLoginService : IMagicLoginService
 {
     private readonly UserManager<User> _userManager;
     private readonly IEmailService _emailService;
-    private readonly IMemoryCache _cache;
+    private readonly IRedisService _redis;
     private readonly IRoleManagementService _roleManagement;
     private readonly ILogger<MagicLoginService> _logger;
 
@@ -30,13 +29,13 @@ public class MagicLoginService : IMagicLoginService
     public MagicLoginService(
         UserManager<User> userManager,
         IEmailService emailService,
-        IMemoryCache cache,
+        IRedisService redis,
         IRoleManagementService roleManagement,
         ILogger<MagicLoginService> logger)
     {
         _userManager = userManager;
         _emailService = emailService;
-        _cache = cache;
+        _redis = redis;
         _roleManagement = roleManagement;
         _logger = logger;
     }
@@ -48,10 +47,7 @@ public class MagicLoginService : IMagicLoginService
 
         // Generate fresh code each request (unlike password reset, no reuse — keeps it simpler)
         var code = GenerateCode();
-        _cache.Set(cacheKey, code, new MemoryCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(TtlMinutes)
-        });
+        await _redis.SetStringAsync(cacheKey, code, TimeSpan.FromMinutes(TtlMinutes));
 
         // Look up user for a personalised greeting; proceed even if not found (auto-create on verify)
         var user = await _userManager.FindByEmailAsync(email);
@@ -93,14 +89,15 @@ public class MagicLoginService : IMagicLoginService
     {
         var cacheKey = $"magic:{email.ToLowerInvariant()}";
 
-        if (!_cache.TryGetValue(cacheKey, out string? storedCode) || storedCode != code.ToUpperInvariant())
+        var storedCode = await _redis.GetStringAsync(cacheKey);
+        if (storedCode == null || storedCode != code.ToUpperInvariant())
         {
             _logger.LogWarning("Magic login: invalid or expired code for {Email}", email);
             return null;
         }
 
         // Consume the code — one-time use only
-        _cache.Remove(cacheKey);
+        await _redis.RemoveAsync(cacheKey);
 
         var user = await _userManager.FindByEmailAsync(email);
         if (user == null)

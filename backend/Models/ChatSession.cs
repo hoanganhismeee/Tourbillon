@@ -1,5 +1,5 @@
-// In-memory chat session model — no DB table needed.
-// Sessions are stored in a ConcurrentDictionary singleton and expire after 24h of inactivity.
+// Chat session model — no DB table needed.
+// Sessions are stored in Redis hashes (key: chat:session:{id}) with a 1-hour TTL.
 namespace backend.Models;
 
 public class ChatMessage

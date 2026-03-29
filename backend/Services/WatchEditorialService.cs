@@ -3,6 +3,7 @@
 // All watches in that collection share the same editorial via WatchEditorialLink.
 // Content is generated offline using a local Ollama model — zero AI cost at runtime.
 
+using Hangfire;
 using System.Net.Http.Json;
 using System.Text.Json;
 using backend.Database;
@@ -16,20 +17,17 @@ public class WatchEditorialService
     private readonly TourbillonContext _context;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<WatchEditorialService> _logger;
-    private readonly WatchEmbeddingService _embeddingService;
 
     private static readonly JsonSerializerOptions _json = new() { PropertyNameCaseInsensitive = true };
 
     public WatchEditorialService(
         TourbillonContext context,
         IHttpClientFactory httpClientFactory,
-        ILogger<WatchEditorialService> logger,
-        WatchEmbeddingService embeddingService)
+        ILogger<WatchEditorialService> logger)
     {
         _context = context;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
-        _embeddingService = embeddingService;
     }
 
     /// Seeds editorial content for every collection and links all watches in each collection.
@@ -125,9 +123,9 @@ public class WatchEditorialService
             }
         }
 
-        // Queue editorial embeddings for all newly-linked watches (fire-and-forget)
+        // Enqueue editorial chunk embedding generation as a durable Hangfire job
         if (linked > 0)
-            _ = Task.Run(() => _embeddingService.GenerateEditorialChunksAsync());
+            BackgroundJob.Enqueue<WatchEmbeddingService>(x => x.GenerateEditorialChunksAsync());
 
         return (seeded, linked, skipped);
     }

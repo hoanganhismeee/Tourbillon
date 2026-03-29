@@ -17,6 +17,20 @@ services:
       timeout: 3s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   backend:
     build: ./backend
     container_name: backend
@@ -25,6 +39,8 @@ services:
       - "5248:8080"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       ai-service:
         condition: service_healthy
@@ -39,6 +55,7 @@ services:
       Smtp__Password: ${SMTP_PASSWORD:-}
       Smtp__FromAddress: ${SMTP_FROM_ADDRESS:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      Redis__ConnectionString: redis:6379
       AiService__BaseUrl: http://ai-service:5000
       Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
       Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
@@ -79,5 +96,6 @@ services:
 
 volumes:
   pgdata:
+  redis_data:
   backend-images:
   ollama_data:

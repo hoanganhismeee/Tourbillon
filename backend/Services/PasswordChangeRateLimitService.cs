@@ -1,7 +1,5 @@
-// This service implements rate limiting for password change attempts to prevent brute force attacks
-// It tracks password change attempts per user and enforces limits to protect against
-// automated attacks while maintaining anonymous tracking without password data.
-using Microsoft.Extensions.Caching.Memory;
+// Rate limiting for password change attempts to prevent brute force attacks.
+// Tracks per-user attempt counts in Redis with a rolling time window.
 using Microsoft.Extensions.Logging;
 
 namespace backend.Services;
@@ -12,64 +10,41 @@ public interface IPasswordChangeRateLimitService
     Task RecordAttemptAsync(string userId);
 }
 
-// Implements rate limiting for password change attempts to prevent brute force attacks
-// by tracking attempts per user within configurable time windows using in-memory caching.
+// Uses Redis atomic INCR so counts are accurate across restarts and multiple instances.
 public class PasswordChangeRateLimitService : IPasswordChangeRateLimitService
 {
-    private readonly IMemoryCache _cache;
+    private readonly IRedisService _redis;
     private readonly ILogger<PasswordChangeRateLimitService> _logger;
-    private const int MaxAttempts = 5; // Maximum attempts per time window
-    private const int TimeWindowMinutes = 15; // Time window in minutes
+    private const int MaxAttempts = 5;
+    private const int TimeWindowMinutes = 15;
 
-    public PasswordChangeRateLimitService(IMemoryCache cache, ILogger<PasswordChangeRateLimitService> logger)
+    public PasswordChangeRateLimitService(IRedisService redis, ILogger<PasswordChangeRateLimitService> logger)
     {
-        _cache = cache;
+        _redis = redis;
         _logger = logger;
     }
 
     // Checks if a user is currently rate limited based on their recent password change attempts
     public async Task<bool> IsRateLimitedAsync(string userId)
     {
-        var cacheKey = $"password_change_attempts_{userId}";
-        
-        if (_cache.TryGetValue(cacheKey, out int attempts))
+        var count = await _redis.GetCounterAsync($"pwd_change_rl:{userId}");
+        if (count >= MaxAttempts)
         {
-            if (attempts >= MaxAttempts)
-            {
-                _logger.LogWarning("Password change rate limited for user: {UserId} - {Attempts} attempts in {TimeWindow} minutes", 
-                    userId, attempts, TimeWindowMinutes);
-                return true;
-            }
+            _logger.LogWarning("Password change rate limited for user: {UserId} - {Attempts} attempts in {TimeWindow} minutes",
+                userId, count, TimeWindowMinutes);
+            return true;
         }
-
         return false;
     }
 
-    // Records a password change attempt and updates the rate limiting cache with automatic expiration
+    // Records an attempt using atomic INCR; TTL is set only on the first increment.
     public async Task RecordAttemptAsync(string userId)
     {
-        var cacheKey = $"password_change_attempts_{userId}";
-        
-        // Increment attempt counter or initialize to 1 if not exists
-        if (_cache.TryGetValue(cacheKey, out int attempts))
-        {
-            attempts++;
-        }
-        else
-        {
-            attempts = 1;
-        }
+        var attempts = await _redis.IncrementAsync(
+            $"pwd_change_rl:{userId}",
+            TimeSpan.FromMinutes(TimeWindowMinutes));
 
-        // Set cache entry with automatic expiration after the time window
-        var cacheOptions = new MemoryCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(TimeWindowMinutes)
-        };
-
-        _cache.Set(cacheKey, attempts, cacheOptions);
-        
-        // Log attempt for security monitoring (anonymous, no password data)
-        _logger.LogInformation("Password change attempt recorded for user: {UserId} - Attempt {Attempts}/{MaxAttempts}", 
+        _logger.LogInformation("Password change attempt recorded for user: {UserId} - Attempt {Attempts}/{MaxAttempts}",
             userId, attempts, MaxAttempts);
     }
 } 

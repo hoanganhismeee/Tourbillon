@@ -3,6 +3,7 @@
 // Hybrid filtering: ParseQueryIntentAsync extracts brand/collection/price as hard SQL pre-filters.
 // Fallback (embed unavailable): LLM parse → SQL filter → LLM rerank
 
+using Hangfire;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -86,7 +87,6 @@ public class WatchFinderService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly TourbillonContext _context;
     private readonly WatchFilterMapper _mapper;
-    private readonly IServiceScopeFactory _scopeFactory;
     private readonly QueryCacheService _queryCache;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -108,13 +108,11 @@ public class WatchFinderService
         IHttpClientFactory httpClientFactory,
         TourbillonContext context,
         WatchFilterMapper mapper,
-        IServiceScopeFactory scopeFactory,
         QueryCacheService queryCache)
     {
         _httpClientFactory = httpClientFactory;
         _context = context;
         _mapper = mapper;
-        _scopeFactory = scopeFactory;
         _queryCache = queryCache;
     }
 
@@ -253,39 +251,22 @@ public class WatchFinderService
 
         } // end Tier 3 rerank
 
-        // Fire-and-forget: generate embeddings for all returned watches in background.
-        // A new scope is created so the background task doesn't share the request's DbContext.
+        // Enqueue embedding generation for all returned watches as a durable Hangfire job.
         var idsToEmbed = result.Watches
             .Concat(result.OtherCandidates)
             .Select(w => w.Id)
             .ToList();
 
         if (idsToEmbed.Count > 0)
-        {
-            _ = Task.Run(async () =>
-            {
-                using var scope = _scopeFactory.CreateScope();
-                var embeddingService = scope.ServiceProvider.GetRequiredService<WatchEmbeddingService>();
-                await embeddingService.GenerateBulkAsync(idsToEmbed);
-            });
-        }
+            BackgroundJob.Enqueue<WatchEmbeddingService>(x => x.GenerateBulkAsync(idsToEmbed));
 
         // Attach structured intent to result — frontend uses this to pre-populate filter bar.
         result.QueryIntent = queryIntent;
 
-        // Fire-and-forget: store the result in the persistent query cache.
-        // New scope required — cannot reuse the request's DbContext on a background thread.
+        // Enqueue query cache store as a durable Hangfire job.
         if (queryEmbedding != null)
-        {
-            var capturedEmbedding = queryEmbedding;
-            var capturedResult = result;
-            _ = Task.Run(async () =>
-            {
-                using var scope = _scopeFactory.CreateScope();
-                var cacheService = scope.ServiceProvider.GetRequiredService<QueryCacheService>();
-                await cacheService.StoreAsync(query, capturedEmbedding, capturedResult, "watch_finder");
-            });
-        }
+            BackgroundJob.Enqueue<QueryCacheService>(x =>
+                x.StoreAsync(query, queryEmbedding, result, "watch_finder"));
 
         return result;
     }
