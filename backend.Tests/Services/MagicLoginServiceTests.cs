@@ -1,9 +1,8 @@
-// Unit tests for MagicLoginService — focuses on cache interaction.
-// Uses Moq for UserManager (complex Identity type), real MemoryCache for cache state.
+// Unit tests for MagicLoginService — focuses on Redis key/value interaction.
+// Uses Moq for UserManager (complex Identity type) and a fake in-memory IRedisService.
 using backend.Models;
 using backend.Services;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -19,9 +18,6 @@ public class MagicLoginServiceTests
         return new Mock<UserManager<User>>(store.Object, null!, null!, null!, null!, null!, null!, null!, null!);
     }
 
-    private static IMemoryCache NewCache() =>
-        new MemoryCache(new MemoryCacheOptions());
-
     private static Mock<IEmailService> SilentEmailService()
     {
         var mock = new Mock<IEmailService>();
@@ -32,21 +28,72 @@ public class MagicLoginServiceTests
 
     private static Mock<IRoleManagementService> MockRoleManagement() => new();
 
+    /// Simple in-memory IRedisService stub — enough for string get/set/remove tests.
+    private class FakeRedis : IRedisService
+    {
+        private readonly Dictionary<string, string> _store = new();
+
+        public Task<long> IncrementAsync(string key, TimeSpan? ttlOnCreate = null)
+        {
+            _store.TryGetValue(key, out var v);
+            var next = (long.TryParse(v, out var n) ? n : 0) + 1;
+            _store[key] = next.ToString();
+            return Task.FromResult(next);
+        }
+
+        public Task<long?> GetCounterAsync(string key)
+        {
+            if (_store.TryGetValue(key, out var v) && long.TryParse(v, out var n))
+                return Task.FromResult<long?>(n);
+            return Task.FromResult<long?>(null);
+        }
+
+        public Task<string?> GetStringAsync(string key)
+        {
+            _store.TryGetValue(key, out var val);
+            return Task.FromResult(val);
+        }
+
+        public Task SetStringAsync(string key, string value, TimeSpan? expiry = null)
+        {
+            _store[key] = value;
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> RemoveAsync(string key) => Task.FromResult(_store.Remove(key));
+
+        public Task SetHashFieldAsync(string key, string field, string value, TimeSpan? expiry = null)
+        {
+            _store[$"{key}:{field}"] = value;
+            return Task.CompletedTask;
+        }
+
+        public Task<string?> GetHashFieldAsync(string key, string field)
+        {
+            _store.TryGetValue($"{key}:{field}", out var val);
+            return Task.FromResult(val);
+        }
+
+        public Task<bool> RemoveHashAsync(string key) => Task.FromResult(_store.Remove(key));
+
+        public Task RefreshExpiryAsync(string key, TimeSpan expiry) => Task.CompletedTask;
+    }
+
     // ── RequestAsync ──────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task RequestAsync_StoresCode_InCache()
+    public async Task RequestAsync_StoresCode_InRedis()
     {
         var userMgr = MockUserManager();
         userMgr.Setup(u => u.FindByEmailAsync("test@example.com")).ReturnsAsync((User?)null);
 
-        var cache   = NewCache();
-        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
+        var redis   = new FakeRedis();
+        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, redis, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
 
         await service.RequestAsync("test@example.com");
 
-        // Code should now be in cache
-        Assert.True(cache.TryGetValue("magic:test@example.com", out string? code));
+        // Code should now be in Redis
+        var code = await redis.GetStringAsync("magic:test@example.com");
         Assert.NotNull(code);
         Assert.Equal(6, code!.Length);
     }
@@ -57,8 +104,8 @@ public class MagicLoginServiceTests
     public async Task VerifyAsync_ReturnsNull_WhenCodeMissing()
     {
         var userMgr = MockUserManager();
-        var cache   = NewCache(); // empty — no code stored
-        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
+        var redis   = new FakeRedis(); // empty — no code stored
+        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, redis, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
 
         var result = await service.VerifyAsync("test@example.com", "ABCDEF");
 
@@ -68,11 +115,11 @@ public class MagicLoginServiceTests
     [Fact]
     public async Task VerifyAsync_ReturnsNull_WhenCodeMismatch()
     {
-        var userMgr = MockUserManager();
-        var cache   = NewCache();
-        cache.Set("magic:test@example.com", "ZZZZZZ");
+        var redis = new FakeRedis();
+        await redis.SetStringAsync("magic:test@example.com", "ZZZZZZ");
 
-        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
+        var userMgr = MockUserManager();
+        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, redis, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
 
         var result = await service.VerifyAsync("test@example.com", "ABCDEF");
 
@@ -86,10 +133,10 @@ public class MagicLoginServiceTests
         var userMgr = MockUserManager();
         userMgr.Setup(u => u.FindByEmailAsync("test@example.com")).ReturnsAsync(existingUser);
 
-        var cache = NewCache();
-        cache.Set("magic:test@example.com", "ABC123");
+        var redis = new FakeRedis();
+        await redis.SetStringAsync("magic:test@example.com", "ABC123");
 
-        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
+        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, redis, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
 
         var result = await service.VerifyAsync("test@example.com", "abc123"); // lowercase — service uppercases
 
@@ -104,10 +151,10 @@ public class MagicLoginServiceTests
         var userMgr = MockUserManager();
         userMgr.Setup(u => u.FindByEmailAsync("test@example.com")).ReturnsAsync(existingUser);
 
-        var cache = NewCache();
-        cache.Set("magic:test@example.com", "XYZ999");
+        var redis = new FakeRedis();
+        await redis.SetStringAsync("magic:test@example.com", "XYZ999");
 
-        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, cache, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
+        var service = new MagicLoginService(userMgr.Object, SilentEmailService().Object, redis, MockRoleManagement().Object, NullLogger<MagicLoginService>.Instance);
 
         var first  = await service.VerifyAsync("test@example.com", "XYZ999");
         var second = await service.VerifyAsync("test@example.com", "XYZ999");
