@@ -6,4 +6,6 @@ namespace backend.Services;
 public interface IContactInquiryService
 {
     Task<ContactInquiry> SendInquiryAsync(int userId, CreateContactInquiryDto dto);
+    Task<List<ContactInquiry>> GetByUserIdAsync(int userId);
+    Task AdvanceStatusAsync(int inquiryId);
 }

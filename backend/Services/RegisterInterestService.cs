@@ -83,6 +83,11 @@ public class RegisterInterestService : IRegisterInterestService
         _context.RegisterInterests.Add(entry);
         await _context.SaveChangesAsync();
 
+        // Auto-advance status to In Review after 30 minutes (portfolio demo effect)
+        BackgroundJob.Schedule<IRegisterInterestService>(
+            s => s.AdvanceStatusAsync(entry.Id),
+            TimeSpan.FromMinutes(30));
+
         // Enqueue emails as durable Hangfire jobs — retried automatically on SMTP failure
         var userBody = BuildUserConfirmationBody(entry, watch);
         BackgroundJob.Enqueue<BackgroundEmailService>(x =>
@@ -97,6 +102,22 @@ public class RegisterInterestService : IRegisterInterestService
         }
 
         return entry;
+    }
+
+    public async Task<List<RegisterInterest>> GetByUserIdAsync(int userId) =>
+        await _context.RegisterInterests
+            .Where(r => r.UserId == userId)
+            .OrderByDescending(r => r.CreatedAt)
+            .AsNoTracking()
+            .ToListAsync();
+
+    // Invoked by Hangfire 30 minutes after submission — advances status from Received to In Review.
+    public async Task AdvanceStatusAsync(int registrationId)
+    {
+        var reg = await _context.RegisterInterests.FindAsync(registrationId);
+        if (reg == null || reg.Status != "Received") return;
+        reg.Status = "In Review";
+        await _context.SaveChangesAsync();
     }
 
     private static string BuildUserConfirmationBody(RegisterInterest entry, Watch? watch)

@@ -18,4 +18,5 @@ public class ContactInquiry
 
     public string Message { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string Status { get; set; } = "Received";
 }

@@ -33,7 +33,7 @@
 | Durable Background Jobs (Hangfire, retry, monitoring dashboard) | Done | 7.5 |
 | Redis (distributed cache, rate limiting, session storage) | Done | 7.5 |
 | Observability (Serilog structured logging, ASP.NET health checks) | Done | 8 |
-| Advisor CRM + Inquiry Pipeline (status tracking, follow-ups, unified view) | Planned | 8.5 |
+| Advisor CRM + Inquiry Pipeline (user inquiry page, Hangfire status auto-advance) | Done | 8.5 |
 | Search & Recommendation Analytics Dashboard | Planned | 9 |
 | Storage Abstraction + S3 + CloudFront Migration | Planned | 9.5 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | 10 |

@@ -2,6 +2,7 @@
 using System.Security.Claims;
 using backend.Models;
 using backend.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace backend.Controllers;
@@ -15,6 +16,27 @@ public class RegisterInterestController : ControllerBase
     public RegisterInterestController(IRegisterInterestService service)
     {
         _service = service;
+    }
+
+    // GET /api/register-interest/my-submissions — list the current user's interest registrations
+    [HttpGet("my-submissions")]
+    [Authorize]
+    public async Task<IActionResult> GetMySubmissions()
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        var submissions = await _service.GetByUserIdAsync(userId.Value);
+        return Ok(submissions.Select(r => new
+        {
+            r.Id,
+            r.BrandName,
+            r.CollectionName,
+            r.WatchDescription,
+            r.WatchReference,
+            r.Status,
+            r.CreatedAt
+        }));
     }
 
     // POST /api/register-interest — submit a registration of interest

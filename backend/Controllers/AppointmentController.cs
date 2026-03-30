@@ -2,6 +2,7 @@
 using System.Security.Claims;
 using backend.Models;
 using backend.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace backend.Controllers;
@@ -15,6 +16,27 @@ public class AppointmentController : ControllerBase
     public AppointmentController(IAppointmentService appointmentService)
     {
         _appointmentService = appointmentService;
+    }
+
+    // GET /api/appointment/my-appointments — list the current user's appointments
+    [HttpGet("my-appointments")]
+    [Authorize]
+    public async Task<IActionResult> GetMyAppointments()
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        var appointments = await _appointmentService.GetByUserIdAsync(userId.Value);
+        return Ok(appointments.Select(a => new
+        {
+            a.Id,
+            a.BoutiqueName,
+            a.VisitPurpose,
+            a.AppointmentDate,
+            a.BrandName,
+            a.Status,
+            a.CreatedAt
+        }));
     }
 
     // POST /api/appointment/book — book an in-store appointment

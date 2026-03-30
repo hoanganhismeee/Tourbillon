@@ -735,6 +735,61 @@ export const submitRegisterInterest = async (data: CreateRegisterInterestRequest
   return response.json();
 };
 
+// ── My Inquiries ──────────────────────────────────────────────────────────────
+
+export interface MyContactInquiry {
+  id: number;
+  watchName?: string;
+  watchReference?: string;
+  message: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface MyAppointment {
+  id: number;
+  boutiqueName: string;
+  visitPurpose: string;
+  appointmentDate: string;
+  brandName?: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface MyRegisterInterest {
+  id: number;
+  brandName?: string;
+  collectionName?: string;
+  watchDescription?: string;
+  watchReference?: string;
+  status: string;
+  createdAt: string;
+}
+
+export const getMyContactInquiries = async (): Promise<MyContactInquiry[]> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/contact/my-inquiries`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch inquiries');
+  return response.json();
+};
+
+export const getMyAppointments = async (): Promise<MyAppointment[]> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/appointment/my-appointments`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch appointments');
+  return response.json();
+};
+
+export const getMyRegisterInterests = async (): Promise<MyRegisterInterest[]> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/register-interest/my-submissions`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch submissions');
+  return response.json();
+};
+
 // ── Chat concierge ────────────────────────────────────────────────────────────
 
 export interface ChatWatchCard {
