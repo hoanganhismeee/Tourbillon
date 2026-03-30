@@ -20,6 +20,25 @@ public class ContactController : ControllerBase
         _inquiryService = inquiryService;
     }
 
+    // GET /api/contact/my-inquiries — list the current user's inquiries
+    [HttpGet("my-inquiries")]
+    public async Task<IActionResult> GetMyInquiries()
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized();
+
+        var inquiries = await _inquiryService.GetByUserIdAsync(userId.Value);
+        return Ok(inquiries.Select(i => new
+        {
+            i.Id,
+            i.WatchName,
+            i.WatchReference,
+            i.Message,
+            i.Status,
+            i.CreatedAt
+        }));
+    }
+
     // POST /api/contact/inquiry — submit an advisor inquiry
     [HttpPost("inquiry")]
     public async Task<IActionResult> SubmitInquiry([FromBody] CreateContactInquiryDto dto)

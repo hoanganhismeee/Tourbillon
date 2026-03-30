@@ -92,6 +92,13 @@ public class AppointmentService : IAppointmentService
         return appointment;
     }
 
+    public async Task<List<Appointment>> GetByUserIdAsync(int userId) =>
+        await _context.Appointments
+            .Where(a => a.UserId == userId)
+            .OrderByDescending(a => a.CreatedAt)
+            .AsNoTracking()
+            .ToListAsync();
+
     private static string BuildUserConfirmationBody(Appointment appt)
     {
         var displayName = !string.IsNullOrEmpty(appt.CustomerFirstName) ? appt.CustomerFirstName : "there";

@@ -148,6 +148,9 @@ const UserMenu = () => {
             <Link href="/account/edit-details" className="block px-3 py-2 mt-1 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
               Edit Details
             </Link>
+            <Link href="/account/inquiries" className="block px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
+              My Inquiries
+            </Link>
             {isAdmin && (
               <Link href="/scrape" className="block px-3 py-2 text-sm text-[#F9F6F2] hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] transition-all duration-300 text-center">
                 Scrape

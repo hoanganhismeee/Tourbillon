@@ -54,6 +54,11 @@ public class ContactInquiryService : IContactInquiryService
         _context.ContactInquiries.Add(inquiry);
         await _context.SaveChangesAsync();
 
+        // Auto-advance status to In Review after 30 minutes (portfolio demo effect)
+        BackgroundJob.Schedule<IContactInquiryService>(
+            s => s.AdvanceStatusAsync(inquiry.Id),
+            TimeSpan.FromMinutes(30));
+
         // Enqueue emails as durable Hangfire jobs — retried automatically on SMTP failure
         var userEmail = user.Email;
         if (!string.IsNullOrEmpty(userEmail))
@@ -72,6 +77,22 @@ public class ContactInquiryService : IContactInquiryService
         }
 
         return inquiry;
+    }
+
+    public async Task<List<ContactInquiry>> GetByUserIdAsync(int userId) =>
+        await _context.ContactInquiries
+            .Where(i => i.UserId == userId)
+            .OrderByDescending(i => i.CreatedAt)
+            .AsNoTracking()
+            .ToListAsync();
+
+    // Invoked by Hangfire 30 minutes after submission — advances status from Received to In Review.
+    public async Task AdvanceStatusAsync(int inquiryId)
+    {
+        var inquiry = await _context.ContactInquiries.FindAsync(inquiryId);
+        if (inquiry == null || inquiry.Status != "Received") return;
+        inquiry.Status = "In Review";
+        await _context.SaveChangesAsync();
     }
 
     private static string BuildUserConfirmationBody(User user, Watch? watch, string message)

@@ -33,9 +33,10 @@
     <PackageReference Include="Serilog.Enrichers.Thread" Version="3.*" />
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="8.*" />
     <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="8.*" />
-    <!-- Explicit reference ensures System.Text.Json 9.x is copied to test output.
-         EF Core 9 -> DiagnosticSource 9 -> STJ 9 chain would otherwise cause FileNotFoundException
-         in the test runner which can't find the 9.x assembly via the framework roll-forward. -->
+    <!-- Explicit references raise the floor for assemblies EF Core 9 requires at 9.x
+         but ASP.NET Core 8 packages resolve to 8.x via transitive dependencies.
+         Without these, Cursor IDE (and test runners) see NU1605 downgrade errors. -->
+    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="9.*" />
     <PackageReference Include="System.Text.Json" Version="9.*" />
   </ItemGroup>
 
