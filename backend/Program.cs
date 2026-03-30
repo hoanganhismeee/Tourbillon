@@ -12,8 +12,26 @@ using Npgsql;
 using Pgvector.EntityFrameworkCore;
 using StackExchange.Redis;
 using backend.Infrastructure;
+using Serilog;
+using Serilog.Events;
+
+// Stage 1 bootstrap logger — captures startup errors before appsettings.json is loaded.
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
+
+try
+{
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Stage 2: read full Serilog config from appsettings.json + environment overrides.
+builder.Host.UseSerilog((ctx, services, config) =>
+    config.ReadFrom.Configuration(ctx.Configuration)
+          .ReadFrom.Services(services)
+          .Enrich.FromLogContext());
 
 // Add services to the container
 builder.Services.AddControllers();
@@ -44,6 +62,19 @@ var redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? "
 builder.Services.AddSingleton<IConnectionMultiplexer>(
     ConnectionMultiplexer.Connect(redisConnectionString));
 builder.Services.AddSingleton<IRedisService, RedisService>();
+
+// Register health checks — postgres + redis (Unhealthy on failure), ai-service (Degraded on failure)
+builder.Services.AddTransient<AiServiceHealthCheck>();
+builder.Services.AddHealthChecks()
+    .AddNpgSql(pgConnectionString, name: "postgres",
+        failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy,
+        tags: ["ready"])
+    .AddRedis(redisConnectionString, name: "redis",
+        failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy,
+        tags: ["ready"])
+    .AddCheck<AiServiceHealthCheck>("ai-service",
+        failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
+        tags: ["ready"]);
 
 // Adds and configures ASP.NET Core Identity for user management and authentication.
 builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
@@ -191,6 +222,16 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// Structured HTTP request log: method, path, status, elapsed. Replaces default access log.
+app.UseSerilogRequestLogging(opts =>
+{
+    opts.EnrichDiagnosticContext = (diagCtx, httpCtx) =>
+    {
+        diagCtx.Set("RequestHost", httpCtx.Request.Host.Value);
+        diagCtx.Set("UserAgent", httpCtx.Request.Headers.UserAgent.ToString());
+    };
+});
+
 // Add request sanitization middleware for password-related endpoints
 app.UseMiddleware<RequestSanitizationMiddleware>();
 
@@ -219,6 +260,20 @@ if (Directory.Exists(imagesPath))
 
 // Map controllers
 app.MapControllers();
+
+// Health check endpoints — unauthenticated, not included in Swagger
+// /health/ready: checks all "ready"-tagged dependencies (postgres, redis, ai-service)
+// /health/live:  trivial liveness — returns 200 if the process is running
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = WriteHealthCheckResponse
+});
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = WriteHealthCheckResponse
+});
 
 // Optional: Auto apply migrations & seed
 using (var scope = app.Services.CreateScope())
@@ -268,4 +323,33 @@ using (var scope = app.Services.CreateScope())
     await DbInitializer.EnsureAdminSetupAsync(scope.ServiceProvider);
 }
 
-app.Run();
+    app.Run();
+}
+catch (Exception ex) when (ex is not HostAbortedException)
+{
+    Log.Fatal(ex, "Host terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
+
+// JSON health check response writer — used by both /health/live and /health/ready.
+static Task WriteHealthCheckResponse(
+    HttpContext ctx,
+    Microsoft.Extensions.Diagnostics.HealthChecks.HealthReport report)
+{
+    ctx.Response.ContentType = "application/json";
+    var result = System.Text.Json.JsonSerializer.Serialize(new
+    {
+        status = report.Status.ToString(),
+        checks = report.Entries.Select(e => new
+        {
+            name        = e.Key,
+            status      = e.Value.Status.ToString(),
+            description = e.Value.Description,
+            duration_ms = (long)e.Value.Duration.TotalMilliseconds
+        })
+    });
+    return ctx.Response.WriteAsync(result);
+}

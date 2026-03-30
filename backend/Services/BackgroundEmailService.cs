@@ -21,10 +21,12 @@ public class BackgroundEmailService
     public async Task SendAsync(string to, string subject, string body)
     {
         var success = await _emailService.SendEmailAsync(to, subject, body);
-        if (!success)
+        if (success)
         {
-            _logger.LogWarning("Email delivery failed to {To} — subject: {Subject}", to, subject);
-            throw new InvalidOperationException($"Email delivery failed to {to}");
+            _logger.LogInformation("Email delivered to={To} subject={Subject}", to, subject);
+            return;
         }
+        _logger.LogWarning("Email delivery failed to {To} — subject: {Subject}", to, subject);
+        throw new InvalidOperationException($"Email delivery failed to {to}");
     }
 }
