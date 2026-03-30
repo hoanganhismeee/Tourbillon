@@ -33,6 +33,10 @@
     <PackageReference Include="Serilog.Enrichers.Thread" Version="3.*" />
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="8.*" />
     <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="8.*" />
+    <!-- Explicit reference ensures System.Text.Json 9.x is copied to test output.
+         EF Core 9 -> DiagnosticSource 9 -> STJ 9 chain would otherwise cause FileNotFoundException
+         in the test runner which can't find the 9.x assembly via the framework roll-forward. -->
+    <PackageReference Include="System.Text.Json" Version="9.*" />
   </ItemGroup>
 
 </Project>
