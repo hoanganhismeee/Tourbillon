@@ -54,11 +54,14 @@ public class QueryCacheService
         var similarity = CosineSimilarity(nearest.QueryEmbedding.Memory.Span, queryEmbedding);
         if (similarity < SimilarityThreshold)
         {
-            _logger.LogDebug("Cache near-miss: similarity {Sim:F3} < {Threshold}", similarity, SimilarityThreshold);
+            _logger.LogInformation(
+                "QueryCache near-miss similarity={Similarity:F3} threshold={Threshold:F2} feature={Feature}",
+                similarity, SimilarityThreshold, feature);
             return null;
         }
 
-        _logger.LogDebug("Cache hit: similarity {Sim:F3} for '{Query}'", similarity, nearest.QueryText);
+        _logger.LogInformation("QueryCache hit similarity={Similarity:F3} feature={Feature}",
+            similarity, feature);
         return JsonSerializer.Deserialize<WatchFinderResult>(nearest.ResultJson, _jsonOptions);
     }
 

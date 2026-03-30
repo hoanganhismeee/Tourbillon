@@ -32,7 +32,7 @@
 | CI/CD Pipeline (GitHub Actions, automated quality gates) | Done | 7 |
 | Durable Background Jobs (Hangfire, retry, monitoring dashboard) | Done | 7.5 |
 | Redis (distributed cache, rate limiting, session storage) | Done | 7.5 |
-| Observability (Serilog structured logging, ASP.NET health checks) | Planned | 8 |
+| Observability (Serilog structured logging, ASP.NET health checks) | Done | 8 |
 | Advisor CRM + Inquiry Pipeline (status tracking, follow-ups, unified view) | Planned | 8.5 |
 | Search & Recommendation Analytics Dashboard | Planned | 9 |
 | Storage Abstraction + S3 + CloudFront Migration | Planned | 9.5 |

@@ -121,6 +121,10 @@ public class ChatService
             var rlKey = $"chat_rl:{userId ?? ipAddress ?? "anon"}";
             var used = (int)(await _redis.GetCounterAsync(rlKey) ?? 0);
             if (used >= dailyLimit)
+            {
+                _logger.LogInformation(
+                    "Chat rate limit hit userId={UserId} used={Used} limit={Limit}",
+                    userId ?? "anonymous", used, dailyLimit);
                 return new ChatApiResponse
                 {
                     RateLimited = true,
@@ -128,6 +132,7 @@ public class ChatService
                     DailyLimit  = dailyLimit,
                     Message     = "You have reached your daily message limit. Please try again tomorrow."
                 };
+            }
         }
 
         // ── Session management (Redis) ────────────────────────────────────────────
@@ -149,6 +154,9 @@ public class ChatService
         try
         {
             (queryType, matchedBrandId, matchedCollectionId) = await DetectQueryTypeAsync(message);
+            _logger.LogInformation(
+                "Chat queryType={QueryType} brandId={BrandId} collectionId={CollectionId}",
+                queryType, matchedBrandId, matchedCollectionId);
 
             switch (queryType)
             {
@@ -172,25 +180,30 @@ public class ChatService
 
         // ── Call ai-service /chat ─────────────────────────────────────────────────
         string aiMessage;
+        var chatSw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var payload = new { query = message, context = contextStrings, history, enableWebSearch };
             var resp    = await httpClient.PostAsJsonAsync("/chat", payload);
+            chatSw.Stop();
 
             if (!resp.IsSuccessStatusCode)
             {
-                _logger.LogWarning("ai-service /chat returned {Status}", resp.StatusCode);
+                _logger.LogWarning("Chat ai-service /chat returned {Status} after {ElapsedMs}ms",
+                    (int)resp.StatusCode, chatSw.ElapsedMilliseconds);
                 aiMessage = "I'm having trouble connecting to the concierge service right now. Please try again in a moment.";
             }
             else
             {
+                _logger.LogInformation("Chat ai-service /chat {ElapsedMs}ms", chatSw.ElapsedMilliseconds);
                 var json  = await resp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
                 aiMessage = json.TryGetProperty("message", out var el) ? el.GetString() ?? "" : "";
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning("Chat ai-service call failed: {Err}", ex.Message);
+            chatSw.Stop();
+            _logger.LogWarning(ex, "Chat ai-service call threw after {ElapsedMs}ms", chatSw.ElapsedMilliseconds);
             aiMessage = "I'm having trouble connecting right now. Please try again in a moment.";
         }
 

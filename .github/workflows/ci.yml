@@ -20,7 +20,7 @@ jobs:
           dotnet-version: '8.0'
 
       - name: Restore dependencies
-        run: dotnet restore backend/backend.csproj
+        run: dotnet restore Tourbillon.sln
 
       - name: Build
         run: dotnet build backend/backend.csproj --no-restore --configuration Release

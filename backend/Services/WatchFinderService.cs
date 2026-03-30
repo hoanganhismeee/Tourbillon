@@ -88,6 +88,7 @@ public class WatchFinderService
     private readonly TourbillonContext _context;
     private readonly WatchFilterMapper _mapper;
     private readonly QueryCacheService _queryCache;
+    private readonly ILogger<WatchFinderService> _logger;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -108,12 +109,14 @@ public class WatchFinderService
         IHttpClientFactory httpClientFactory,
         TourbillonContext context,
         WatchFilterMapper mapper,
-        QueryCacheService queryCache)
+        QueryCacheService queryCache,
+        ILogger<WatchFinderService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _context = context;
         _mapper = mapper;
         _queryCache = queryCache;
+        _logger = logger;
     }
 
     public async Task<WatchFinderResult> FindWatchesAsync(string query)
@@ -137,6 +140,8 @@ public class WatchFinderService
             var cached = await _queryCache.LookupAsync(queryEmbedding);
             if (cached != null)
             {
+                _logger.LogInformation("WatchFinder cache hit query={QueryPreview}",
+                    query.Length > 60 ? query[..60] + "…" : query);
                 cached.QueryIntent = queryIntent;
                 return cached;
             }
@@ -159,6 +164,8 @@ public class WatchFinderService
         else
         {
             // Embed unavailable — fall back to Phase 2 pipeline
+            _logger.LogWarning("WatchFinder Tier4 fallback — embeddings unavailable query={QueryPreview}",
+                query.Length > 60 ? query[..60] + "…" : query);
             var parseTask = ParseIntentAsync(httpClient, query);
             var dbTask    = _context.Watches.Include(w => w.Brand).Include(w => w.Collection).AsNoTracking().ToListAsync();
             await Task.WhenAll(parseTask, dbTask);
@@ -179,7 +186,18 @@ public class WatchFinderService
         };
 
         result.QueryIntent = queryIntent;
-        if (candidates.Count == 0) return result;
+        if (candidates.Count == 0)
+        {
+            _logger.LogInformation("WatchFinder zero candidates query={QueryPreview}",
+                query.Length > 60 ? query[..60] + "…" : query);
+            return result;
+        }
+
+        // Tier routing: Tier 2 = strong vector match (skip rerank), Tier 3 = LLM rerank
+        var tier = bestDistance < SkipLlmDistance ? 2 : 3;
+        _logger.LogInformation(
+            "WatchFinder Tier{Tier} bestDistance={BestDistance:F3} candidates={CandidateCount}",
+            tier, bestDistance, candidates.Count);
 
         // Tier 3: LLM rerank — skipped when vector match is already decisive (Tier 2)
         if (bestDistance >= SkipLlmDistance)
@@ -187,6 +205,7 @@ public class WatchFinderService
         var rerankCandidates   = candidates.Take(RerankLimit).ToList();
         var unscoredCandidates = candidates.Skip(RerankLimit).ToList();
 
+        var rerankSw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var payload = rerankCandidates.Select(w =>
@@ -207,6 +226,9 @@ public class WatchFinderService
             var rerankResp = await httpClient.PostAsJsonAsync("/watch-finder/rerank", new { query, watches = payload });
             if (rerankResp.IsSuccessStatusCode)
             {
+                _logger.LogInformation(
+                    "WatchFinder rerank {ElapsedMs}ms candidates={CandidateCount}",
+                    rerankSw.ElapsedMilliseconds, rerankCandidates.Count);
                 var json = await rerankResp.Content.ReadFromJsonAsync<JsonElement>();
                 if (json.TryGetProperty("ranked", out var rankedEl))
                 {
@@ -247,7 +269,13 @@ public class WatchFinderService
                 }
             }
         }
-        catch { /* AI service unreachable — return unranked filtered results */ }
+        catch (Exception ex)
+        {
+            rerankSw.Stop();
+            _logger.LogWarning(ex,
+                "WatchFinder rerank threw after {ElapsedMs}ms — returning unranked results",
+                rerankSw.ElapsedMilliseconds);
+        }
 
         } // end Tier 3 rerank
 
@@ -595,16 +623,30 @@ public class WatchFinderService
     // Returns null if the embed call fails — callers treat null as cache unavailable.
     private async Task<float[]?> EmbedQueryAsync(HttpClient httpClient, string query)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var resp = await httpClient.PostAsJsonAsync("/embed", new { texts = new[] { query } });
-            if (!resp.IsSuccessStatusCode) return null;
+            sw.Stop();
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Embed HTTP {Status} after {ElapsedMs}ms",
+                    (int)resp.StatusCode, sw.ElapsedMilliseconds);
+                return null;
+            }
+            _logger.LogDebug("Embed {ElapsedMs}ms", sw.ElapsedMilliseconds);
             var json = await resp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
             if (!json.TryGetProperty("embeddings", out var embEl)) return null;
             var embeddings = JsonSerializer.Deserialize<List<float[]>>(embEl.GetRawText(), _jsonOptions);
             return embeddings?.Count > 0 ? embeddings[0] : null;
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _logger.LogWarning(ex, "Embed threw after {ElapsedMs}ms — falling back to SQL pipeline",
+                sw.ElapsedMilliseconds);
+            return null;
+        }
     }
 
     // Parse intent from AI service — runs concurrently with DB load
