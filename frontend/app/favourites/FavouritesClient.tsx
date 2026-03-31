@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFavourites } from '@/stores/favouritesStore';
 import { getFavouriteWatches, fetchBrands, fetchCollections, Brand, Collection, FavouriteWatchesResponse } from '@/lib/api';
 import { CollectionCard, AddCollectionCard } from '@/app/components/favourites/CollectionCard';
-import WatchCard from '@/app/watches/[watchId]/WatchCard';
+import WatchCard from '@/app/watches/[slug]/WatchCard';
 import {
   WatchFilters,
   EMPTY_WATCH_FILTERS,

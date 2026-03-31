@@ -18,7 +18,7 @@ import {
   Watch,
 } from '@/lib/api';
 import { calculateFitScores } from '@/lib/wristfit';
-import WatchCard from '@/app/watches/[watchId]/WatchCard';
+import WatchCard from '@/app/watches/[slug]/WatchCard';
 import {
   WatchFilters,
   EMPTY_WATCH_FILTERS,
@@ -200,6 +200,7 @@ export default function SmartSearchClient() {
           const normalized: Watch[] = (data.watches ?? []).map(kw => ({
             id: kw.id,
             name: kw.name,
+            slug: '',
             description: kw.description ?? '',
             image: kw.image ?? '',
             currentPrice: kw.currentPrice ?? 0,

@@ -20,6 +20,7 @@ const fetchWithTimeout = async (input: RequestInfo | URL, init?: RequestInit & {
 export interface Brand {
   id: number;
   name: string;
+  slug: string;
   description: string;
   image: string;
   summary: string;
@@ -28,6 +29,7 @@ export interface Brand {
 export interface Collection {
   id: number;
   name: string;
+  slug: string;
   description: string;
   image: string;
   brandId: number;
@@ -44,13 +46,16 @@ export interface WatchEditorialContent {
 export interface Watch {
   id: number;
   name: string;
+  slug: string;
   description: string;
   image: string;
   imageUrl?: string;
   imageVersion?: number | null;
   currentPrice: number;
   brandId: number;
+  brandSlug?: string;
   collectionId: number | null;
+  collectionSlug?: string | null;
   specs: string | null;
   editorialContent?: WatchEditorialContent | null;
 }
@@ -133,11 +138,49 @@ export const fetchWatchesByCollection = async (collectionId: number): Promise<Wa
   return response.json();
 };
 
-export const fetchCollectionsByBrand = async (brandId: number): Promise<Collection[]> => { // fetchs collections for based on brandId
+export const fetchCollectionsByBrand = async (brandId: number): Promise<Collection[]> => {
   const response = await fetch(`${API_BASE_URL}/collection/brand/${brandId}`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error(`Failed to fetch collections for brandId: ${brandId}`);
   }
+  return response.json();
+};
+
+// ── Slug-based fetch functions (public-facing pages) ─────────────────────────
+
+export const fetchBrandBySlug = async (slug: string): Promise<Brand> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/brand/by-slug/${slug}`, { credentials: 'include' });
+  if (!response.ok) throw new Error(`Failed to fetch brand: ${slug}`);
+  return response.json();
+};
+
+export const fetchWatchBySlug = async (slug: string): Promise<Watch> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/watch/by-slug/${slug}`, { credentials: 'include' });
+  if (!response.ok) throw new Error(`Failed to fetch watch: ${slug}`);
+  return response.json();
+};
+
+export const fetchCollectionBySlug = async (slug: string): Promise<Collection> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/collection/by-slug/${slug}`, { credentials: 'include' });
+  if (!response.ok) throw new Error(`Failed to fetch collection: ${slug}`);
+  return response.json();
+};
+
+export const fetchWatchesByBrandSlug = async (slug: string): Promise<Watch[]> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/watch/brand/by-slug/${slug}`, { credentials: 'include' });
+  if (!response.ok) throw new Error(`Failed to fetch watches for brand: ${slug}`);
+  return response.json();
+};
+
+export const fetchWatchesByCollectionSlug = async (slug: string): Promise<Watch[]> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/watch/collection/by-slug/${slug}`, { credentials: 'include' });
+  if (!response.ok) throw new Error(`Failed to fetch watches for collection: ${slug}`);
+  return response.json();
+};
+
+export const fetchCollectionsByBrandSlug = async (slug: string): Promise<Collection[]> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/collection/brand/by-slug/${slug}`, { credentials: 'include' });
+  if (!response.ok) throw new Error(`Failed to fetch collections for brand: ${slug}`);
   return response.json();
 };
 
@@ -818,6 +861,7 @@ export const getMyRegisterInterests = async (): Promise<MyRegisterInterest[]> =>
 export interface ChatWatchCard {
   id: number;
   name: string;
+  slug: string;
   description: string | null;
   image: string | null;
   imageUrl: string | null;

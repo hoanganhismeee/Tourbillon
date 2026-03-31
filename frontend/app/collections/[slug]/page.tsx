@@ -7,31 +7,30 @@ import React, { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { fetchCollectionById, fetchWatchesByCollection, fetchBrandById } from '@/lib/api';
+import { fetchCollectionBySlug, fetchWatchesByCollectionSlug, fetchBrandById } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import Image from 'next/image';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import StaggeredFade from '../../scrollMotion/StaggeredFade';
-import WatchCard from '../../watches/[watchId]/WatchCard';
+import WatchCard from '../../watches/[slug]/WatchCard';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 
 const CollectionPage = () => {
   const params = useParams();
-  const collectionId = Array.isArray(params.collectionId) ? params.collectionId[0] : params.collectionId;
-  const numericCollectionId = collectionId ? parseInt(collectionId, 10) : NaN;
+  const slug = params.slug as string;
 
   const [imgError, setImgError] = useState(false);
 
   const { data: collection, isLoading: collectionLoading, error } = useQuery({
-    queryKey: ['collection', numericCollectionId],
-    queryFn: () => fetchCollectionById(numericCollectionId),
-    enabled: !isNaN(numericCollectionId),
+    queryKey: ['collection', slug],
+    queryFn: () => fetchCollectionBySlug(slug),
+    enabled: !!slug,
   });
 
   const { data: watches = [], isLoading: watchesLoading } = useQuery({
-    queryKey: ['watches', 'collection', numericCollectionId],
-    queryFn: () => fetchWatchesByCollection(numericCollectionId),
-    enabled: !isNaN(numericCollectionId),
+    queryKey: ['watches', 'collection', slug],
+    queryFn: () => fetchWatchesByCollectionSlug(slug),
+    enabled: !!slug,
   });
 
   useScrollRestore(watches.length > 0 || !watchesLoading);
@@ -65,7 +64,7 @@ const CollectionPage = () => {
               Watches
             </Link>
             <span>/</span>
-            <Link href={`/brands/${brand?.id}`} className="hover:text-white/80 transition-colors">
+            <Link href={`/brands/${brand?.slug}`} className="hover:text-white/80 transition-colors">
               {brand?.name}
             </Link>
             <span>/</span>

@@ -5,13 +5,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { fetchBrandById, fetchWatchesByBrand, fetchCollectionsByBrand, Collection } from '@/lib/api';
+import { fetchBrandBySlug, fetchWatchesByBrandSlug, fetchCollectionsByBrandSlug, Collection } from '@/lib/api';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { imageTransformations } from '@/lib/cloudinary';
 import Image from 'next/image';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import StaggeredFade from '../../scrollMotion/StaggeredFade';
-import WatchCard from '../../watches/[watchId]/WatchCard';
+import WatchCard from '../../watches/[slug]/WatchCard';
 import Link from 'next/link';
 
 
@@ -19,7 +19,7 @@ import Link from 'next/link';
 const CollectionCard = ({ collection }: { collection: Collection }) => {
     const [imgError, setImgError] = useState(false);
     return (
-        <Link href={`/collections/${collection.id}`} className="block">
+        <Link href={`/collections/${collection.slug}`} className="block">
             <div className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-4 transition-all duration-300 hover:border-white/30 hover:scale-105 cursor-pointer">
                 <div className="w-full h-40 bg-black/30 rounded-lg mb-4 flex items-center justify-center">
                     {collection.image && !imgError ? (
@@ -46,30 +46,29 @@ const CollectionCard = ({ collection }: { collection: Collection }) => {
 
 const BrandPage = () => {
   const params = useParams();
-  const brandId = Array.isArray(params.brandId) ? params.brandId[0] : params.brandId;
-  const numericBrandId = brandId ? parseInt(brandId, 10) : NaN;
+  const slug = params.slug as string;
 
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [logoError, setLogoError] = useState(false);
 
   const { data: brand, isLoading, error } = useQuery({
-    queryKey: ['brand', numericBrandId],
-    queryFn: () => fetchBrandById(numericBrandId),
-    enabled: !isNaN(numericBrandId),
+    queryKey: ['brand', slug],
+    queryFn: () => fetchBrandBySlug(slug),
+    enabled: !!slug,
   });
 
   const { data: watches = [], isLoading: watchesLoading } = useQuery({
-    queryKey: ['watches', 'brand', numericBrandId],
-    queryFn: () => fetchWatchesByBrand(numericBrandId),
-    enabled: !isNaN(numericBrandId),
+    queryKey: ['watches', 'brand', slug],
+    queryFn: () => fetchWatchesByBrandSlug(slug),
+    enabled: !!slug,
   });
 
   useScrollRestore(watches.length > 0 || !watchesLoading);
 
   const { data: collections = [] } = useQuery({
-    queryKey: ['collections', 'brand', numericBrandId],
-    queryFn: () => fetchCollectionsByBrand(numericBrandId),
-    enabled: !isNaN(numericBrandId),
+    queryKey: ['collections', 'brand', slug],
+    queryFn: () => fetchCollectionsByBrandSlug(slug),
+    enabled: !!slug,
   });
 
   // Initialize brand logo source when brand data arrives
