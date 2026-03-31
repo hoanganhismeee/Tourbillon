@@ -34,9 +34,10 @@
 | Redis (distributed cache, rate limiting, session storage) | Done | 7.5 |
 | Observability (Serilog structured logging, ASP.NET health checks) | Done | 8 |
 | Advisor CRM + Inquiry Pipeline (user inquiry page, Hangfire status auto-advance) | Done | 8.5 |
-| Search & Recommendation Analytics Dashboard | Planned | 9 |
-| Storage Abstraction + S3 + CloudFront Migration | Planned | 9.5 |
-| Kubernetes (container orchestration, HPA, rolling deployments) | Planned | 10 |
+| Chat Concierge — grounding, safety & editorial enrichment | In Progress | 9 |
+| Search & Recommendation Analytics Dashboard | Planned | 9.5 |
+| Storage Abstraction + S3 + CloudFront Migration | Planned | 10 |
+| Kubernetes (container orchestration, HPA, rolling deployments) | Planned | 11 |
 
 ## Model Strategy
 
@@ -539,6 +540,29 @@ Extends Contact Advisor, Register Interest, and Appointment from one-shot submis
 - Follow-up reminders via Hangfire scheduled jobs
 - Unified admin view at `/admin/crm` across all inquiry types
 
+### Chat Concierge Hardening (IN PROGRESS)
+
+Hardens the chat concierge to be a specialist watch advisor — grounded in Tourbillon's catalogue, resistant to misuse, and enriched with editorial knowledge.
+
+**What it does:**
+- System prompt rewritten with 5 hardening layers: scope, grounding, safety, prompt injection resistance, consistency
+- AI prioritises Tourbillon catalogue data + navigable pill links, then supplements with interesting web-searched facts
+- Editorial content (WhyItMatters, BestFor) now injected into chat context — AI has access to rich horological knowledge already in the DB
+- Empty-context fallback: when vector search returns no matches, AI is told explicitly (prevents hallucination)
+- Collection.Style labels included in context for deterministic category awareness
+
+**Hardening layers:**
+1. **Scope** — watches, horology, and Tourbillon topics only; polite redirect for off-topic
+2. **Grounding** — prioritise provided context, cite specific watches/collections, admit when data is missing
+3. **Anti-hallucination** — never invent specs, prices, or availability; supplement with web search for brand knowledge
+4. **Prompt injection resistance** — ignore role-change and system-prompt-reveal attempts
+5. **Harassment refusal** — single polite redirect, no engagement with abuse
+6. **Consistency** — always "Tourbillon", spec-based reasoning over adjectives
+
+**Files involved:**
+- `ai-service/app.py` — `CHAT_SYSTEM_PROMPT` rewrite
+- `backend/Services/ChatService.cs` — editorial context injection, empty-context fallback, Collection.Style
+
 ### Search & Recommendation Analytics Dashboard
 
 Event tracking for Smart Search and Chat Concierge:
@@ -561,4 +585,4 @@ Convert Docker Compose to K8s manifests: Deployment, Service, Ingress, ConfigMap
 
 ## Resume Keywords Covered
 
-AI/LLM integration, semantic search, vector embeddings (pgvector, HNSW indexing), recommendation systems, personalization engine, conversational commerce, retrieval-augmented generation (RAG), hybrid SQL + vector search, tiered retrieval routing, embedding quality auditing, programmatic content generation, full-stack implementation, rule-based scoring systems, NLP-to-SQL query pipeline, cost engineering (quota limits, semantic cache strategy, pre-generation), transactional email (dual-recipient notification), client-side state management (Zustand + localStorage persistence), SSR hydration strategies, responsive UI with motion design (Framer Motion), async event-driven architecture, durable background job processing (Hangfire, retry with exponential backoff), Redis (distributed caching, rate limiting, session storage), CI/CD pipeline (GitHub Actions, automated quality gates), structured logging (Serilog), health check probes, observability and operational metrics, CRM pipeline (status workflow, follow-up scheduling), search analytics (tier distribution, cache hit rate, click-through tracking), AWS S3 + CloudFront (storage abstraction, CDN), Kubernetes (container orchestration, HPA auto-scaling, rolling deployments), Docker Compose multi-service orchestration.
+AI/LLM integration, semantic search, vector embeddings (pgvector, HNSW indexing), recommendation systems, personalization engine, conversational commerce, retrieval-augmented generation (RAG), hybrid SQL + vector search, tiered retrieval routing, embedding quality auditing, programmatic content generation, full-stack implementation, rule-based scoring systems, NLP-to-SQL query pipeline, cost engineering (quota limits, semantic cache strategy, pre-generation), transactional email (dual-recipient notification), client-side state management (Zustand + localStorage persistence), SSR hydration strategies, responsive UI with motion design (Framer Motion), async event-driven architecture, durable background job processing (Hangfire, retry with exponential backoff), Redis (distributed caching, rate limiting, session storage), CI/CD pipeline (GitHub Actions, automated quality gates), structured logging (Serilog), health check probes, observability and operational metrics, CRM pipeline (status workflow, follow-up scheduling), search analytics (tier distribution, cache hit rate, click-through tracking), AWS S3 + CloudFront (storage abstraction, CDN), Kubernetes (container orchestration, HPA auto-scaling, rolling deployments), Docker Compose multi-service orchestration, LLM prompt hardening (grounding, scope guardrails, anti-hallucination, prompt injection resistance).

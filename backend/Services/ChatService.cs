@@ -148,7 +148,7 @@ public class ChatService
         var httpClient = _httpClientFactory.CreateClient("ai-service");
         List<string> contextStrings;
         var enableWebSearch = false;
-        QueryType queryType;
+        var queryType = QueryType.General;
         int? matchedBrandId, matchedCollectionId;
 
         try
@@ -176,7 +176,12 @@ public class ChatService
         {
             _logger.LogWarning("Context fetch failed: {Err}", ex.Message);
             contextStrings = [];
+            queryType = QueryType.General;
         }
+
+        // Tell the AI when no catalogue data matched — prevents hallucination
+        if (contextStrings.Count == 0 && queryType == QueryType.General)
+            contextStrings.Add("No matching watches found in the Tourbillon catalogue for this query.");
 
         // ── Call ai-service /chat ─────────────────────────────────────────────────
         string aiMessage;
@@ -303,12 +308,15 @@ public class ChatService
 
         var context = new List<string>();
 
-        // Prepend collection description
+        // Prepend collection description with style label
         if (collectionId.HasValue)
         {
             var col = await _context.Collections.AsNoTracking().FirstOrDefaultAsync(c => c.Id == collectionId);
             if (col?.Description is { Length: > 0 } desc)
-                context.Add($"Collection \"{col.Name}\" (ID: {col.Id}): {desc}");
+            {
+                var style = !string.IsNullOrWhiteSpace(col.Style) ? $" [Style: {col.Style}]" : "";
+                context.Add($"Collection \"{col.Name}\" (ID: {col.Id}){style}: {desc}");
+            }
         }
 
         foreach (var w in watches)
@@ -317,6 +325,24 @@ public class ChatService
             var coll  = w.Collection?.Name ?? "";
             var price = w.CurrentPrice == 0 ? "Price on Request" : $"${w.CurrentPrice:N0}";
             context.Add($"[Watch ID {w.Id}] {brand} {coll} | Ref: {w.Name} | {price}\nDescription: {w.Description}\nSpecs: {w.Specs}");
+        }
+
+        // Include editorial insights (WhyItMatters, BestFor) for richer AI responses
+        var watchIds = watches.Select(w => w.Id).ToList();
+        var editorials = await _context.WatchEditorialLinks
+            .Include(l => l.EditorialContent)
+            .Where(l => watchIds.Contains(l.WatchId) && l.EditorialContent != null)
+            .AsNoTracking()
+            .ToListAsync();
+
+        foreach (var link in editorials)
+        {
+            var ed = link.EditorialContent!;
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(ed.WhyItMatters)) parts.Add(ed.WhyItMatters);
+            if (!string.IsNullOrWhiteSpace(ed.BestFor)) parts.Add($"Best for: {ed.BestFor}");
+            if (parts.Count > 0)
+                context.Add($"[Editorial for Watch ID {link.WatchId}] {string.Join(" ", parts)}");
         }
 
         return context;
@@ -340,7 +366,26 @@ public class ChatService
         foreach (var col in collections)
         {
             if (!string.IsNullOrWhiteSpace(col.Description))
-                context.Add($"Collection \"{col.Name}\" (ID: {col.Id}): {col.Description}");
+            {
+                var style = !string.IsNullOrWhiteSpace(col.Style) ? $" [Style: {col.Style}]" : "";
+                context.Add($"Collection \"{col.Name}\" (ID: {col.Id}){style}: {col.Description}");
+            }
+        }
+
+        // Sample editorial from this brand's watches for richer context
+        var brandEditorials = await _context.WatchEditorialLinks
+            .Include(l => l.EditorialContent)
+            .Include(l => l.Watch)
+            .Where(l => l.Watch.BrandId == brandId && l.EditorialContent != null)
+            .Take(3)
+            .AsNoTracking()
+            .ToListAsync();
+
+        foreach (var link in brandEditorials)
+        {
+            var ed = link.EditorialContent!;
+            if (!string.IsNullOrWhiteSpace(ed.WhyItMatters))
+                context.Add($"[Editorial — {link.Watch.Name}] {ed.WhyItMatters}");
         }
 
         return context;
