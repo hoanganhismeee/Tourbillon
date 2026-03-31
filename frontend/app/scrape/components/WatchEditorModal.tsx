@@ -27,6 +27,8 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
     const [imagePublicId, setImagePublicId] = useState('');
     // After upload, store Cloudinary version to bust CDN cache via versioned URL (/v{version}/ path)
     const [imageVersion, setImageVersion] = useState<number | null>(null);
+    // Local blob URL for instant preview after upload (bypasses CDN cache entirely)
+    const [localBlobUrl, setLocalBlobUrl] = useState<string | null>(null);
 
     // Scraped values for comparison
     const [originalSpecs, setOriginalSpecs] = useState('{}');
@@ -42,6 +44,11 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
     const [uploadError, setUploadError] = useState('');
     const [saveError, setSaveError] = useState('');
 
+    // Revoke blob URL on unmount to prevent memory leaks
+    useEffect(() => {
+        return () => { if (localBlobUrl) URL.revokeObjectURL(localBlobUrl); };
+    }, [localBlobUrl]);
+
     useEffect(() => {
         const load = async () => {
             try {
@@ -52,6 +59,7 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
                 setPrice(data.currentPrice.toString());
                 setSpecsJson(data.specs || '{}');
                 setImagePublicId(data.image || '');
+                setImageVersion(data.imageVersion ?? null);
 
                 setOriginalName(data.name);
                 setOriginalPrice(data.currentPrice.toString());
@@ -74,22 +82,26 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
     // Upload original file directly — zero quality loss
     const handleUseAsIs = async () => {
         if (!pendingFile) return;
+        // Capture blob URL before clearing pendingFile for instant preview
+        const blobUrl = URL.createObjectURL(pendingFile);
         setPendingFile(null);
         setCropMode(false);
         try {
             setUploadingImage(true);
             setUploadError('');
-            // Backend derives canonical public ID from watchId — no slug needed
             const rawExt = pendingFile.name.includes('.') ? pendingFile.name.split('.').pop()! : 'png';
             const safeFile = new File([pendingFile], `upload.${rawExt}`, { type: pendingFile.type });
             const result = await adminUploadWatchImage(watch.id, safeFile);
             if (result.success && result.publicId) {
                 setImagePublicId(result.publicId);
                 setImageVersion(result.version ?? null);
-                // Invalidate React Query cache so watch detail page shows the new image immediately
+                setLocalBlobUrl(blobUrl);
                 queryClient.invalidateQueries({ queryKey: ['watch', watch.id] });
+            } else {
+                URL.revokeObjectURL(blobUrl);
             }
         } catch (err: unknown) {
+            URL.revokeObjectURL(blobUrl);
             setUploadError(err instanceof Error ? err.message : 'Image upload failed');
         } finally {
             setUploadingImage(false);
@@ -120,20 +132,24 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
 
     // After cropping, upload the result
     const handleCropConfirm = async (croppedFile: File) => {
+        const blobUrl = URL.createObjectURL(croppedFile);
         setPendingFile(null);
         try {
             setUploadingImage(true);
             setUploadError('');
 
-            // Backend derives canonical public ID from watchId — no slug needed
             const safeFile = new File([croppedFile], 'upload.png', { type: 'image/png' });
             const result = await adminUploadWatchImage(watch.id, safeFile);
             if (result.success && result.publicId) {
                 setImagePublicId(result.publicId);
                 setImageVersion(result.version ?? null);
+                setLocalBlobUrl(blobUrl);
                 queryClient.invalidateQueries({ queryKey: ['watch', watch.id] });
+            } else {
+                URL.revokeObjectURL(blobUrl);
             }
         } catch (err: unknown) {
+            URL.revokeObjectURL(blobUrl);
             setUploadError(err instanceof Error ? err.message : 'Image upload failed');
         } finally {
             setUploadingImage(false);
@@ -229,12 +245,11 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
                             <div className="bg-black/50 p-4 border border-white/10 rounded-lg flex flex-col items-center justify-center mb-6 h-[400px]">
                                 {imagePublicId ? (
                                     <img
-                                        src={(() => {
-                                        if (imagePublicId.startsWith('http')) return imagePublicId;
-                                        const base = getOptimizedImageUrl(imagePublicId, { width: 1200, height: 1200, crop: 'fit' });
-                                        // Inject Cloudinary version into URL path to bypass CDN cache after re-upload
-                                        return imageVersion ? base.replace('/image/upload/', `/image/upload/v${imageVersion}/`) : base;
-                                    })()}
+                                        src={localBlobUrl || (() => {
+                                            if (imagePublicId.startsWith('http')) return imagePublicId;
+                                            const base = getOptimizedImageUrl(imagePublicId, { width: 1200, height: 1200, crop: 'fit' });
+                                            return imageVersion ? base.replace('/image/upload/', `/image/upload/v${imageVersion}/`) : base;
+                                        })()}
                                         alt="Preview"
                                         className="object-contain max-h-full max-w-full rounded"
                                     />
@@ -301,7 +316,7 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
 
                     <div className="flex justify-end gap-4 mt-auto">
                         <button className="px-6 py-2 border border-white/30 rounded hover:bg-white/10" onClick={onClose}>Cancel</button>
-                        <button className="px-6 py-2 bg-[#f0e6d2] text-black rounded font-medium disabled:opacity-50" onClick={handleSave} disabled={saving || !!pendingFile}>
+                        <button className="px-6 py-2 bg-[#f0e6d2] text-black rounded font-medium disabled:opacity-50" onClick={handleSave} disabled={saving || !!pendingFile || uploadingImage}>
                             {saving ? 'Saving...' : 'Save Watch Data'}
                         </button>
                     </div>

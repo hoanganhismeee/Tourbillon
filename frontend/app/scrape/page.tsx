@@ -180,7 +180,7 @@ export default function ScrapeAdminPage() {
                                 <td className="p-3">
                                     {w.image ? (
                                         <img
-                                            src={w.image.startsWith('http') ? w.image : imageTransformations.thumbnail(w.image)}
+                                            src={w.imageUrl || (w.image.startsWith('http') ? w.image : imageTransformations.thumbnail(w.image))}
                                             alt={w.name}
                                             width={60}
                                             height={60}
