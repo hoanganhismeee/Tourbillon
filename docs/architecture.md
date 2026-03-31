@@ -156,9 +156,9 @@ Email: `TestEmailDto`
 | `/` | Home — cinematic video hero + AI search bar |
 | `/smart-search` | AI Watch Finder — horizontal filter bar + full-width grid |
 | `/watches/` | Watch listing with taste profile personalization |
-| `/watches/[watchId]` | Watch detail — specs, editorial, wrist fit, compare toggle |
-| `/brands/[brandId]` | Brand detail with heritage description |
-| `/collections/[collectionId]` | Collection detail |
+| `/watches/[slug]` | Watch detail — specs, editorial, wrist fit, compare toggle |
+| `/brands/[slug]` | Brand detail with heritage description |
+| `/collections/[slug]` | Collection detail |
 | `/compare` | Side-by-side watch comparison with AI insights |
 | `/favourites` | Saved watches + collection filtering/sorting |
 | `/contact` | Contact advisor inquiry form |
@@ -369,6 +369,7 @@ Once scraping is complete, `SitemapScraperService`, `BrandScraperService`, scrap
 - `Watch.Description` = Brand model subtitle (e.g., "Patek Philippe Nautilus")
 - `Watch.Specs` = JSON string with sections: `{dial:{}, case:{}, movement:{}, strap:{}}`
 - `Watch.Image` = Cloudinary public ID, not a full URL
+- `Watch.Slug`, `Brand.Slug`, `Collection.Slug` = URL-safe slugs used in all public routes (e.g., `patek-philippe-nautilus-5811-1g-blue-dial`). Auto-generated on startup from names. Unique indexed.
 - **Price = 0 means "Price on Request"** — valid for luxury watches, never treat as error
 - Watch image filenames: `brand+model.png` (e.g., `PP6119G.png`)
 
