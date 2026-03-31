@@ -8,7 +8,8 @@ public class WatchDto
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string? Image { get; set; } // Raw image path from database
-    public string? ImageUrl { get; set; } // Computed complete URL
+    public string? ImageUrl { get; set; } // Computed complete URL with version for CDN cache busting
+    public long? ImageVersion { get; set; }
     public decimal CurrentPrice { get; set; }
     public int BrandId { get; set; }
     public int? CollectionId { get; set; }
@@ -28,6 +29,7 @@ public class WatchDto
             Description = watch.Description,
             Image = watch.Image,
             ImageUrl = watch.GetImageUrl(cloudName),
+            ImageVersion = watch.ImageVersion,
             CurrentPrice = watch.CurrentPrice,
             BrandId = watch.BrandId,
             CollectionId = watch.CollectionId,

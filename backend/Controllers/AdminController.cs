@@ -908,10 +908,73 @@ public class AdminController : ControllerBase
         }
     }
 
-    /// Uploads an image to Cloudinary and returns the public ID
+    /// Uploads a replacement image for a specific watch.
+    /// Always uses the canonical public ID (Brand_Collection_Ref) — auto-corrects bad names.
+    /// If the current DB image already has a canonical ID, reuses it (no rename). Otherwise deletes the orphan.
+    /// Updates Watch.Image + Watch.ImageVersion in DB so all API responses immediately reflect the new URL.
+    /// POST: api/admin/watches/{id}/image
+    [HttpPost("watches/{id}/image")]
+    public async Task<IActionResult> AdminUploadWatchImage(int id, IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { Message = "No file uploaded" });
+
+            if (file.Length > 10 * 1024 * 1024)
+                return BadRequest(new { Message = "File size exceeds 10MB limit" });
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp")
+                return BadRequest(new { Message = "Only PNG, JPG, and WEBP files are allowed" });
+
+            var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+            var cloudinaryService = HttpContext.RequestServices.GetRequiredService<ICloudinaryService>();
+
+            var watch = await context.Watches
+                .Include(w => w.Brand)
+                .Include(w => w.Collection)
+                .FirstOrDefaultAsync(w => w.Id == id);
+
+            if (watch == null) return NotFound(new { Message = "Watch not found" });
+
+            // Build canonical public ID using same convention as NormalizeImageNames
+            var collectionPart = watch.Collection != null ? SanitizeSegment(watch.Collection.Name) : "NoCollection";
+            var canonical = $"watches/{GetBrandAcronym(watch.Brand.Name)}_{collectionPart}_{SanitizeWatchName(watch.Name)}";
+
+            // Detect whether current DB image is already canonical (quality check)
+            var currentIsOrphan = !string.IsNullOrEmpty(watch.Image)
+                && watch.Image.StartsWith("watches/", StringComparison.OrdinalIgnoreCase)
+                && !watch.Image.Equals(canonical, StringComparison.OrdinalIgnoreCase);
+
+            using var stream = file.OpenReadStream();
+            var (publicId, version) = await cloudinaryService.UploadImageAsync(stream, $"{canonical.Substring("watches/".Length)}{ext}");
+
+            if (string.IsNullOrEmpty(publicId))
+                return StatusCode(500, new { Message = "Failed to upload image to Cloudinary" });
+
+            // Delete orphaned asset if we just corrected a bad public ID
+            if (currentIsOrphan)
+                await cloudinaryService.DeleteImageAsync(watch.Image!);
+
+            // Persist canonical ID + version — all API responses now serve the new versioned URL
+            watch.Image = canonical;
+            watch.ImageVersion = version;
+            await context.SaveChangesAsync();
+
+            return Ok(new { Success = true, PublicId = canonical, Version = version });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading image for watch {Id}", id);
+            return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
+    /// Legacy upload endpoint — used when creating new watches before they have an ID.
     /// POST: api/admin/watches/upload-image
     [HttpPost("watches/upload-image")]
-    public async Task<IActionResult> AdminUploadImage(IFormFile file, [FromForm] string? slug = null)
+    public async Task<IActionResult> AdminUploadImageTemp(IFormFile file, [FromForm] string? slug = null)
     {
         try
         {
@@ -926,25 +989,18 @@ public class AdminController : ControllerBase
                 return BadRequest(new { Message = "Only PNG, JPG, and WEBP files are allowed" });
 
             var cloudinaryService = HttpContext.RequestServices.GetRequiredService<ICloudinaryService>();
-
             using var stream = file.OpenReadStream();
-            
-            // Use slug if provided, otherwise use original filename
             string filenameToUse = !string.IsNullOrEmpty(slug) ? $"{slug}{ext}" : file.FileName;
-            
-            string publicId = await cloudinaryService.UploadImageAsync(stream, filenameToUse);
+            var (publicId, version) = await cloudinaryService.UploadImageAsync(stream, filenameToUse);
 
             if (string.IsNullOrEmpty(publicId))
                 return StatusCode(500, new { Message = "Failed to upload image to Cloudinary" });
 
-            return Ok(new { 
-                Success = true, 
-                PublicId = publicId
-            });
+            return Ok(new { Success = true, PublicId = publicId, Version = version });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error uploading image");
+            _logger.LogError(ex, "Error uploading temp image");
             return StatusCode(500, new { Message = ex.Message });
         }
     }

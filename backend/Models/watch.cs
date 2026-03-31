@@ -14,6 +14,8 @@ public class Watch
     public int? CollectionId { get; set; }
 
     public string? Specs { get; set; }
+    // Cloudinary version number — injected into image URLs to bust CDN + browser cache after re-upload
+    public long? ImageVersion { get; set; }
     public Collection? Collection { get; set; } //null! because it will alway be filled
 
     // Navigation properties
@@ -21,25 +23,18 @@ public class Watch
     public ICollection<PriceTrend>? PriceHistory { get; set; } = new List<PriceTrend>();
     public WatchEditorialLink? EditorialLink { get; set; }
 
-    /// Returns the complete image URL for Cloudinary images
-    /// If Image is already a full URL (starts with http), returns it as-is
-    /// If Image is a Cloudinary public ID, builds the complete Cloudinary URL
+    /// Returns the complete image URL for Cloudinary images.
+    /// Injects /v{ImageVersion}/ when present to bypass CDN cache after re-upload.
     public string? GetImageUrl(string? cloudName = "dcd9lcdoj")
     {
         if (string.IsNullOrEmpty(Image))
             return null;
 
-        // External URLs returned as-is — these will be replaced with Cloudinary public IDs
+        // External URLs returned as-is
         if (Image.StartsWith("http://") || Image.StartsWith("https://"))
             return Image;
 
-        // If it looks like a Cloudinary public ID (contains / or matches watch pattern), build full URL
-        if (Image.Contains("/") || Image.StartsWith("watches/"))
-        {
-            return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_800,h_800,c_fit/{Image}";
-        }
-
-        // Otherwise assume it's a filename that needs the watches/ prefix and full URL
-        return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_800,h_800,c_fit/{Image}";
+        var version = ImageVersion.HasValue ? $"v{ImageVersion}/" : string.Empty;
+        return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_800,h_800,c_fit/{version}{Image}";
     }
 }
