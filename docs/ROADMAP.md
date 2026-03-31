@@ -34,10 +34,11 @@
 | Redis (distributed cache, rate limiting, session storage) | Done | 7.5 |
 | Observability (Serilog structured logging, ASP.NET health checks) | Done | 8 |
 | Advisor CRM + Inquiry Pipeline (user inquiry page, Hangfire status auto-advance) | Done | 8.5 |
-| Chat Concierge — grounding, safety & editorial enrichment | In Progress | 9 |
+| Chat Concierge — grounding, safety & editorial enrichment | Done | 9 |
+| Slug-based URLs + Cloudinary public ID sync | In Progress | 9 |
 | Search & Recommendation Analytics Dashboard | Planned | 9.5 |
-| Storage Abstraction + S3 + CloudFront Migration | Planned | 10 |
-| Kubernetes (container orchestration, HPA, rolling deployments) | Planned | 11 |
+| Storage Abstraction + S3 + CloudFront Migration | Planned | 11 |
+| Kubernetes (container orchestration, HPA, rolling deployments) | Planned | 12 |
 
 ## Model Strategy
 
@@ -562,6 +563,33 @@ Hardens the chat concierge to be a specialist watch advisor — grounded in Tour
 **Files involved:**
 - `ai-service/app.py` — `CHAT_SYSTEM_PROMPT` rewrite
 - `backend/Services/ChatService.cs` — editorial context injection, empty-context fallback, Collection.Style
+
+### Slug-Based URLs + Cloudinary Public ID Sync (IN PROGRESS)
+
+Replaces sequential database IDs in URLs (`/watches/42`) with human-readable slugs (`/watches/patek-philippe-nautilus-5811-1g-blue-dial`). Hides DB structure, improves SEO, matches industry standard (Chrono24, Hodinkee).
+
+**What it does:**
+- `Slug` column added to Watch, Brand, Collection models with unique indexes
+- Slugs auto-generated on startup from `Brand.Name + Collection.Name + Watch.Name`
+- All public-facing API endpoints and frontend routes use slugs
+- Admin/internal endpoints stay numeric
+- Chat concierge link format updated to use slugs in context and prompt
+- Cloudinary public IDs re-synced with current watch names via existing `NormalizeImageNames` endpoint
+
+**Slug format:**
+- Brand: `patek-philippe`
+- Collection: `patek-philippe-nautilus` (brand-prefixed to prevent collisions)
+- Watch: `patek-philippe-nautilus-5811-1g-blue-dial`
+
+**Files involved:**
+- `backend/Models/Watch.cs`, `Brand.cs`, `Collection.cs` — Slug property
+- `backend/Helpers/SlugHelper.cs` — slug generation utility
+- `backend/Database/DbInitializer.cs` — EnsureSlugsPopulated on startup
+- `backend/Controllers/WatchController.cs`, `BrandController.cs`, `CollectionController.cs` — slug endpoints
+- `backend/Services/ChatService.cs` — context strings with slugs
+- `frontend/lib/api.ts` — slug-based fetch functions
+- `frontend/app/watches/[slug]/`, `brands/[slug]/`, `collections/[slug]/` — renamed route folders
+- `ai-service/app.py` — CHAT_SYSTEM_PROMPT and `_inject_entity_links` use slugs
 
 ### Search & Recommendation Analytics Dashboard
 

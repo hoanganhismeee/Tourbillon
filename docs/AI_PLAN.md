@@ -337,3 +337,7 @@ When `FetchGeneralContextAsync` returns an empty list (no vector matches), a sen
 ### Collection.Style in context
 
 `Collection.Style` ("sport", "dress", "diver", etc.) is now appended to collection context strings. This feeds the deterministic category labels from section 2 (Structured Truth + LLM Interpretation) directly into the chat pipeline.
+
+### Slug-based links in chat context
+
+Context strings now provide slugs instead of numeric IDs: `Brand "Patek Philippe" (Slug: patek-philippe)` instead of `(ID: 1)`. The `CHAT_SYSTEM_PROMPT` instructs the AI to use slug-based links: `[Brand Name](/brands/{slug})`. The `_inject_entity_links` function in `ai-service/app.py` parses slugs from context and injects markdown links for bare entity mentions. `ExtractWatchCardsAsync` in `ChatService.cs` matches slug patterns in AI responses to extract watch cards.
