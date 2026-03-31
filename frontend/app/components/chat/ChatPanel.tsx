@@ -39,19 +39,31 @@ function renderMarkdown(text: string): React.ReactNode[] {
       } else if (match[0].startsWith('*')) {
         parts.push(<em key={`${lineIdx}-${match.index}`}>{match[3]}</em>);
       } else {
-        // Link — internal links use Next router, external open in new tab
+        // Link — pill chip for internal nav links (/collections, /brands, /watches), underline for external
         const href = match[5];
         const isInternal = href.startsWith('/');
+        const isNavLink = /^\/(collections|brands|watches)\//.test(href);
         parts.push(
-          <a
-            key={`${lineIdx}-${match.index}`}
-            href={href}
-            target={isInternal ? undefined : '_blank'}
-            rel={isInternal ? undefined : 'noopener noreferrer'}
-            className="text-[#bfa68a] underline underline-offset-2 hover:text-[#ecddc8] transition-colors"
-          >
-            {match[4]}
-          </a>
+          isNavLink ? (
+            <a
+              key={`${lineIdx}-${match.index}`}
+              href={href}
+              className="inline-flex items-center rounded-full border border-[#bfa68a]/35 text-[#bfa68a] text-[11px] px-2.5 py-0.5 mx-0.5 hover:border-[#bfa68a]/70 hover:text-[#ecddc8] hover:bg-[#bfa68a]/10 transition-colors"
+              style={{ verticalAlign: 'middle' }}
+            >
+              {match[4]}
+            </a>
+          ) : (
+            <a
+              key={`${lineIdx}-${match.index}`}
+              href={href}
+              target={isInternal ? undefined : '_blank'}
+              rel={isInternal ? undefined : 'noopener noreferrer'}
+              className="text-[#bfa68a] underline underline-offset-2 hover:text-[#ecddc8] transition-colors"
+            >
+              {match[4]}
+            </a>
+          )
         );
       }
       lastIndex = match.index + match[0].length;
