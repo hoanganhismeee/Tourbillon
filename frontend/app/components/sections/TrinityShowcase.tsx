@@ -109,7 +109,7 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
 
                 <div className="flex items-center">
                     <Link
-                        href={`/brands/${brand.id}`}
+                        href={`/brands/${brand.slug}`}
                         className="inline-flex items-center text-[#f0e6d2] hover:text-white transition-colors duration-500 text-2xl font-playfair font-medium hover:scale-105"
                     >
                         Explore More

@@ -63,13 +63,13 @@ const WatchCard = ({ watch, brands, collections, isPriority = false, currentPage
 
   const handleBrandClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    router.push(`/brands/${watch.brandId}`);
+    if (watch.brandSlug) router.push(`/brands/${watch.brandSlug}`);
   };
 
   const handleCollectionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (watch.collectionId) {
-      router.push(`/collections/${watch.collectionId}`);
+    if (watch.collectionSlug) {
+      router.push(`/collections/${watch.collectionSlug}`);
     }
   };
 
@@ -77,7 +77,7 @@ const WatchCard = ({ watch, brands, collections, isPriority = false, currentPage
     <div className="group relative block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10">
       {/* Watch image with Cloudinary optimization - Clickable to watch details */}
       <div className="relative mb-4">
-        <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
+        <Link href={`/watches/${watch.slug || watch.id}`} onClick={handleWatchClick}>
           <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl flex items-center justify-center border border-white/10 overflow-hidden cursor-pointer">
             {watch.image ? (
               <Image
@@ -123,7 +123,7 @@ const WatchCard = ({ watch, brands, collections, isPriority = false, currentPage
           </button>
         )}
 
-        <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
+        <Link href={`/watches/${watch.slug || watch.id}`} onClick={handleWatchClick}>
           <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate cursor-pointer">
             {watch.name}
           </h3>

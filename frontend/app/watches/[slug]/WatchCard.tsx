@@ -61,7 +61,7 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
   const handleCollectionClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    router.push(`/brands/${watch.brandId}`);
+    if (watch.brandSlug) router.push(`/brands/${watch.brandSlug}`);
   };
 
   // Handle watch card click to save navigation state
@@ -94,7 +94,7 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
     fetchCollection();
   }, [watch.collectionId, watch.brandId]);
 
-  const watchHref = `/watches/${watch.id}${hrefSuffix}`;
+  const watchHref = `/watches/${watch.slug || watch.id}${hrefSuffix}`;
 
   return (
     <div className={`group relative bg-black/30 backdrop-blur-md border border-white/20 rounded-2xl p-6 transition-all duration-500 hover:border-white/40 hover:bg-black/40 hover:scale-[1.02] ${className}`}>
@@ -143,7 +143,7 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
       {brandName && (
         <div className="mb-1 text-center">
           <button
-            onClick={e => { e.preventDefault(); e.stopPropagation(); router.push(`/brands/${watch.brandId}`); }}
+            onClick={e => { e.preventDefault(); e.stopPropagation(); if (watch.brandSlug) router.push(`/brands/${watch.brandSlug}`); }}
             className="text-xs font-inter text-white/50 uppercase tracking-widest hover:text-white/80 transition-colors bg-transparent border-none cursor-pointer"
           >
             {brandName}

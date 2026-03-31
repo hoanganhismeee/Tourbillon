@@ -12,6 +12,7 @@ interface AppointmentPanelProps {
   isOpen: boolean;
   onClose: () => void;
   watchId?: number;
+  watchSlug?: string;
   brandName?: string;
 }
 
@@ -121,7 +122,7 @@ function buildCalendarGrid(year: number, month: number): (Date | null)[][] {
   return rows;
 }
 
-export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }: AppointmentPanelProps) {
+export default function AppointmentPanel({ isOpen, onClose, watchId, watchSlug, brandName }: AppointmentPanelProps) {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
   const today = new Date();
@@ -459,7 +460,7 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, brandName }
               {!authLoading && !isAuthenticated && (
                 <div className="flex items-center gap-2 mb-5 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
                   <span className="text-white/50 text-sm">Already joined Tourbillon?</span>
-                  <Link href={`/login?redirect=${encodeURIComponent(`/watches/${watchId}?panel=appointment`)}`}
+                  <Link href={`/login?redirect=${encodeURIComponent(`/watches/${watchSlug || watchId}?panel=appointment`)}`}
                     className="text-[#bfa68a] hover:text-[#d4c4a8] text-sm font-medium transition-colors">
                     Sign in
                   </Link>

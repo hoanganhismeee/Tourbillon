@@ -65,6 +65,7 @@ public class SearchController : ControllerBase
                 {
                     id = x.brand.Id,
                     name = x.brand.Name,
+                    slug = x.brand.Slug,
                     image = x.brand.Image,
                     type = "brand",
                     relevanceScore = x.score
@@ -80,13 +81,14 @@ public class SearchController : ControllerBase
                 {
                     id = x.watch.Id,
                     name = x.watch.Name,
+                    slug = x.watch.Slug,
                     description = x.watch.Description,
                     currentPrice = x.watch.CurrentPrice,
                     image = x.watch.Image,
                     specs = x.watch.Specs,
-                    brand = new { id = x.watch.Brand.Id, name = x.watch.Brand.Name },
+                    brand = new { id = x.watch.Brand.Id, name = x.watch.Brand.Name, slug = x.watch.Brand.Slug },
                     collection = x.watch.Collection != null
-                        ? new { id = x.watch.Collection.Id, name = x.watch.Collection.Name }
+                        ? new { id = x.watch.Collection.Id, name = x.watch.Collection.Name, slug = x.watch.Collection.Slug }
                         : null,
                     type = "watch",
                     relevanceScore = x.score
@@ -102,8 +104,9 @@ public class SearchController : ControllerBase
                 {
                     id = x.collection.Id,
                     name = x.collection.Name,
+                    slug = x.collection.Slug,
                     image = x.collection.Image,
-                    brand = new { id = x.collection.Brand.Id, name = x.collection.Brand.Name },
+                    brand = new { id = x.collection.Brand.Id, name = x.collection.Brand.Name, slug = x.collection.Brand.Slug },
                     type = "collection",
                     relevanceScore = x.score
                 })

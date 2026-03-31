@@ -87,7 +87,7 @@ function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
       {cards.map(card => (
         <a
           key={card.id}
-          href={`/watches/${card.id}`}
+          href={`/watches/${card.slug || card.id}`}
           className="flex-shrink-0 flex flex-col items-center gap-1.5 rounded-xl border border-white/10 p-2.5 hover:border-[#bfa68a]/40 transition-colors"
           style={{ background: 'rgba(255,255,255,0.04)', width: 100 }}
         >
