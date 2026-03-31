@@ -754,18 +754,20 @@ public class AdminController : ControllerBase
         try
         {
             var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
-            var watches = await context.Watches
+            var watches = (await context.Watches
                 .OrderBy(w => w.Id)
+                .ToListAsync())
                 .Select(w => new
                 {
                     w.Id,
                     w.Name,
                     w.CurrentPrice,
                     w.Image,
+                    ImageUrl = w.GetImageUrl(),
                     w.BrandId,
                     w.CollectionId
                 })
-                .ToListAsync();
+                .ToList();
 
             return Ok(watches);
         }

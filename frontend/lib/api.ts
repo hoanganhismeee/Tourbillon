@@ -47,6 +47,7 @@ export interface Watch {
   description: string;
   image: string;
   imageUrl?: string;
+  imageVersion?: number | null;
   currentPrice: number;
   brandId: number;
   collectionId: number | null;
@@ -589,8 +590,13 @@ export const adminUploadWatchImage = async (watchId: number, file: File): Promis
     credentials: 'include'
   });
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || errorData.Message || 'Failed to upload image');
+    if (response.status === 404) {
+      throw new Error('Image upload endpoint not available — rebuild and restart the backend container');
+    }
+    const text = await response.text();
+    let message = `Upload failed (${response.status})`;
+    try { message = JSON.parse(text)?.message || JSON.parse(text)?.Message || message; } catch { /* empty body */ }
+    throw new Error(message);
   }
   return response.json();
 };
