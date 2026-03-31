@@ -135,12 +135,31 @@ public class WatchController : ControllerBase
     [HttpGet]
     public IActionResult GetAllWatches()
     {
-        var watches = _context.Watches.ToList();
+        var watches = _context.Watches
+            .Include(w => w.Brand).Include(w => w.Collection)
+            .ToList();
         var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
         return Ok(watchDtos);
     }
 
-    [HttpGet("{id}")]
+    // Slug-based detail — primary public endpoint
+    [HttpGet("by-slug/{slug}")]
+    public async Task<IActionResult> GetWatchBySlug(string slug)
+    {
+        var watch = await _context.Watches
+            .Include(w => w.Brand).Include(w => w.Collection)
+            .Include(w => w.EditorialLink)
+                .ThenInclude(l => l!.EditorialContent)
+            .FirstOrDefaultAsync(w => w.Slug == slug);
+
+        if (watch == null) return NotFound();
+
+        var watchDto = WatchDto.FromWatch(watch, editorial: watch.EditorialLink?.EditorialContent);
+        return Ok(watchDto);
+    }
+
+    // Numeric ID detail — kept for admin/internal use
+    [HttpGet("{id:int}")]
     public async Task<IActionResult> GetWatch(int id)
     {
         var watch = await _context.Watches
@@ -154,18 +173,50 @@ public class WatchController : ControllerBase
         return Ok(watchDto);
     }
 
-    [HttpGet("collection/{collectionId}")]
-    public IActionResult GetByCollection(int collectionId) // Returns all watches from a specific collection by its collection ID.
+    // Slug-based collection filter — primary public endpoint
+    [HttpGet("collection/by-slug/{slug}")]
+    public IActionResult GetByCollectionSlug(string slug)
     {
-        var watches = _context.Watches.Where(w => w.CollectionId == collectionId).ToList();
+        var collection = _context.Collections.FirstOrDefault(c => c.Slug == slug);
+        if (collection == null) return NotFound();
+
+        var watches = _context.Watches
+            .Include(w => w.Brand).Include(w => w.Collection)
+            .Where(w => w.CollectionId == collection.Id).ToList();
         var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
         return Ok(watchDtos);
     }
 
-    [HttpGet("brand/{brandId}")]
-    public IActionResult GetByBrand(int brandId) // Returns all watches for a specific brand by its brand ID.
+    [HttpGet("collection/{collectionId:int}")]
+    public IActionResult GetByCollection(int collectionId)
     {
-        var watches = _context.Watches.Where(w => w.BrandId == brandId).ToList();
+        var watches = _context.Watches
+            .Include(w => w.Brand).Include(w => w.Collection)
+            .Where(w => w.CollectionId == collectionId).ToList();
+        var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
+        return Ok(watchDtos);
+    }
+
+    // Slug-based brand filter — primary public endpoint
+    [HttpGet("brand/by-slug/{slug}")]
+    public IActionResult GetByBrandSlug(string slug)
+    {
+        var brand = _context.Brands.FirstOrDefault(b => b.Slug == slug);
+        if (brand == null) return NotFound();
+
+        var watches = _context.Watches
+            .Include(w => w.Brand).Include(w => w.Collection)
+            .Where(w => w.BrandId == brand.Id).ToList();
+        var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
+        return Ok(watchDtos);
+    }
+
+    [HttpGet("brand/{brandId:int}")]
+    public IActionResult GetByBrand(int brandId)
+    {
+        var watches = _context.Watches
+            .Include(w => w.Brand).Include(w => w.Collection)
+            .Where(w => w.BrandId == brandId).ToList();
         var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
         return Ok(watchDtos);
     }
