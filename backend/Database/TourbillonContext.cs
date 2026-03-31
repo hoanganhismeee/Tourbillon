@@ -34,6 +34,9 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
         // Enable pgvector extension
         modelBuilder.HasPostgresExtension("vector");
 
+        // Slug indexes added in a follow-up migration (AddSlugIndexes) after
+        // DbInitializer.EnsureSlugsPopulated fills the empty default values.
+
         modelBuilder.Entity<WatchEmbedding>(entity =>
         {
             // 768 dimensions — nomic-embed-text output size

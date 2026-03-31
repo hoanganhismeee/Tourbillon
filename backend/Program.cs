@@ -320,6 +320,7 @@ using (var scope = app.Services.CreateScope())
 
     context.Database.Migrate(); // Apply pending migrations
     DbInitializer.Initialize(context); // Seed initial data (9 Holy Trinity showcase watches)
+    await DbInitializer.EnsureSlugsPopulated(context); // Populate empty slugs for URL routing
 
     // Ensure Admin role exists
     await DbInitializer.EnsureAdminSetupAsync(scope.ServiceProvider);
