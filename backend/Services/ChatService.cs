@@ -35,6 +35,7 @@ public class ChatWatchCard
 {
     public int Id { get; set; }
     public string Name { get; set; } = "";
+    public string Slug { get; set; } = "";
     public string? Description { get; set; }
     public string? Image { get; set; }
     public string? ImageUrl { get; set; }
@@ -315,7 +316,7 @@ public class ChatService
             if (col?.Description is { Length: > 0 } desc)
             {
                 var style = !string.IsNullOrWhiteSpace(col.Style) ? $" [Style: {col.Style}]" : "";
-                context.Add($"Collection \"{col.Name}\" (ID: {col.Id}){style}: {desc}");
+                context.Add($"Collection \"{col.Name}\" (Slug: {col.Slug}){style}: {desc}");
             }
         }
 
@@ -324,7 +325,7 @@ public class ChatService
             var brand = w.Brand?.Name ?? "";
             var coll  = w.Collection?.Name ?? "";
             var price = w.CurrentPrice == 0 ? "Price on Request" : $"${w.CurrentPrice:N0}";
-            context.Add($"[Watch ID {w.Id}] {brand} {coll} | Ref: {w.Name} | {price}\nDescription: {w.Description}\nSpecs: {w.Specs}");
+            context.Add($"[Watch Slug {w.Slug}] {brand} {coll} | Ref: {w.Name} | {price}\nDescription: {w.Description}\nSpecs: {w.Specs}");
         }
 
         // Include editorial insights (WhyItMatters, BestFor) for richer AI responses
@@ -338,11 +339,12 @@ public class ChatService
         foreach (var link in editorials)
         {
             var ed = link.EditorialContent!;
+            var editWatch = watches.FirstOrDefault(w => w.Id == link.WatchId);
             var parts = new List<string>();
             if (!string.IsNullOrWhiteSpace(ed.WhyItMatters)) parts.Add(ed.WhyItMatters);
             if (!string.IsNullOrWhiteSpace(ed.BestFor)) parts.Add($"Best for: {ed.BestFor}");
             if (parts.Count > 0)
-                context.Add($"[Editorial for Watch ID {link.WatchId}] {string.Join(" ", parts)}");
+                context.Add($"[Editorial for {editWatch?.Slug ?? link.WatchId.ToString()}] {string.Join(" ", parts)}");
         }
 
         return context;
@@ -355,7 +357,7 @@ public class ChatService
 
         var context = new List<string>
         {
-            $"Brand \"{brand.Name}\" (ID: {brand.Id}):\n{brand.Description}\n{brand.Summary}"
+            $"Brand \"{brand.Name}\" (Slug: {brand.Slug}):\n{brand.Description}\n{brand.Summary}"
         };
 
         var collections = await _context.Collections
@@ -368,7 +370,7 @@ public class ChatService
             if (!string.IsNullOrWhiteSpace(col.Description))
             {
                 var style = !string.IsNullOrWhiteSpace(col.Style) ? $" [Style: {col.Style}]" : "";
-                context.Add($"Collection \"{col.Name}\" (ID: {col.Id}){style}: {col.Description}");
+                context.Add($"Collection \"{col.Name}\" (Slug: {col.Slug}){style}: {col.Description}");
             }
         }
 
@@ -435,7 +437,7 @@ public class ChatService
             var brand = w.Brand?.Name ?? "";
             var coll  = w.Collection?.Name ?? "";
             var price = w.CurrentPrice == 0 ? "Price on Request" : $"${w.CurrentPrice:N0}";
-            context.Add($"[Watch ID {w.Id}] {brand} {coll} | {w.Name} | {price}\n{row.ChunkText}");
+            context.Add($"[Watch Slug {w.Slug}] {brand} {coll} | {w.Name} | {price}\n{row.ChunkText}");
 
             // Include collection description once per collection
             if (w.CollectionId.HasValue && seenCols.Add(w.CollectionId.Value))
@@ -455,16 +457,17 @@ public class ChatService
 
     private async Task<List<ChatWatchCard>> ExtractWatchCardsAsync(string message)
     {
-        var ids = Regex.Matches(message, @"/watches/(\d+)")
-            .Select(m => int.Parse(m.Groups[1].Value))
+        // Match slug-based watch links: /watches/{slug} where slug is alphanumeric + hyphens
+        var slugs = Regex.Matches(message, @"/watches/([\w-]+)")
+            .Select(m => m.Groups[1].Value)
             .Distinct()
             .Take(5)
             .ToList();
 
-        if (ids.Count == 0) return [];
+        if (slugs.Count == 0) return [];
 
         var watches = await _context.Watches
-            .Where(w => ids.Contains(w.Id))
+            .Where(w => slugs.Contains(w.Slug))
             .AsNoTracking()
             .ToListAsync();
 
@@ -472,6 +475,7 @@ public class ChatService
         {
             Id           = w.Id,
             Name         = w.Name,
+            Slug         = w.Slug,
             Description  = w.Description,
             Image        = w.Image,
             ImageUrl     = w.GetImageUrl("dcd9lcdoj"),

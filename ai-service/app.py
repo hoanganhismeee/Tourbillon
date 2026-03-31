@@ -576,8 +576,8 @@ Hard limit: 130 words. Stop at a complete sentence before you hit that limit.
 
 **Links**
 Embed links as natural anchors inside your sentences — never as a standalone line.
-Format: brands [Brand Name](/brands/{id}), collections [Collection Name](/collections/{id}), watches [Watch Name](/watches/{id}).
-IDs come from the provided context. Never invent an ID.
+Format: brands [Brand Name](/brands/{slug}), collections [Collection Name](/collections/{slug}), watches [Watch Name](/watches/{slug}).
+Slugs come from the provided context (e.g. "Slug: patek-philippe"). Never invent a slug.
 
 **Content**
 For brand or collection questions: lead with Tourbillon's catalogue data and collection links first. Then supplement with 1-2 interesting facts the user might not find on the site.
@@ -599,26 +599,26 @@ def _truncate_chat_response(text: str, max_words: int = 130) -> str:
 
 
 def _inject_entity_links(text: str, context: list) -> str:
-    """Parse brand/collection IDs from context and inject markdown links for bare mentions.
+    """Parse brand/collection slugs from context and inject markdown links for bare mentions.
     Only processes plain-text segments — skips text already inside a [link](url).
     Safe for Haiku (which generates links itself) and fixes qwen (which ignores the instruction)."""
     brands: dict = {}
     collections: dict = {}
 
     for item in context:
-        m = re.search(r'Brand "([^"]+)" \(ID: (\d+)\)', item)
+        m = re.search(r'Brand "([^"]+)" \(Slug: ([\w-]+)\)', item)
         if m:
-            brands[m.group(1)] = int(m.group(2))
-        m = re.search(r'Collection "([^"]+)" \(ID: (\d+)\)', item)
+            brands[m.group(1)] = m.group(2)
+        m = re.search(r'Collection "([^"]+)" \(Slug: ([\w-]+)\)', item)
         if m:
-            collections[m.group(1)] = int(m.group(2))
+            collections[m.group(1)] = m.group(2)
 
     if not brands and not collections:
         return text
 
     # Build (name, replacement) pairs — longest names first to avoid partial matches
-    replacements = [(name, f"[{name}](/brands/{bid})") for name, bid in brands.items()]
-    replacements += [(name, f"[{name}](/collections/{cid})") for name, cid in collections.items()]
+    replacements = [(name, f"[{name}](/brands/{slug})") for name, slug in brands.items()]
+    replacements += [(name, f"[{name}](/collections/{slug})") for name, slug in collections.items()]
     replacements.sort(key=lambda x: -len(x[0]))
 
     # Split on existing markdown links so we never double-link
