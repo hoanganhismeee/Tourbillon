@@ -2,7 +2,7 @@
 
 // Modal for manually adding a new watch to the database
 import React, { useState, useRef } from 'react';
-import { Brand, Collection, adminCreateWatch, adminUploadWatchImage } from '@/lib/api';
+import { Brand, Collection, adminCreateWatch, adminUploadWatchImageTemp } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import ImageCropper from './ImageCropper';
 
@@ -63,10 +63,9 @@ export default function AddWatchModal({ brands, collections, onClose, onSave }: 
         setUploadError('');
         try {
             const slugifiedName = (name || 'watch').replace(/[^a-zA-Z0-9-]/g, '-').replace(/-+/g, '-').toLowerCase();
-            const ext = file.name.split('.').pop() || 'png';
-            const cleanFileName = `${slugifiedName}-${Date.now().toString().slice(-4)}.${ext}`;
-            const renamedFile = new File([file], cleanFileName, { type: file.type });
-            const result = await adminUploadWatchImage(renamedFile);
+            const ext = file.name.includes('.') ? file.name.split('.').pop()! : 'png';
+            const safeFile = new File([file], `upload.${ext}`, { type: file.type });
+            const result = await adminUploadWatchImageTemp(safeFile, slugifiedName);
             if (result.success && result.publicId) {
                 setImagePublicId(result.publicId);
             }

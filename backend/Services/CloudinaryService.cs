@@ -19,8 +19,8 @@ public interface ICloudinaryService
     /// Returns: True if deletion was successful, false otherwise
     Task<bool> DeleteImageAsync(string publicId);
 
-    /// Uploads an image from a stream to Cloudinary directly
-    Task<string> UploadImageAsync(Stream imageStream, string filename, string folder = "watches");
+    /// Uploads an image from a stream to Cloudinary directly. Returns (publicId, version).
+    Task<(string PublicId, long Version)> UploadImageAsync(Stream imageStream, string filename, string folder = "watches");
 
     /// Lists all asset public IDs under the given prefix, handling pagination automatically
     Task<List<string>> ListAssetsByPrefixAsync(string prefix);
@@ -205,14 +205,14 @@ public class CloudinaryService : ICloudinaryService
         }
     }
 
-    /// Uploads an image from a stream to Cloudinary
-    public async Task<string> UploadImageAsync(Stream imageStream, string filename, string folder = "watches")
+    /// Uploads an image from a stream to Cloudinary. Returns (publicId, version) for CDN cache-busting.
+    public async Task<(string PublicId, long Version)> UploadImageAsync(Stream imageStream, string filename, string folder = "watches")
     {
         try
         {
             var publicId = Path.GetFileNameWithoutExtension(filename);
             var fullPublicId = string.IsNullOrEmpty(folder) ? publicId : $"{folder}/{publicId}";
-            
+
             var uploadParams = new ImageUploadParams
             {
                 File = new FileDescription(filename, imageStream),
@@ -227,16 +227,17 @@ public class CloudinaryService : ICloudinaryService
             if (uploadResult.Error != null)
             {
                 _logger.LogError("Cloudinary stream upload failed: {Error}", uploadResult.Error.Message);
-                return string.Empty;
+                return (string.Empty, 0);
             }
 
             _logger.LogInformation("Successfully uploaded stream image to Cloudinary: {PublicId}", fullPublicId);
-            return fullPublicId;
+            long.TryParse(uploadResult.Version, out var version);
+            return (fullPublicId, version);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error uploading stream image to Cloudinary");
-            return string.Empty;
+            return (string.Empty, 0);
         }
     }
 }

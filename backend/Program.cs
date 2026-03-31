@@ -274,6 +274,8 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
     Predicate = _ => false,
     ResponseWriter = WriteHealthCheckResponse
 });
+// Bare /health alias for Docker Desktop UI polling (redirects to /health/live)
+app.MapGet("/health", () => Results.Redirect("/health/live"));
 
 // Optional: Auto apply migrations & seed
 using (var scope = app.Services.CreateScope())

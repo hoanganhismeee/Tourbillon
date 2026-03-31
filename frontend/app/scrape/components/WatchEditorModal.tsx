@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Watch, adminFetchWatchById, adminUpdateWatch, adminUploadWatchImage, UpdateWatchDto } from '@/lib/api';
-import { imageTransformations } from '@/lib/cloudinary';
+import { getOptimizedImageUrl } from '@/lib/cloudinary';
 import ImageCropper from './ImageCropper';
 
 interface WatchEditorModalProps {
@@ -13,6 +14,7 @@ interface WatchEditorModalProps {
 
 // --- Main Modal ---
 export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditorModalProps) {
+    const queryClient = useQueryClient();
     const [fullWatch, setFullWatch] = useState<Watch | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -23,6 +25,8 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
     const [price, setPrice] = useState('0');
     const [specsJson, setSpecsJson] = useState('{}');
     const [imagePublicId, setImagePublicId] = useState('');
+    // After upload, store Cloudinary version to bust CDN cache via versioned URL (/v{version}/ path)
+    const [imageVersion, setImageVersion] = useState<number | null>(null);
 
     // Scraped values for comparison
     const [originalSpecs, setOriginalSpecs] = useState('{}');
@@ -75,13 +79,15 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
         try {
             setUploadingImage(true);
             setUploadError('');
-            const slugifiedName = (originalName || name).replace(/[^a-zA-Z0-9-]/g, '-').replace(/-+/g, '-').toLowerCase();
-            const ext = pendingFile.name.split('.').pop() || 'png';
-            const cleanFileName = `${slugifiedName}-${Date.now().toString().slice(-4)}.${ext}`;
-            const renamedFile = new File([pendingFile], cleanFileName, { type: pendingFile.type });
-            const result = await adminUploadWatchImage(renamedFile);
+            // Backend derives canonical public ID from watchId — no slug needed
+            const rawExt = pendingFile.name.includes('.') ? pendingFile.name.split('.').pop()! : 'png';
+            const safeFile = new File([pendingFile], `upload.${rawExt}`, { type: pendingFile.type });
+            const result = await adminUploadWatchImage(watch.id, safeFile);
             if (result.success && result.publicId) {
                 setImagePublicId(result.publicId);
+                setImageVersion(result.version ?? null);
+                // Invalidate React Query cache so watch detail page shows the new image immediately
+                queryClient.invalidateQueries({ queryKey: ['watch', watch.id] });
             }
         } catch (err: unknown) {
             setUploadError(err instanceof Error ? err.message : 'Image upload failed');
@@ -119,13 +125,13 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
             setUploadingImage(true);
             setUploadError('');
 
-            const slugifiedName = (originalName || name).replace(/[^a-zA-Z0-9-]/g, '-').replace(/-+/g, '-').toLowerCase();
-            const cleanFileName = `${slugifiedName}-${Date.now().toString().slice(-4)}.png`;
-            const renamedFile = new File([croppedFile], cleanFileName, { type: 'image/png' });
-
-            const result = await adminUploadWatchImage(renamedFile);
+            // Backend derives canonical public ID from watchId — no slug needed
+            const safeFile = new File([croppedFile], 'upload.png', { type: 'image/png' });
+            const result = await adminUploadWatchImage(watch.id, safeFile);
             if (result.success && result.publicId) {
                 setImagePublicId(result.publicId);
+                setImageVersion(result.version ?? null);
+                queryClient.invalidateQueries({ queryKey: ['watch', watch.id] });
             }
         } catch (err: unknown) {
             setUploadError(err instanceof Error ? err.message : 'Image upload failed');
@@ -223,7 +229,12 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
                             <div className="bg-black/50 p-4 border border-white/10 rounded-lg flex flex-col items-center justify-center mb-6 h-[400px]">
                                 {imagePublicId ? (
                                     <img
-                                        src={imagePublicId.startsWith('http') ? imagePublicId : imageTransformations.detail(imagePublicId)}
+                                        src={(() => {
+                                        if (imagePublicId.startsWith('http')) return imagePublicId;
+                                        const base = getOptimizedImageUrl(imagePublicId, { width: 1200, height: 1200, crop: 'fit' });
+                                        // Inject Cloudinary version into URL path to bypass CDN cache after re-upload
+                                        return imageVersion ? base.replace('/image/upload/', `/image/upload/v${imageVersion}/`) : base;
+                                    })()}
                                         alt="Preview"
                                         className="object-contain max-h-full max-w-full rounded"
                                     />

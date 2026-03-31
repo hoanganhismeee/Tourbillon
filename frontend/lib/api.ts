@@ -577,22 +577,39 @@ export const saveTasteProfile = async (tasteText: string): Promise<TasteProfile>
   return response.json();
 };
 
-export const adminUploadWatchImage = async (file: File, slug?: string): Promise<{ success: boolean; publicId: string }> => {
+// Upload image for an existing watch — backend builds canonical public ID and updates DB.
+export const adminUploadWatchImage = async (watchId: number, file: File): Promise<{ success: boolean; publicId: string; version: number }> => {
   const formData = new FormData();
   formData.append('file', file);
-  if (slug) {
-    formData.append('slug', slug);
-  }
 
   // We intentionally do not use fetchWithTimeout here since uploads can be slow
+  const response = await fetch(`${API_BASE_URL}/admin/watches/${watchId}/image`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include'
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || errorData.Message || 'Failed to upload image');
+  }
+  return response.json();
+};
+
+// Upload image without a watch ID — used when creating a new watch before it has been saved.
+// Returns a temporary public ID; caller should rename after the watch is created.
+export const adminUploadWatchImageTemp = async (file: File, slug: string): Promise<{ success: boolean; publicId: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('slug', slug);
+
   const response = await fetch(`${API_BASE_URL}/admin/watches/upload-image`, {
     method: 'POST',
     body: formData,
     credentials: 'include'
   });
   if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || errorData.Message || 'Failed to upload image');
+    const errorData = await response.json();
+    throw new Error(errorData.message || errorData.Message || 'Failed to upload image');
   }
   return response.json();
 };
