@@ -20,14 +20,34 @@ public class CollectionController : ControllerBase
     [HttpGet]
     public IActionResult GetCollections() => Ok(_context.Collections.ToList()); // Return all collection from database
 
-    [HttpGet("{id}")]
-    public IActionResult GetCollection(int id) // Returns a specific collection from the database by its ID.
+    // Slug-based detail — primary public endpoint
+    [HttpGet("by-slug/{slug}")]
+    public IActionResult GetCollectionBySlug(string slug)
+    {
+        var collection = _context.Collections.FirstOrDefault(c => c.Slug == slug);
+        return collection == null ? NotFound() : Ok(collection);
+    }
+
+    // Numeric ID detail — kept for admin/internal use
+    [HttpGet("{id:int}")]
+    public IActionResult GetCollection(int id)
     {
         var collection = _context.Collections.Find(id);
         return collection == null ? NotFound() : Ok(collection);
     }
 
-    [HttpGet("brand/{brandId}")]
+    // Slug-based brand filter — primary public endpoint
+    [HttpGet("brand/by-slug/{slug}")]
+    public IActionResult GetCollectionsByBrandSlug(string slug)
+    {
+        var brand = _context.Brands.FirstOrDefault(b => b.Slug == slug);
+        if (brand == null) return NotFound();
+
+        var collections = _context.Collections.Where(c => c.BrandId == brand.Id).ToList();
+        return Ok(collections);
+    }
+
+    [HttpGet("brand/{brandId:int}")]
     public IActionResult GetCollectionsByBrand(int brandId)
     {
         var collections = _context.Collections.Where(c => c.BrandId == brandId).ToList();

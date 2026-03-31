@@ -24,8 +24,17 @@ public class BrandController : ControllerBase
         return Ok(brands);
     }
 
-    [HttpGet("{id}")]
-    public IActionResult GetBrand(int id) // Return a specific brand from database from id
+    // Slug-based detail — primary public endpoint
+    [HttpGet("by-slug/{slug}")]
+    public IActionResult GetBrandBySlug(string slug)
+    {
+        var brand = _context.Brands.FirstOrDefault(b => b.Slug == slug);
+        return brand == null ? NotFound() : Ok(brand);
+    }
+
+    // Numeric ID detail — kept for admin/internal use
+    [HttpGet("{id:int}")]
+    public IActionResult GetBrand(int id)
     {
         var brand = _context.Brands.Find(id);
         return brand == null ? NotFound() : Ok(brand);
