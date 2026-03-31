@@ -122,8 +122,8 @@ export default function SmartSearchClient() {
   const [editQuery, setEditQuery] = useState(query);
 
   // Keyword search results — arrive fast (<100ms) before AI results (~4s)
-  const [kwBrands, setKwBrands] = useState<Array<{ id: number; name: string }>>([]);
-  const [kwCollections, setKwCollections] = useState<Array<{ id: number; name: string; brand?: { name: string } }>>([]);
+  const [kwBrands, setKwBrands] = useState<Array<{ id: number; name: string; slug?: string }>>([]);
+  const [kwCollections, setKwCollections] = useState<Array<{ id: number; name: string; slug?: string; brand?: { name: string } }>>([]);
   // Normalized Watch[] so SmartCard can render them during AI loading
   const [kwWatches, setKwWatches] = useState<Watch[]>([]);
 
@@ -189,9 +189,9 @@ export default function SmartSearchClient() {
     fetch(`/api/search?q=${encodeURIComponent(query)}`)
       .then(r => r.ok ? r.json() : null)
       .then((data: {
-        watches?: Array<{ id: number; name: string; description?: string; currentPrice?: number; image?: string; specs?: string; brand: { id: number; name: string }; collection?: { id: number; name: string } }>;
-        brands?: Array<{ id: number; name: string }>;
-        collections?: Array<{ id: number; name: string; brand?: { name: string } }>;
+        watches?: Array<{ id: number; name: string; slug?: string; description?: string; currentPrice?: number; image?: string; specs?: string; brand: { id: number; name: string; slug?: string }; collection?: { id: number; name: string; slug?: string } }>;
+        brands?: Array<{ id: number; name: string; slug?: string }>;
+        collections?: Array<{ id: number; name: string; slug?: string; brand?: { name: string } }>;
       } | null) => {
         if (data) {
           setKwBrands(data.brands?.slice(0, 5) ?? []);
@@ -200,12 +200,14 @@ export default function SmartSearchClient() {
           const normalized: Watch[] = (data.watches ?? []).map(kw => ({
             id: kw.id,
             name: kw.name,
-            slug: '',
+            slug: kw.slug ?? '',
             description: kw.description ?? '',
             image: kw.image ?? '',
             currentPrice: kw.currentPrice ?? 0,
             brandId: kw.brand.id,
+            brandSlug: kw.brand.slug,
             collectionId: kw.collection?.id ?? null,
+            collectionSlug: kw.collection?.slug,
             specs: kw.specs ?? null,
           }));
           setKwWatches(normalized);
@@ -383,7 +385,7 @@ export default function SmartSearchClient() {
           {kwBrands.map(b => (
             <a
               key={`brand-${b.id}`}
-              href={`/brands/${b.id}`}
+              href={`/brands/${b.slug || b.id}`}
               className="px-3 py-1 text-xs font-inter text-white/60 hover:text-white border border-white/15 hover:border-white/35 rounded-full bg-white/5 hover:bg-white/10 transition-all"
             >
               {b.name}
@@ -392,7 +394,7 @@ export default function SmartSearchClient() {
           {kwCollections.map(c => (
             <a
               key={`col-${c.id}`}
-              href={`/collections/${c.id}`}
+              href={`/collections/${c.slug || c.id}`}
               className="px-3 py-1 text-xs font-inter text-white/50 hover:text-white/80 border border-white/10 hover:border-white/25 rounded-full bg-white/3 hover:bg-white/8 transition-all"
             >
               {c.brand ? `${c.brand.name} ${c.name}` : c.name}

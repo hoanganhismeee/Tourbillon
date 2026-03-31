@@ -353,12 +353,14 @@ const WatchDetailPage = () => {
             isOpen={appointmentOpen}
             onClose={() => setAppointmentOpen(false)}
             watchId={watch.id}
+            watchSlug={watch.slug}
             brandName={brands.find(b => b.id === watch.brandId)?.name}
         />
         <RegisterInterestPanel
             isOpen={registerInterestOpen}
             onClose={() => setRegisterInterestOpen(false)}
             watchId={watch.id}
+            watchSlug={watch.slug}
             brandName={brands.find(b => b.id === watch.brandId)?.name}
             collectionName={collectionName}
             watchReference={watch.name}

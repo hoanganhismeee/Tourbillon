@@ -185,7 +185,7 @@ const ComparePage = () => {
                 </button>
 
                 {/* Watch image */}
-                <Link href={`/watches/${watch.id}`} onClick={handleWatchClick}>
+                <Link href={`/watches/${watch.slug || watch.id}`} onClick={handleWatchClick}>
                   <div className="w-36 h-36 mx-auto bg-black/30 rounded-xl mb-3 overflow-hidden border border-white/5">
                     {watch.image ? (
                       <Image
@@ -204,7 +204,7 @@ const ComparePage = () => {
                 </Link>
 
                 {/* Watch name */}
-                <Link href={`/watches/${watch.id}`} onClick={handleWatchClick} className="hover:text-white transition-colors">
+                <Link href={`/watches/${watch.slug || watch.id}`} onClick={handleWatchClick} className="hover:text-white transition-colors">
                   <h3 className="text-sm font-playfair font-semibold text-[#f0e6d2] mb-1 line-clamp-2">{watch.name}</h3>
                 </Link>
 

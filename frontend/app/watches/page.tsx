@@ -21,7 +21,7 @@ import AllWatchesSection from '../components/sections/AllWatchesSection';
 const BrandListItem = ({ brand }: { brand: Brand }) => {
     return (
         <Link
-            href={`/brands/${brand.id}`}
+            href={`/brands/${brand.slug}`}
             className="group block w-full px-8 py-6 border-t border-white/10 transition-colors duration-300 hover:bg-black/20"
         >
             <h2 className="text-2xl font-playfair font-semibold brand-name mb-3 transition-colors group-hover:text-white">
