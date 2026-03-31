@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { Brand, Watch, fetchWatchById, fetchWatchesByBrand } from '@/lib/api';
-import WatchCard from '../../watches/[watchId]/WatchCard';
+import WatchCard from '../../watches/[slug]/WatchCard';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 
 interface TrinityShowcaseProps {

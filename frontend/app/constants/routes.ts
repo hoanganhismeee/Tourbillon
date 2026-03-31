@@ -19,9 +19,9 @@ export const ROUTES = {
 } as const;
 
 export const DYNAMIC_ROUTES = {
-  WATCH_DETAIL: (id: number | string) => `/watches/${id}`,
-  BRAND_DETAIL: (id: number | string) => `/brands/${id}`,
-  COLLECTION_DETAIL: (id: number | string) => `/collections/${id}`,
+  WATCH_DETAIL: (slug: string) => `/watches/${slug}`,
+  BRAND_DETAIL: (slug: string) => `/brands/${slug}`,
+  COLLECTION_DETAIL: (slug: string) => `/collections/${slug}`,
   SEARCH_RESULTS: (query: string) => `/search?q=${encodeURIComponent(query)}`,
   CONTACT_ADVISOR: (watchId: number) => `/contact?watchId=${watchId}`,
 } as const;

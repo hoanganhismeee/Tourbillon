@@ -1,5 +1,5 @@
 // the detailed product page for a single watch.
-// fetches watch data based on the dynamic ID from the URL and presents it in a two-column layout
+// fetches watch data based on the slug from the URL and presents it in a two-column layout
 // with an image, description, specifications, and purchasing options.
 
 'use client';
@@ -9,7 +9,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { fetchWatchById, fetchBrands, fetchCollections } from '@/lib/api';
+import { fetchWatchBySlug, fetchBrands, fetchCollections } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { parseStructuredSpecs, parseFlatSpecs, buildSpecSections } from '@/lib/specs';
@@ -25,8 +25,7 @@ const WatchDetailPage = () => {
     const params = useParams();
     const router = useRouter();
     const searchParams = useSearchParams();
-    const watchId = params.watchId as string;
-    const numericWatchId = watchId ? parseInt(watchId, 10) : NaN;
+    const slug = params.slug as string;
 
     const [imageError, setImageError] = useState(false);
     const [imageLoading, setImageLoading] = useState(true);
@@ -38,9 +37,9 @@ const WatchDetailPage = () => {
     const panelOpenedRef = useRef(false);
 
     const { data: watch, isLoading, error } = useQuery({
-        queryKey: ['watch', numericWatchId],
-        queryFn: () => fetchWatchById(numericWatchId),
-        enabled: !isNaN(numericWatchId),
+        queryKey: ['watch', slug],
+        queryFn: () => fetchWatchBySlug(slug),
+        enabled: !!slug,
     });
 
     const { data: brands = [] } = useQuery({
@@ -75,7 +74,7 @@ const WatchDetailPage = () => {
         const params = new URLSearchParams(searchParams.toString());
         params.delete('panel');
         const newSearch = params.toString();
-        router.replace(`/watches/${watchId}${newSearch ? `?${newSearch}` : ''}`, { scroll: false });
+        router.replace(`/watches/${slug}${newSearch ? `?${newSearch}` : ''}`, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isLoading, watch]);
 
@@ -118,12 +117,12 @@ const WatchDetailPage = () => {
         setImageLoading(false);
     };
 
-    if (isNaN(numericWatchId)) {
+    if (!slug) {
         return (
             <div className="flex justify-center items-center min-h-screen">
                 <div className="text-center">
                     <h2 className="text-2xl font-playfair font-bold text-red-400 mb-2">Invalid Watch</h2>
-                    <p className="text-white/60">The watch ID in the URL is not valid.</p>
+                    <p className="text-white/60">The watch URL is not valid.</p>
                 </div>
             </div>
         );
@@ -221,15 +220,15 @@ const WatchDetailPage = () => {
                     {/* Brand and Collection breadcrumb */}
                     {(brands.length > 0 || collections.length > 0) && (
                         <div className="flex items-center gap-2 mb-3 text-sm">
-                            {brands.find(b => b.id === watch.brandId) && (
-                                <Link href={`/brands/${watch.brandId}`} className="text-white/50 hover:text-white/80 transition-colors font-inter">
+                            {watch.brandSlug && brands.find(b => b.id === watch.brandId) && (
+                                <Link href={`/brands/${watch.brandSlug}`} className="text-white/50 hover:text-white/80 transition-colors font-inter">
                                     {brands.find(b => b.id === watch.brandId)?.name}
                                 </Link>
                             )}
-                            {watch.collectionId && collections.find(c => c.id === watch.collectionId) && (
+                            {watch.collectionSlug && collections.find(c => c.id === watch.collectionId) && (
                                 <>
                                     <span className="text-white/30">·</span>
-                                    <Link href={`/collections/${watch.collectionId}`} className="text-white/50 hover:text-white/80 transition-colors font-inter">
+                                    <Link href={`/collections/${watch.collectionSlug}`} className="text-white/50 hover:text-white/80 transition-colors font-inter">
                                         {collections.find(c => c.id === watch.collectionId)?.name}
                                     </Link>
                                 </>
@@ -353,13 +352,13 @@ const WatchDetailPage = () => {
         <AppointmentPanel
             isOpen={appointmentOpen}
             onClose={() => setAppointmentOpen(false)}
-            watchId={numericWatchId}
+            watchId={watch.id}
             brandName={brands.find(b => b.id === watch.brandId)?.name}
         />
         <RegisterInterestPanel
             isOpen={registerInterestOpen}
             onClose={() => setRegisterInterestOpen(false)}
-            watchId={numericWatchId}
+            watchId={watch.id}
             brandName={brands.find(b => b.id === watch.brandId)?.name}
             collectionName={collectionName}
             watchReference={watch.name}
