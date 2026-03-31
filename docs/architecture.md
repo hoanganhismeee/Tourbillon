@@ -66,7 +66,7 @@ Entry point: `backend/Program.cs`
 - `WatchFilterMapper` — Maps parsed intent to SQL predicates.
 - `WatchEmbeddingService` — Builds 4 text chunks per watch (full, brand_style, specs, use_case), calls ai-service `/embed` in true batches (50 watches / 200 texts per HTTP call), upserts into WatchEmbeddings. Category taxonomy is deterministic (`InferCategory`, `InferOccasions`).
 - `QueryCacheService` — Persistent semantic query cache. Cosine similarity threshold 0.92. Cache bypassed when hard SQL filters detected.
-- `ChatService` — Chat concierge orchestration. Routes queries: PRODUCT (direct DB fetch), BRAND (DB description + web search), GENERAL (vector search top-5 watch_finder embeddings as context). In-memory session store (`ConcurrentDictionary`). Rate-limited per user/day.
+- `ChatService` — Chat concierge orchestration. Routes queries: PRODUCT (direct DB fetch + editorial content), BRAND (DB description + editorial sample + web search), GENERAL (vector search top-5 watch_finder embeddings as context). Redis session store with 1-hour TTL. Rate-limited per user/day. System prompt hardened with scope, grounding, safety, and anti-hallucination guardrails.
 - `TasteProfileService` — Watch DNA. LLM extracts preferences once on save; `ScoreWatch()` is a pure static scoring function (brand +3, material +2, dial +2, size +1, price +1 = 9 max). Zero AI cost at browse time.
 - `WatchEditorialService` — Editorial content per collection. Generated once, stored in DB, served at zero runtime cost. 339/339 coverage.
 

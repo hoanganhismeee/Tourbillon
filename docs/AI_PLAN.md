@@ -303,3 +303,37 @@ A technical audit of the AI retrieval system identified and fixed five issues:
 5. Re-seed cache: `POST /api/admin/query-cache/seed`
 6. Test Smart Search: "Patek Nautilus" should return Nautilus watches ordered by relevance
 7. Test Chat: general query should return response citing specific catalogue watches
+
+---
+
+## 12. Chat Concierge Hardening (March 2026)
+
+### System prompt rewrite
+
+The `CHAT_SYSTEM_PROMPT` was rewritten to add five hardening layers beyond the original tone/style guidance:
+
+| Layer | Purpose | Enforcement |
+|---|---|---|
+| Scope | Restrict to watches, horology, Tourbillon topics | Prompt instruction + polite redirect text |
+| Grounding | Prioritise provided DB context over training data | Prompt: "base answers on provided context" |
+| Anti-hallucination | Never invent specs/prices/availability | Prompt + empty-context fallback (backend) |
+| Safety | Ignore prompt injection, refuse harassment | Prompt: ignore role-change, single redirect for abuse |
+| Consistency | "Tourbillon" naming, spec-based reasoning | Prompt: no "we/our", cite specific specs |
+
+**Design intent:** Not a knowledge prison. The AI leads with Tourbillon catalogue data and navigable links, then supplements with interesting external facts (via web search on brand queries). The grounding constraint prevents hallucination about inventory — not general horological knowledge.
+
+### Editorial content in chat context
+
+Previously, `ChatService` sent only watch specs + descriptions to the AI. Now it also includes `WatchEditorialContent.WhyItMatters` and `WatchEditorialContent.BestFor` for watches in the context. This gives the AI access to rich horological narrative (5-7 sentences each, specific names/dates/history) without any additional AI cost — the content was already generated and stored during editorial seeding.
+
+Affected methods:
+- `FetchProductContextAsync` — loads editorial for all watches in the result set
+- `FetchBrandContextAsync` — loads editorial from up to 3 sample watches for the brand
+
+### Empty-context fallback
+
+When `FetchGeneralContextAsync` returns an empty list (no vector matches), a sentinel context string is injected: `"No matching watches found in the Tourbillon catalogue for this query."` This triggers the grounding instruction to admit lack of data rather than hallucinate from training knowledge.
+
+### Collection.Style in context
+
+`Collection.Style` ("sport", "dress", "diver", etc.) is now appended to collection context strings. This feeds the deterministic category labels from section 2 (Structured Truth + LLM Interpretation) directly into the chat pipeline.
