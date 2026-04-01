@@ -18,9 +18,9 @@ public class BrandController : ControllerBase
     }
 
     [HttpGet]
-    public IActionResult GetAllBrands() // Return all brand from database
+    public IActionResult GetAllBrands() // Return all brands ordered by ID
     {
-        var brands = _context.Brands.ToList();
+        var brands = _context.Brands.OrderBy(b => b.Id).ToList();
         return Ok(brands);
     }
 

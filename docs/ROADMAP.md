@@ -37,6 +37,13 @@
 | Chat Concierge — grounding, safety & editorial enrichment | Done | 9 |
 | Slug-based URLs + Cloudinary public ID sync | In Progress | 9 |
 | Search & Recommendation Analytics Dashboard | Planned | 9.5 |
+| 10A Smooth Scroll (Lenis) | Planned | 10 |
+| 10B shadcn/ui Integration | Planned | 10 |
+| 10C Homepage Cinematic Scroll (GSAP) | Planned | 10 |
+| 10D Watch Card Near-3D Tilt + Shimmer | Planned | 10 |
+| 10E Watch Detail: Video Gallery + Spec Reveal | Planned | 10 |
+| 10F Nav Scroll-Response + Transitions + Grain | Planned | 10 |
+| 10G React Three Fiber (deferred, awaiting 3D assets) | Planned | 10 |
 | Storage Abstraction + S3 + CloudFront Migration | Planned | 11 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | 12 |
 
