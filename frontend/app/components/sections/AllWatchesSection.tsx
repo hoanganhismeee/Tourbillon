@@ -4,7 +4,7 @@
 // Includes one-time retry for transient image load issues.
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWatches, fetchCollections, getTasteProfile, Watch, Collection, Brand, TasteProfile } from '@/lib/api';
@@ -16,6 +16,8 @@ import { WatchCard } from '../cards/WatchCard';
 // Props interface for AllWatchesSection component
 interface AllWatchesSectionProps {
   brands: Brand[]; // Passed from parent component for brand name lookup
+  brandFilter?: number | null;
+  collectionFilter?: number | null;
 }
 
 // Trinity watch IDs excluded from the "All Watches" grid (shown separately in TrinityShowcase)
@@ -106,7 +108,7 @@ function hasAnyPreference(profile: TasteProfile): boolean {
 }
 
 // Main component: handles watches display, pagination, and shuffle logic
-const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
+const AllWatchesSection = ({ brands, brandFilter = null, collectionFilter = null }: AllWatchesSectionProps) => {
   const { isAuthenticated } = useAuth();
   const { hasShuffledWatches, setHasShuffledWatches } = useWatchesPage();
   const searchParams = useSearchParams();
@@ -174,6 +176,21 @@ const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
     }
   }, [watches, tasteProfile]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Apply brand/collection filters on top of the shuffled order
+  const filteredWatches = useMemo(() => {
+    let result = shuffledWatches;
+    if (brandFilter != null) result = result.filter(w => w.brandId === brandFilter);
+    if (collectionFilter != null) result = result.filter(w => w.collectionId === collectionFilter);
+    return result;
+  }, [shuffledWatches, brandFilter, collectionFilter]);
+
+  // Heading label reflects active filter context
+  const headingLabel = useMemo(() => {
+    if (collectionFilter != null) return collections.find(c => c.id === collectionFilter)?.name ?? 'All Watches';
+    if (brandFilter != null) return brands.find(b => b.id === brandFilter)?.name ?? 'All Watches';
+    return 'All Watches';
+  }, [brandFilter, collectionFilter, brands, collections]);
+
   // isReady: content is in the DOM (either watches rendered, or confirmed empty)
   const isReady = shuffledWatches.length > 0 || (!watchesLoading && watches.length === 0);
   useScrollRestore(isReady);
@@ -186,20 +203,20 @@ const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
   }, [currentPage]);
 
   // Page 1 grid slices
-  const initialWatches = shuffledWatches.slice(0, 12);
-  const additionalWatches = shuffledWatches.slice(12, 20);
+  const initialWatches = filteredWatches.slice(0, 12);
+  const additionalWatches = filteredWatches.slice(12, 20);
   const displayedWatches = showAllWatches ? [...initialWatches, ...additionalWatches] : initialWatches;
 
   // Pages 2+ pagination
-  const totalPages = Math.ceil(shuffledWatches.length / watchesPerPage);
+  const totalPages = Math.ceil(filteredWatches.length / watchesPerPage);
   const startIndex = (currentPage - 1) * watchesPerPage;
-  const paginatedWatches = shuffledWatches.slice(startIndex, startIndex + watchesPerPage);
+  const paginatedWatches = filteredWatches.slice(startIndex, startIndex + watchesPerPage);
 
   return (
     <section>
       <div className="text-center mb-20">
         <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2]">
-          {currentPage === 1 ? 'All Watches' : `Watches - Page ${currentPage}`}
+          {currentPage === 1 ? headingLabel : `${headingLabel} — Page ${currentPage}`}
         </h2>
         {isPersonalized && (
           <span className="inline-block mt-3 px-3 py-1 rounded-full text-xs border border-[var(--primary-brown)]/40 text-[var(--primary-brown)]">
@@ -218,7 +235,7 @@ const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
         <>
           {currentPage === 1 ? (
             // PAGE 1: Grid layout with Show More functionality
-            <div className="max-w-7xl mx-auto">
+            <div>
               <div className="grid grid-cols-4 gap-x-8 gap-y-20 mb-20">
                 {displayedWatches.map((watch, index) => (
                   <WatchCard
@@ -232,7 +249,7 @@ const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
                 ))}
               </div>
 
-              {shuffledWatches.length > 16 && (
+              {filteredWatches.length > 16 && (
                 <div className="text-center mt-8">
                   <button
                     onClick={(e) => {
@@ -272,7 +289,7 @@ const AllWatchesSection = ({ brands }: AllWatchesSectionProps) => {
             </div>
           ) : (
             // PAGES 2+: Grid layout
-            <div className="max-w-7xl mx-auto">
+            <div>
               <div className="grid grid-cols-4 gap-x-8 gap-y-20 mb-20">
                 {paginatedWatches.map((watch) => (
                   <WatchCard
