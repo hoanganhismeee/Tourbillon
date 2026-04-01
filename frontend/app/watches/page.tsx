@@ -25,23 +25,20 @@ const WatchesPage = () => {
     queryFn: fetchBrands,
   });
 
-  // When filter changes, go back to page 1 so the user sees filtered results from the start
-  const resetPage = () => {
-    if (searchParams.get('page')) {
-      router.push('/watches', { scroll: false });
-    }
-  };
-
-  const handleBrandSelect = (brandId: number | null) => {
+  // Sync filter state and URL simultaneously — always resets to page 1
+  const handleBrandSelect = (brandId: number | null, slug?: string) => {
     setActiveBrandId(brandId);
     setActiveCollectionId(null);
-    resetPage();
+    router.replace(brandId && slug ? `/watches?brand=${slug}` : '/watches', { scroll: false });
   };
 
-  const handleCollectionSelect = (brandId: number, collectionId: number | null) => {
+  const handleCollectionSelect = (brandId: number, brandSlug: string, collectionId: number | null, collectionSlug?: string) => {
     setActiveBrandId(brandId);
     setActiveCollectionId(collectionId);
-    resetPage();
+    const url = collectionId && collectionSlug
+      ? `/watches?brand=${brandSlug}&collection=${collectionSlug}`
+      : `/watches?brand=${brandSlug}`;
+    router.replace(url, { scroll: false });
   };
 
   return (

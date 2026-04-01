@@ -11,8 +11,8 @@ import { fetchBrands, fetchCollections } from '@/lib/api';
 interface BrandNavPanelProps {
   activeBrandId: number | null;
   activeCollectionId: number | null;
-  onBrandSelect: (brandId: number | null) => void;
-  onCollectionSelect: (brandId: number, collectionId: number | null) => void;
+  onBrandSelect: (brandId: number | null, brandSlug?: string) => void;
+  onCollectionSelect: (brandId: number, brandSlug: string, collectionId: number | null, collectionSlug?: string) => void;
   initialBrandSlug?: string;
   initialCollectionSlug?: string;
 }
@@ -45,29 +45,29 @@ export default function BrandNavPanel({
         c => c.brandId === matchedBrand.id && c.slug === initialCollectionSlug
       );
       if (matchedCol) {
-        onCollectionSelect(matchedBrand.id, matchedCol.id);
+        onCollectionSelect(matchedBrand.id, matchedBrand.slug, matchedCol.id, matchedCol.slug);
         return;
       }
     }
-    onBrandSelect(matchedBrand.id);
+    onBrandSelect(matchedBrand.id, matchedBrand.slug);
   }, [brands, collections, initialBrandSlug, initialCollectionSlug]);
 
-  const handleBrandClick = (brandId: number) => {
+  const handleBrandClick = (brandId: number, brandSlug: string) => {
     if (activeBrandId === brandId) {
       // Clicking the active brand deselects everything
       onBrandSelect(null);
       setExpandedBrandId(null);
     } else {
-      onBrandSelect(brandId);
+      onBrandSelect(brandId, brandSlug);
       setExpandedBrandId(brandId);
     }
   };
 
-  const handleCollectionClick = (brandId: number, collectionId: number) => {
+  const handleCollectionClick = (brandId: number, brandSlug: string, collectionId: number, collectionSlug: string) => {
     if (activeCollectionId === collectionId) {
-      onCollectionSelect(brandId, null);
+      onCollectionSelect(brandId, brandSlug, null);
     } else {
-      onCollectionSelect(brandId, collectionId);
+      onCollectionSelect(brandId, brandSlug, collectionId, collectionSlug);
     }
   };
 
@@ -96,7 +96,7 @@ export default function BrandNavPanel({
         return (
           <div key={brand.id} className="mb-0.5">
             <button
-              onClick={() => handleBrandClick(brand.id)}
+              onClick={() => handleBrandClick(brand.id, brand.slug)}
               className={`w-full text-left py-2 pl-4 pr-2 flex items-center justify-between border-l-2 transition-all duration-200 ${
                 isActive
                   ? 'border-[#bfa68a] text-[#f0e6d2]'
@@ -126,7 +126,7 @@ export default function BrandNavPanel({
                   {cols.map(col => (
                     <li key={col.id}>
                       <button
-                        onClick={() => handleCollectionClick(brand.id, col.id)}
+                        onClick={() => handleCollectionClick(brand.id, brand.slug, col.id, col.slug)}
                         className={`w-full text-left py-1.5 pl-7 pr-2 text-xs border-l-2 transition-all duration-200 ${
                           activeCollectionId === col.id
                             ? 'border-[#bfa68a]/60 text-[#bfa68a]'
