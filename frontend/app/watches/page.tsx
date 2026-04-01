@@ -46,9 +46,10 @@ const BrandListPage = () => {
     queryFn: fetchBrands,
   });
 
-  // Holy Trinity brands (first 3) - Patek Philippe, Vacheron Constantin, Audemars Piguet
-  const trinityBrands = brands.slice(0, 3);
-  const remainingBrands = brands.slice(3);
+  // Holy Trinity brands by fixed ID - Patek Philippe (1), Vacheron Constantin (2), Audemars Piguet (3)
+  const TRINITY_BRAND_IDS = [1, 2, 3];
+  const trinityBrands = TRINITY_BRAND_IDS.map(id => brands.find(b => b.id === id)).filter(Boolean) as Brand[];
+  const remainingBrands = brands.filter(b => !TRINITY_BRAND_IDS.includes(b.id));
   const displayedBrands = showAllBrands ? remainingBrands : remainingBrands.slice(0, 3);
 
   return (

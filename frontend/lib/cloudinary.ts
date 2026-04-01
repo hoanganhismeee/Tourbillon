@@ -5,6 +5,10 @@
 const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dcd9lcdoj';
 const CLOUDINARY_UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
+// Bump this whenever images are replaced in Cloudinary to force CDN cache invalidation.
+// The version is appended as a query param (?v=N), which creates a new CDN cache key.
+const IMAGE_CACHE_VERSION = 2;
+
 // Test function to verify Cloudinary connection
 export const testCloudinaryConnection = () => {
   if (!CLOUDINARY_CLOUD_NAME) {
@@ -78,7 +82,7 @@ export const getOptimizedImageUrl = (
     return `${fetchBase}/${transformationString}${encodeURIComponent(publicId)}`;
   }
   const uploadBase = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload`;
-  return `${uploadBase}/${transformationString}${publicId}`;
+  return `${uploadBase}/${transformationString}${publicId}?v=${IMAGE_CACHE_VERSION}`;
 };
 
 // Predefined transformations for different use cases
@@ -96,8 +100,7 @@ export const imageTransformations = {
         format: 'auto'
       });
     } catch {
-      // Fallback for small images that can't be transformed
-      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}`;
+      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
     }
   },
 
@@ -113,7 +116,7 @@ export const imageTransformations = {
         format: 'auto'
       });
     } catch {
-      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}`;
+      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
     }
   },
 
@@ -129,7 +132,7 @@ export const imageTransformations = {
         format: 'auto'
       });
     } catch {
-      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}`;
+      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
     }
   },
 
@@ -145,15 +148,14 @@ export const imageTransformations = {
         format: 'auto'
       });
     } catch {
-      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}`;
+      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
     }
   },
 
   // For brand logos
   logo: (value: string) => {
-    // Brand logos - use simple URL since transformations cause 400 errors
     const normalizedValue = normalizePublicId(value);
-    return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}`;
+    return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
   },
 };
 
