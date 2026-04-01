@@ -4,13 +4,14 @@
 "use client";
 import { motion } from "framer-motion";
 import { useInView } from "react-intersection-observer";
+import { EASE_ENTER, DUR } from "@/lib/motion";
 
 // Animates its child: fades in on scroll into view, fades out on scroll out of view (both directions)
 export default function ScrollFade({ 
   children, 
   className = "",
   delay = 0,
-  duration = 0.8,
+  duration = DUR.slow,
   threshold = 0.2,
   triggerOnce = false
 }: { 
@@ -36,7 +37,7 @@ export default function ScrollFade({
       transition={{ 
         duration, 
         delay,
-        ease: [0.22, 1, 0.36, 1],
+        ease: EASE_ENTER,
         opacity: { duration: duration * 0.8 },
         y: { duration: duration }
       }}

@@ -4,10 +4,12 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { motion, useScroll, useTransform, useMotionValueEvent } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePathname } from 'next/navigation';
 import SearchOverlay from './SearchOverlay';
 import { useFavourites } from '@/stores/favouritesStore';
+import { EASE_ENTER, EASE_EXIT, DUR } from '@/lib/motion';
 
 // Custom SVG icon components for consistent styling and easy maintenance
 
@@ -173,12 +175,15 @@ const UserMenu = () => {
     // State for search overlay
     const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-    // State for scroll-based animations and navbar behavior
-    const lastScrollY = useRef(0); // Previous scroll position for direction detection
-    const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up'); // Current scroll direction
-    const pathname = usePathname(); // Current pathname for route change detection, Debug function
-    const [scrollY, setScrollY] = useState(0); // Current scroll position for background opacity
-    const [mounted, setMounted] = useState(false); // Hydration state to prevent SSR/client mismatch
+    // Scroll direction state — drives hide/show animation
+    const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up');
+    const pathname = usePathname();
+    const [mounted, setMounted] = useState(false); // Hydration guard for background div
+
+    // Framer Motion scroll tracking — replaces manual addEventListener + rAF
+    const { scrollY } = useScroll();
+    // Background opacity: 0 at top of page, 1 after 25px scroll
+    const bgOpacity = useTransform(scrollY, [0, 25], [0, 1]);
 
     // Set mounted state to true after component mounts (prevents hydration errors)
     useEffect(() => {
@@ -211,32 +216,13 @@ const UserMenu = () => {
       }
     }, []);
   
-    // Handle scroll events for navbar hide/show animation and background opacity
-    useEffect(() => {
-      // Only run on client side to prevent SSR issues
-      if (typeof window === 'undefined') return;
-      
-      let ticking = false; // Throttle scroll events for performance
-      const handleScroll = () => {
-        const currentY = window.scrollY;
-        if (!ticking) {
-          window.requestAnimationFrame(() => {
-            const diff = currentY - lastScrollY.current;
-            // Hide navbar when scrolling down more than 5 pixels
-            if (diff > 5) setScrollDirection('down');
-            // Show navbar when scrolling up more than 3 pixels
-            else if (diff < -3) setScrollDirection('up');
-            
-            setScrollY(currentY); // Update scroll position for background opacity
-            lastScrollY.current = currentY;
-            ticking = false;
-          });
-          ticking = true;
-        }
-      };
-      window.addEventListener('scroll', handleScroll);
-      return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
+    // Derive scroll direction from Framer's scrollY motion value — no rAF or listeners needed
+    useMotionValueEvent(scrollY, 'change', (latest) => {
+      const prev = scrollY.getPrevious() ?? 0;
+      const diff = latest - prev;
+      if (diff > 5) setScrollDirection('down');
+      else if (diff < -3) setScrollDirection('up');
+    });
 
     // Reset navbar to visible on route change
     useEffect(() => {
@@ -244,23 +230,27 @@ const UserMenu = () => {
     }, [pathname]);
   
     return (
-      <nav
+      <motion.nav
         ref={navRef}
-        className={`fixed top-0 left-0 w-full z-50 px-16 py-12 grid grid-cols-3 items-center transition-all duration-800 ease-in-out ${mounted ? (scrollDirection === 'down' ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100') : 'translate-y-0 opacity-100'}`}
+        animate={{
+          y: scrollDirection === 'down' ? '-100%' : '0%',
+          opacity: scrollDirection === 'down' ? 0 : 1,
+        }}
+        transition={{ duration: DUR.fast, ease: scrollDirection === 'down' ? EASE_EXIT : EASE_ENTER }}
+        className="fixed top-0 left-0 w-full z-50 px-16 py-12 grid grid-cols-3 items-center"
       >
-        {/* Dynamic background with scroll-based opacity - only render when mounted */}
+        {/* Background — opacity driven by scroll position via useTransform, no manual math */}
         {mounted && (
-          <div 
+          <motion.div
             className="absolute inset-0 rounded-[20px] mt-12 mb-12"
             style={{
               background: 'linear-gradient(90deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.025) 100%)',
               backdropFilter: 'blur(14px)',
               WebkitBackdropFilter: 'blur(14px)',
               zIndex: -1,
-              opacity: Math.min(scrollY / 25, 1), // Smooth fade from 0 to 1 over 25px scroll
-              transition: 'opacity 0.5s ease',
-              marginLeft: '20px', // Custom left padding
-              marginRight: '20px', // Custom right padding
+              opacity: bgOpacity,
+              marginLeft: '20px',
+              marginRight: '20px',
             }}
           />
         )}
@@ -309,7 +299,7 @@ const UserMenu = () => {
           isOpen={isSearchOpen}
           onClose={() => setIsSearchOpen(false)}
         />
-      </nav>
+      </motion.nav>
     );
   }
   

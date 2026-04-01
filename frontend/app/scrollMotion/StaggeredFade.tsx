@@ -5,6 +5,7 @@
 import React from 'react';
 import { motion } from "framer-motion";
 import { useInView } from "react-intersection-observer";
+import { EASE_ENTER, DUR } from "@/lib/motion";
 
 interface StaggeredFadeProps {
   children: React.ReactNode;
@@ -19,7 +20,7 @@ export default function StaggeredFade({
   children, 
   className = "",
   staggerDelay = 0.1, // delay between items
-  duration = 0.6, // duration of the animation
+  duration = DUR.mid, // duration of the animation
   threshold = 0, // animation starts immediately when intersecting
   triggerOnce = true // animation only plays once
 }: StaggeredFadeProps) {
@@ -47,7 +48,7 @@ export default function StaggeredFade({
       y: 0,
       transition: {
         duration,
-        ease: [0.22, 1, 0.36, 1] as const,
+        ease: EASE_ENTER,
       },
     },
   };
