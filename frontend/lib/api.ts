@@ -663,6 +663,18 @@ export const adminUploadWatchImageTemp = async (file: File, slug: string): Promi
   return response.json();
 };
 
+export const adminRefreshImageCache = async (brandId?: number): Promise<{ updated: number; version: number }> => {
+  const url = brandId
+    ? `${API_BASE_URL}/admin/watches/refresh-image-cache?brandId=${brandId}`
+    : `${API_BASE_URL}/admin/watches/refresh-image-cache`;
+  const response = await fetchWithTimeout(url, { method: 'POST', credentials: 'include' });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.Message || 'Failed to refresh image cache');
+  }
+  return response.json();
+};
+
 export interface CloudinaryOrphansResult {
   dryRun: boolean;
   message: string;

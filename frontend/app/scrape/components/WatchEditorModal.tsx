@@ -19,10 +19,14 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
+    // Allowed production status values
+    const PRODUCTION_STATUSES = ['', 'Current production', 'Discontinued', 'Limited edition'] as const;
+
     // Form fields
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [price, setPrice] = useState('0');
+    const [productionStatus, setProductionStatus] = useState('');
     const [specsJson, setSpecsJson] = useState('{}');
     const [imagePublicId, setImagePublicId] = useState('');
     // After upload, store Cloudinary version to bust CDN cache via versioned URL (/v{version}/ path)
@@ -57,7 +61,12 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
                 setName(data.name);
                 setDescription(data.description || '');
                 setPrice(data.currentPrice.toString());
-                setSpecsJson(data.specs || '{}');
+                const specsStr = data.specs || '{}';
+                setSpecsJson(specsStr);
+                try {
+                    const parsed = JSON.parse(specsStr);
+                    setProductionStatus(parsed.productionStatus ?? '');
+                } catch { /* leave blank on bad JSON */ }
                 setImagePublicId(data.image || '');
                 setImageVersion(data.imageVersion ?? null);
 
@@ -160,13 +169,20 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
         try {
             setSaving(true);
             setSaveError('');
+            // Merge productionStatus back into the specs JSON before saving
+            let mergedSpecs = specsJson;
+            try {
+                const parsed = JSON.parse(specsJson);
+                parsed.productionStatus = productionStatus || null;
+                mergedSpecs = JSON.stringify(parsed);
+            } catch { /* leave specsJson as-is if it's invalid JSON */ }
             const data: UpdateWatchDto = {
                 name,
                 description,
                 currentPrice: parseFloat(price),
                 image: imagePublicId,
                 collectionId: fullWatch?.collectionId || null,
-                specs: specsJson
+                specs: mergedSpecs
             };
             await adminUpdateWatch(watch.id, data);
             onSave();
@@ -295,6 +311,19 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
                     <div className="mb-4">
                         <label className="block text-sm text-gray-400 mb-1">Description</label>
                         <input type="text" className="w-full bg-black/60 border border-white/20 rounded p-2 text-white" value={description} onChange={e => setDescription(e.target.value)} />
+                    </div>
+
+                    <div className="mb-4">
+                        <label className="block text-sm text-gray-400 mb-1">Production Status</label>
+                        <select
+                            className="w-full bg-black/60 border border-white/20 rounded p-2 text-white focus:outline-none focus:border-[#f0e6d2] transition-colors"
+                            value={productionStatus}
+                            onChange={e => setProductionStatus(e.target.value)}
+                        >
+                            {PRODUCTION_STATUSES.map(s => (
+                                <option key={s} value={s}>{s || '— Not set —'}</option>
+                            ))}
+                        </select>
                     </div>
 
                     <div className="mb-4">

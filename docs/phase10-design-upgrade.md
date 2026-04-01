@@ -14,6 +14,8 @@ Tourbillon's feature set is complete through Phase 9. Phase 10 is a dedicated fr
 | `lenis` | Smooth momentum scroll site-wide | `npm install lenis` |
 | `shadcn/ui` | Accessible form/overlay primitives (Radix UI) | `npx shadcn@latest init` |
 | `gsap` + `@gsap/react` | Cinematic scroll sequences (3 key moments) | `npm install gsap @gsap/react` |
+| `motion-number` | Animated price count-up (formatting + reduced-motion) | `npm install motion-number` |
+| `vaul` *(optional)* | Swipe-to-dismiss drawer for mobile panels | `npm install vaul` |
 
 ### Defer to Phase 10G (until 3D assets ready):
 | Library | Purpose |
@@ -46,6 +48,16 @@ export const DUR = {
 ---
 
 ## Sub-Phase Breakdown
+
+---
+
+### Step 0 — Create `lib/motion.ts` (prerequisite for all sub-phases)
+**Do this before starting 10A.** Creates the shared constants file and fixes the one active easing inconsistency:
+
+- `MotionMain.tsx` currently uses `ease: "easeOut"` (Framer preset) — every other animated component uses `[0.22, 1, 0.36, 1]`. Patch `MotionMain.tsx` to use `EASE_ENTER` immediately after creating `lib/motion.ts`.
+- Also applies to `useScrollRestore.ts` hardcoded `0.65s cubic-bezier(0.16,1,0.3,1)` — replace with `EASE_LUXURY` + `DUR.mid`.
+
+**Files:** `frontend/lib/motion.ts` (new), `frontend/app/scrollMotion/MotionMain.tsx` (1-line patch)
 
 ---
 
@@ -104,16 +116,23 @@ npx shadcn@latest init
 **Components to add + where used:**
 | shadcn component | Replaces / Used in |
 |---|---|
-| `Sheet` (drawer) | `WatchFilterBar` — slide-in filter panel on mobile |
-| `Command` + `CommandDialog` | `SearchOverlay.tsx` — replace custom search overlay |
+| `Sheet` (drawer) | `SlidingPanel.tsx` (AppointmentPanel, RegisterInterestPanel, ChatPanel) + `WatchFilterBar` mobile |
+| `Command` + `CommandDialog` | `SearchOverlay.tsx` — replace double-RAF + CSS overlay |
 | `Form` + `Input` + `Textarea` | `AppointmentPanel.tsx`, `RegisterInterestPanel.tsx`, `ContactPage` |
 | `Badge` | Watch card status pill (production status) |
 | `Separator` | Spec table section dividers |
 | `Tooltip` | CompareToggle, FavouriteToggle hover labels |
-| `ScrollArea` | ChatPanel message list |
-| `Dialog` | SaveToCollectionPopup (replace custom portal logic) |
+| `ScrollArea` | ChatPanel message list — replace raw `overflow-y-auto` + manual `scrollTop`; ref stays on inner viewport div |
+| `Dialog` | SaveToCollectionPopup (replace custom portal + smart-position logic) |
+| `Popover` | Phone-region + salutation dropdowns in AppointmentPanel / RegisterInterestPanel (see SlidingPanel risk below) |
+
+**Risk — SlidingPanel `overlays` prop:** `SlidingPanel.tsx` has a custom `overlays` prop that renders fixed-position phone-region and salutation dropdowns outside the scroll area. shadcn `Sheet` (Radix `DialogPortal`) has no equivalent. Rebuild those dropdowns as Radix `Popover` components *inside* the Sheet before migrating `SlidingPanel`.
+
+**WatchFilterBar mobile:** Add a `Sheet` as an outer wrapper for mobile only (md breakpoint split — `hidden md:block` for the bar, `md:hidden` trigger button). Do not refactor the internal `FilterDropdown` logic — the Sheet is a shell only.
 
 **Risk:** shadcn uses `cn()` utility (clsx + tailwind-merge). Add `lib/utils.ts` with `cn`. Confirm `tailwind-merge` is compatible with Tailwind v4 (it is, but test after adding).
+
+**Migration order (safest first):** Dialog → ScrollArea → Tooltip → Sheet (SlidingPanel) → CommandDialog → Form/Input → Sheet (WatchFilterBar)
 
 **Validation:** `npx tsc --noEmit`
 
@@ -168,6 +187,8 @@ export function GSAPProvider({ children }) {
 - Positioned after `WatchFinderSearch` on homepage
 - File: `app/page.tsx` (add after search section)
 
+**GSAP vs IntersectionObserver:** GSAP ScrollTrigger handles the 3 pinned/sequential homepage moments above. Keep `react-intersection-observer` for all `ScrollFade`/`StaggeredFade` per-element scroll entrances throughout the rest of the site — both libraries coexist and serve different roles.
+
 **Validation:** `npx tsc --noEmit`
 
 ---
@@ -184,8 +205,14 @@ export function GSAPProvider({ children }) {
 // On mouseleave: spring back to 0,0 (Framer motion spring, stiffness 200, damping 30)
 ```
 
+**WatchCard extraction (do first):** Two separate WatchCard implementations currently exist:
+- `app/watches/[slug]/WatchCard.tsx` — reusable, prop-driven (`imageFit`, `hrefSuffix`, `collectionLabels`)
+- Inline card inside `AllWatchesSection.tsx` — separate implementation with `hover:scale-105`
+
+Extract the inline card to `app/components/cards/WatchCard.tsx` before adding tilt — otherwise tilt logic must be applied and maintained in two places.
+
 **Implementation on WatchCard:**
-- The existing cards in `AllWatchesSection.tsx` currently use basic hover:scale-105
+- The existing inline cards in `AllWatchesSection.tsx` currently use basic `hover:scale-105`
 - Replace with `motion.div` with `style={{ rotateX, rotateY, transformPerspective: 800 }}`
 - Add gold border shimmer: `bg-gradient-to-r from-transparent via-[#f0e6d2]/20 to-transparent` sliding on hover (CSS `@keyframes shimmer`)
 - Image: blur-to-sharp reveal on `IntersectionObserver` entry (already partially done, refine)
@@ -194,7 +221,7 @@ export function GSAPProvider({ children }) {
 - Current: all items fade same direction
 - New: alternate odd/even items from left/right (even: `x: -30`, odd: `x: 30`)
 
-**Files:** `AllWatchesSection.tsx`, possibly extract `WatchCard.tsx` as its own component (currently inline)
+**Files:** `AllWatchesSection.tsx`, `app/components/cards/WatchCard.tsx` (extracted)
 
 **Validation:** `npx tsc --noEmit`
 
@@ -225,8 +252,7 @@ export function GSAPProvider({ children }) {
 - Use `useScroll` + `useMotionValueEvent`
 
 **Dramatic price reveal:**
-- Price number: count-up animation on mount (Framer `useTransform` or simple counter hook)
-- Only fires once, respects `prefers-reduced-motion`
+- Price number: count-up animation using `motion-number` library (`npm install motion-number`) — handles currency formatting (commas, "Price on Request" for 0), spring physics, and `prefers-reduced-motion` automatically. Fires once on mount.
 
 **Files:** `app/watches/[slug]/page.tsx`, new `WatchMediaGallery.tsx` component
 
@@ -314,6 +340,7 @@ npm install -D @types/three
 | `frontend/app/components/sections/VideoSection.tsx` | GSAP pin + text reveal |
 | `frontend/app/components/sections/ProductVideoSection.tsx` | New — product movement video |
 | `frontend/app/components/sections/TrinityShowcase.tsx` | GSAP parallax depth |
+| `frontend/app/components/cards/WatchCard.tsx` | New — extracted from AllWatchesSection (10D prerequisite) |
 | `frontend/app/components/sections/AllWatchesSection.tsx` | Tilt cards, directional stagger |
 | `frontend/app/components/layout/NavBar.tsx` | Scroll-responsive compact mode |
 | `frontend/app/components/ui/WatchCardSkeleton.tsx` | New — shimmer skeleton |
@@ -329,8 +356,9 @@ npm install -D @types/three
 Execute sub-phases in order — each is independently validatable:
 
 ```
-10A (Lenis) → validate → 10B (shadcn) → validate → 10C (GSAP) → validate
-→ 10D (Cards) → validate → 10E (Watch Detail) → validate
+Step 0 (lib/motion.ts + MotionMain patch) → 10A (Lenis) → validate
+→ 10B (shadcn) → validate → 10C (GSAP) → validate
+→ 10D (WatchCard extract → tilt) → validate → 10E (Watch Detail) → validate
 → 10F (Nav + Polish) → validate → 10G when assets arrive
 ```
 

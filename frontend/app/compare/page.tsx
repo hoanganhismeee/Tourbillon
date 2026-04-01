@@ -263,8 +263,20 @@ const ComparePage = () => {
               <div className="grid items-stretch" style={{ gridTemplateColumns: colTemplate }}>
                 <div className="px-4 py-3 text-sm text-white/40 font-inter flex items-center bg-white/[0.02]">Production</div>
                 {parsedSpecs.map((specs, idx) => (
-                  <div key={idx} className="px-4 py-3 text-sm font-inter font-medium text-white/70 border-l border-l-white/5 flex items-center">
-                    {specs?.productionStatus || <span className="text-white/15 italic">N/A</span>}
+                  <div key={idx} className="px-4 py-3 text-sm font-inter font-medium border-l border-l-white/5 flex items-center">
+                    {specs?.productionStatus ? (
+                        <span className={`px-2 py-0.5 text-xs rounded-full border ${
+                            specs.productionStatus === 'Discontinued'
+                                ? 'text-white/40 border-white/15 bg-white/5'
+                                : specs.productionStatus === 'Limited edition'
+                                ? 'text-amber-300/80 border-amber-400/30 bg-amber-400/10'
+                                : 'text-[#f0e6d2]/70 border-[#f0e6d2]/20 bg-[#f0e6d2]/5'
+                        }`}>
+                            {specs.productionStatus}
+                        </span>
+                    ) : (
+                        <span className="text-white/15 italic">N/A</span>
+                    )}
                   </div>
                 ))}
               </div>

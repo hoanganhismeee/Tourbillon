@@ -252,6 +252,8 @@ const WatchDetailPage = () => {
                             <span className={`inline-block mt-2 px-3 py-1 text-xs font-medium rounded-full border ${
                                 structuredSpecs.productionStatus === 'Discontinued'
                                     ? 'text-white/40 border-white/15 bg-white/5'
+                                    : structuredSpecs.productionStatus === 'Limited edition'
+                                    ? 'text-amber-300/80 border-amber-400/30 bg-amber-400/10'
                                     : 'text-[#f0e6d2]/70 border-[#f0e6d2]/20 bg-[#f0e6d2]/5'
                             }`}>
                                 {structuredSpecs.productionStatus}
