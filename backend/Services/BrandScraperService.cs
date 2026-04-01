@@ -757,7 +757,7 @@ public class BrandScraperService : IDisposable
             {
                 _logger.LogInformation("JLC Collection Parse - Detail: '{Detail}', Card: '{Card}'", collectionName, cardInfo.CollectionName);
 
-                // Canonical names matching the database (collections.csv)
+                // Canonical names matching the database
                 var collectionMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     { "Master Ultra Thin", "Master Ultra Thin" },
