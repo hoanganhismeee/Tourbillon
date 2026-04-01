@@ -24,8 +24,13 @@ public class Watch
     public ICollection<PriceTrend>? PriceHistory { get; set; } = new List<PriceTrend>();
     public WatchEditorialLink? EditorialLink { get; set; }
 
+    // Bump this when images are replaced directly in Cloudinary (without going through the upload endpoint).
+    // Used as a fallback when a watch has no per-watch ImageVersion — ensures CDN cache is busted globally.
+    private const int GlobalImageCacheVersion = 2;
+
     /// Returns the complete image URL for Cloudinary images.
-    /// Injects /v{ImageVersion}/ when present to bypass CDN cache after re-upload.
+    /// Injects /v{ImageVersion}/ (per-watch) or ?v={GlobalImageCacheVersion} (global fallback)
+    /// to bypass CDN cache after re-upload.
     public string? GetImageUrl(string? cloudName = "dcd9lcdoj")
     {
         if (string.IsNullOrEmpty(Image))
@@ -35,7 +40,13 @@ public class Watch
         if (Image.StartsWith("http://") || Image.StartsWith("https://"))
             return Image;
 
-        var version = ImageVersion.HasValue ? $"v{ImageVersion}/" : string.Empty;
-        return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_800,h_800,c_fit/{version}{Image}";
+        if (ImageVersion.HasValue)
+        {
+            // Per-watch version: injected into the URL path (Cloudinary canonical versioning)
+            return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_800,h_800,c_fit/v{ImageVersion}/{Image}";
+        }
+
+        // Global fallback: query param ensures CDN treats this as a new URL
+        return $"https://res.cloudinary.com/{cloudName}/image/upload/dpr_auto/q_auto/f_auto/w_800,h_800,c_fit/{Image}?v={GlobalImageCacheVersion}";
     }
 }
