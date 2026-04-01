@@ -3,7 +3,7 @@
 // Shares the same TanStack Query cache keys as the page so no extra requests fire.
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { fetchBrands, fetchCollections } from '@/lib/api';
@@ -13,6 +13,8 @@ interface BrandNavPanelProps {
   activeCollectionId: number | null;
   onBrandSelect: (brandId: number | null) => void;
   onCollectionSelect: (brandId: number, collectionId: number | null) => void;
+  initialBrandSlug?: string;
+  initialCollectionSlug?: string;
 }
 
 export default function BrandNavPanel({
@@ -20,6 +22,8 @@ export default function BrandNavPanel({
   activeCollectionId,
   onBrandSelect,
   onCollectionSelect,
+  initialBrandSlug,
+  initialCollectionSlug,
 }: BrandNavPanelProps) {
   const [expandedBrandId, setExpandedBrandId] = useState<number | null>(activeBrandId);
 
@@ -27,6 +31,26 @@ export default function BrandNavPanel({
   const { data: collections = [] } = useQuery({ queryKey: ['collections'], queryFn: fetchCollections });
 
   const getBrandCollections = (brandId: number) => collections.filter(c => c.brandId === brandId);
+
+  // Apply URL-based initial filter once brands/collections are loaded
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (initializedRef.current || !initialBrandSlug || brands.length === 0) return;
+    const matchedBrand = brands.find(b => b.slug === initialBrandSlug);
+    if (!matchedBrand) return;
+    initializedRef.current = true;
+    setExpandedBrandId(matchedBrand.id);
+    if (initialCollectionSlug && collections.length > 0) {
+      const matchedCol = collections.find(
+        c => c.brandId === matchedBrand.id && c.slug === initialCollectionSlug
+      );
+      if (matchedCol) {
+        onCollectionSelect(matchedBrand.id, matchedCol.id);
+        return;
+      }
+    }
+    onBrandSelect(matchedBrand.id);
+  }, [brands, collections, initialBrandSlug, initialCollectionSlug]);
 
   const handleBrandClick = (brandId: number) => {
     if (activeBrandId === brandId) {
@@ -48,7 +72,7 @@ export default function BrandNavPanel({
   };
 
   return (
-    <nav className="w-52 shrink-0 sticky top-28 self-start max-h-[calc(100vh-8rem)] overflow-y-auto pr-4 border-r border-white/10">
+    <nav className="w-52 shrink-0 sticky top-28 self-start pr-4 border-r border-white/10">
 
       {/* All Watches reset */}
       <button

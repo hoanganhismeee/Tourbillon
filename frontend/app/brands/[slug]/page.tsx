@@ -1,55 +1,67 @@
-// Brand page: shows brand logo, description, collections, and watches in one place.
-// Data cached via TanStack Query; images use Cloudinary-optimized URLs with next/image.
+// Brand page: logo hero → description → collection list → watches grid.
+// Collections shown as text-only rows (no images) — cleaner than cards.
+// Watches use the same tilt/shimmer card as the main watches page.
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { motion } from 'framer-motion';
+import { useParams, useRouter } from 'next/navigation';
+import { useNavigation } from '@/contexts/NavigationContext';
 import { useQuery } from '@tanstack/react-query';
-import { fetchBrandBySlug, fetchWatchesByBrandSlug, fetchCollectionsByBrandSlug, Collection } from '@/lib/api';
+import { fetchBrandBySlug, fetchWatchesByBrandSlug, fetchCollectionsByBrandSlug, Collection, Brand } from '@/lib/api';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { imageTransformations } from '@/lib/cloudinary';
 import Image from 'next/image';
-import ScrollFade from '../../scrollMotion/ScrollFade';
-import StaggeredFade from '../../scrollMotion/StaggeredFade';
-import WatchCard from '../../watches/[slug]/WatchCard';
 import Link from 'next/link';
+import ScrollFade from '../../scrollMotion/ScrollFade';
+import { WatchCard } from '../../components/cards/WatchCard';
 
-
-// A reusable component for displaying a single collection card.
-const CollectionCard = ({ collection }: { collection: Collection }) => {
-    const [imgError, setImgError] = useState(false);
-    return (
-        <Link href={`/collections/${collection.slug}`} className="block">
-            <div className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-4 transition-all duration-300 hover:border-white/30 hover:scale-105 cursor-pointer">
-                <div className="w-full h-40 bg-black/30 rounded-lg mb-4 flex items-center justify-center">
-                    {collection.image && !imgError ? (
-                        <Image
-                          src={imageTransformations.thumbnail(collection.image)}
-                          alt={collection.name}
-                          width={300}
-                          height={160}
-                          sizes="(min-width: 1024px) 300px, 50vw"
-                          className="h-full w-auto object-contain rounded"
-                          loading="lazy"
-                          onError={() => setImgError(true)}
-                        />
-                    ) : (
-                        <span className="text-white/30 text-sm font-playfair">{collection.name}</span>
-                    )}
-                </div>
-                <h3 className="text-lg font-semibold text-[#f0e6d2] group-hover:text-white transition-colors mb-2">{collection.name}</h3>
-                <p className="text-sm text-white/60 group-hover:text-white/80">{collection.description}</p>
-            </div>
-        </Link>
-    );
-};
+// Clean text-only row for a collection — no image needed.
+const CollectionListItem = ({ collection }: { collection: Collection }) => (
+  <Link
+    href={`/collections/${collection.slug}`}
+    className="group flex items-start justify-between gap-8 py-6 border-t border-white/10 transition-all duration-300 hover:pl-2"
+  >
+    <div className="flex-1 min-w-0">
+      <h3 className="text-base font-playfair font-semibold text-[#f0e6d2] mb-1.5 group-hover:text-white transition-colors">
+        {collection.name}
+      </h3>
+      {collection.description && (
+        <p className="text-sm text-white/50 group-hover:text-white/70 font-light leading-relaxed line-clamp-2 transition-colors">
+          {collection.description}
+        </p>
+      )}
+    </div>
+    <svg
+      className="w-4 h-4 text-white/25 group-hover:text-white/60 mt-1 shrink-0 transition-all duration-300 group-hover:translate-x-1"
+      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
+    </svg>
+  </Link>
+);
 
 const BrandPage = () => {
   const params = useParams();
   const slug = params.slug as string;
 
+  const router = useRouter();
+  const { navigationState } = useNavigation();
+
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [logoError, setLogoError] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
+
+  const handleBackClick = () => {
+    if (navigationState) {
+      document.body.style.transition = 'opacity 0.18s ease-in';
+      document.body.style.opacity = '0';
+      setTimeout(() => { document.body.style.transition = 'opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1)'; document.body.style.opacity = '1'; }, 2000);
+      setTimeout(() => { router.back(); }, 160);
+    } else {
+      router.push(brand?.slug ? `/watches?brand=${brand.slug}` : '/watches');
+    }
+  };
 
   const { data: brand, isLoading, error } = useQuery({
     queryKey: ['brand', slug],
@@ -63,15 +75,14 @@ const BrandPage = () => {
     enabled: !!slug,
   });
 
-  useScrollRestore(watches.length > 0 || !watchesLoading);
-
   const { data: collections = [] } = useQuery({
     queryKey: ['collections', 'brand', slug],
     queryFn: () => fetchCollectionsByBrandSlug(slug),
     enabled: !!slug,
   });
 
-  // Initialize brand logo source when brand data arrives
+  useScrollRestore(watches.length > 0 || !watchesLoading);
+
   useEffect(() => {
     if (brand?.image) {
       setLogoSrc(imageTransformations.logo(brand.image));
@@ -81,104 +92,201 @@ const BrandPage = () => {
   if (isLoading) {
     return <div className="flex justify-center items-center min-h-screen text-white/80">Loading...</div>;
   }
-
   if (error) {
     return <div className="flex justify-center items-center min-h-screen text-red-500">Error loading brand.</div>;
   }
-
   if (!brand) {
     return <div className="flex justify-center items-center min-h-screen text-white/80">Brand not found.</div>;
   }
 
-  return (
-    <div className="container mx-auto px-4 sm:px-8 py-20 pt-20">
-      <ScrollFade>
-        <header className="text-center mb-8">
+  // Split into lede + body. Two strategies:
+  // 1. If the description opens with a quote (" or "), scan to the closing " or " — captures the full quoted passage.
+  // 2. Otherwise, find the first sentence end after a real word (4+ chars) — skips initials like "A.".
+  // Split into lede + body. Two strategies:
+  // 1. If the description opens with a quote (" or "), scan to the closing " or " — captures the full quoted passage.
+  // 2. Otherwise, find the first sentence end after a real word (4+ chars) — skips initials like "A.".
+  let lede = '';
+  let bodyText = brand.description;
+  const trimmed = brand.description.trimStart();
+  if (trimmed.startsWith('\u201c') || trimmed.startsWith('"')) {
+    const closeIdx = trimmed.search(/[\u201d"]/);
+    if (closeIdx > 0 && closeIdx < 500) {
+      lede = trimmed.slice(0, closeIdx + 1);
+      bodyText = brand.description.slice(brand.description.indexOf(lede) + lede.length).trimStart();
+    }
+  }
+  if (!lede) {
+    const sentenceMatch = brand.description.match(/[A-Za-zÀ-ÿ]{4,}\. /);
+    const firstStop = sentenceMatch?.index != null ? sentenceMatch.index + sentenceMatch[0].length - 2 : -1;
+    if (firstStop > 0 && firstStop < 400) {
+      lede = brand.description.slice(0, firstStop + 1);
+      bodyText = brand.description.slice(firstStop + 2);
+    }
+  }
 
-          {/* Brand Logo */}
+  // If the DB already has newlines, respect them; otherwise split into ~3-sentence chunks.
+  const rawParagraphs = bodyText.split('\n').map(p => p.trim()).filter(p => p.length > 0);
+  const bodyParagraphs: string[] = rawParagraphs.length > 1
+    ? rawParagraphs
+    : (() => {
+        // Split on sentence boundaries (real words only), then group every 3 sentences.
+        const sentences = bodyText
+          .split(/(?<=[A-Za-zÀ-ÿ0-9]{3,}[.!?])\s+(?=[A-Z"'])/)
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
+        const chunks: string[] = [];
+        for (let i = 0; i < sentences.length; i += 3) {
+          chunks.push(sentences.slice(i, i + 3).join(' '));
+        }
+        return chunks;
+      })();
+
+  const brandAsArray: Brand[] = [brand];
+
+  return (
+    <div className="container mx-auto px-8 sm:px-12 lg:px-16 py-20 max-w-7xl">
+
+      {/* Back button */}
+      <div className="mb-10">
+        <button
+          onClick={handleBackClick}
+          className="inline-flex items-center gap-2 text-white/50 hover:text-white/90 transition-colors duration-300 text-sm font-light tracking-wide"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
+          </svg>
+          {navigationState ? 'Back' : 'All Watches'}
+        </button>
+      </div>
+
+      {/* ── Hero: logo + description ── */}
+      <ScrollFade>
+        <header className="mb-16">
+
+          {/* Logo or brand name — left-aligned */}
           {brand.image && !logoError ? (
-            <div className="flex justify-center mb-10">
+            <div className="mb-10">
               <Image
                 src={logoSrc || imageTransformations.logo(brand.image)}
                 alt={`${brand.name} logo`}
                 width={800}
                 height={200}
                 sizes="(min-width: 1024px) 600px, 80vw"
-                className="h-32 md:h-48 lg:h-56 w-auto object-contain"
+                className="h-24 md:h-32 w-auto object-contain"
                 priority
                 onError={() => setLogoError(true)}
               />
             </div>
           ) : (
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-playfair font-bold text-[#f0e6d2] mb-10">
-              {brand.name}
-            </h1>
+            <h1 className="text-5xl font-playfair font-light text-[#f0e6d2] mb-10">{brand.name}</h1>
           )}
 
-         <div className="w-full border-t border-white/10 my-10"></div>
+          <div className="w-full border-t border-white/10 mb-12" />
 
-         <div className="mt-16 max-w-7xl mx-auto px-4 sm:px-8">
-           <div className="text-white/85 leading-relaxed font-playfair font-light tracking-wide text-lg md:text-xl lg:text-2xl text-left">
-                             {(() => {
-                const paragraphs = brand.description
-                  .split('\n')
-                  .map(p => p.trim())
-                  .filter(p => p.length > 0);
+          {/* Description — lede always visible; body collapses with fade + Read more */}
+          <div className="max-w-3xl">
+            {lede && (
+              <p className="text-base md:text-lg font-playfair font-light text-[#f0e6d2]/85 leading-8 mb-6 pb-6 border-b border-white/10">
+                {lede}
+              </p>
+            )}
 
-                return paragraphs.map((paragraph, index) => {
-                  if (index === 0 && paragraph.includes('"')) {
-                    return (
-                      <div key={index} className="mb-8">
-                        <blockquote className="text-[#f0e6d2] text-base md:text-lg lg:text-xl font-medium italic text-center border-l-4 border-[#f0e6d2]/30 pl-6 py-4">
-                          {paragraph}
-                        </blockquote>
-                      </div>
-                    );
-                  }
-                  return (
-                    <p key={index} className="mb-6">
-                      {paragraph}
-                    </p>
-                  );
-                });
-              })()}
-           </div>
-         </div>
-               </header>
-     </ScrollFade>
+            {bodyParagraphs.length > 0 && (
+              <>
+                {/* Collapsible body — fade is scoped inside so it never overlaps the button */}
+                <div className="relative">
+                  <motion.div
+                    initial={{ height: '7rem' }}
+                    animate={{ height: descExpanded ? 'auto' : '7rem' }}
+                    transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                    className="overflow-hidden"
+                  >
+                    {bodyParagraphs.map((paragraph, index) => (
+                      <p key={index} className="text-sm text-white/55 font-light leading-7 tracking-wide mb-5">
+                        {paragraph}
+                      </p>
+                    ))}
+                  </motion.div>
 
-     <div className="w-full border-t border-white/10 my-24"></div>
+                  {/* Fade gradient — contained within the text box only */}
+                  {!descExpanded && (
+                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#1a120d]/70 to-transparent pointer-events-none" />
+                  )}
+                </div>
 
-     {/* Collections Grid */}
-    <section className="mb-16">
-      <ScrollFade>
-        <h2 className="text-3xl font-playfair font-semibold mb-8 text-white/90">Collections</h2>
+                {/* Button sits below the text box, never covered by the fade */}
+                <button
+                  onClick={() => setDescExpanded(v => !v)}
+                  className="mt-4 flex items-center gap-1.5 text-xs tracking-widest uppercase text-[#bfa68a] hover:text-[#f0e6d2] transition-colors duration-300 font-light"
+                >
+                  {descExpanded ? 'Read less' : 'Read more'}
+                  <svg
+                    className={`w-3 h-3 transition-transform duration-300 ${descExpanded ? 'rotate-180' : ''}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
+
+        </header>
       </ScrollFade>
-      <StaggeredFade className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
-        {collections.length > 0 ? (
-          collections.map((collection) => <CollectionCard key={collection.id} collection={collection} />)
-        ) : (
-          <p className="text-white/60 col-span-full">No collections available for this brand yet.</p>
-        )}
-               </StaggeredFade>
-     </section>
 
-     <div className="w-full border-t border-white/10 my-24"></div>
+      <div className="w-full border-t border-white/10 mb-16" />
 
-     {/* Watch Collection */}
-    <section>
-      <ScrollFade>
-        <h2 className="text-3xl font-playfair font-semibold mb-8 text-white/90">Watches</h2>
-      </ScrollFade>
-      <StaggeredFade className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
-        {watches.length > 0 ? (
-          watches.map((watch) => <WatchCard key={watch.id} watch={watch} />)
+      {/* ── Collections ── */}
+      {collections.length > 0 && (
+        <section className="mb-16">
+          <ScrollFade>
+            <h2 className="text-2xl font-playfair font-semibold text-[#f0e6d2] mb-0">Collections</h2>
+          </ScrollFade>
+
+          <div className="max-w-2xl">
+            {collections.map(collection => (
+              <ScrollFade key={collection.id}>
+                <CollectionListItem collection={collection} />
+              </ScrollFade>
+            ))}
+            {/* Close the list with a bottom border */}
+            <div className="border-t border-white/10" />
+          </div>
+        </section>
+      )}
+
+      <div className="w-full border-t border-white/10 mb-16" />
+
+      {/* ── Watches ── */}
+      <section>
+        <ScrollFade>
+          <h2 className="text-2xl font-playfair font-semibold text-[#f0e6d2] mb-12">Timepieces</h2>
+        </ScrollFade>
+
+        {watchesLoading ? (
+          <div className="text-center py-16">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white/40 mx-auto mb-4" />
+            <p className="text-white/50 text-sm font-playfair">Loading watches...</p>
+          </div>
+        ) : watches.length > 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-16">
+            {watches.map((watch, index) => (
+              <WatchCard
+                key={watch.id}
+                watch={watch}
+                brands={brandAsArray}
+                collections={collections}
+                isPriority={index < 4}
+                currentPage={1}
+              />
+            ))}
+          </div>
         ) : (
-          <p className="text-white/60 col-span-full">No watches available for this brand yet.</p>
+          <p className="text-white/50 text-sm font-playfair">No watches available for this brand yet.</p>
         )}
-      </StaggeredFade>
-    </section>
-  </div>
+      </section>
+
+    </div>
   );
 };
 
