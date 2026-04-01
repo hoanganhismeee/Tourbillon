@@ -1,7 +1,6 @@
 // Full-screen video hero for the homepage landing experience.
-// Fills the entire viewport; scrolling down reveals the search section.
+// Fills the entire viewport; scrolling down reveals the content below.
 // Source: /public/tourbillon.mp4 (served as a static asset by Next.js).
-
 export default function VideoSection() {
   return (
     <section
@@ -18,11 +17,11 @@ export default function VideoSection() {
         <source src="/tourbillon.mp4" type="video/mp4" />
       </video>
 
-      {/* Fade into page background so the search section below feels seamless */}
+      {/* Fade into page background so the section below feels seamless */}
       <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-b from-transparent to-black" />
 
       {/* Scroll hint */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/40 text-xs tracking-[0.2em] uppercase animate-bounce select-none">
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/40 text-xs tracking-[0.2em] uppercase select-none animate-bounce">
         scroll
       </div>
     </section>

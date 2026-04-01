@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState, KeyboardEvent } from 'react';
 import { useChat } from '@/contexts/ChatContext';
 import { imageTransformations } from '@/lib/cloudinary';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import type { ChatWatchCard } from '@/lib/api';
 
 const EXAMPLE_PROMPTS = [
@@ -174,7 +175,8 @@ export default function ChatPanel() {
       </div>
 
       {/* Message area */}
-      <div className="flex-1 overflow-y-auto px-6 py-2 space-y-4">
+      <ScrollArea className="flex-1">
+      <div className="px-6 py-2 space-y-4">
 
         {/* Empty state */}
         {messages.length === 0 && (
@@ -244,6 +246,7 @@ export default function ChatPanel() {
 
         <div ref={bottomRef} />
       </div>
+      </ScrollArea>
 
       {/* Usage counter */}
       {showUsage && (

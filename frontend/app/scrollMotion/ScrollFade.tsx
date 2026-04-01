@@ -11,7 +11,7 @@ export default function ScrollFade({
   children, 
   className = "",
   delay = 0,
-  duration = DUR.slow,
+  duration = 0.8,
   threshold = 0.2,
   triggerOnce = false
 }: { 

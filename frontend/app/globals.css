@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
 
 @layer base {
   *, *::before, *::after {
@@ -9,6 +13,7 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    @apply border-border outline-ring/50;
   }
 
   html {
@@ -28,14 +33,43 @@ html.custom-cursor * {
 }
 
 :root {
+  /* Tourbillon brand tokens */
   --white: #ffffff;
   --cream-gold: #f0e6d2;
   --cream: #fefbf3;
   --primary-brown: #bfa68a;
   --light-cream: #F9F6F2;
   --dark-brown: #1e1512;
-}
 
+  /* shadcn theme — dark luxury palette */
+  --background: oklch(0.14 0.018 50);       /* #1e1512 dark brown */
+  --foreground: oklch(0.91 0.028 80);        /* #f0e6d2 cream gold */
+  --card: oklch(0.17 0.022 45);             /* #2a1713 dark glassy */
+  --card-foreground: oklch(0.91 0.028 80);
+  --popover: oklch(0.17 0.022 45);
+  --popover-foreground: oklch(0.91 0.028 80);
+  --primary: oklch(0.71 0.045 65);           /* #bfa68a brand gold */
+  --primary-foreground: oklch(0.14 0.018 50);
+  --secondary: oklch(0.20 0.018 45);
+  --secondary-foreground: oklch(0.91 0.028 80);
+  --muted: oklch(0.20 0.018 45);
+  --muted-foreground: oklch(0.65 0.015 80);
+  --accent: oklch(0.22 0.018 45);
+  --accent-foreground: oklch(0.91 0.028 80);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 10%);
+  --ring: oklch(0.71 0.045 65);              /* brand gold focus ring */
+  --radius: 0.625rem;
+  --sidebar: oklch(0.17 0.022 45);
+  --sidebar-foreground: oklch(0.91 0.028 80);
+  --sidebar-primary: oklch(0.71 0.045 65);
+  --sidebar-primary-foreground: oklch(0.14 0.018 50);
+  --sidebar-accent: oklch(0.22 0.018 45);
+  --sidebar-accent-foreground: oklch(0.91 0.028 80);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.71 0.045 65);
+}
 
 .logo-text { 
   color: var(--cream-gold); 
@@ -82,3 +116,54 @@ body {
 .grid > * {
   transform: translateZ(0);
 }
+
+/* Gold shimmer sweep for watch card hover (Phase 10D) */
+@keyframes shimmer {
+  from { background-position: 200% center; }
+  to   { background-position: -200% center; }
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* .dark not used — app is always dark-themed via :root above */

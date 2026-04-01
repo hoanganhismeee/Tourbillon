@@ -5,137 +5,13 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWatches, fetchCollections, getTasteProfile, Watch, Collection, Brand, TasteProfile } from '@/lib/api';
-import { imageTransformations, getOptimizedImageUrl } from '@/lib/cloudinary';
-import Image from 'next/image';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
-import { useNavigation } from '@/contexts/NavigationContext';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useAuth } from '@/contexts/AuthContext';
-import CompareToggle from '../compare/CompareToggle';
-import FavouriteToggle from '../favourites/FavouriteToggle';
-
-
-// Individual watch card component for grid layout
-// Displays watch image, brand name, collection, model name, and price
-const WatchCard = ({ watch, brands, collections, isPriority = false, currentPage }: {
-  watch: Watch;
-  brands: Brand[];
-  collections: Collection[];
-  // Eager-load above-the-fold images to improve perceived speed on first render
-  isPriority?: boolean;
-  currentPage: number;
-}) => {
-  const { saveNavigationState } = useNavigation();
-
-  const handleWatchClick = () => {
-    saveNavigationState({
-      scrollPosition: window.scrollY,
-      currentPage,
-      path: window.location.pathname,
-      timestamp: Date.now(),
-    });
-  };
-
-  // Local retry state for handling intermittent Cloudinary/optimizer hiccups
-  const [src, setSrc] = useState<string>(watch.imageUrl || imageTransformations.card(watch.image));
-  const [retryCount, setRetryCount] = useState<number>(0);
-
-  const handleImgError = () => {
-    // One fallback attempt: switch to explicit JPG and add a cache-busting query param
-    if (retryCount < 1) {
-      setRetryCount(1);
-      const fallback = getOptimizedImageUrl(watch.image, {
-        width: 800,
-        height: 800,
-        crop: 'fit',
-        quality: 'auto',
-        format: 'jpg',
-      }) + `?r=${Date.now()}`;
-      setSrc(fallback);
-    }
-  };
-
-  const router = useRouter();
-
-  const handleBrandClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (watch.brandSlug) router.push(`/brands/${watch.brandSlug}`);
-  };
-
-  const handleCollectionClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (watch.collectionSlug) {
-      router.push(`/collections/${watch.collectionSlug}`);
-    }
-  };
-
-  return (
-    <div className="group relative block bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 transition-all duration-500 hover:bg-gradient-to-br hover:from-white/10 hover:to-white/15 hover:border-white/30 hover:scale-105 hover:shadow-2xl hover:shadow-white/10">
-      {/* Watch image with Cloudinary optimization - Clickable to watch details */}
-      <div className="relative mb-4">
-        <Link href={`/watches/${watch.slug || watch.id}`} onClick={handleWatchClick}>
-          <div className="w-full aspect-square bg-gradient-to-br from-black/40 to-black/60 rounded-xl flex items-center justify-center border border-white/10 overflow-hidden cursor-pointer">
-            {watch.image ? (
-              <Image
-                src={src}
-                alt={watch.name}
-                width={400}
-                height={400}
-                sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"
-                className="w-full h-full object-contain rounded-xl"
-                priority={isPriority}
-                fetchPriority={isPriority ? 'high' as const : 'auto'}
-                placeholder="blur"
-                blurDataURL={getOptimizedImageUrl(watch.image, { width: 16, height: 16, quality: 1, crop: 'fill', format: 'jpg' })}
-                onError={handleImgError}
-              />
-            ) : (
-              <span className="text-white/60 text-xs font-light">{watch.name}</span>
-            )}
-          </div>
-        </Link>
-        {/* Action button field — bottom-right of image, visible on hover */}
-        <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-          <FavouriteToggle watchId={watch.id} />
-          <CompareToggle watch={watch} />
-        </div>
-      </div>
-
-      {/* Watch information - brand, collection, model, price */}
-      <div className="space-y-2">
-        <button
-          onClick={handleBrandClick}
-          className="text-xs text-white/60 hover:text-white/90 font-inter font-light uppercase tracking-wide transition-colors cursor-pointer bg-transparent border-none p-0 text-left"
-        >
-          {brands.find(b => b.id === watch.brandId)?.name || 'Unknown Brand'}
-        </button>
-
-        {watch.collectionId && collections.find(c => c.id === watch.collectionId) && (
-          <button
-            onClick={handleCollectionClick}
-            className="block text-xs text-white/50 hover:text-white/80 font-inter font-light transition-colors cursor-pointer bg-transparent border-none p-0 text-left"
-          >
-            {collections.find(c => c.id === watch.collectionId)?.name}
-          </button>
-        )}
-
-        <Link href={`/watches/${watch.slug || watch.id}`} onClick={handleWatchClick}>
-          <h3 className="text-sm font-inter font-medium text-white group-hover:text-[#f0e6d2] transition-colors truncate cursor-pointer">
-            {watch.name}
-          </h3>
-        </Link>
-
-        <p className="text-lg text-[#f0e6d2] font-inter font-semibold">
-          {watch.currentPrice === 0 ? 'Price on Request' : `$${watch.currentPrice.toLocaleString()}`}
-        </p>
-      </div>
-    </div>
-  );
-};
+import { WatchCard } from '../cards/WatchCard';
 
 // Props interface for AllWatchesSection component
 interface AllWatchesSectionProps {
