@@ -21,6 +21,14 @@
   }
 }
 
+/* Hide native scrollbar globally */
+html {
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+  display: none;
+}
+
 /* Hide native cursor when custom cursor is active */
 html.custom-cursor,
 html.custom-cursor * {
