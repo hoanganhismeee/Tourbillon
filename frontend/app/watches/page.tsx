@@ -17,6 +17,9 @@ const WatchesPage = () => {
   const [activeBrandId, setActiveBrandId] = useState<number | null>(null);
   const [activeCollectionId, setActiveCollectionId] = useState<number | null>(null);
 
+  const brandSlug = searchParams.get('brand') ?? undefined;
+  const collectionSlug = searchParams.get('collection') ?? undefined;
+
   const { data: brands = [] } = useQuery({
     queryKey: ['brands'],
     queryFn: fetchBrands,
@@ -51,6 +54,8 @@ const WatchesPage = () => {
           activeCollectionId={activeCollectionId}
           onBrandSelect={handleBrandSelect}
           onCollectionSelect={handleCollectionSelect}
+          initialBrandSlug={brandSlug}
+          initialCollectionSlug={collectionSlug}
         />
       </div>
 

@@ -120,7 +120,7 @@ export const WatchCard = ({ watch, brands, collections, isPriority = false, curr
       <div className="space-y-2" style={{ transform: 'translateZ(10px)' }}>
         <button
           onClick={handleBrandClick}
-          className="text-xs text-white/60 hover:text-white/90 font-inter font-light uppercase tracking-wide transition-colors cursor-pointer bg-transparent border-none p-0 text-left"
+          className="text-xs text-white/60 hover:text-white/90 font-inter font-light uppercase tracking-wide transition-colors cursor-pointer bg-transparent border-none p-0 text-left underline decoration-white/20 hover:decoration-white/60 underline-offset-2"
         >
           {brands.find(b => b.id === watch.brandId)?.name || 'Unknown Brand'}
         </button>
@@ -128,7 +128,7 @@ export const WatchCard = ({ watch, brands, collections, isPriority = false, curr
         {watch.collectionId && collections.find(c => c.id === watch.collectionId) && (
           <button
             onClick={handleCollectionClick}
-            className="block text-xs text-white/50 hover:text-white/80 font-inter font-light transition-colors cursor-pointer bg-transparent border-none p-0 text-left"
+            className="block text-xs text-white/50 hover:text-white/80 font-inter font-light transition-colors cursor-pointer bg-transparent border-none p-0 text-left underline decoration-white/15 hover:decoration-white/50 underline-offset-2"
           >
             {collections.find(c => c.id === watch.collectionId)?.name}
           </button>
