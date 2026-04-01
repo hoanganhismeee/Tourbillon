@@ -1007,6 +1007,26 @@ public class AdminController : ControllerBase
         }
     }
 
+    /// Bumps ImageVersion to the current Unix timestamp for all watches (or a single brand).
+    /// Call this after replacing images directly in Cloudinary to bust CDN cache without re-uploading.
+    /// POST: api/admin/watches/refresh-image-cache?brandId=4
+    [HttpPost("watches/refresh-image-cache")]
+    public async Task<IActionResult> RefreshImageCache([FromQuery] int? brandId = null)
+    {
+        var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var query = context.Watches.AsQueryable();
+        if (brandId.HasValue)
+            query = query.Where(w => w.BrandId == brandId.Value);
+
+        var watches = await query.ToListAsync();
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        foreach (var w in watches)
+            w.ImageVersion = now;
+
+        await context.SaveChangesAsync();
+        return Ok(new { Updated = watches.Count, Version = now });
+    }
+
     /// Converts full Cloudinary URLs to public IDs in the database
     /// POST: api/admin/migrate-image-urls?dryRun=true
     /// Use dryRun=true (default) to preview changes, dryRun=false to apply

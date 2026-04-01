@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { adminFetchWatches, adminFetchWatchById, adminUpdateEditorial, fetchBrands, fetchCollections, deleteWatch, Watch, WatchEditorialContent, Brand, Collection } from '@/lib/api';
+import { adminFetchWatches, adminFetchWatchById, adminUpdateEditorial, adminRefreshImageCache, fetchBrands, fetchCollections, deleteWatch, Watch, WatchEditorialContent, Brand, Collection } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import WatchEditorModal from './components/WatchEditorModal';
 import AddWatchModal from './components/AddWatchModal';
@@ -20,6 +20,8 @@ export default function ScrapeAdminPage() {
     const [loading, setLoading] = useState(true);
     const [editingWatch, setEditingWatch] = useState<Watch | null>(null);
     const [addingWatch, setAddingWatch] = useState(false);
+    const [refreshingCache, setRefreshingCache] = useState(false);
+    const [refreshCacheMsg, setRefreshCacheMsg] = useState('');
 
     // Inline editorial editing
     const [editorialWatchId, setEditorialWatchId] = useState<number | null>(null);
@@ -109,6 +111,22 @@ export default function ScrapeAdminPage() {
         reloadWatches();
     };
 
+    const handleRefreshImageCache = async () => {
+        const brandId = selectedBrand || undefined;
+        const scope = brandId ? brands.find(b => b.id === brandId)?.name : 'all brands';
+        if (!confirm(`Bump image cache version for ${scope}? This forces CDN to re-fetch images replaced directly in Cloudinary.`)) return;
+        try {
+            setRefreshingCache(true);
+            setRefreshCacheMsg('');
+            const result = await adminRefreshImageCache(brandId);
+            setRefreshCacheMsg(`Updated ${result.updated} watches (v${result.version})`);
+        } catch (err: unknown) {
+            setRefreshCacheMsg(err instanceof Error ? err.message : 'Failed');
+        } finally {
+            setRefreshingCache(false);
+        }
+    };
+
     if (authLoading || !isAdmin) return null;
 
     if (loading) {
@@ -152,12 +170,25 @@ export default function ScrapeAdminPage() {
                     Showing {filteredWatches.length} watches
                 </div>
 
-                <button
-                    className="ml-auto bg-[#f0e6d2] text-black px-5 py-2 rounded font-medium hover:bg-white transition-colors"
-                    onClick={() => setAddingWatch(true)}
-                >
-                    + Add Watch
-                </button>
+                <div className="ml-auto flex items-center gap-3">
+                    {refreshCacheMsg && (
+                        <span className="text-xs text-green-400">{refreshCacheMsg}</span>
+                    )}
+                    <button
+                        className="bg-white/10 text-gray-300 px-5 py-2 rounded font-medium hover:bg-white/20 transition-colors disabled:opacity-50"
+                        onClick={handleRefreshImageCache}
+                        disabled={refreshingCache}
+                        title={selectedBrand ? 'Bump image cache version for selected brand' : 'Bump image cache version for all brands'}
+                    >
+                        {refreshingCache ? 'Refreshing...' : 'Refresh Image Cache'}
+                    </button>
+                    <button
+                        className="bg-[#f0e6d2] text-black px-5 py-2 rounded font-medium hover:bg-white transition-colors"
+                        onClick={() => setAddingWatch(true)}
+                    >
+                        + Add Watch
+                    </button>
+                </div>
             </div>
 
             <div className="overflow-x-auto bg-black/40 rounded border border-white/20">
