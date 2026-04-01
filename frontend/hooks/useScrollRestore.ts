@@ -6,6 +6,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useNavigation } from '@/contexts/NavigationContext';
+import { EASE_LUXURY_CSS } from '@/lib/motion';
 
 const STORAGE_KEY = 'tourbillon-nav';
 
@@ -43,7 +44,7 @@ export function useScrollRestore(isReady: boolean) {
     // expo-out easing (0.16, 1, 0.3, 1) — fast start, long gentle tail — feels premium.
     requestAnimationFrame(() => {
       if (document.body.style.opacity === '0') {
-        document.body.style.transition = 'opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1)';
+        document.body.style.transition = `opacity 0.65s ${EASE_LUXURY_CSS}`;
         document.body.style.opacity = '1';
         setTimeout(() => { document.body.style.transition = ''; }, 700);
       }

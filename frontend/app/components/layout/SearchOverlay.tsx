@@ -7,16 +7,15 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { SUGGESTIONS } from '@/app/components/WatchFinderSearch';
+import { EASE_LUXURY_CSS, EASE_EXIT_CSS } from '@/lib/motion';
 
 interface SearchOverlayProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-// Expo-out: full velocity at start → smooth deceleration to rest.
-// You perceive the full slide distance but the landing feels weightless.
-const ENTER = 'cubic-bezier(0.16, 1, 0.3, 1)';
-const EXIT  = 'cubic-bezier(0.4, 0, 1, 1)';
+const ENTER = EASE_LUXURY_CSS;
+const EXIT  = EASE_EXIT_CSS;
 
 export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   const router   = useRouter();

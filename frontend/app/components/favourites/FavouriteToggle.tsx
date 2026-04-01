@@ -30,7 +30,7 @@ const SignInNudge = ({ anchorRect, onClose }: { anchorRect: DOMRect; onClose: ()
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose]);
 
-  const left = Math.max(8, Math.min(anchorRect.right - 180, window.innerWidth - 192));
+  const left = Math.max(8, Math.min(anchorRect.right - 220, window.innerWidth - 232));
   const top = anchorRect.bottom + 8;
 
   return ReactDOM.createPortal(
@@ -39,7 +39,7 @@ const SignInNudge = ({ anchorRect, onClose }: { anchorRect: DOMRect; onClose: ()
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -4 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
-      style={{ position: 'fixed', left, top, zIndex: 9999, width: 180 }}
+      style={{ position: 'fixed', left, top, zIndex: 9999, width: 220 }}
       className="rounded-xl border border-[#bfa68a]/35 shadow-xl shadow-black/50 px-4 py-3 text-center"
       onClick={e => e.stopPropagation()}
     >
@@ -64,7 +64,8 @@ const SignInNudge = ({ anchorRect, onClose }: { anchorRect: DOMRect; onClose: ()
           strokeWidth="1"
         />
       </svg>
-      <p className="text-xs text-white/60 font-inter mb-2.5">Sign in to save watches</p>
+      <p className="text-xs text-white/60 font-inter mb-1">Sign in to save watches</p>
+      <p className="text-[11px] text-white/35 font-inter mb-2.5">and receive email alerts on price drops for your favourites</p>
       <Link
         href="/login?redirect=/favourites"
         onClick={onClose}
