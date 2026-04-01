@@ -46,14 +46,14 @@ export default function SlidingPanel({
           aria-label={ariaLabel ?? title}
           onKeyDown={e => e.key === 'Escape' && onClose()}
         >
-          {/* Backdrop */}
+          {/* Backdrop — enters slower than panel, exits faster (dissolves before panel finishes sliding) */}
           <motion.div
             key="backdrop"
             onClick={onClose}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: DUR.mid, ease: EASE_ENTER }}
+            exit={{ opacity: 0, transition: { duration: DUR.fast, ease: EASE_EXIT } }}
+            transition={{ duration: 0.4, ease: EASE_ENTER }}
             style={{
               position: 'fixed', inset: 0, zIndex: 200,
               backdropFilter: 'blur(4px)',

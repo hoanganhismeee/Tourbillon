@@ -8,6 +8,9 @@ import { WatchesPageProvider } from "@/contexts/WatchesPageContext";
 import { NavigationProvider } from "@/contexts/NavigationContext";
 import { CursorProvider } from "@/contexts/CursorContext";
 import { ChatProvider } from "@/contexts/ChatContext";
+import { LenisProvider } from "@/app/providers/LenisProvider";
+import { GSAPProvider } from "@/app/providers/GSAPProvider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 import NavBar from "./components/layout/NavBar";
 import AnimatedLayout from "./scrollMotion/AnimatedLayout";
@@ -52,26 +55,32 @@ export default function RootLayout({
         suppressHydrationWarning={true}
         style={{ scrollBehavior: 'auto' }}
       >
-        <QueryProvider>
-          <AuthProvider>
-            <WatchesPageProvider>
-              <NavigationProvider>
-                <CursorProvider>
-                  <ChatProvider>
-                    <NavBar />
-                    <AnimatedLayout>
-                      {children}
-                    </AnimatedLayout>
-                    <CompareIndicator />
-                    <ChatWidget />
-                  </ChatProvider>
-                  <CursorSelector />
-                  <CustomCursor />
-                </CursorProvider>
-              </NavigationProvider>
-            </WatchesPageProvider>
-          </AuthProvider>
-        </QueryProvider>
+        <LenisProvider>
+          <GSAPProvider>
+          <TooltipProvider>
+            <QueryProvider>
+              <AuthProvider>
+                <WatchesPageProvider>
+                  <NavigationProvider>
+                    <CursorProvider>
+                      <ChatProvider>
+                        <NavBar />
+                        <AnimatedLayout>
+                          {children}
+                        </AnimatedLayout>
+                        <CompareIndicator />
+                        <ChatWidget />
+                      </ChatProvider>
+                      <CursorSelector />
+                      <CustomCursor />
+                    </CursorProvider>
+                  </NavigationProvider>
+                </WatchesPageProvider>
+              </AuthProvider>
+            </QueryProvider>
+          </TooltipProvider>
+          </GSAPProvider>
+        </LenisProvider>
         <script
           dangerouslySetInnerHTML={{
             __html: `if ('scrollRestoration' in history) { history.scrollRestoration = 'auto'; }`,

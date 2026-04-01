@@ -1,11 +1,16 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueries } from '@tanstack/react-query';
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useGSAP } from '@gsap/react';
 import { Brand, Watch, fetchWatchById, fetchWatchesByBrand } from '@/lib/api';
 import WatchCard from '../../watches/[slug]/WatchCard';
 import ScrollFade from '../../scrollMotion/ScrollFade';
+
+gsap.registerPlugin(ScrollTrigger);
 
 interface TrinityShowcaseProps {
     brand: Brand;
@@ -19,6 +24,7 @@ const TRINITY_WATCH_IDS: Record<number, number[]> = {
 };
 
 const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
+    const gridRef = useRef<HTMLDivElement>(null);
     const isSpecificBrand = brand.id in TRINITY_WATCH_IDS;
     const specificIds = TRINITY_WATCH_IDS[brand.id] ?? [];
 
@@ -45,6 +51,28 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
     const watches: Watch[] = isSpecificBrand
         ? specificResults.flatMap(r => (r.data ? [r.data] : []))
         : brandWatchesData.slice(0, 3);
+
+    // Parallax depth: left card slowest (0.8x), center normal (1x), right fastest (1.2x)
+    useGSAP(() => {
+        if (!gridRef.current) return;
+        const cards = gridRef.current.querySelectorAll<HTMLElement>(':scope > *');
+        if (cards.length < 3) return;
+
+        const speeds = [0.8, 1.0, 1.2];
+        cards.forEach((card, i) => {
+            const offset = (1 - speeds[i]) * 60; // max 60px offset range
+            gsap.to(card, {
+                y: offset,
+                ease: 'none',
+                scrollTrigger: {
+                    trigger: gridRef.current,
+                    start: 'top bottom',
+                    end: 'bottom top',
+                    scrub: true,
+                },
+            });
+        });
+    }, { scope: gridRef, dependencies: [watches.length] });
 
     // Placeholder card shown when a watch slot has no data yet
     const renderPlaceholderCard = (index: number) => (
@@ -81,7 +109,7 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
             </ScrollFade>
 
             <div className="flex flex-col items-center mb-8">
-                <div className="grid grid-cols-3 gap-16 mb-8">
+                <div ref={gridRef} className="grid grid-cols-3 gap-16 mb-8">
                     {isLoading ? (
                         [1, 2, 3].map((i) => (
                             <div key={i} className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-6 transition-all duration-300">

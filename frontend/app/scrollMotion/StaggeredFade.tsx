@@ -14,15 +14,18 @@ interface StaggeredFadeProps {
   duration?: number;
   threshold?: number;
   triggerOnce?: boolean;
+  // When true: odd items enter from right (x: 30), even from left (x: -30)
+  directional?: boolean;
 }
 
-export default function StaggeredFade({ 
-  children, 
+export default function StaggeredFade({
+  children,
   className = "",
-  staggerDelay = 0.1, // delay between items
-  duration = DUR.mid, // duration of the animation
-  threshold = 0, // animation starts immediately when intersecting
-  triggerOnce = true // animation only plays once
+  staggerDelay = 0.1,
+  duration = DUR.mid,
+  threshold = 0,
+  triggerOnce = true,
+  directional = false,
 }: StaggeredFadeProps) {
   const { ref, inView } = useInView({
     threshold,
@@ -30,7 +33,7 @@ export default function StaggeredFade({
     rootMargin: "0px 0px -100px 0px",
   });
 
-  const containerVariants = { // animation for the container
+  const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
@@ -41,38 +44,43 @@ export default function StaggeredFade({
     },
   };
 
-  const itemVariants = { // animation for each item
-    hidden: { opacity: 0, y: 30 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration,
-        ease: EASE_ENTER,
-      },
-    },
-  };
+  // Directional mode: alternate left/right per index via `custom` prop
+  const itemVariants = directional
+    ? {
+        hidden: (i: number) => ({
+          opacity: 0,
+          x: i % 2 === 0 ? -30 : 30,
+        }),
+        visible: {
+          opacity: 1,
+          x: 0,
+          transition: { duration, ease: EASE_ENTER },
+        },
+      }
+    : {
+        hidden: { opacity: 0, y: 30 },
+        visible: {
+          opacity: 1,
+          y: 0,
+          transition: { duration, ease: EASE_ENTER },
+        },
+      };
 
-  return ( // container for the animation
+  return (
     <motion.div
       ref={ref}
       className={className}
       variants={containerVariants}
       initial="hidden"
       animate={inView ? "visible" : "hidden"}
-      style={{ 
-        willChange: "opacity, transform",
-        backfaceVisibility: "hidden"
-      }}
+      style={{ willChange: "opacity, transform", backfaceVisibility: "hidden" }}
     >
-      {React.Children.map(children, (child, index) => ( // each item in the container
+      {React.Children.map(children, (child, index) => (
         <motion.div
           key={index}
+          custom={index}
           variants={itemVariants}
-          style={{ 
-            willChange: "opacity, transform",
-            backfaceVisibility: "hidden"
-          }}
+          style={{ willChange: "opacity, transform", backfaceVisibility: "hidden" }}
         >
           {child}
         </motion.div>

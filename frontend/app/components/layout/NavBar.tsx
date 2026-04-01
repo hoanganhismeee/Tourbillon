@@ -236,7 +236,7 @@ const UserMenu = () => {
           y: scrollDirection === 'down' ? '-100%' : '0%',
           opacity: scrollDirection === 'down' ? 0 : 1,
         }}
-        transition={{ duration: DUR.fast, ease: scrollDirection === 'down' ? EASE_EXIT : EASE_ENTER }}
+        transition={{ duration: 0.8, ease: scrollDirection === 'down' ? EASE_EXIT : EASE_ENTER }}
         className="fixed top-0 left-0 w-full z-50 px-16 py-12 grid grid-cols-3 items-center"
       >
         {/* Background — opacity driven by scroll position via useTransform, no manual math */}
