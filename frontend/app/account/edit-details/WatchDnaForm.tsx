@@ -75,12 +75,12 @@ export default function WatchDnaForm() {
   }
 
   const wordCount = countWords(text);
-  const overLimit = wordCount > 10;
+  const overLimit = wordCount > 15;
 
   const handleSave = async () => {
     if (!text.trim()) return;
     if (overLimit) {
-      setError('Please keep your description to 10 words or fewer.');
+      setError('Please keep your description to 15 words or fewer.');
       return;
     }
     setError('');
@@ -114,7 +114,7 @@ export default function WatchDnaForm() {
         <textarea
           value={text}
           onChange={e => { setText(e.target.value); setError(''); setSavedProfile(null); }}
-          placeholder="e.g. I love Vacheron dress watches, slim profile, blue dial, around 39mm"
+          placeholder="e.g. I like classic elegant watches, clean design, medium size, versatile for daily wear"
           rows={3}
           disabled={profileLoading || saving}
           className={`w-full px-4 py-3 rounded-md border bg-transparent text-[var(--light-cream)] placeholder-[var(--primary-brown)]/10 resize-none focus:outline-none transition
@@ -126,13 +126,13 @@ export default function WatchDnaForm() {
         />
         {/* Live word count */}
         <span className={`absolute bottom-3 right-4 text-xs ${overLimit ? 'text-red-400' : 'text-[var(--primary-brown)]/60'}`}>
-          {wordCount} / 10 words
+          {wordCount} / 15 words
         </span>
       </div>
 
       {/* Hard-coded budget note */}
       <p className="text-xs text-[var(--primary-brown)]/10 mt-1.5 italic">
-        Limit to 10 words to save model token, cause I&apos;m broke
+        Limit to 15 words to save model token, cause I&apos;m broke
       </p>
 
       {/* Save button */}
