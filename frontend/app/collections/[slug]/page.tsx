@@ -2,12 +2,13 @@
 // Mirrors the brand page layout: left-aligned, lede sentence pulled out, new tilt WatchCard.
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { fetchCollectionBySlug, fetchWatchesByCollectionSlug, fetchBrandById, Brand } from '@/lib/api';
+import { trackEvent } from '@/lib/behaviorTracker';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useNavigation } from '@/contexts/NavigationContext';
 import ScrollFade from '../../scrollMotion/ScrollFade';
@@ -40,6 +41,13 @@ const CollectionPage = () => {
     queryFn: () => fetchBrandById(collection!.brandId),
     enabled: !!collection?.brandId,
   });
+
+  // Track collection view for Watch DNA behavior profiling
+  useEffect(() => {
+    if (!collection) return;
+    trackEvent({ type: 'collection_view', entityId: collection.id, entityName: collection.name, brandId: collection.brandId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collection?.id]);
 
   const handleBackClick = () => {
     if (navigationState) {

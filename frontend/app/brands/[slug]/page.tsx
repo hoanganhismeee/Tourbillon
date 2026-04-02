@@ -9,6 +9,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useQuery } from '@tanstack/react-query';
 import { fetchBrandBySlug, fetchWatchesByBrandSlug, fetchCollectionsByBrandSlug, Collection, Brand } from '@/lib/api';
+import { trackEvent } from '@/lib/behaviorTracker';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { imageTransformations } from '@/lib/cloudinary';
 import Image from 'next/image';
@@ -82,6 +83,13 @@ const BrandPage = () => {
   });
 
   useScrollRestore(watches.length > 0 || !watchesLoading);
+
+  // Track brand view for Watch DNA behavior profiling
+  useEffect(() => {
+    if (!brand) return;
+    trackEvent({ type: 'brand_view', entityId: brand.id, entityName: brand.name });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brand?.id]);
 
   useEffect(() => {
     if (brand?.image) {
