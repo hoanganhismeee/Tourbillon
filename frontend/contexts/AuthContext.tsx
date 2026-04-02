@@ -4,7 +4,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCurrentUser, logoutUser, User } from '@/lib/api';
+import { getCurrentUser, logoutUser, flushBehaviorEvents, mergeBehaviorEvents, User } from '@/lib/api';
 import { useFavourites } from '@/stores/favouritesStore';
 
 // Define the shape of the context
@@ -58,6 +58,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         // This function is called after a successful login/register API call
         // to re-fetch the user data and update the context state.
         await fetchUser();
+        // Flush buffered anonymous events and merge them to the authenticated user.
+        // Dynamic import avoids SSR issues — localStorage is unavailable on the server.
+        try {
+            const { getAnonId, getBufferedEvents, clearBuffer } = await import('@/lib/behaviorTracker');
+            const anonId = getAnonId();
+            const events = getBufferedEvents();
+            if (events.length > 0) {
+                await flushBehaviorEvents(events, anonId);
+                clearBuffer();
+            }
+            await mergeBehaviorEvents(anonId);
+        } catch {
+            // best-effort — never block login on tracking errors
+        }
     };
 
     const logout = async () => {

@@ -1056,3 +1056,31 @@ export const removeFromCollection = async (collectionId: number, watchId: number
   if (!response.ok) throw new Error('Failed to remove from collection');
 };
 
+// Sends locally buffered browsing events to the backend (anonymous or authenticated).
+export const flushBehaviorEvents = async (events: import('./behaviorTracker').BrowsingEvent[], anonymousId: string): Promise<void> => {
+  try {
+    await fetchWithTimeout(`${API_BASE_URL}/behavior/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ anonymousId, events }),
+    });
+  } catch {
+    // best-effort — never block login on tracking errors
+  }
+};
+
+// Reassigns anonymous browsing events to the authenticated user after login.
+export const mergeBehaviorEvents = async (anonymousId: string): Promise<void> => {
+  try {
+    await fetchWithTimeout(`${API_BASE_URL}/behavior/merge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ anonymousId }),
+    });
+  } catch {
+    // best-effort — never block login on tracking errors
+  }
+};
+
