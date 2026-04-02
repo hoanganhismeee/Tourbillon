@@ -40,7 +40,7 @@ Notes:
 
 Entry point: `backend/Program.cs`
 
-### Controllers (14)
+### Controllers (15)
 
 | Controller | Purpose |
 |---|---|
@@ -55,11 +55,12 @@ Entry point: `backend/Program.cs`
 | `ChatController` | Chat concierge sessions + message handling |
 | `ContactController` | Contact advisor inquiry submission |
 | `FavouritesController` | Favourites + collections CRUD (8 endpoints) |
-| `TasteController` | Watch DNA taste profile management |
+| `TasteController` | Watch DNA — GET profile, POST manual save, POST AI generation from behaviour |
+| `BehaviorController` | Browsing event ingest (`POST /api/behavior/events`, no auth) + anonymous→user merge (`POST /api/behavior/merge`, [Authorize]) |
 | `AppointmentController` | Boutique appointment booking |
 | `RegisterInterestController` | Watch interest registration |
 
-### Services (25)
+### Services (28)
 
 **AI & Retrieval:**
 - `WatchFinderService` — Orchestrates the hybrid pipeline: (1) `ParseQueryIntentAsync` extracts brand/collection/price as hard SQL pre-filters (no LLM, ~5ms); (2) embed query -> check QueryCache; (3) on miss: vector similarity search with pre-filters -> tier routing (Tier 2 skip LLM / Tier 3 rerank / Tier 4 empty) -> background cache store. Returns QueryIntent to frontend for filter bar pre-population.
@@ -67,7 +68,8 @@ Entry point: `backend/Program.cs`
 - `WatchEmbeddingService` — Builds 4 text chunks per watch (full, brand_style, specs, use_case), calls ai-service `/embed` in true batches (50 watches / 200 texts per HTTP call), upserts into WatchEmbeddings. Category taxonomy is deterministic (`InferCategory`, `InferOccasions`).
 - `QueryCacheService` — Persistent semantic query cache. Cosine similarity threshold 0.92. Cache bypassed when hard SQL filters detected.
 - `ChatService` — Chat concierge orchestration. Routes queries: PRODUCT (direct DB fetch + editorial content), BRAND (DB description + editorial sample + web search), GENERAL (vector search top-5 watch_finder embeddings as context). Redis session store with 1-hour TTL. Rate-limited per user/day. System prompt hardened with scope, grounding, safety, and anti-hallucination guardrails.
-- `TasteProfileService` — Watch DNA. LLM extracts preferences once on save; `ScoreWatch()` is a pure static scoring function (brand +3, material +2, dial +2, size +1, price +1 = 9 max). Zero AI cost at browse time.
+- `TasteProfileService` — Watch DNA. Two AI paths: `ParseAndSaveAsync` (manual text → `/parse-taste`) and `GenerateFromBehaviorAsync` (browsing events → `/generate-dna-from-behavior`). `ScoreWatch()` is a pure static method (brand +3, material +2, dial +2, size +1, price +1 = 9 max). Zero AI cost at browse time.
+- `BehaviorService` — Browsing event storage for Watch DNA. `FlushEventsAsync` bulk-inserts with time-window deduplication (single batch query). `MergeAnonymousAsync` reassigns anonymous events to authenticated user. `GetRecentEventsAsync` returns recent events for AI profile generation. Requires ≥ 3 events before generation is attempted.
 - `WatchEditorialService` — Editorial content per collection. Generated once, stored in DB, served at zero runtime cost. 339/339 coverage.
 
 **Scraping pipeline (temporary):**
@@ -89,9 +91,11 @@ Entry point: `backend/Program.cs`
 **Infrastructure:**
 - `CloudinaryService` — Image upload/delete behind `ICloudinaryService` interface
 - `EmailService` — SMTP sending via MailKit with detailed diagnostics
+- `BackgroundEmailService` — Hangfire-compatible wrapper for fire-and-forget email dispatch with retry
+- `RedisService` — Distributed state: auth codes, rate limits, chat sessions. Abstracts atomic INCR, string KV, and hash operations.
 - `CurrencyConverter` — Currency conversion singleton
 
-### Models (20)
+### Models (21)
 
 | Model | Notes |
 |---|---|
@@ -107,7 +111,8 @@ Entry point: `backend/Program.cs`
 | `UserFavourite` | Composite PK (UserId, WatchId) |
 | `UserCollection` | Named user collections |
 | `UserCollectionWatch` | Junction: watches in collections |
-| `UserTasteProfile` | Watch DNA preferences (JSON arrays as text columns, unique per user) |
+| `UserTasteProfile` | Watch DNA preferences (JSON arrays as text columns, unique per user) + `Summary` (AI-generated 1–2 sentence taste description) |
+| `UserBrowsingEvent` | Browsing event for Watch DNA generation. `UserId` nullable (anonymous until merge). `AnonymousId` = client UUID from localStorage. EventType: watch_view, brand_view, collection_view, search. |
 | `ChatSession` | In-memory chat session with conversation history |
 | `ContactInquiry` | Advisor inquiry with snapshot fields |
 | `Appointment` | Boutique appointment with notification preferences |
@@ -116,12 +121,12 @@ Entry point: `backend/Program.cs`
 | `BrandScraperConfig` | XPath config for legacy scraper (temporary) |
 | `WatchDto` | Data transfer object for watch API responses |
 
-### DTOs (21)
+### DTOs (24)
 
 Auth: `LoginDto`, `RegisterDto`, `ResetPasswordDto`, `ForgotPasswordDto`, `VerifyCodeDto`, `MagicLoginDto`
 User: `UpdateUserDto`, `UserProfileDto`, `DeleteAccountDto`
 Watch: `ScrapedWatchDto`, `UpdateWatchDto`, `CreateWatchDto`, `WatchPageData`, `ImageChangeDto`
-Features: `AppointmentDto`, `RegisterInterestDto`, `ContactInquiryDto`, `SaveTasteDto`, `TasteProfileDto`, `FavouritesDto`
+Features: `AppointmentDto`, `RegisterInterestDto`, `ContactInquiryDto`, `SaveTasteDto`, `TasteProfileDto`, `FavouritesDto`, `BrowsingEventBatchDto`, `BrowsingEventItemDto`, `MergeAnonymousDto`
 Email: `TestEmailDto`
 
 ### Database
@@ -203,6 +208,7 @@ Email: `TestEmailDto`
 |---|---|
 | `lib/api.ts` | Centralized API client, 100+ exported functions. All backend calls go through here. |
 | `lib/cloudinary.ts` | Image URL builder. Card (400x400), detail (1200x1200), thumbnail (200x200). AVIF/WebP with auto DPR. |
+| `lib/behaviorTracker.ts` | Client-side event tracker for Watch DNA. Generates `tourbillon-anon-id` UUID; stores up to 100 events in `tourbillon-behavior` localStorage buffer. All access is SSR-safe (try/catch). Flushed + merged on login via `AuthContext`. |
 | `lib/states.ts` | Global state management |
 
 ### Key Components
@@ -260,6 +266,7 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 | `POST /embed` | Batch text -> float[768] embeddings via nomic-embed-text (no LLM) |
 | `POST /chat` | Conversational response with web search tool (duckduckgo-search) |
 | `POST /parse-taste` | Free-text -> structured taste preferences JSON (LLM call) |
+| `POST /generate-dna-from-behavior` | Browsing events array -> structured taste preferences + `summary` string (LLM call) |
 | `GET /ready` | 503 until model warmup completes, 200 after |
 | `GET /health` | Always 200, includes readiness flag |
 
@@ -392,8 +399,8 @@ Frontend runs locally (`npm run dev`) — intentionally excluded from Docker for
 - **AI Service**: Flask with 6 LLM endpoints + 2 health endpoints. Ollama for local models.
 - **Secrets**: `.env` file at project root (gitignored), template in `.env.example`
 - **CORS**: Configurable via `ALLOWED_ORIGINS` env var
-- **Caching**: Persistent semantic query cache (QueryCaches in PostgreSQL). In-memory rate limiting + chat sessions (IMemoryCache / ConcurrentDictionary). No Redis yet.
-- **Background work**: Fire-and-forget via `_ = Task.Run()` in 7+ services. No durable job queue yet.
+- **Caching**: Persistent semantic query cache (QueryCaches in PostgreSQL). Redis (`redis:7-alpine`) for auth codes, rate limiting, and chat sessions via `IRedisService`.
+- **Background work**: Hangfire with PostgreSQL storage. Dashboard at `/hangfire`. All fire-and-forget patterns use `BackgroundJob.Enqueue<T>` for durability and retry.
 - **CDN**: Cloudinary handles image delivery
 - **CI/CD**: GitHub Actions (`.github/workflows/ci.yml`) — backend build + test, frontend type-check on push/PR
 - **IaC**: None
@@ -410,17 +417,16 @@ Frontend runs locally (`npm run dev`) — intentionally excluded from Docker for
 | Deterministic category taxonomy | `InferCategory()` is permanent structured metadata. LLM interprets on top — never owns ground truth. |
 | Defensive parsing in Python | AI service strips preamble, validates JSON, retries on failure. Never trust raw LLM output. |
 
-### Planned Infrastructure (Phase 7+)
+### Infrastructure Status
 
-See `docs/ROADMAP.md` Phase 7+ and `docs/infra-concepts.md` for full details.
-
-| Milestone | What it adds |
+| Milestone | Status |
 |---|---|
-| CI/CD (GitHub Actions) | Done — `.github/workflows/ci.yml`, backend build + 25 tests, frontend tsc |
-| Durable Background Jobs (Hangfire) | Replaces Task.Run fire-and-forget with retryable, monitored jobs |
-| Redis | Distributed cache, rate limiting, session storage (replaces in-memory) |
-| Observability (Serilog + health checks) | Structured logging, ASP.NET health endpoints, operational metrics |
-| Advisor CRM | Status pipeline for inquiries + follow-up reminders |
-| Analytics Dashboard | Search tier distribution, cache hit rate, click-through tracking |
-| S3 + CloudFront | Storage abstraction, AWS image hosting |
-| Kubernetes | Container orchestration (optional, for horizontal scaling) |
+| CI/CD (GitHub Actions) | Done — `.github/workflows/ci.yml`, backend build + tests, frontend tsc |
+| Durable Background Jobs (Hangfire) | Done — PostgreSQL-backed, dashboard at `/hangfire` |
+| Redis | Done — `redis:7-alpine` in Docker, auth codes / rate limits / chat sessions |
+| Observability (Serilog + health checks) | Done |
+| Advisor CRM | Done — inquiry page, Hangfire status auto-advance |
+| Behavioural Watch DNA | Done — anonymous tracking, flush/merge on login, AI profile generation |
+| Analytics Dashboard | Planned |
+| S3 + CloudFront | Planned |
+| Kubernetes | Planned |

@@ -37,6 +37,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             setUser(userData);
             // Eagerly populate favourites store after successful auth check
             useFavourites.getState().loadFavourites();
+            // Flush any events buffered during this session (e.g. user stayed logged in)
+            await flushBufferedEvents();
         } catch (error) {
             // This is expected if the user is not logged in.
             // We only log errors that are not the "Not authenticated" message.
@@ -54,12 +56,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         fetchUser();
     }, []);
 
-    const login = async () => {
-        // This function is called after a successful login/register API call
-        // to re-fetch the user data and update the context state.
-        await fetchUser();
-        // Flush buffered anonymous events and merge them to the authenticated user.
-        // Dynamic import avoids SSR issues — localStorage is unavailable on the server.
+    // Flushes locally buffered browsing events and merges anonymous events to the authenticated user.
+    // Called on both fresh login and on session restore, so events are never lost.
+    const flushBufferedEvents = async () => {
         try {
             const { getAnonId, getBufferedEvents, clearBuffer } = await import('@/lib/behaviorTracker');
             const anonId = getAnonId();
@@ -70,8 +69,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             }
             await mergeBehaviorEvents(anonId);
         } catch {
-            // best-effort — never block login on tracking errors
+            // best-effort — never block auth on tracking errors
         }
+    };
+
+    const login = async () => {
+        // This function is called after a successful login/register API call
+        // to re-fetch the user data and update the context state.
+        // fetchUser flushes buffered events as part of session restoration.
+        await fetchUser();
     };
 
     const logout = async () => {

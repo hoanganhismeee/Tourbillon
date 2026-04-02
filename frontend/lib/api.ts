@@ -1074,7 +1074,16 @@ export const flushBehaviorEvents = async (events: import('./behaviorTracker').Br
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ anonymousId, events }),
+      body: JSON.stringify({
+        anonymousId,
+        events: events.map(e => ({
+          eventType: e.type,
+          entityId: e.entityId ?? null,
+          entityName: e.entityName,
+          brandId: e.brandId ?? null,
+          timestamp: new Date(e.timestamp).toISOString(),
+        })),
+      }),
     });
   } catch {
     // best-effort — never block login on tracking errors

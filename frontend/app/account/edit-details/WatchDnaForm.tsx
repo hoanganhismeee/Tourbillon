@@ -1,19 +1,24 @@
-// Watch DNA form — lets users describe their watch preferences in plain text (≤10 words).
-// The backend sends the text to the AI service which extracts structured preferences,
-// then those preferences are used to personalise the All Watches grid.
+// Watch DNA form — behaviour-driven UI that shows an AI-generated taste profile.
+// Four states: no data yet | profile exists | edit mode | generating.
 'use client';
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { getTasteProfile, saveTasteProfile, TasteProfile } from '@/lib/api';
-import { useQuery } from '@tanstack/react-query';
+import { getTasteProfile, saveTasteProfile, generateTasteProfile, fetchBrands, TasteProfile } from '@/lib/api';
 
-// Returns the word count of a string (splits on whitespace, ignores empty tokens)
-function countWords(text: string): number {
-  return text.trim().split(/\s+/).filter(Boolean).length;
+// Returns true if the profile contains any extracted preference data
+function hasAnyPreference(profile: TasteProfile): boolean {
+  return (
+    profile.preferredBrandIds.length > 0 ||
+    profile.preferredMaterials.length > 0 ||
+    profile.preferredDialColors.length > 0 ||
+    profile.preferredCaseSize != null ||
+    profile.priceMin != null ||
+    profile.priceMax != null
+  );
 }
 
-// Renders extracted preference chips after a successful save
+// Renders extracted preference chips for the profile view
 function PreferenceChips({ profile, brands }: { profile: TasteProfile; brands?: { id: number; name: string }[] }) {
   const chips: string[] = [];
 
@@ -56,48 +61,90 @@ function PreferenceChips({ profile, brands }: { profile: TasteProfile; brands?: 
 export default function WatchDnaForm() {
   const queryClient = useQueryClient();
   const router = useRouter();
+
+  // Edit-mode state
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [editError, setEditError] = useState('');
   const [savedProfile, setSavedProfile] = useState<TasteProfile | null>(null);
 
-  // Load existing profile to pre-fill textarea on mount
+  // Whether the user has toggled into manual edit mode
+  const [editMode, setEditMode] = useState(false);
+
+  // Regeneration loading state
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState('');
+
+  // Load existing profile on mount (uses global stale time so a fresh generate is picked up)
   const { data: initialProfile, isLoading: profileLoading } = useQuery({
     queryKey: ['tasteProfile'],
     queryFn: getTasteProfile,
-    staleTime: Infinity,
     retry: false,
   });
 
-  // Pre-fill textarea once initial profile loads (only if text hasn't been edited yet)
-  if (initialProfile && text === '' && initialProfile.tasteText) {
-    setText(initialProfile.tasteText);
+  // Fetch brands for resolving preferredBrandIds → names in PreferenceChips
+  const { data: brands } = useQuery({
+    queryKey: ['brands'],
+    queryFn: fetchBrands,
+    staleTime: Infinity,
+  });
+
+  // Pre-fill textarea when entering edit mode for the first time
+  const activeProfile = savedProfile ?? initialProfile ?? null;
+  if (editMode && text === '' && activeProfile?.tasteText) {
+    setText(activeProfile.tasteText);
   }
 
-  const wordCount = countWords(text);
-  const overLimit = wordCount > 15;
+
+  // Determine which UI state to render
+  const hasData = activeProfile != null && (activeProfile.summary != null || hasAnyPreference(activeProfile));
+
+  // --- Handlers ---
 
   const handleSave = async () => {
     if (!text.trim()) return;
-    if (overLimit) {
-      setError('Please keep your description to 15 words or fewer.');
-      return;
-    }
-    setError('');
+    setEditError('');
     setSaving(true);
     try {
       const profile = await saveTasteProfile(text.trim());
       setSavedProfile(profile);
-      // Invalidate so AllWatchesSection re-fetches and re-sorts immediately
+      setEditMode(false);
       queryClient.invalidateQueries({ queryKey: ['tasteProfile'] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save. Please try again.');
+      setEditError(err instanceof Error ? err.message : 'Failed to save. Please try again.');
     } finally {
       setSaving(false);
     }
   };
 
-  const displayProfile = savedProfile ?? initialProfile ?? null;
+  const handleGenerate = async () => {
+    setGenerateError('');
+    setGenerating(true);
+    try {
+      await generateTasteProfile();
+      queryClient.invalidateQueries({ queryKey: ['tasteProfile'] });
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : 'Failed to generate profile. Please try again.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const enterEditMode = () => {
+    // Reset textarea to current profile text when opening
+    setText(activeProfile?.tasteText ?? '');
+    setEditError('');
+    setSavedProfile(null);
+    setEditMode(true);
+  };
+
+  const cancelEditMode = () => {
+    setEditMode(false);
+    setText('');
+    setEditError('');
+  };
+
+  // --- Render ---
 
   return (
     <div className="pb-8 mb-8 border-b border-[var(--primary-brown)]/30">
@@ -109,63 +156,123 @@ export default function WatchDnaForm() {
         </p>
       </div>
 
-      {/* Textarea */}
-      <div className="relative">
-        <textarea
-          value={text}
-          onChange={e => { setText(e.target.value); setError(''); setSavedProfile(null); }}
-          placeholder="e.g. I like classic elegant watches, clean design, medium size, versatile for daily wear"
-          rows={3}
-          disabled={profileLoading || saving}
-          className={`w-full px-4 py-3 rounded-md border bg-transparent text-[var(--light-cream)] placeholder-[var(--primary-brown)]/10 resize-none focus:outline-none transition
-            ${overLimit
-              ? 'border-red-400/60 focus:border-red-400'
-              : 'border-[var(--primary-brown)] focus:border-[var(--cream-gold)]'
-            }
-            disabled:opacity-10`}
-        />
-        {/* Live word count */}
-        <span className={`absolute bottom-3 right-4 text-xs ${overLimit ? 'text-red-400' : 'text-[var(--primary-brown)]/60'}`}>
-          {wordCount} / 15 words
-        </span>
-      </div>
-
-      {/* Hard-coded budget note */}
-      <p className="text-xs text-[var(--primary-brown)]/10 mt-1.5 italic">
-        Limit to 15 words to save model token, cause I&apos;m broke
-      </p>
-
-      {/* Save button */}
-      <button
-        onClick={handleSave}
-        disabled={saving || overLimit || !text.trim()}
-        className="mt-4 px-6 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-[var(--primary-brown)] to-[var(--cream-gold)] text-[var(--dark-brown)] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
-      >
-        {saving ? (
-          <>
-            {/* Spinner */}
-            <span className="inline-block w-4 h-4 border-2 border-[var(--dark-brown)]/30 border-t-[var(--dark-brown)] rounded-full animate-spin" />
-            Analysing your taste...
-          </>
-        ) : (
-          'Save My Taste'
-        )}
-      </button>
-
-      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
-
-      {/* Extracted preferences chips */}
-      {!saving && displayProfile && (
-        <PreferenceChips profile={displayProfile} />
+      {/* STATE 4: Generating */}
+      {generating && (
+        <div className="flex items-center gap-3 py-4">
+          <span className="inline-block w-4 h-4 border-2 border-[var(--primary-brown)]/30 border-t-[var(--primary-brown)] rounded-full animate-spin" />
+          <span className="text-sm text-[var(--primary-brown)]/80 italic">Analysing your browsing history...</span>
+        </div>
       )}
 
-      {savedProfile && !saving && (
-        <button
-          onClick={() => router.push('/watches')}
-          className="mt-4 px-6 py-2.5 rounded-xl font-semibold text-sm border border-[var(--primary-brown)]/60 text-[var(--primary-brown)] hover:bg-[var(--primary-brown)]/10 transition"
-        >
-          View Your Personalised Collection →
-        </button>
+      {/* STATE 1: No data yet (loading finished, no meaningful profile) */}
+      {!generating && !profileLoading && !hasData && !editMode && (
+        <div className="py-4 space-y-3">
+          <p className="text-sm text-[var(--light-cream)]/70">
+            Browse some watches and we&apos;ll build your taste profile automatically.
+          </p>
+          <p className="text-xs text-[var(--primary-brown)]/50 italic">
+            The more you explore, the more personalised your recommendations become.
+          </p>
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="w-fit px-6 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-[var(--primary-brown)] to-[var(--cream-gold)] text-[var(--dark-brown)] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            Generate my taste profile
+          </button>
+          {generateError && <p className="text-sm text-red-400">{generateError}</p>}
+        </div>
+      )}
+
+      {/* STATE 2: Profile exists — show AI summary + chips + regenerate */}
+      {!generating && !editMode && hasData && activeProfile && (
+        <div className="space-y-4">
+          {/* AI-generated summary card */}
+          {activeProfile.summary && (
+            <div className="border-l-2 border-[var(--cream-gold)] pl-4 py-2 italic text-[var(--light-cream)]/90 text-sm">
+              {activeProfile.summary}
+            </div>
+          )}
+
+          {/* Extracted preference chips */}
+          <PreferenceChips profile={activeProfile} brands={brands} />
+
+          {/* Regenerate button */}
+          <div className="flex flex-col gap-2 pt-1">
+            <button
+              onClick={handleGenerate}
+              disabled={generating}
+              className="w-fit px-6 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-[var(--primary-brown)] to-[var(--cream-gold)] text-[var(--dark-brown)] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+            >
+              Regenerate
+            </button>
+
+            {generateError && <p className="text-sm text-red-400">{generateError}</p>}
+
+            {/* Edit manually toggle */}
+            <span
+              onClick={enterEditMode}
+              className="text-xs text-[var(--primary-brown)]/60 hover:text-[var(--primary-brown)] cursor-pointer underline-offset-2 hover:underline transition w-fit"
+            >
+              Edit manually
+            </span>
+          </div>
+
+          {/* View personalised collection after a successful manual save */}
+          {savedProfile && (
+            <button
+              onClick={() => router.push('/watches')}
+              className="w-fit px-6 py-2.5 rounded-xl font-semibold text-sm border border-[var(--primary-brown)]/60 text-[var(--primary-brown)] hover:bg-[var(--primary-brown)]/10 transition"
+            >
+              View Your Personalised Collection →
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* STATE 3: Edit mode — manual textarea */}
+      {!generating && editMode && (
+        <div className="space-y-3">
+          <div className="relative">
+            <textarea
+              value={text}
+              onChange={e => { setText(e.target.value); setEditError(''); setSavedProfile(null); }}
+              placeholder="e.g. I like classic elegant watches, clean design, medium size, versatile for daily wear"
+              rows={3}
+              disabled={saving}
+              className="w-full px-4 py-3 rounded-md border border-[var(--primary-brown)] focus:border-[var(--cream-gold)] bg-transparent text-[var(--light-cream)] placeholder-[var(--primary-brown)]/10 resize-none focus:outline-none transition disabled:opacity-10"
+            />
+          </div>
+
+          {/* Save button */}
+          <button
+            onClick={handleSave}
+            disabled={saving || !text.trim()}
+            className="px-6 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-[var(--primary-brown)] to-[var(--cream-gold)] text-[var(--dark-brown)] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+          >
+            {saving ? (
+              <>
+                <span className="inline-block w-4 h-4 border-2 border-[var(--dark-brown)]/30 border-t-[var(--dark-brown)] rounded-full animate-spin" />
+                Analysing your taste...
+              </>
+            ) : (
+              'Save My Taste'
+            )}
+          </button>
+
+          {editError && <p className="text-sm text-red-400">{editError}</p>}
+
+          {/* Cancel link */}
+          {hasData && (
+            <span
+              onClick={cancelEditMode}
+              className="text-xs text-[var(--primary-brown)]/60 hover:text-[var(--primary-brown)] cursor-pointer underline-offset-2 hover:underline transition"
+            >
+              Cancel
+            </span>
+          )}
+
+        </div>
       )}
     </div>
   );
