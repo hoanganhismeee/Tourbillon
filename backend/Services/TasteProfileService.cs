@@ -45,33 +45,7 @@ public class TasteProfileService : ITasteProfileService
         var brands = await _context.Brands.AsNoTracking().ToListAsync();
         var brandNames = brands.Select(b => b.Name).ToList();
 
-        // Call ai-service to extract structured preferences
-        var httpClient = _httpClientFactory.CreateClient("ai-service");
-        var payload = new { taste_text = tasteText, available_brands = brandNames };
-
-        ParsedTaste parsed;
-        try
-        {
-            var resp = await httpClient.PostAsJsonAsync("/parse-taste", payload);
-            resp.EnsureSuccessStatusCode();
-            parsed = await resp.Content.ReadFromJsonAsync<ParsedTaste>()
-                     ?? new ParsedTaste();
-        }
-        catch
-        {
-            // AI service unavailable — save raw text only, preserve existing structured data
-            parsed = new ParsedTaste();
-        }
-
-        // Map brand names returned by LLM → brand IDs from DB (case-insensitive)
-        var preferredBrandIds = (parsed.PreferredBrands ?? [])
-            .Select(name => brands.FirstOrDefault(b =>
-                string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase))?.Id)
-            .Where(id => id.HasValue)
-            .Select(id => id!.Value)
-            .ToList();
-
-        // Upsert the profile row
+        // Load or create the profile row before the AI call so we can preserve existing data on failure
         var profile = await _context.UserTasteProfiles
             .FirstOrDefaultAsync(p => p.UserId == userId);
 
@@ -81,14 +55,41 @@ public class TasteProfileService : ITasteProfileService
             _context.UserTasteProfiles.Add(profile);
         }
 
-        profile.TasteText          = tasteText;
-        profile.PreferredBrandIds  = JsonSerializer.Serialize(preferredBrandIds);
-        profile.PreferredMaterials = JsonSerializer.Serialize(parsed.PreferredMaterials ?? []);
-        profile.PreferredDialColors = JsonSerializer.Serialize(parsed.PreferredDialColors ?? []);
-        profile.PriceMin           = parsed.PriceMin;
-        profile.PriceMax           = parsed.PriceMax;
-        profile.PreferredCaseSize  = parsed.PreferredCaseSize;
-        profile.UpdatedAt          = DateTime.UtcNow;
+        // Always update raw text and timestamp
+        profile.TasteText = tasteText;
+        profile.UpdatedAt = DateTime.UtcNow;
+
+        // Call ai-service to extract structured preferences; preserve existing data on failure
+        var httpClient = _httpClientFactory.CreateClient("ai-service");
+        var payload = new { taste_text = tasteText, available_brands = brandNames };
+
+        try
+        {
+            var resp = await httpClient.PostAsJsonAsync("/parse-taste", payload);
+            resp.EnsureSuccessStatusCode();
+            var snakeOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+            var parsed = await resp.Content.ReadFromJsonAsync<ParsedTaste>(snakeOptions)
+                         ?? new ParsedTaste();
+
+            // Map brand names returned by LLM → brand IDs from DB (case-insensitive)
+            var preferredBrandIds = (parsed.PreferredBrands ?? [])
+                .Select(name => brands.FirstOrDefault(b =>
+                    string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase))?.Id)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .ToList();
+
+            profile.PreferredBrandIds  = JsonSerializer.Serialize(preferredBrandIds);
+            profile.PreferredMaterials = JsonSerializer.Serialize(parsed.PreferredMaterials ?? []);
+            profile.PreferredDialColors = JsonSerializer.Serialize(parsed.PreferredDialColors ?? []);
+            profile.PriceMin           = parsed.PriceMin;
+            profile.PriceMax           = parsed.PriceMax;
+            profile.PreferredCaseSize  = parsed.PreferredCaseSize;
+        }
+        catch
+        {
+            // AI service unavailable — TasteText updated; existing structured preferences preserved
+        }
 
         await _context.SaveChangesAsync();
         return MapToDto(profile);
@@ -170,7 +171,8 @@ public class TasteProfileService : ITasteProfileService
         catch { return null; }
     }
 
-    // Internal DTO for deserializing the ai-service /parse-taste response
+    // Internal DTO for deserializing the ai-service /parse-taste response.
+    // Deserialized with SnakeCaseLower policy so PascalCase properties map to snake_case JSON keys.
     private class ParsedTaste
     {
         public List<string>? PreferredBrands { get; set; }

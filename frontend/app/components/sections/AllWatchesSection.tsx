@@ -20,9 +20,6 @@ interface AllWatchesSectionProps {
   collectionFilter?: number | null;
 }
 
-// Trinity watch IDs excluded from the "All Watches" grid (shown separately in TrinityShowcase)
-const TRINITY_WATCH_IDS = [1, 2, 3, 32, 33, 34, 57, 58, 59];
-
 // Interleave watches so no two adjacent cards share the same brand.
 // Groups by brand → shuffles within each group → shuffles brand order → round-robins columns.
 // Result: a grid row always shows different brands, giving maximum visual variety.
@@ -160,7 +157,7 @@ const AllWatchesSection = ({ brands, brandFilter = null, collectionFilter = null
   // Falls back to the standard interleave shuffle when no preferences are set.
   useEffect(() => {
     if (watches.length === 0) return;
-    const filtered = watches.filter(w => !TRINITY_WATCH_IDS.includes(w.id));
+    const filtered = watches;
 
     if (isPersonalized && tasteProfile) {
       const scored = filtered.map(w => ({ watch: w, score: scoreTasteMatch(w, tasteProfile) }));
