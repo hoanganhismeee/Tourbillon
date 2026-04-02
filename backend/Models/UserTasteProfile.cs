@@ -26,5 +26,8 @@ public class UserTasteProfile
     // "small" (<37mm) | "medium" (37–41mm) | "large" (>41mm) | null = no preference
     public string? PreferredCaseSize { get; set; }
 
+    // AI-generated plain-English summary of the user's inferred taste (from behavioral analysis)
+    public string? Summary { get; set; }
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
