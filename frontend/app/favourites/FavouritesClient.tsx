@@ -1,7 +1,7 @@
 // Main client for /favourites — auth guard, collections row, filter/sort, paginated watch grid.
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,7 +27,12 @@ const SORT_OPTIONS = [
   { value: 'price_asc', label: 'Price Low–High' },
 ];
 
-// Skeleton card for loading state
+const formatDate = (iso: string) => {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+};
+
+// Skeleton card — only shown on initial load when watchData is null
 const SkeletonCard = () => (
   <div className="bg-black/30 border border-white/10 rounded-2xl p-6 animate-pulse">
     <div className="w-full h-64 bg-white/5 rounded-xl mb-4" />
@@ -58,6 +63,7 @@ export default function FavouritesClient() {
   const [wristFit, setWristFit] = useState('');
   const [brands, setBrands] = useState<Brand[]>([]);
   const [watchCollections, setWatchCollections] = useState<Collection[]>([]);
+  const sortDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auth guard — redirect to login if not authenticated
   useEffect(() => {
@@ -149,13 +155,16 @@ export default function FavouritesClient() {
     }
   };
 
-  const getCollectionName = (id: number) =>
-    collections.find(c => c.id === id)?.name ?? '';
+  const getCollectionName = useMemo(() => {
+    const map = new Map(collections.map(c => [c.id, c.name]));
+    return (id: number) => map.get(id) ?? '';
+  }, [collections]);
 
-  const formatDate = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-  };
+  // Map watchId → collection name for the watch's own brand collection (avoids N+1 in WatchCard)
+  const watchCollectionNameMap = useMemo(() => {
+    const map = new Map(watchCollections.map(c => [c.id, c.name]));
+    return map;
+  }, [watchCollections]);
 
   // Derive diameter options from fetched watches — only sizes present are shown
   const diameterOptions = useMemo(() => {
@@ -271,10 +280,17 @@ export default function FavouritesClient() {
           )}
         </div>
 
-        {/* Sort dropdown */}
+        {/* Sort dropdown — debounced 350ms to avoid firing on rapid changes */}
         <select
           value={sortBy}
-          onChange={e => { setSortBy(e.target.value); router.push('/favourites', { scroll: false }); }}
+          onChange={e => {
+            const next = e.target.value;
+            setSortBy(next);
+            if (sortDebounceRef.current) clearTimeout(sortDebounceRef.current);
+            sortDebounceRef.current = setTimeout(() => {
+              router.push('/favourites', { scroll: false });
+            }, 350);
+          }}
           className="bg-black/40 border border-white/15 text-white/70 text-sm font-inter rounded-xl px-4 py-2 outline-none cursor-pointer hover:border-white/30 transition-colors"
         >
           {SORT_OPTIONS.map(opt => (
@@ -283,14 +299,18 @@ export default function FavouritesClient() {
         </select>
       </div>
 
-      {/* Watch grid */}
-      {gridLoading ? (
+      {/* Watch grid — skeletons only on first load; subsequent refetches dim the existing grid */}
+      {!watchData && gridLoading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
           {Array.from({ length: PAGE_SIZE }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : displayedWatches.length > 0 ? (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+          <div
+            className={`grid grid-cols-2 lg:grid-cols-4 gap-6 transition-opacity duration-300 ${
+              gridLoading ? 'opacity-40 pointer-events-none' : 'opacity-100'
+            }`}
+          >
             {displayedWatches.map(watch => {
               const membershipIds = watchData?.watchCollectionMembership[watch.id] ?? [];
               const labels = membershipIds.map(id => getCollectionName(id)).filter(Boolean);
@@ -300,6 +320,7 @@ export default function FavouritesClient() {
                   watch={watch}
                   brandName={brands.find(b => b.id === watch.brandId)?.name}
                   collectionLabels={labels.length > 0 ? labels : undefined}
+                  collectionName={watch.collectionId ? watchCollectionNameMap.get(watch.collectionId) : undefined}
                 />
               );
             })}
@@ -324,7 +345,7 @@ export default function FavouritesClient() {
             </div>
           )}
         </>
-      ) : (
+      ) : !gridLoading ? (
         <div className="py-20 text-center">
           <p className="text-white/30 font-inter text-sm">
             {hasWatchFilters ? 'No watches match your current filters.' : 'No saved watches yet.'}
@@ -338,7 +359,7 @@ export default function FavouritesClient() {
             </button>
           )}
         </div>
-      )}
+      ) : null}
     </main>
   );
 }

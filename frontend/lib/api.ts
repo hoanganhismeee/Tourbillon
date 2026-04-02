@@ -282,6 +282,19 @@ export const getCurrentUser = async (): Promise<User> => {
     return response.json();
 };
 
+// Checks whether an email is already registered — used by /auth/start to route to login or register.
+export const checkEmailExists = async (email: string): Promise<boolean> => {
+    const response = await fetch(`${API_BASE_URL}/authentication/check-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+        credentials: 'include',
+    });
+    if (!response.ok) throw new Error('Failed to check email');
+    const data = await response.json();
+    return data.exists as boolean;
+};
+
 export const registerUser = async (data: RegisterData) => {
     const response = await fetch(`${API_BASE_URL}/authentication/register`, {
         method: 'POST',

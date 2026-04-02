@@ -4,7 +4,7 @@
 // AddCollectionCard — dashed "+ New collection" card at end of the row
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, memo } from 'react';
 import { UserCollectionSummary } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 
@@ -68,7 +68,7 @@ interface CollectionCardProps {
   isDeleting: boolean;
 }
 
-export function CollectionCard({
+export const CollectionCard = memo(function CollectionCard({
   collection,
   isSelected,
   isRenaming,
@@ -81,6 +81,7 @@ export function CollectionCard({
   isDeleting,
 }: CollectionCardProps) {
   const previews = collection.previewImages ?? [];
+
 
   return (
     <div
@@ -104,6 +105,7 @@ export function CollectionCard({
                 <img
                   src={imageTransformations.thumbnail(previews[i])}
                   alt=""
+                  loading="lazy"
                   className="w-full h-full object-cover"
                   draggable={false}
                 />
@@ -168,7 +170,7 @@ export function CollectionCard({
       )}
     </div>
   );
-}
+});
 
 // ── AddCollectionCard ─────────────────────────────────────────────────────────
 

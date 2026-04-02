@@ -3,7 +3,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Watch, Collection, fetchCollectionsByBrand } from '@/lib/api';
@@ -17,20 +17,22 @@ import Image from 'next/image';
 interface WatchCardProps {
   watch: Watch;
   className?: string;
-  hrefSuffix?: string;  // appended to /watches/[id], e.g. "?wristFit=17"
+  hrefSuffix?: string;       // appended to /watches/[id], e.g. "?wristFit=17"
   imageFit?: 'cover' | 'contain';  // cover for showcase hero cards, contain to show full watch
-  collectionLabels?: string[];  // shown as pills on /favourites page
-  brandName?: string;           // shown above collection name when provided (e.g. favourites page)
+  collectionLabels?: string[];     // shown as pills on /favourites page
+  brandName?: string;              // shown above collection name when provided (e.g. favourites page)
+  collectionName?: string;         // when provided, skips internal fetchCollectionsByBrand call
 }
 
-const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain', collectionLabels, brandName }: WatchCardProps) => {
+const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain', collectionLabels, brandName, collectionName: collectionNameProp }: WatchCardProps) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
+  // Only used when collectionNameProp is not provided (i.e., outside the favourites page)
   const [collection, setCollection] = useState<Collection | null>(null);
   const [imgSrc, setImgSrc] = useState<string>(watch.imageUrl || imageTransformations.showcase(watch.image));
   const [retryCount, setRetryCount] = useState<number>(0);
   const router = useRouter();
-  
+
   const { saveNavigationState } = useNavigation();
   const searchParams = useSearchParams();
   const currentPage = Number(searchParams.get('page') ?? '1');
@@ -76,8 +78,9 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
     saveNavigationState(navigationState);
   };
 
-  // Fetch collection data when watch has a collectionId
+  // Fetch collection data only when the parent hasn't already provided it via collectionNameProp
   useEffect(() => {
+    if (collectionNameProp !== undefined) return;
     const fetchCollection = async () => {
       if (watch.collectionId) {
         try {
@@ -90,9 +93,8 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
         }
       }
     };
-
     fetchCollection();
-  }, [watch.collectionId, watch.brandId]);
+  }, [watch.collectionId, watch.brandId, collectionNameProp]);
 
   const watchHref = `/watches/${watch.slug || watch.id}${hrefSuffix}`;
 
@@ -151,14 +153,14 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
         </div>
       )}
 
-      {/* Collection Name - Clickable Button */}
-      {collection && (
+      {/* Collection Name - Clickable Button. Uses prop when provided, falls back to fetched state. */}
+      {(collectionNameProp ?? collection?.name) && (
         <div className="mb-3 text-center">
           <button
             onClick={handleCollectionClick}
             className="inline-block text-sm text-white/80 hover:text-white transition-colors font-playfair font-medium cursor-pointer bg-transparent border-none p-1"
           >
-            {collection.name}
+            {collectionNameProp ?? collection?.name}
           </button>
         </div>
       )}
@@ -187,4 +189,4 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
   );
 };
 
-export default WatchCard;
+export default memo(WatchCard);

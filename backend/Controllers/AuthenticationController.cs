@@ -61,6 +61,16 @@ public class AuthenticationController : ControllerBase
         return Ok(new { Message = message });
     }
 
+    // POST: api/authentication/check-email
+    // Returns whether an email address is already registered. Used by the smart-email auth entry.
+    [HttpPost("check-email")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CheckEmail([FromBody] CheckEmailDto dto)
+    {
+        var user = await _userManager.FindByEmailAsync(dto.Email);
+        return Ok(new { exists = user is not null });
+    }
+
     // POST: api/authentication/login
     // Authenticates a user and signs them in.
     [HttpPost("login")]
