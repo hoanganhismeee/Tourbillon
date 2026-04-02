@@ -31,7 +31,7 @@ const HeartNavLink = () => {
   return (
     <div className="relative">
       <Link
-        href={isAuthenticated ? '/favourites' : '/login?redirect=/favourites'}
+        href={isAuthenticated ? '/favourites' : '/auth/start?redirect=/favourites'}
         className="hover:opacity-70 transition-all duration-300 block"
       >
         {/* Stacked outline + solid, crossfade on hasSaved */}
@@ -119,10 +119,10 @@ const UserMenu = () => {
       };
     }, []);
   
-    // Unauthenticated: direct link to sign in, no dropdown
+    // Unauthenticated: direct link to auth entry point, no dropdown
     if (!isAuthenticated) {
       return (
-        <Link href="/login" className="hover:opacity-70 transition-all duration-300 cursor-pointer">
+        <Link href="/auth/start" className="hover:opacity-70 transition-all duration-300 cursor-pointer">
           <UserIcon />
         </Link>
       );

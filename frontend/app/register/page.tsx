@@ -7,8 +7,29 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { registerUser } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { EASE_LUXURY, EASE_ENTER, DUR } from '@/lib/motion';
 
 const GOOGLE_AUTH_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5248/api'}/authentication/google`;
+
+const staggerContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+};
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 8 },
+  visible: { opacity: 1, y: 0, transition: { duration: DUR.mid, ease: EASE_LUXURY } },
+};
+
+const formContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.06, delayChildren: 0.1 } },
+};
+
+const formItem = {
+  hidden: { opacity: 0, y: 6 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: EASE_ENTER } },
+};
 
 const GoogleIcon = () => (
   <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
@@ -18,6 +39,58 @@ const GoogleIcon = () => (
     <path fill="#FBBC05" d="M5.277 14.268A7.12 7.12 0 0 1 4.909 12c0-.782.125-1.533.357-2.235L1.24 6.65A11.934 11.934 0 0 0 0 12c0 1.92.445 3.73 1.237 5.335l4.04-3.067Z"/>
   </svg>
 );
+
+const WatchIcon = () => (
+  <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-hidden="true" style={{ opacity: 0.10 }}>
+    <circle cx="16" cy="16" r="13" stroke="#bfa68a" strokeWidth="0.8"/>
+    <circle cx="16" cy="16" r="1.2" fill="#bfa68a"/>
+    <line x1="16" y1="16" x2="11.5" y2="10.5" stroke="#bfa68a" strokeWidth="0.8" strokeLinecap="round"/>
+    <line x1="16" y1="16" x2="21" y2="10" stroke="#bfa68a" strokeWidth="0.6" strokeLinecap="round"/>
+  </svg>
+);
+
+// Input with animated gold underline on focus
+function FocusInput({
+  label, type = 'text', name, value, onChange, placeholder, inputMode, pattern
+}: {
+  label: string;
+  type?: string;
+  name: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
+  pattern?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <div>
+      <label className="block text-[8.5px] uppercase tracking-[0.28em] text-[#bfa68a]/65 mb-2">
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          type={type}
+          name={name}
+          value={value}
+          onChange={onChange}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder={placeholder}
+          inputMode={inputMode}
+          pattern={pattern}
+          autoComplete={type === 'password' ? 'new-password' : undefined}
+          className="w-full bg-transparent border-b border-white/20 py-2.5 text-white placeholder:text-white/30 focus:outline-none transition text-sm"
+        />
+        <span
+          className="absolute bottom-0 left-0 h-px bg-[#bfa68a]/70 transition-all duration-300 origin-left"
+          style={{ width: '100%', transform: focused ? 'scaleX(1)' : 'scaleX(0)' }}
+        />
+      </div>
+    </div>
+  );
+}
 
 interface FormData {
   firstName: string;
@@ -29,50 +102,25 @@ interface FormData {
   agreeToTerms: boolean;
 }
 
-const Field = ({
-  label, type = 'text', name, value, onChange, placeholder, inputMode, pattern
-}: {
-  label: string;
-  type?: string;
-  name: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  placeholder: string;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
-  pattern?: string;
-}) => (
-  <div>
-    <label className="block text-[9px] uppercase tracking-[0.3em] text-[#bfa68a]/70 mb-2.5">
-      {label}
-    </label>
-    <input
-      type={type}
-      name={name}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      inputMode={inputMode}
-      pattern={pattern}
-      autoComplete={type === 'password' ? 'new-password' : undefined}
-      className="w-full bg-transparent border-b border-white/20 py-2.5 text-white placeholder:text-white/30 focus:outline-none focus:border-[#bfa68a]/70 transition text-sm"
-    />
-  </div>
-);
-
 export default function RegisterPage() {
   const router = useRouter();
   const { login } = useAuth();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect');
 
+  // Pre-filled email from /auth/start — locked chip mode
+  const prefilledEmail = searchParams.get('email') ?? '';
+  const isSmartFlow = prefilledEmail.length > 0;
+
   const [formData, setFormData] = useState<FormData>({
-    firstName: '', lastName: '', email: '',
+    firstName: '', lastName: '', email: prefilledEmail,
     phoneNumber: '', password: '', confirmPassword: '', agreeToTerms: false,
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Lock page scroll — no reason to scroll on an auth screen
+  const changeEmailHref = `/auth/start${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ''}`;
+
   useEffect(() => {
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
@@ -130,84 +178,148 @@ export default function RegisterPage() {
   return (
     <div className="flex h-[calc(100vh-3rem-50px)] overflow-hidden">
 
-      {/* Left brand panel */}
-      <div className="hidden lg:flex flex-col justify-center w-[38%] shrink-0 relative border-r border-[#bfa68a]/10 px-16 py-10">
-        <div className="w-10 h-px bg-[#bfa68a]/50 mb-7" />
-        <p className="text-[10px] uppercase tracking-[0.5em] text-[#bfa68a]/70 mb-4">New Member</p>
-        <h2 className="font-playfair text-[3.5rem] font-light text-[#f0e6d2] leading-[1.1] mb-6">
-          Join<br />Tourbillon
-        </h2>
-        <p className="text-white/40 text-sm leading-relaxed max-w-[260px] mb-9">
-          Explore exclusive collections, save favourites, and speak with our private advisors.
-        </p>
+      {/* Left brand panel — content centered within the 40% column */}
+      <div className="hidden lg:flex flex-col items-center w-[40%] shrink-0 relative border-r border-[#bfa68a]/10 overflow-hidden">
 
-        <div className="space-y-4 mb-10">
-          {[
-            ['Exclusive Access', 'Browse over 500 timepieces from 13 prestige manufactures'],
-            ['Watch DNA Profile', "Tell us your style — we'll curate pieces that match"],
-          ].map(([title, desc]) => (
-            <div key={title} className="flex gap-3.5">
-              <div className="w-px h-10 bg-[#bfa68a]/25 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-[11px] text-[#f0e6d2]/70 font-medium tracking-wide">{title}</p>
-                <p className="text-[11px] text-white/25 leading-relaxed mt-0.5">{desc}</p>
+        {/* Ambient radial glow */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 340, height: 340,
+            borderRadius: '50%',
+            background: 'radial-gradient(ellipse, rgba(191,166,138,0.055) 0%, transparent 70%)',
+          }}
+        />
+
+        {/* Fixed-width content block, centered in the 40% column */}
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          className="relative z-10 flex flex-col justify-center flex-1 py-10 w-[272px]"
+        >
+          <motion.div variants={fadeUp} className="w-8 h-px bg-[#bfa68a]/50 mb-5" />
+          <motion.p variants={fadeUp} className="text-[9px] uppercase tracking-[0.5em] text-[#bfa68a]/70 mb-3">
+            New Member
+          </motion.p>
+          <motion.h2 variants={fadeUp} className="font-playfair text-[2.75rem] font-light text-[#f0e6d2] leading-[1.1] mb-4">
+            Join<br />Tourbillon
+          </motion.h2>
+          <motion.p variants={fadeUp} className="text-white/38 text-[13px] leading-relaxed max-w-[240px] mb-6">
+            Explore exclusive collections, save favourites, and speak with our private advisors.
+          </motion.p>
+
+          <motion.div variants={fadeUp} className="space-y-3.5 mb-6">
+            {[
+              ['Exclusive Access', 'Browse over 500 timepieces from 13 prestige manufactures'],
+              ['Watch DNA Profile', "Tell us your style — we'll curate pieces that match"],
+            ].map(([title, desc]) => (
+              <div key={title} className="flex gap-3">
+                <div className="w-px h-9 bg-[#bfa68a]/22 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[10.5px] text-[#f0e6d2]/65 font-medium tracking-wide">{title}</p>
+                  <p className="text-[10.5px] text-white/22 leading-relaxed mt-0.5">{desc}</p>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </motion.div>
 
-        <blockquote className="border-l border-[#bfa68a]/30 pl-5">
-          <p className="text-white/30 text-[13px] italic leading-relaxed font-playfair">
-            &ldquo;A watch is more than a timepiece — it is a statement of values.&rdquo;
-          </p>
-        </blockquote>
+          <motion.blockquote variants={fadeUp} className="border-l border-[#bfa68a]/28 pl-4">
+            <p className="text-white/28 text-[12px] italic leading-relaxed font-playfair">
+              &ldquo;A watch is more than a timepiece — it is a statement of values.&rdquo;
+            </p>
+          </motion.blockquote>
+        </motion.div>
+
+        {/* Watch icon pinned to bottom */}
+        <div className="absolute bottom-7 left-1/2 -translate-x-1/2">
+          <WatchIcon />
+        </div>
       </div>
 
-      {/* Right form panel */}
+      {/* Right form panel — form centered within the 60% column */}
       <div className="flex-1 flex items-center justify-center px-8">
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45 }}
-          className="w-full max-w-[420px] relative"
+          variants={formContainer}
+          initial="hidden"
+          animate="visible"
+          className="w-full max-w-[420px]"
         >
-          <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/80 mb-2">Create Account</p>
-          <h1 className="font-playfair text-[2rem] font-light text-[#f0e6d2] mb-6">Your Details</h1>
+          <motion.p variants={formItem} className="text-[9px] uppercase tracking-[0.4em] text-[#bfa68a]/80 mb-2">
+            Create Account
+          </motion.p>
+          <motion.h1 variants={formItem} className="font-playfair text-[1.85rem] font-light text-[#f0e6d2] mb-5">
+            Your Details
+          </motion.h1>
 
-          {/* Google */}
-          <a
-            href={GOOGLE_AUTH_URL}
-            className="flex items-center justify-center gap-3 w-full py-[11px] border border-white/12 text-white/55 hover:border-[#bfa68a]/30 hover:text-white/75 transition text-[10px] uppercase tracking-[0.2em] mb-5"
-          >
-            <GoogleIcon />
-            Continue with Google
-          </a>
+          {/* Smart flow: locked email chip — only shown when coming from /auth/start */}
+          {isSmartFlow && (
+            <motion.div variants={formItem} className="flex items-center justify-between mb-6 pb-3 border-b border-white/10">
+              <span className="text-[13px] text-white/70 truncate">{prefilledEmail}</span>
+              <Link
+                href={changeEmailHref}
+                className="text-[9px] uppercase tracking-[0.22em] text-[#bfa68a]/55 hover:text-[#bfa68a] transition ml-4 shrink-0"
+              >
+                ← Change
+              </Link>
+            </motion.div>
+          )}
 
-          {/* Divider */}
-          <div className="flex items-center gap-4 mb-5">
-            <div className="flex-1 h-px bg-white/8" />
-            <span className="text-[9px] uppercase tracking-[0.25em] text-white/22">or</span>
-            <div className="flex-1 h-px bg-white/8" />
-          </div>
+          {/* Google — only shown in standalone mode */}
+          {!isSmartFlow && (
+            <>
+              <motion.div variants={formItem}>
+                <a
+                  href={GOOGLE_AUTH_URL}
+                  onClick={() => { if (redirect) sessionStorage.setItem('authRedirect', redirect); }}
+                  className="flex items-center justify-center gap-3 w-full py-[11px] border border-white/12 text-white/55 hover:border-[#bfa68a]/30 hover:text-white/75 transition text-[9.5px] uppercase tracking-[0.18em] mb-4"
+                >
+                  <GoogleIcon />
+                  Continue with Google
+                </a>
+              </motion.div>
+              <motion.div variants={formItem} className="flex items-center gap-4 mb-4">
+                <div className="flex-1 h-px bg-white/8" />
+                <span className="text-[8.5px] uppercase tracking-[0.22em] text-white/22">or</span>
+                <div className="flex-1 h-px bg-white/8" />
+              </motion.div>
+            </>
+          )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-5">
-              <Field label="First Name" name="firstName" value={formData.firstName} onChange={handleChange} placeholder="First" />
-              <Field label="Last Name" name="lastName" value={formData.lastName} onChange={handleChange} placeholder="Last" />
-            </div>
-            <div className="grid grid-cols-2 gap-5">
-              <Field label="Email" type="email" name="email" value={formData.email} onChange={handleChange} placeholder="your@email.com" />
-              <Field label="Phone" type="tel" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} placeholder="+1 212 555 0192" inputMode="numeric" pattern="[0-9]*" />
-            </div>
-            <div className="grid grid-cols-2 gap-5">
-              <Field label="Password" type="password" name="password" value={formData.password} onChange={handleChange} placeholder="••••••••" />
-              <Field label="Confirm" type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="••••••••" />
-            </div>
+          <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
+            <motion.div variants={formItem} className="grid grid-cols-2 gap-5">
+              <FocusInput label="First Name" name="firstName" value={formData.firstName} onChange={handleChange} placeholder="First" />
+              <FocusInput label="Last Name" name="lastName" value={formData.lastName} onChange={handleChange} placeholder="Last" />
+            </motion.div>
+            {isSmartFlow ? (
+              <motion.div variants={formItem}>
+                <FocusInput label="Phone" type="tel" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} placeholder="+1 212 555 0192" inputMode="numeric" pattern="[0-9]*" />
+              </motion.div>
+            ) : (
+              <motion.div variants={formItem} className="grid grid-cols-2 gap-5">
+                <FocusInput label="Email" type="email" name="email" value={formData.email} onChange={handleChange} placeholder="your@email.com" />
+                <FocusInput label="Phone" type="tel" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} placeholder="+1 212 555 0192" inputMode="numeric" pattern="[0-9]*" />
+              </motion.div>
+            )}
+            <motion.div variants={formItem} className="grid grid-cols-2 gap-5">
+              <FocusInput label="Password" type="password" name="password" value={formData.password} onChange={handleChange} placeholder="••••••••" />
+              <FocusInput label="Confirm" type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="••••••••" />
+            </motion.div>
 
-            {error && <p className="text-[#d97070]/90 text-xs pt-1">{error}</p>}
+            {error && (
+              <motion.p
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-[#d97070]/90 text-xs pt-1"
+              >
+                {error}
+              </motion.p>
+            )}
 
             {/* Terms */}
-            <div className="flex items-start gap-3 pt-1">
+            <motion.div variants={formItem} className="flex items-start gap-3 pt-0.5">
               <button
                 type="button"
                 role="checkbox"
@@ -221,32 +333,44 @@ export default function RegisterPage() {
                   </svg>
                 )}
               </button>
-              <span className="text-[11px] text-white/28 leading-relaxed">
+              <span className="text-[10.5px] text-white/28 leading-relaxed">
                 I agree to the{' '}
                 <Link href="#" className="text-[#bfa68a]/60 hover:text-[#bfa68a] transition underline underline-offset-2">
                   Terms of Service
                 </Link>
               </span>
-            </div>
+            </motion.div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 text-[10px] uppercase tracking-[0.35em] bg-[#bfa68a] text-[#1a100c] hover:bg-[#cdb99d] transition disabled:opacity-50 disabled:cursor-not-allowed font-medium mt-1"
-            >
-              {loading ? 'Creating account...' : 'Create Account'}
-            </button>
+            <motion.div variants={formItem} className="pt-1">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 text-[9.5px] uppercase tracking-[0.32em] font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-500"
+                style={{
+                  background: 'linear-gradient(105deg, #bfa68a 0%, #d4b898 50%, #bfa68a 100%)',
+                  backgroundSize: '200% 100%',
+                  backgroundPosition: '0% 0',
+                  color: '#1a100c',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundPosition = '100% 0'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundPosition = '0% 0'; }}
+              >
+                {loading ? 'Creating account...' : 'Create Account'}
+              </button>
+            </motion.div>
           </form>
 
-          <p className="mt-5 text-[11px] text-white/22 text-center">
+          <motion.p variants={formItem} className="mt-4 text-[10.5px] text-white/22 text-center">
             Already a member?{' '}
             <Link
-              href={`/login${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}
+              href={isSmartFlow
+                ? `/login?email=${encodeURIComponent(prefilledEmail)}${redirect ? `&redirect=${encodeURIComponent(redirect)}` : ''}`
+                : `/login${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ''}`}
               className="text-[#bfa68a]/65 hover:text-[#bfa68a] transition"
             >
               Sign in
             </Link>
-          </p>
+          </motion.p>
         </motion.div>
       </div>
     </div>

@@ -1,337 +1,412 @@
-// Forgot password page with three-step flow: email -> verify code -> reset password
-"use client";
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { forgotPassword, verifyCode, resetPassword } from "@/lib/api";
-import StaggeredFade from "../scrollMotion/StaggeredFade";
+// Forgot password — three-step flow: email → verify OTP → reset password.
+// Card-centered layout. AnimatePresence drives step transitions.
+'use client';
+
+import { useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
+import { forgotPassword, verifyCode, resetPassword } from '@/lib/api';
+import { EASE_LUXURY, EASE_ENTER } from '@/lib/motion';
+
+// Underline-animated label + input, consistent with login/register style
+function FieldInput({
+  label, type = 'text', value, onChange, placeholder, right, autoFocus,
+}: {
+  label: string;
+  type?: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder: string;
+  right?: React.ReactNode;
+  autoFocus?: boolean;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <div>
+      <label className="block text-[8.5px] uppercase tracking-[0.28em] text-[#bfa68a]/65 mb-2">
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          type={type}
+          value={value}
+          onChange={onChange}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder={placeholder}
+          autoFocus={autoFocus}
+          required
+          className={`w-full bg-transparent border-b border-white/20 py-2.5 text-white placeholder:text-white/30 focus:outline-none transition text-sm ${right ? 'pr-12' : ''}`}
+        />
+        <span
+          className="absolute bottom-0 left-0 h-px bg-[#bfa68a]/70 transition-all duration-300 origin-left"
+          style={{ width: '100%', transform: focused ? 'scaleX(1)' : 'scaleX(0)' }}
+        />
+        {right}
+      </div>
+    </div>
+  );
+}
+
+// Six individual digit boxes — auto-advance, backspace, arrow nav, paste support
+function OtpInput({ value, onChange, disabled }: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const cells = Array.from({ length: 6 }, (_, i) => value[i] ?? '');
+
+  const focus = (i: number) => refs.current[i]?.focus();
+
+  const buildValue = (i: number, char: string) => {
+    const next = [...cells];
+    next[i] = char;
+    return next.join('');
+  };
+
+  const handleChange = (i: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const char = e.target.value.replace(/\D/g, '').slice(-1);
+    onChange(buildValue(i, char));
+    if (char && i < 5) focus(i + 1);
+  };
+
+  const handleKeyDown = (i: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace') {
+      if (cells[i]) { onChange(buildValue(i, '')); }
+      else if (i > 0) { onChange(buildValue(i - 1, '')); focus(i - 1); }
+    } else if (e.key === 'ArrowLeft' && i > 0) focus(i - 1);
+    else if (e.key === 'ArrowRight' && i < 5) focus(i + 1);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const digits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    onChange(digits);
+    focus(Math.min(digits.length, 5));
+  };
+
+  return (
+    <div className="flex gap-3 justify-center py-2">
+      {cells.map((digit, i) => (
+        <div key={i} className="relative">
+          <input
+            ref={el => { refs.current[i] = el; }}
+            type="text"
+            inputMode="numeric"
+            maxLength={1}
+            value={digit}
+            onChange={e => handleChange(i, e)}
+            onKeyDown={e => handleKeyDown(i, e)}
+            onPaste={handlePaste}
+            disabled={disabled}
+            autoFocus={i === 0}
+            className="w-11 h-14 text-center text-2xl font-playfair font-light text-white bg-transparent border-b-2 focus:outline-none transition-colors duration-200"
+            style={{ borderColor: digit ? 'rgba(191,166,138,0.65)' : 'rgba(255,255,255,0.15)' }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Gold gradient CTA button — same shimmer pattern as login/register
+function GoldButton({ loading, label, loadingLabel, disabled }: {
+  loading: boolean;
+  label: string;
+  loadingLabel: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="submit"
+      disabled={loading || disabled}
+      className="w-full py-3.5 text-[9.5px] uppercase tracking-[0.32em] font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-500"
+      style={{
+        background: 'linear-gradient(105deg, #bfa68a 0%, #d4b898 50%, #bfa68a 100%)',
+        backgroundSize: '200% 100%',
+        backgroundPosition: '0% 0',
+        color: '#1e1206',
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundPosition = '100% 0'; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundPosition = '0% 0'; }}
+    >
+      {loading ? loadingLabel : label}
+    </button>
+  );
+}
+
+const STEPS = ['email', 'verify', 'reset'] as const;
+type Step = typeof STEPS[number];
+
+const stepVariants = {
+  enter:  { opacity: 0, x: 24 },
+  center: { opacity: 1, x: 0,  transition: { duration: 0.3, ease: EASE_ENTER } },
+  exit:   { opacity: 0, x: -24, transition: { duration: 0.2, ease: EASE_ENTER } },
+};
 
 export default function ForgotPasswordPage() {
-    const [email, setEmail] = useState("");
-    const [code, setCode] = useState("");
-    const [newPassword, setNewPassword] = useState("");
-    const [confirmPassword, setConfirmPassword] = useState("");
-    const [step, setStep] = useState<"email" | "verify" | "reset">("email");
-    const [error, setError] = useState("");
-    const [success, setSuccess] = useState("");
-    const [loading, setLoading] = useState(false);
-    const [countdown, setCountdown] = useState(30); // Countdown timer for resend cooldown
-    const router = useRouter();
+  const router = useRouter();
+  const [step, setStep] = useState<Step>('email');
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [countdown, setCountdown] = useState(0);
 
-    // Prevent scrolling to match login page behavior
-    useEffect(() => {
-        document.body.style.overflow = 'hidden';
-        document.documentElement.style.overflow = 'hidden';
+  const stepIndex = STEPS.indexOf(step);
 
-        return () => {
-            document.body.style.overflow = '';
-            document.documentElement.style.overflow = '';
-        };
-    }, []);
+  // Countdown ticker — started when code is sent
+  const startCountdown = (secs = 30) => {
+    setCountdown(secs);
+    const tick = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) { clearInterval(tick); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
-    // Countdown timer for resend button (starts when user reaches verify step)
-    useEffect(() => {
-        if (step === "verify" && countdown > 0) {
-            const timer = setInterval(() => {
-                setCountdown((prev) => prev - 1);
-            }, 1000);
+  const handleSendCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(''); setSuccess(''); setLoading(true);
+    try {
+      await forgotPassword({ email });
+      setStep('verify');
+      startCountdown(30);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send code. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            return () => clearInterval(timer);
-        }
-    }, [step, countdown]);
+  const handleResend = async () => {
+    setError(''); setSuccess(''); setLoading(true);
+    try {
+      await forgotPassword({ email });
+      setSuccess('New code sent.');
+      startCountdown(30);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resend code.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const handleSendCode = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError("");
-        setSuccess("");
-        setLoading(true);
+  // Called from OTP onChange (auto-submit) and form submit
+  const runVerify = async (codeValue: string) => {
+    if (codeValue.length !== 6 || loading) return;
+    setError(''); setLoading(true);
+    try {
+      await verifyCode({ email, code: codeValue });
+      setStep('reset');
+    } catch {
+      setError('Incorrect or expired code. Please try again.');
+      setCode('');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        try {
-            await forgotPassword({ email });
-            setSuccess("A verification code has been sent to your email");
-            setStep("verify");
-            setCountdown(20); // Reset countdown when sending code
-        } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : "Failed to send verification code. Please try again.";
-            setError(errorMessage);
-        } finally {
-            setLoading(false);
-        }
-    };
+  const handleVerifySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    runVerify(code);
+  };
 
-    // Resends verification code (reuses same code via backend deduplication)
-    const handleResendCode = async () => {
-        setError("");
-        setSuccess("");
-        setLoading(true);
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return; }
+    if (newPassword.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    setError(''); setLoading(true);
+    try {
+      await resetPassword({ email, code, newPassword });
+      setSuccess('Password updated. Redirecting…');
+      setTimeout(() => router.push('/auth/start'), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset password.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        try {
-            await forgotPassword({ email });
-            setSuccess("Verification code resent to your email");
-            setCountdown(30); // Reset countdown
-        } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : "Failed to resend code. Please try again.";
-            setError(errorMessage);
-        } finally {
-            setLoading(false);
-        }
-    };
+  const stepLabels: Record<Step, { eyebrow: string; heading: string; sub: string }> = {
+    email:  { eyebrow: 'Recovery', heading: 'Reset Password',     sub: 'Enter your email and we\'ll send a verification code.' },
+    verify: { eyebrow: 'Verification', heading: 'Enter Code',     sub: `Code sent to ${email}` },
+    reset:  { eyebrow: 'New Password', heading: 'Set New Password', sub: 'Choose a password at least 8 characters long.' },
+  };
 
-    const handleVerifyCode = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError("");
-        setSuccess("");
+  const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
+  const passwordsMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
 
-        if (code.length !== 6) {
-            setError("Please enter a 6-digit code.");
-            return;
-        }
+  return (
+    <div className="flex justify-center items-center h-[calc(100vh-3rem-50px)] overflow-hidden px-4">
+      <motion.div
+        initial={{ opacity: 0, y: 16, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.5, ease: EASE_LUXURY }}
+        className="w-full max-w-[420px] bg-white/[0.04] border border-[#bfa68a]/20 rounded-2xl shadow-2xl backdrop-blur-xl p-10"
+      >
+        {/* Step progress — three dashes */}
+        <div className="flex gap-1.5 mb-8">
+          {STEPS.map((s, i) => (
+            <div
+              key={s}
+              className="h-px transition-all duration-500"
+              style={{
+                flex: i === stepIndex ? '2' : '1',
+                background: i < stepIndex
+                  ? 'rgba(191,166,138,0.45)'
+                  : i === stepIndex
+                  ? 'rgba(191,166,138,0.85)'
+                  : 'rgba(255,255,255,0.1)',
+              }}
+            />
+          ))}
+        </div>
 
-        setLoading(true);
+        {/* Step content — transitions sideways */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            variants={stepVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+          >
+            {/* Eyebrow + heading */}
+            <p className="text-[9px] uppercase tracking-[0.4em] text-[#bfa68a] mb-2">
+              {stepLabels[step].eyebrow}
+            </p>
+            <h1 className="font-playfair text-[1.85rem] font-light text-[#f0e6d2] mb-1.5">
+              {stepLabels[step].heading}
+            </h1>
+            <p className="text-white/35 text-[12px] mb-7 leading-relaxed">
+              {stepLabels[step].sub}
+            </p>
 
-        try {
-            await verifyCode({ email, code });
-            setSuccess("Code verified! Please enter your new password.");
-            setStep("reset");
-        } catch {
-            // User-friendly error message when code verification fails
-            setError("The code you entered is incorrect or has expired. Please try again or request a new code.");
-            setCode(""); // Clear the input field so button changes back to "Resend Code"
-        } finally {
-            setLoading(false);
-        }
-    };
+            {/* ── Step 1: Email ── */}
+            {step === 'email' && (
+              <form onSubmit={handleSendCode} className="space-y-5">
+                <FieldInput
+                  label="Email Address"
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  autoFocus
+                />
+                {error && <p className="text-[#e07575] text-xs">{error}</p>}
+                <GoldButton loading={loading} label="Send Code" loadingLabel="Sending…" />
+              </form>
+            )}
 
-    const handleResetPassword = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError("");
-        setSuccess("");
+            {/* ── Step 2: OTP ── */}
+            {step === 'verify' && (
+              <form onSubmit={handleVerifySubmit} className="space-y-5">
+                <OtpInput
+                  value={code}
+                  onChange={v => { setCode(v); if (v.length === 6) runVerify(v); }}
+                  disabled={loading}
+                />
+                {error && <p className="text-[#e07575] text-xs text-center">{error}</p>}
+                {success && <p className="text-[#bfa68a]/75 text-xs text-center">{success}</p>}
 
-        if (newPassword !== confirmPassword) {
-            setError("Passwords do not match.");
-            return;
-        }
+                {/* Verify or resend depending on code state */}
+                {code.length === 6 ? (
+                  <GoldButton loading={loading} label="Verify Code" loadingLabel="Verifying…" />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={loading || countdown > 0}
+                    className="w-full py-3.5 text-[9.5px] uppercase tracking-[0.32em] font-medium border border-white/12 text-white/45 hover:border-[#bfa68a]/35 hover:text-white/70 disabled:opacity-35 disabled:cursor-not-allowed transition-all duration-300"
+                  >
+                    {countdown > 0 ? `Resend Code (${countdown}s)` : 'Resend Code'}
+                  </button>
+                )}
 
-        if (newPassword.length < 8) {
-            setError("Password must be at least 8 characters long.");
-            return;
-        }
+                <button
+                  type="button"
+                  onClick={() => { setStep('email'); setCode(''); setError(''); setSuccess(''); }}
+                  className="block w-full text-center text-[10px] text-white/25 hover:text-white/45 transition uppercase tracking-[0.2em]"
+                >
+                  ← Different email
+                </button>
+              </form>
+            )}
 
-        setLoading(true);
-
-        try {
-            await resetPassword({ email, code, newPassword });
-            setSuccess("Password has been reset successfully! Redirecting to login...");
-            setTimeout(() => {
-                router.push("/login");
-            }, 2000);
-        } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : "Failed to reset password. Please try again.";
-            setError(errorMessage);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <StaggeredFade>
-            <div className="flex justify-center items-center h-screen overflow-hidden px-4">
-                <div className="w-full max-w-md p-8 space-y-4 bg-white/5 border border-[#bfa68a] rounded-2xl shadow-lg backdrop-blur-lg">
-                    {step === "email" ? (
-                        <>
-                            <h1 className="text-4xl font-playfair text-center text-[#F9F6F2]">Reset Password</h1>
-                            <p className="text-[#bfa68a] mt-2 text-sm text-center">
-                                Enter your email address and we&apos;ll send you a verification code.
-                            </p>
-                            <form onSubmit={handleSendCode} className="space-y-4">
-                                <div>
-                                    <input
-                                        type="email"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        placeholder="Email"
-                                        className="w-full h-12 px-4 rounded-lg border-2 border-[#bfa68a] text-[#F9F6F2] bg-black/20 placeholder-[#bfa68a]/70 focus:outline-none focus:border-[#f0e6d2] transition-all"
-                                        required
-                                        disabled={loading}
-                                    />
-                                </div>
-                                {error && (
-                                    <div className="relative overflow-hidden bg-gradient-to-r from-red-500/20 to-rose-500/20 border-2 border-red-500/40 rounded-xl p-4 backdrop-blur-sm">
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl"></div>
-                                        <div className="relative flex items-start gap-3">
-                                            <svg className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                            <p className="text-sm text-red-300 leading-relaxed">{error}</p>
-                                        </div>
-                                    </div>
-                                )}
-                                {success && (
-                                    <div className="relative overflow-hidden bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-2 border-green-500/40 rounded-xl p-4 backdrop-blur-sm">
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-full blur-3xl"></div>
-                                        <div className="relative flex items-start gap-3">
-                                            <svg className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                            <p className="text-sm text-green-300 leading-relaxed">{success}</p>
-                                        </div>
-                                    </div>
-                                )}
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="w-full py-3 font-semibold text-[#1e1512] bg-gradient-to-r from-[#bfa68a] to-[#f0e6d2] rounded-xl hover:opacity-90 hover:scale-[1.02] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                                >
-                                    {loading ? "Sending..." : "Send Verification Code"}
-                                </button>
-                            </form>
-                        </>
-                    ) : step === "verify" ? (
-                        <>
-                            <h1 className="text-4xl font-playfair text-center text-[#F9F6F2]">Enter Verification Code</h1>
-                            <p className="text-[#bfa68a] text-sm text-center leading-relaxed">
-                                Enter the 6-digit code sent to your email.
-                            </p>
-                            <form onSubmit={handleVerifyCode} className="space-y-4">
-                                <div className="space-y-4">
-                                    <div className="bg-[#bfa68a]/10 border-2 border-[#bfa68a]/30 rounded-xl p-6 backdrop-blur-sm">
-                                        <input
-                                            type="text"
-                                            value={code}
-                                            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                                            placeholder="000000"
-                                            className="w-full h-16 px-4 rounded-lg border-2 border-[#bfa68a] text-[#F9F6F2] bg-black/20 placeholder-[#bfa68a]/40 focus:outline-none focus:border-[#f0e6d2] text-center text-4xl tracking-[0.5em] font-bold transition-all"
-                                            required
-                                            disabled={loading}
-                                            maxLength={6}
-                                            pattern="[0-9]{6}"
-                                            autoFocus
-                                        />
-                                    </div>
-                                    {code.length === 0 ? (
-                                        <button
-                                            type="button"
-                                            onClick={handleResendCode}
-                                            disabled={loading || countdown > 0}
-                                            className="w-full py-3 font-semibold text-[#1e1512] bg-gradient-to-r from-[#bfa68a] to-[#f0e6d2] rounded-xl hover:opacity-90 hover:scale-[1.02] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                                        >
-                                            {loading ? "Resending..." : countdown > 0 ? `Resend Code (${countdown}s)` : "Resend Code"}
-                                        </button>
-                                    ) : (
-                                        <button
-                                            type="submit"
-                                            disabled={loading || code.length !== 6}
-                                            className="w-full py-3 font-semibold text-[#1e1512] bg-gradient-to-r from-[#bfa68a] to-[#f0e6d2] rounded-xl hover:opacity-90 hover:scale-[1.02] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                                        >
-                                            {loading ? "Verifying..." : "Verify Code"}
-                                        </button>
-                                    )}
-                                </div>
-                                {error && (
-                                    <div className="relative overflow-hidden bg-gradient-to-r from-red-500/20 to-rose-500/20 border-2 border-red-500/40 rounded-xl p-4 backdrop-blur-sm">
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl"></div>
-                                        <div className="relative flex items-start gap-3">
-                                            <svg className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                            <p className="text-sm text-red-300 leading-relaxed">{error}</p>
-                                        </div>
-                                    </div>
-                                )}
-                                {success && (
-                                    <div className="relative overflow-hidden bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-2 border-green-500/40 rounded-xl p-4 backdrop-blur-sm">
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-full blur-3xl"></div>
-                                        <div className="relative flex items-start gap-3">
-                                            <svg className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                            <p className="text-sm text-green-300 leading-relaxed">{success}</p>
-                                        </div>
-                                    </div>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setStep("email");
-                                        setCode("");
-                                        setError("");
-                                        setSuccess("");
-                                    }}
-                                    className="w-full py-2 text-sm text-[#bfa68a] hover:text-[#F9F6F2] transition-colors cursor-pointer"
-                                >
-                                    Use Different Email
-                                </button>
-                            </form>
-                        </>
-                    ) : (
-                        <>
-                            <h1 className="text-4xl font-playfair text-center text-[#F9F6F2]">Set New Password</h1>
-                            <p className="text-[#bfa68a] mt-2 text-sm text-center">
-                                Enter your new password below.
-                            </p>
-                            <form onSubmit={handleResetPassword} className="space-y-4">
-                                <div className="space-y-4">
-                                    <input
-                                        type="password"
-                                        value={newPassword}
-                                        onChange={(e) => setNewPassword(e.target.value)}
-                                        placeholder="New Password"
-                                        className="w-full h-12 px-4 rounded-lg border-2 border-[#bfa68a] text-[#F9F6F2] bg-black/20 placeholder-[#bfa68a]/70 focus:outline-none focus:border-[#f0e6d2] transition-all"
-                                        required
-                                        disabled={loading}
-                                        minLength={8}
-                                    />
-                                    <input
-                                        type="password"
-                                        value={confirmPassword}
-                                        onChange={(e) => setConfirmPassword(e.target.value)}
-                                        placeholder="Confirm New Password"
-                                        className="w-full h-12 px-4 rounded-lg border-2 border-[#bfa68a] text-[#F9F6F2] bg-black/20 placeholder-[#bfa68a]/70 focus:outline-none focus:border-[#f0e6d2] transition-all"
-                                        required
-                                        disabled={loading}
-                                        minLength={8}
-                                    />
-                                </div>
-                                {error && (
-                                    <div className="relative overflow-hidden bg-gradient-to-r from-red-500/20 to-rose-500/20 border-2 border-red-500/40 rounded-xl p-4 backdrop-blur-sm">
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl"></div>
-                                        <div className="relative flex items-start gap-3">
-                                            <svg className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                            <p className="text-sm text-red-300 leading-relaxed">{error}</p>
-                                        </div>
-                                    </div>
-                                )}
-                                {success && (
-                                    <div className="relative overflow-hidden bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-2 border-green-500/40 rounded-xl p-4 backdrop-blur-sm">
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-full blur-3xl"></div>
-                                        <div className="relative flex items-start gap-3">
-                                            <svg className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                            <p className="text-sm text-green-300 leading-relaxed">{success}</p>
-                                        </div>
-                                    </div>
-                                )}
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="w-full py-3 font-semibold text-[#1e1512] bg-gradient-to-r from-[#bfa68a] to-[#f0e6d2] rounded-xl hover:opacity-90 hover:scale-[1.02] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                                >
-                                    {loading ? "Resetting..." : "Reset Password"}
-                                </button>
-                            </form>
-                        </>
-                    )}
-                    <p className="text-sm text-center text-[#bfa68a]">
-                        Remember your password?{" "}
-                        <Link href="/login" className="underline hover:text-[#F9F6F2] cursor-pointer">
-                            Sign In
-                        </Link>
-                    </p>
+            {/* ── Step 3: New password ── */}
+            {step === 'reset' && (
+              <form onSubmit={handleReset} className="space-y-5">
+                <FieldInput
+                  label="New Password"
+                  type={showNew ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoFocus
+                  right={
+                    <button
+                      type="button"
+                      onClick={() => setShowNew(v => !v)}
+                      tabIndex={-1}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 text-white/28 hover:text-white/55 transition text-[8.5px] uppercase tracking-widest"
+                    >
+                      {showNew ? 'Hide' : 'Show'}
+                    </button>
+                  }
+                />
+                <div>
+                  <FieldInput
+                    label="Confirm Password"
+                    type={showConfirm ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    right={
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirm(v => !v)}
+                        tabIndex={-1}
+                        className="absolute right-0 top-1/2 -translate-y-1/2 text-white/28 hover:text-white/55 transition text-[8.5px] uppercase tracking-widest"
+                      >
+                        {showConfirm ? 'Hide' : 'Show'}
+                      </button>
+                    }
+                  />
+                  {/* Real-time match feedback */}
+                  {passwordsMatch && (
+                    <p className="text-[10px] text-[#bfa68a]/65 mt-2 tracking-wide">Passwords match</p>
+                  )}
+                  {passwordsMismatch && (
+                    <p className="text-[10px] text-[#e07575]/80 mt-2">Passwords do not match</p>
+                  )}
                 </div>
-            </div>
-        </StaggeredFade>
-    );
+
+                {error && <p className="text-[#e07575] text-xs">{error}</p>}
+                {success && <p className="text-[#bfa68a]/75 text-xs">{success}</p>}
+
+                <GoldButton loading={loading} label="Set New Password" loadingLabel="Saving…" />
+              </form>
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Footer link */}
+        <p className="mt-7 text-[10.5px] text-white/22 text-center">
+          Remember your password?{' '}
+          <Link href="/auth/start" className="text-[#bfa68a]/65 hover:text-[#bfa68a] transition">
+            Sign In
+          </Link>
+        </p>
+      </motion.div>
+    </div>
+  );
 }
