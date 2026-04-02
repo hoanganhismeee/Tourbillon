@@ -48,6 +48,18 @@ public class TasteController : ControllerBase
         return Ok(profile);
     }
 
+    // POST /api/taste/generate — derives a taste profile from the user's browsing history via AI
+    [HttpPost("generate")]
+    public async Task<IActionResult> GenerateFromBehavior()
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdClaim, out int userId))
+            return Unauthorized();
+
+        var profile = await _tasteService.GenerateFromBehaviorAsync(userId);
+        return Ok(profile);
+    }
+
     private int? GetCurrentUserId()
     {
         var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

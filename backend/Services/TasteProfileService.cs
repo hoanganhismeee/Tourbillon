@@ -1,6 +1,7 @@
 // Service for managing user taste profiles: persisting extracted preferences and scoring watches.
-// ParseAndSaveAsync sends the user's plain text to the ai-service for LLM extraction,
-// then maps returned brand names to IDs and upserts the UserTasteProfile row.
+// ParseAndSaveAsync sends the user's plain text to the ai-service for LLM extraction.
+// GenerateFromBehaviorAsync derives a profile from browsing events via the ai-service.
+// Both methods map returned brand names to IDs and upsert the UserTasteProfile row.
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -15,17 +16,20 @@ public interface ITasteProfileService
 {
     Task<TasteProfileDto> GetProfileAsync(int userId);
     Task<TasteProfileDto> ParseAndSaveAsync(int userId, string tasteText);
+    Task<TasteProfileDto> GenerateFromBehaviorAsync(int userId);
 }
 
 public class TasteProfileService : ITasteProfileService
 {
     private readonly TourbillonContext _context;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IBehaviorService _behaviorService;
 
-    public TasteProfileService(TourbillonContext context, IHttpClientFactory httpClientFactory)
+    public TasteProfileService(TourbillonContext context, IHttpClientFactory httpClientFactory, IBehaviorService behaviorService)
     {
         _context = context;
         _httpClientFactory = httpClientFactory;
+        _behaviorService = behaviorService;
     }
 
     // Returns the user's current taste profile, or empty defaults if none exists.
@@ -155,6 +159,7 @@ public class TasteProfileService : ITasteProfileService
         PriceMin            = p.PriceMin,
         PriceMax            = p.PriceMax,
         PreferredCaseSize   = p.PreferredCaseSize,
+        Summary             = p.Summary,
     };
 
     private static T? Deserialise<T>(string? json)
@@ -171,7 +176,70 @@ public class TasteProfileService : ITasteProfileService
         catch { return null; }
     }
 
-    // Internal DTO for deserializing the ai-service /parse-taste response.
+    // Generates a taste profile from the user's browsing history using the AI service.
+    public async Task<TasteProfileDto> GenerateFromBehaviorAsync(int userId)
+    {
+        var events = await _behaviorService.GetRecentEventsAsync(userId, 100);
+        if (events.Count < 3)
+            return await GetProfileAsync(userId); // Not enough data yet
+
+        var brands = await _context.Brands.AsNoTracking().ToListAsync();
+        var brandNames = brands.Select(b => b.Name).ToList();
+
+        var eventPayload = events.Select(e => new
+        {
+            type = e.EventType,
+            entityName = e.EntityName,
+            brandId = e.BrandId,
+        });
+
+        var httpClient = _httpClientFactory.CreateClient("ai-service");
+        var payload = new { events = eventPayload, available_brands = brandNames };
+
+        var profile = await _context.UserTasteProfiles
+            .FirstOrDefaultAsync(p => p.UserId == userId);
+
+        if (profile == null)
+        {
+            profile = new UserTasteProfile { UserId = userId };
+            _context.UserTasteProfiles.Add(profile);
+        }
+
+        profile.UpdatedAt = DateTime.UtcNow;
+
+        try
+        {
+            var resp = await httpClient.PostAsJsonAsync("/generate-dna-from-behavior", payload);
+            resp.EnsureSuccessStatusCode();
+            var snakeOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+            var parsed = await resp.Content.ReadFromJsonAsync<ParsedTaste>(snakeOptions)
+                         ?? new ParsedTaste();
+
+            var preferredBrandIds = (parsed.PreferredBrands ?? [])
+                .Select(name => brands.FirstOrDefault(b =>
+                    string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase))?.Id)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .ToList();
+
+            profile.PreferredBrandIds   = JsonSerializer.Serialize(preferredBrandIds);
+            profile.PreferredMaterials  = JsonSerializer.Serialize(parsed.PreferredMaterials ?? []);
+            profile.PreferredDialColors = JsonSerializer.Serialize(parsed.PreferredDialColors ?? []);
+            profile.PriceMin            = parsed.PriceMin;
+            profile.PriceMax            = parsed.PriceMax;
+            profile.PreferredCaseSize   = parsed.PreferredCaseSize;
+            profile.Summary             = parsed.Summary;
+        }
+        catch
+        {
+            // AI service unavailable — preserve existing profile
+        }
+
+        await _context.SaveChangesAsync();
+        return MapToDto(profile);
+    }
+
+    // Internal DTO for deserializing the ai-service /parse-taste and /generate-dna-from-behavior responses.
     // Deserialized with SnakeCaseLower policy so PascalCase properties map to snake_case JSON keys.
     private class ParsedTaste
     {
@@ -181,5 +249,6 @@ public class TasteProfileService : ITasteProfileService
         public decimal? PriceMin { get; set; }
         public decimal? PriceMax { get; set; }
         public string? PreferredCaseSize { get; set; }
+        public string? Summary { get; set; }
     }
 }

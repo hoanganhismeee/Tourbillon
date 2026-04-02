@@ -610,6 +610,7 @@ export interface TasteProfile {
   priceMin: number | null;
   priceMax: number | null;
   preferredCaseSize: 'small' | 'medium' | 'large' | null;
+  summary?: string | null;
 }
 
 export const getTasteProfile = async (): Promise<TasteProfile> => {
@@ -631,6 +632,16 @@ export const saveTasteProfile = async (tasteText: string): Promise<TasteProfile>
     const err = await response.json();
     throw new Error(err.message || 'Failed to save taste profile');
   }
+  return response.json();
+};
+
+// Trigger AI generation of taste profile from browsing history — returns updated profile.
+export const generateTasteProfile = async (): Promise<TasteProfile> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/taste/generate`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to generate taste profile');
   return response.json();
 };
 

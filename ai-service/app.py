@@ -344,6 +344,83 @@ def parse_taste():
     return jsonify(result)
 
 
+# ── DNA from behavioral events ────────────────────────────────────────────────
+
+DNA_FROM_BEHAVIOR_SYSTEM_PROMPT = """You are a luxury watch taste analyst. Infer a user's watch preferences from their browsing behavior.
+
+You will receive a list of events: watch views, brand page visits, collection views, and search queries.
+Infer preferences from frequency and recency — repeated visits to a brand or collection signal stronger affinity.
+Search query terms indicate material/complication preferences ("blue dial", "sport", "thin").
+
+Available brands will be provided. Match brand names exactly from that list (case-insensitive).
+For case size, map to one of: "small" (<37mm), "medium" (37-41mm), "large" (>41mm), or null.
+
+Return ONLY valid JSON with these exact keys. Use null for unmentioned fields, [] for empty lists:
+{
+  "preferred_brands": [],
+  "preferred_materials": [],
+  "preferred_dial_colors": [],
+  "price_min": null,
+  "price_max": null,
+  "preferred_case_size": null,
+  "summary": null
+}
+
+Key guidance:
+- preferred_brands: match names from the provided available_brands list only
+- preferred_materials: from ["stainless steel", "yellow gold", "white gold", "rose gold", "platinum", "titanium", "ceramic"]
+- preferred_dial_colors: common colors like "blue", "black", "white", "silver", "green", "champagne", "salmon", "grey"
+- price_min / price_max: infer from search terms only ("under 30k" → price_max: 30000); null if not mentioned
+- preferred_case_size: infer from search terms or watch names only; null if not mentioned
+- summary: 1-2 sentences describing the user's inferred taste in plain English (e.g. "You gravitate toward sporty stainless steel pieces, with a preference for Audemars Piguet and blue dials."); null if insufficient data
+
+No preamble. No explanation. JSON only."""
+
+DNA_FROM_BEHAVIOR_STRICT_PROMPT = DNA_FROM_BEHAVIOR_SYSTEM_PROMPT + "\n\nCRITICAL: Output raw JSON only. No markdown. No text before or after."
+
+
+@app.route("/generate-dna-from-behavior", methods=["POST"])
+def generate_dna_from_behavior():
+    """Generate a structured taste profile from a user's browsing behavior events.
+    Input: { events: [{type, entity_name, brand_id, ...}], available_brands: list[str] }
+    Output: { preferred_brands, preferred_materials, preferred_dial_colors, price_min, price_max, preferred_case_size, summary }"""
+    body = request.get_json(silent=True) or {}
+    events = body.get("events") or []
+    available_brands = body.get("available_brands") or []
+
+    if not events:
+        return jsonify({"error": "events is required"}), 400
+
+    # Format events as a readable summary for the LLM
+    event_lines = []
+    for e in events:
+        etype = e.get("type", "")
+        name = e.get("entityName") or e.get("entity_name", "")
+        if etype == "search":
+            event_lines.append(f"- Searched for: {name}")
+        elif etype == "watch_view":
+            event_lines.append(f"- Viewed watch: {name}")
+        elif etype == "brand_view":
+            event_lines.append(f"- Visited brand page: {name}")
+        elif etype == "collection_view":
+            event_lines.append(f"- Visited collection page: {name}")
+
+    events_text = "\n".join(event_lines) if event_lines else "No events"
+    user_content = f"Available brands: {', '.join(available_brands)}\n\nBrowsing history:\n{events_text}"
+
+    try:
+        raw = call_llm(DNA_FROM_BEHAVIOR_SYSTEM_PROMPT, user_content, max_tokens=300)
+        result = parse_llm_json(raw)
+    except (ValueError, json.JSONDecodeError):
+        try:
+            raw = call_llm(DNA_FROM_BEHAVIOR_STRICT_PROMPT, user_content, max_tokens=300)
+            result = parse_llm_json(raw)
+        except (ValueError, json.JSONDecodeError) as e:
+            return jsonify({"error": f"Failed to parse LLM response: {str(e)}"}), 502
+
+    return jsonify(result)
+
+
 # ── Editorial content generation ─────────────────────────────────────────────
 
 EDITORIAL_SYSTEM_PROMPT = """You are a senior horological journalist writing editorial content for a luxury watch boutique.
