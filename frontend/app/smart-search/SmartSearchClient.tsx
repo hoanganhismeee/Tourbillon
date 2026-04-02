@@ -4,7 +4,7 @@
 // All filtering is client-side; no re-fetch after initial load.
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -17,6 +17,7 @@ import {
   Collection,
   Watch,
 } from '@/lib/api';
+import { trackEvent } from '@/lib/behaviorTracker';
 import { calculateFitScores } from '@/lib/wristfit';
 import WatchCard from '@/app/watches/[slug]/WatchCard';
 import {
@@ -126,6 +127,14 @@ export default function SmartSearchClient() {
   const [kwCollections, setKwCollections] = useState<Array<{ id: number; name: string; slug?: string; brand?: { name: string } }>>([]);
   // Normalized Watch[] so SmartCard can render them during AI loading
   const [kwWatches, setKwWatches] = useState<Watch[]>([]);
+
+  // Track each unique search query once when results arrive successfully
+  const trackedQueryRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (status !== 'success' || !query || trackedQueryRef.current === query) return;
+    trackedQueryRef.current = query;
+    trackEvent({ type: 'search', entityName: query });
+  }, [status, query]);
 
   // Load filter metadata immediately (fast DB queries) so the filter bar renders during the AI call.
   // watchFinderSearch is slow (~4s) and runs separately — filter pills appear right away.

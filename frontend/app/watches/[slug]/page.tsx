@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { fetchWatchBySlug, fetchBrands, fetchCollections } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
+import { trackEvent } from '@/lib/behaviorTracker';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { parseStructuredSpecs, parseFlatSpecs, buildSpecSections } from '@/lib/specs';
 import CompareToggle from '../../components/compare/CompareToggle';
@@ -56,6 +57,13 @@ const WatchDetailPage = () => {
     useEffect(() => {
         if (watch?.imageUrl) setImgSrc(watch.imageUrl);
     }, [watch?.imageUrl]);
+
+    // Track watch view for Watch DNA behavior profiling
+    useEffect(() => {
+        if (!watch) return;
+        trackEvent({ type: 'watch_view', entityId: watch.id, entityName: watch.name, brandId: watch.brandId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [watch?.id]);
 
     // Always start at the top — browser scroll restoration can wrongly resume a prior
     // scroll position when the same URL still exists in the history stack.

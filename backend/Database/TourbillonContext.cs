@@ -26,6 +26,7 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
     public DbSet<UserFavourite> UserFavourites { get; set; }
     public DbSet<UserCollection> UserCollections { get; set; }
     public DbSet<UserCollectionWatch> UserCollectionWatches { get; set; }
+    public DbSet<UserBrowsingEvent> UserBrowsingEvents { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -96,6 +97,13 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
         modelBuilder.Entity<UserCollectionWatch>(entity =>
         {
             entity.HasKey(e => new { e.UserCollectionId, e.WatchId });
+        });
+
+        modelBuilder.Entity<UserBrowsingEvent>(entity =>
+        {
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.AnonymousId);
+            entity.HasIndex(e => e.Timestamp);
         });
     }
 }

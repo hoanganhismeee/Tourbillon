@@ -181,6 +181,9 @@ builder.Services.AddScoped<IFavouritesService, FavouritesService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 builder.Services.AddScoped<IRegisterInterestService, RegisterInterestService>();
 
+// Register behavior tracking service for Watch DNA behavioral profile generation
+builder.Services.AddScoped<IBehaviorService, BehaviorService>();
+
 // Configures the application's cookie for handling authentication sessions.
 builder.Services.ConfigureApplicationCookie(options =>
 {
