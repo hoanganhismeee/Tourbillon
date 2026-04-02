@@ -16,7 +16,8 @@
 | Vector Similarity Search + QueryIntent Hybrid Filtering | Done | 3B |
 | Category-Aware Embeddings + Spec-Level Filter Pre-Selection | Done | 3B |
 | Story-first Product Pages (editorial seeded 339/339, admin inline editor) | Done | 2 |
-| Watch DNA / Taste Profile | Done | 3C |
+| Watch DNA / Taste Profile (manual text input) | Done | 3C |
+| Watch DNA — Behavioural Tracking (anonymous + authenticated, AI generation, login merge) | Done | 3C |
 | Google OAuth + Email Magic Login (passwordless OTP) | Done | 3C |
 | Post-login redirect — magic link and Google OAuth paths | Done | 3C |
 | Role-Based Access Control (admin seeding, scrape page guard, nav link) | Done | 3.5 |
@@ -102,7 +103,7 @@ Style rules, word cap (130 words), and link format are expressed as plain instru
 ### Should use AI
 
 - **Compare Mode** — backend handles the spec diff (SQL); AI generates the wearability and brand-character explanation
-- **Watch DNA / Taste Profile** — LLM extracts structured preferences once on save; rule-based scoring at browse time (zero AI cost)
+- **Watch DNA / Taste Profile** — LLM synthesises browsing events into structured preferences + summary once on generate; rule-based scoring at browse time (zero AI cost)
 
 ### Never use AI
 
@@ -197,24 +198,26 @@ Semantic result cache stored in `QueryCaches` table. Every search embeds the que
 
 ### Watch DNA / Taste Profile (COMPLETE — Phase 3C)
 
-Registered users describe their watch preferences in plain text (≤10 words). The AI extracts structured signals; those signals drive rule-based scoring that floats preferred watches to the top of the All Watches grid.
+A long-term taste fingerprint built silently from browsing behaviour. Distinct from Smart Search (explicit one-time intent); Watch DNA is implicit and accumulates over time.
 
 **What it does:**
-- Free-text textarea on Edit Details page (≤10 words, live word count)
-- "View Your Personalised Collection →" button appears after successful save, navigates to `/watches`
-- LLM extracts: preferred brands, materials, dial colors, case size bucket, price range
-- Rule-based scoring: +3 brand · +2 material · +2 dial color · +1 case size · +1 price = 9 max
-- Matched watches sorted DESC, unmatched tail keeps interleaved-by-brand shuffle
+- Tracks watch views, brand/collection page visits, and smart searches — anonymously from the very first page view
+- On sign-in, anonymous events merge into the authenticated account (`POST /api/behavior/merge`)
+- AI synthesises ≥ 3 events into structured preferences + a plain-English summary sentence
+- Edit Details page shows the AI-generated summary + preference chips (brands, materials, dial colours, price range, case size)
+- "Regenerate" button triggers fresh AI generation; "Edit manually" falls back to the original textarea override
+- Rule-based scoring floats preferred watches to the top of every listing: +3 brand · +2 material · +2 dial color · +1 case size · +1 price = 9 max
 - "Personalized for you" badge in All Watches header when profile is active
-- Anonymous visitors see CTA on homepage: "Sign in to personalise your watch feed"
-- Zero AI cost at browse time — LLM only called when user saves their taste
+- Zero AI cost at browse time — LLM called only on generate/save
 
 **Tech approach:**
-- `UserTasteProfile` EF Core entity (JSON arrays as text columns, unique per user)
-- `POST /parse-taste` in ai-service — prompt + LLM extraction + JSON response
-- `TasteProfileService.ScoreWatch()` pure static method — unit-testable, no DB
-- TanStack Query cache invalidated on save → AllWatchesSection re-sorts immediately
-- Full spec: `docs/phase3c-watch-dna.md`
+- Client: `frontend/lib/behaviorTracker.ts` — rolling 100-event buffer in `tourbillon-behavior` localStorage, persistent `tourbillon-anon-id` UUID, SSR-safe (all access in try/catch). `AuthContext` flushes + merges on login.
+- Backend: `UserBrowsingEvent` model + `BehaviorService` (flush with time-window dedup, merge, query). `BehaviorController`: `POST /api/behavior/events` (no auth), `POST /api/behavior/merge` ([Authorize]).
+- AI: `POST /generate-dna-from-behavior` in ai-service — infers taste from event frequency (most-viewed brand = stronger signal). Returns same structure as `/parse-taste` plus `summary` field.
+- `TasteProfileService.GenerateFromBehaviorAsync` — requires ≥ 3 events, returns existing profile if insufficient.
+- `TasteProfileService.ScoreWatch()` pure static method — unit-testable, no DB.
+- TanStack Query cache invalidated on generate/save → AllWatchesSection re-sorts immediately.
+- Full original spec: `docs/phase3c-watch-dna.md`
 
 ---
 

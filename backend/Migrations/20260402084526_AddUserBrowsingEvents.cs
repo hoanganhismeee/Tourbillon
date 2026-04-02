@@ -45,11 +45,21 @@ namespace backend.Migrations
                 name: "IX_UserBrowsingEvents_UserId",
                 table: "UserBrowsingEvents",
                 column: "UserId");
+
+            migrationBuilder.AddColumn<string>(
+                name: "Summary",
+                table: "UserTasteProfiles",
+                type: "text",
+                nullable: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropColumn(
+                name: "Summary",
+                table: "UserTasteProfiles");
+
             migrationBuilder.DropTable(
                 name: "UserBrowsingEvents");
         }

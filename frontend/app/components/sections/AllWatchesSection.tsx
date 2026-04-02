@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWatches, fetchCollections, getTasteProfile, Watch, Collection, Brand, TasteProfile } from '@/lib/api';
+import { BrowsingEvent, getBufferedEvents } from '@/lib/behaviorTracker';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useAuth } from '@/contexts/AuthContext';
@@ -92,6 +93,25 @@ function scoreTasteMatch(watch: Watch, profile: TasteProfile): number {
   return score;
 }
 
+// Score a watch from raw browsing events — no AI required.
+// Counts brand/collection visit frequency; capped to avoid over-weighting a single obsession.
+// Brand hits: watch_view.brandId + brand_view.entityId; cap +3. Collection hits: cap +2.
+function scoreBehaviorMatch(watch: Watch, events: BrowsingEvent[]): number {
+  if (events.length === 0) return 0;
+  let brandHits = 0;
+  let collectionHits = 0;
+  for (const e of events) {
+    if ((e.type === 'watch_view' && e.brandId === watch.brandId) ||
+        (e.type === 'brand_view' && e.entityId === watch.brandId)) {
+      brandHits++;
+    }
+    if (e.type === 'collection_view' && watch.collectionId != null && e.entityId === watch.collectionId) {
+      collectionHits++;
+    }
+  }
+  return Math.min(brandHits, 3) + Math.min(collectionHits, 2);
+}
+
 // Returns true when the profile has at least one preference set
 function hasAnyPreference(profile: TasteProfile): boolean {
   return (
@@ -129,6 +149,11 @@ const AllWatchesSection = ({ brands, brandFilter = null, collectionFilter = null
   const [showAllWatches, setShowAllWatches] = useState(false);
   const watchesPerPage = 20;
 
+  // Read browsing events from localStorage once on mount — drives instant scoring
+  // without needing a generated AI profile.
+  const [behaviorEvents, setBehaviorEvents] = useState<BrowsingEvent[]>([]);
+  useEffect(() => { setBehaviorEvents(getBufferedEvents()); }, []);
+
   const { data: watches = [], isLoading: watchesLoading } = useQuery({
     queryKey: ['watches'],
     queryFn: fetchWatches,
@@ -139,39 +164,42 @@ const AllWatchesSection = ({ brands, brandFilter = null, collectionFilter = null
     queryFn: fetchCollections,
   });
 
-  // Fetch taste profile only for authenticated users; staleTime:Infinity so it
-  // only refreshes when explicitly invalidated (i.e. after the user saves their taste).
+  // Fetch taste profile for authenticated users — used for material/dial/price/size scoring.
+  // Brand-level personalization comes from behaviorEvents (instant, no AI); AI profile enriches it.
   const { data: tasteProfile } = useQuery({
     queryKey: ['tasteProfile'],
     queryFn: getTasteProfile,
     enabled: isAuthenticated,
-    staleTime: Infinity,
     retry: false,
   });
 
-  const isPersonalized = isAuthenticated && !!tasteProfile && hasAnyPreference(tasteProfile);
+  // Personalized if: authenticated AND (has AI profile preferences OR has browsing history)
+  const isPersonalized = isAuthenticated && (
+    (!!tasteProfile && hasAnyPreference(tasteProfile)) || behaviorEvents.length > 0
+  );
 
-  // Sort watches by taste score on load and whenever the profile changes.
-  // Matched watches (score > 0) float to the top, sorted highest-first.
-  // Unmatched watches keep the interleaved-by-brand shuffle for visual variety.
-  // Falls back to the standard interleave shuffle when no preferences are set.
+  // Sort watches by combined score on load and whenever profile or behavior events change.
+  // Behavioral score (instant, from localStorage) + AI profile score (material/dial/price/size).
+  // Matched watches (score > 0) float to top sorted highest-first; unmatched keep brand interleave.
   useEffect(() => {
     if (watches.length === 0) return;
-    const filtered = watches;
 
-    if (isPersonalized && tasteProfile) {
-      const scored = filtered.map(w => ({ watch: w, score: scoreTasteMatch(w, tasteProfile) }));
+    if (isPersonalized) {
+      const scored = watches.map(w => ({
+        watch: w,
+        score: (tasteProfile ? scoreTasteMatch(w, tasteProfile) : 0) + scoreBehaviorMatch(w, behaviorEvents),
+      }));
       const matched   = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score).map(s => s.watch);
       const unmatched = scored.filter(s => s.score === 0).map(s => s.watch);
       setShuffledWatches([...matched, ...interleaveByBrand(unmatched)]);
       setHasShuffledWatches(true);
     } else if (!hasShuffledWatches) {
-      setShuffledWatches(interleaveByBrand(filtered));
+      setShuffledWatches(interleaveByBrand(watches));
       setHasShuffledWatches(true);
     } else {
-      setShuffledWatches(filtered);
+      setShuffledWatches(watches);
     }
-  }, [watches, tasteProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [watches, tasteProfile, behaviorEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply brand/collection filters on top of the shuffled order
   const filteredWatches = useMemo(() => {
