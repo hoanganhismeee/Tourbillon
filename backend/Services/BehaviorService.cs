@@ -27,16 +27,29 @@ public class BehaviorService : IBehaviorService
     {
         if (events.Count == 0) return;
 
+        // Determine the batch's time window (oldest event's hour to now)
+        var minTimestamp = events.Min(e => e.Timestamp);
+        var windowStart = new DateTime(minTimestamp.Year, minTimestamp.Month, minTimestamp.Day, minTimestamp.Hour, 0, 0, DateTimeKind.Utc);
+
+        // Load existing events in this window for this identity in one query
+        var existingEvents = await _context.UserBrowsingEvents
+            .Where(x =>
+                (userId != null ? x.UserId == userId : x.AnonymousId == anonymousId) &&
+                x.Timestamp >= windowStart)
+            .Select(x => new { x.EventType, x.EntityId, x.Timestamp })
+            .ToListAsync();
+
+        // Deduplicate in memory: skip events that already exist within the same UTC hour
         var toInsert = new List<UserBrowsingEvent>();
         foreach (var e in events)
         {
             var hourWindow = new DateTime(e.Timestamp.Year, e.Timestamp.Month, e.Timestamp.Day, e.Timestamp.Hour, 0, 0, DateTimeKind.Utc);
-            bool exists = await _context.UserBrowsingEvents.AnyAsync(x =>
-                (userId != null ? x.UserId == userId : x.AnonymousId == anonymousId) &&
-                x.EntityId == e.EntityId &&
+            bool exists = existingEvents.Any(x =>
                 x.EventType == e.EventType &&
+                x.EntityId == e.EntityId &&
                 x.Timestamp >= hourWindow &&
                 x.Timestamp < hourWindow.AddHours(1));
+
             if (!exists)
                 toInsert.Add(new UserBrowsingEvent
                 {
@@ -49,6 +62,7 @@ public class BehaviorService : IBehaviorService
                     Timestamp = e.Timestamp,
                 });
         }
+
         if (toInsert.Count > 0)
         {
             _context.UserBrowsingEvents.AddRange(toInsert);
