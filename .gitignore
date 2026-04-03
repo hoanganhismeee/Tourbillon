@@ -420,3 +420,4 @@ cookies.txt;
 
 # Playwright MCP screenshots and snapshots
 .playwright-mcp/
+.superpowers

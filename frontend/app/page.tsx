@@ -1,9 +1,12 @@
-// Landing page: video hero → search → brand showcase (Trinity + more brands) → CTA to collection.
+// Landing page: video hero → search → style discovery → featured watches → brand showcase → Watch DNA.
 import VideoSection from "./components/sections/VideoSection";
 import HeroHeading from "./components/sections/HeroHeading";
 import WatchFinderSearch from "./components/WatchFinderSearch";
 import TasteCTA from "./components/TasteCTA";
+import StyleArchetypeGrid from "./components/sections/StyleArchetypeGrid";
+import FeaturedWatchesSection from "./components/sections/FeaturedWatchesSection";
 import BrandShowcaseSection from "./components/sections/BrandShowcaseSection";
+import WatchDnaSpotlight from "./components/sections/WatchDnaSpotlight";
 
 export default function Home() {
   return (
@@ -11,7 +14,7 @@ export default function Home() {
       <VideoSection />
 
       {/* Hero: statement + AI search */}
-      <div className="container mx-auto px-8 pt-36 pb-32">
+      <div className="container mx-auto px-8 pt-36 pb-24">
         <div className="max-w-3xl mx-auto text-center">
           <h1 className="text-6xl font-playfair font-light mb-5 tourbillon-text-color leading-tight">
             <HeroHeading />
@@ -24,8 +27,17 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Brand showcase: Explore Our Brands → Trinity → More Brands */}
+      {/* Discover by style — 4 archetype tiles */}
+      <StyleArchetypeGrid />
+
+      {/* Featured references — 6 curated watches with editorial snippets */}
+      <FeaturedWatchesSection />
+
+      {/* Brand showcase: Holy Trinity + more brands */}
       <BrandShowcaseSection />
+
+      {/* Watch DNA — personalization feature spotlight */}
+      <WatchDnaSpotlight />
     </>
   );
 }
