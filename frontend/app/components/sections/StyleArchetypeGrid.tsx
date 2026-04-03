@@ -1,8 +1,9 @@
 'use client';
 
-// Homepage discovery section — 4 full-bleed archetype tiles in a 2x2 grid.
-// Each tile uses a watch image as background and links to the watches page.
-// Images are loaded from the first watch in a representative collection per archetype.
+// Homepage discovery section — 4 archetype tiles in a 2×2 grid.
+// Each tile links to /watches with multiple collection filters pre-applied.
+// Background: 3 watch images side-by-side (collage) at reduced opacity.
+// Slugs are brand-prefixed (e.g. audemars-piguet-royal-oak) — verified against DB.
 import Link from 'next/link';
 import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
@@ -13,65 +14,104 @@ import ScrollFade from '@/app/scrollMotion/ScrollFade';
 interface Archetype {
   label: string;
   subLabel: string;
-  href: string;
-  collectionSlug: string; // collection whose first watch provides the background image
+  // Up to 3 slugs used for the background collage; all slugs used for the /watches link
+  collectionSlugs: string[];
 }
 
 const ARCHETYPES: Archetype[] = [
   {
     label: 'The Sport Watch',
     subLabel: 'Precision under pressure',
-    href: '/watches',
-    collectionSlug: 'royal-oak',
+    collectionSlugs: [
+      'audemars-piguet-royal-oak',
+      'vacheron-constantin-overseas',
+      'patek-philippe-nautilus',
+      'omega-speedmaster',
+      'rolex-submariner',
+    ],
   },
   {
     label: 'The Dress Watch',
     subLabel: 'Restraint as a statement',
-    href: '/watches',
-    collectionSlug: 'calatrava',
+    collectionSlugs: [
+      'patek-philippe-calatrava',
+      'a-lange-sohne-lange-1',
+      'jaeger-lecoultre-master-ultra-thin',
+      'vacheron-constantin-patrimony',
+    ],
   },
   {
-    label: 'The Grand Complication',
-    subLabel: 'Every mechanism a masterpiece',
-    href: '/watches',
-    collectionSlug: 'grand-complications',
+    label: 'The Complication',
+    subLabel: 'Every mechanism a poem',
+    collectionSlugs: [
+      'patek-philippe-grand-complications',
+      'audemars-piguet-royal-oak-concept',
+      'a-lange-sohne-datograph',
+    ],
   },
   {
-    label: 'The Independent Maker',
-    subLabel: 'Outside the conglomerate',
-    href: '/watches',
-    collectionSlug: 'lange-1',
+    label: "Métiers d'Art",
+    subLabel: 'Horology as canvas',
+    collectionSlugs: [
+      'vacheron-constantin-metiers-d-art',
+      'breguet-reine-de-naples',
+      'greubel-forsey-collection',
+    ],
   },
 ];
 
-function ArchetypeTile({ archetype }: { archetype: Archetype }) {
+// Build the /watches href with multiple collection params
+function buildHref(slugs: string[]): string {
+  const params = new URLSearchParams();
+  slugs.forEach(s => params.append('collection', s));
+  return `/watches?${params.toString()}`;
+}
+
+// Loads the first watch from a single collection slug — used for the collage background
+function useCollectionWatch(slug: string) {
   const { data: watches = [] } = useQuery({
-    queryKey: ['watches', 'collection-slug', archetype.collectionSlug],
-    queryFn: () => fetchWatchesByCollectionSlug(archetype.collectionSlug),
+    queryKey: ['watches', 'collection-slug', slug],
+    queryFn: () => fetchWatchesByCollectionSlug(slug),
     staleTime: 10 * 60 * 1000,
   });
+  return watches[0] ?? null;
+}
 
-  const watch = watches[0];
-  const imgSrc = watch?.imageUrl || (watch?.image ? imageTransformations.detail(watch.image) : null);
+function ArchetypeTile({ archetype }: { archetype: Archetype }) {
+  // Load the first watch from each of the first 3 slugs for the collage
+  const w0 = useCollectionWatch(archetype.collectionSlugs[0]);
+  const w1 = useCollectionWatch(archetype.collectionSlugs[1] ?? archetype.collectionSlugs[0]);
+  const w2 = useCollectionWatch(archetype.collectionSlugs[2] ?? archetype.collectionSlugs[0]);
+
+  const getImg = (w: ReturnType<typeof useCollectionWatch>) =>
+    w ? (w.imageUrl || (w.image ? imageTransformations.detail(w.image) : null)) : null;
+
+  const imgs = [getImg(w0), getImg(w1), getImg(w2)].filter(Boolean) as string[];
 
   return (
     <Link
-      href={archetype.href}
-      className="group relative block overflow-hidden aspect-[4/3] bg-[#1a1210]"
+      href={buildHref(archetype.collectionSlugs)}
+      className="group relative block overflow-hidden aspect-[4/3] bg-[#0d0b08]"
     >
-      {/* Background watch image */}
-      {imgSrc && (
-        <Image
-          src={imgSrc}
-          alt={archetype.label}
-          fill
-          sizes="(max-width: 768px) 100vw, 50vw"
-          className="object-cover opacity-60 transition-transform duration-700 ease-out group-hover:scale-[1.04]"
-        />
+      {/* 3-watch collage — side-by-side at reduced opacity, fills the tile */}
+      {imgs.length > 0 && (
+        <div className="absolute inset-0 flex">
+          {imgs.map((src, i) => (
+            <div key={i} className="relative flex-1 overflow-hidden">
+              <Image
+                src={src}
+                alt={archetype.label}
+                fill
+                sizes="(max-width: 768px) 50vw, 25vw"
+                className="object-cover opacity-50 transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+              />
+            </div>
+          ))}
+        </div>
       )}
 
-      {/* Dark gradient overlay — heavier at bottom for text legibility */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+      {/* Gradient overlay — heavier at bottom for text legibility */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/10" />
 
       {/* Text block — bottom left */}
       <div className="absolute bottom-0 left-0 p-8 md:p-10">
@@ -102,10 +142,10 @@ export default function StyleArchetypeGrid() {
         </div>
       </ScrollFade>
 
-      {/* 2×2 flush grid — no gap (Polène-style flat premium) */}
+      {/* 2×2 flush grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2">
         {ARCHETYPES.map((archetype) => (
-          <ArchetypeTile key={archetype.collectionSlug} archetype={archetype} />
+          <ArchetypeTile key={archetype.label} archetype={archetype} />
         ))}
       </div>
     </section>

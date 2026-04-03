@@ -1,12 +1,12 @@
 // Watches browsing page — sidebar navigation + filterable watch grid.
-// Brand/collection panel on the left lets users drill into specific families
-// while AllWatchesSection handles the grid, pagination, and taste personalisation.
+// Multi-select: multiple brands and/or collections can be active simultaneously.
+// Filter state is URL-driven (repeatable ?brand= and ?collection= params) for shareable links.
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { fetchBrands } from '@/lib/api';
+import { fetchBrands, fetchCollections } from '@/lib/api';
 import BrandNavPanel from '../components/layout/BrandNavPanel';
 import AllWatchesSection from '../components/sections/AllWatchesSection';
 
@@ -14,54 +14,98 @@ const WatchesPage = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [activeBrandId, setActiveBrandId] = useState<number | null>(null);
-  const [activeCollectionId, setActiveCollectionId] = useState<number | null>(null);
+  const [selectedBrandIds, setSelectedBrandIds] = useState<number[]>([]);
+  const [selectedCollectionIds, setSelectedCollectionIds] = useState<number[]>([]);
 
-  const brandSlug = searchParams.get('brand') ?? undefined;
-  const collectionSlug = searchParams.get('collection') ?? undefined;
+  const { data: brands = [] } = useQuery({ queryKey: ['brands'], queryFn: fetchBrands });
+  const { data: collections = [] } = useQuery({ queryKey: ['collections'], queryFn: fetchCollections });
 
-  const { data: brands = [] } = useQuery({
-    queryKey: ['brands'],
-    queryFn: fetchBrands,
-  });
+  // Resolve URL slugs → IDs once data loads. Runs once per navigation.
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (initializedRef.current || brands.length === 0 || collections.length === 0) return;
 
-  // Sync filter state and URL simultaneously — always resets to page 1
-  const handleBrandSelect = (brandId: number | null, slug?: string) => {
-    setActiveBrandId(brandId);
-    setActiveCollectionId(null);
-    router.replace(brandId && slug ? `/watches?brand=${slug}` : '/watches', { scroll: false });
+    const brandSlugs = searchParams.getAll('brand');
+    const collectionSlugs = searchParams.getAll('collection');
+    if (brandSlugs.length === 0 && collectionSlugs.length === 0) return;
+
+    initializedRef.current = true;
+    const resolvedBrandIds = brandSlugs
+      .map(s => brands.find(b => b.slug === s)?.id)
+      .filter((id): id is number => id != null);
+    const resolvedCollectionIds = collectionSlugs
+      .map(s => collections.find(c => c.slug === s)?.id)
+      .filter((id): id is number => id != null);
+
+    setSelectedBrandIds(resolvedBrandIds);
+    setSelectedCollectionIds(resolvedCollectionIds);
+  }, [brands, collections, searchParams]);
+
+  // Build URL from current ID selections using slugs
+  const buildUrl = (brandIds: number[], collectionIds: number[]) => {
+    const params = new URLSearchParams();
+    brandIds.forEach(id => {
+      const slug = brands.find(b => b.id === id)?.slug;
+      if (slug) params.append('brand', slug);
+    });
+    collectionIds.forEach(id => {
+      const slug = collections.find(c => c.id === id)?.slug;
+      if (slug) params.append('collection', slug);
+    });
+    const query = params.toString();
+    return query ? `/watches?${query}` : '/watches';
   };
 
-  const handleCollectionSelect = (brandId: number, brandSlug: string, collectionId: number | null, collectionSlug?: string) => {
-    setActiveBrandId(brandId);
-    setActiveCollectionId(collectionId);
-    const url = collectionId && collectionSlug
-      ? `/watches?brand=${brandSlug}&collection=${collectionSlug}`
-      : `/watches?brand=${brandSlug}`;
-    router.replace(url, { scroll: false });
+  const handleBrandToggle = (brandId: number, _slug: string) => {
+    const next = selectedBrandIds.includes(brandId)
+      ? selectedBrandIds.filter(id => id !== brandId)
+      : [...selectedBrandIds, brandId];
+    setSelectedBrandIds(next);
+    initializedRef.current = true;
+    router.replace(buildUrl(next, selectedCollectionIds), { scroll: false });
+  };
+
+  const handleCollectionToggle = (brandId: number, _brandSlug: string, collectionId: number, _collectionSlug: string) => {
+    const nextCols = selectedCollectionIds.includes(collectionId)
+      ? selectedCollectionIds.filter(id => id !== collectionId)
+      : [...selectedCollectionIds, collectionId];
+    // Auto-add parent brand when a collection is selected
+    const nextBrands = nextCols.length > 0 && !selectedBrandIds.includes(brandId)
+      ? [...selectedBrandIds, brandId]
+      : selectedBrandIds;
+    setSelectedBrandIds(nextBrands);
+    setSelectedCollectionIds(nextCols);
+    initializedRef.current = true;
+    router.replace(buildUrl(nextBrands, nextCols), { scroll: false });
+  };
+
+  const handleClearAll = () => {
+    setSelectedBrandIds([]);
+    setSelectedCollectionIds([]);
+    initializedRef.current = true;
+    router.replace('/watches', { scroll: false });
   };
 
   return (
     <div className="flex items-start py-24 pt-30">
 
-      {/* Left: brand/collection tree — small left padding so it hugs the viewport edge */}
+      {/* Left: brand/collection tree */}
       <div className="pl-6 lg:pl-10 shrink-0">
         <BrandNavPanel
-          activeBrandId={activeBrandId}
-          activeCollectionId={activeCollectionId}
-          onBrandSelect={handleBrandSelect}
-          onCollectionSelect={handleCollectionSelect}
-          initialBrandSlug={brandSlug}
-          initialCollectionSlug={collectionSlug}
+          selectedBrandIds={selectedBrandIds}
+          selectedCollectionIds={selectedCollectionIds}
+          onBrandToggle={handleBrandToggle}
+          onCollectionToggle={handleCollectionToggle}
+          onClearAll={handleClearAll}
         />
       </div>
 
-      {/* Right: watch grid — takes remaining space with balanced right padding */}
+      {/* Right: watch grid */}
       <div className="flex-1 min-w-0 px-8 lg:px-12 pr-10 lg:pr-16">
         <AllWatchesSection
           brands={brands}
-          brandFilter={activeBrandId}
-          collectionFilter={activeCollectionId}
+          brandFilters={selectedBrandIds}
+          collectionFilters={selectedCollectionIds}
         />
       </div>
 
