@@ -9,6 +9,7 @@ import { useGSAP } from '@gsap/react';
 import { Brand, Watch, fetchWatchById, fetchWatchesByBrand } from '@/lib/api';
 import WatchCard from '../../watches/[slug]/WatchCard';
 import ScrollFade from '../../scrollMotion/ScrollFade';
+import WatchCardSkeleton from '../ui/WatchCardSkeleton';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -112,16 +113,7 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
                 <div ref={gridRef} className="grid grid-cols-3 gap-16 mb-8">
                     {isLoading ? (
                         [1, 2, 3].map((i) => (
-                            <div key={i} className="group block bg-black/20 backdrop-blur-md border border-white/10 rounded-xl p-6 transition-all duration-300">
-                                <div className="w-full h-80 bg-black/30 rounded-lg mb-4 flex items-center justify-center">
-                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/30"></div>
-                                </div>
-                                <div className="space-y-2">
-                                    <div className="h-6 bg-white/10 rounded animate-pulse"></div>
-                                    <div className="h-4 bg-white/5 rounded animate-pulse"></div>
-                                    <div className="h-4 bg-white/10 rounded animate-pulse"></div>
-                                </div>
-                            </div>
+                            <WatchCardSkeleton key={i} />
                         ))
                     ) : (
                         Array.from({ length: 3 }, (_, index) => {

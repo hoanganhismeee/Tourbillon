@@ -90,6 +90,12 @@ export const fetchBrandById = async (id: number): Promise<Brand> => {
   return response.json();
 };
 
+export const fetchFeaturedWatches = async (): Promise<Watch[]> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/watch/featured`, { credentials: 'include' });
+  if (!response.ok) throw new Error('Failed to fetch featured watches');
+  return response.json();
+};
+
 export const fetchWatchById = async (id: number): Promise<Watch> => {
   const response = await fetchWithTimeout(`${API_BASE_URL}/watch/${id}`, { credentials: 'include' });
   if (!response.ok) {

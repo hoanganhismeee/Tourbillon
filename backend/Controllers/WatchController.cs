@@ -132,6 +132,30 @@ public class WatchController : ControllerBase
         return string.Join(", ", parts);
     }
 
+    // Returns 6 curated watches for the homepage featured section — one per iconic collection.
+    // Collection IDs: Nautilus(2), Overseas(6), Royal Oak(10), Reverso(13), Lange 1(17), Tourbillon Souverain(27)
+    [HttpGet("featured")]
+    public async Task<IActionResult> GetFeaturedWatches()
+    {
+        var featuredCollectionIds = new[] { 2, 6, 10, 13, 17, 27 };
+
+        var watches = new List<Watch>();
+        foreach (var collId in featuredCollectionIds)
+        {
+            var watch = await _context.Watches
+                .Include(w => w.Brand)
+                .Include(w => w.Collection)
+                .Include(w => w.EditorialLink)
+                    .ThenInclude(l => l!.EditorialContent)
+                .Where(w => w.CollectionId == collId)
+                .FirstOrDefaultAsync();
+            if (watch != null) watches.Add(watch);
+        }
+
+        var dtos = watches.Select(w => WatchDto.FromWatch(w, editorial: w.EditorialLink?.EditorialContent)).ToList();
+        return Ok(dtos);
+    }
+
     [HttpGet]
     public IActionResult GetAllWatches()
     {

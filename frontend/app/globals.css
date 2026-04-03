@@ -175,3 +175,17 @@ body {
 }
 
 /* .dark not used — app is always dark-themed via :root above */
+
+/* Grain texture overlay — fixed pseudo-element over entire page.
+   Gives the dark background a tactile printed-paper quality (Hermès / Bottega pattern). */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url('/noise.svg');
+  background-repeat: repeat;
+  background-size: 200px 200px;
+  opacity: 0.035;
+  pointer-events: none;
+  z-index: 9999;
+}

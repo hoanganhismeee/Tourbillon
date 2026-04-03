@@ -17,8 +17,8 @@ import { WatchCard } from '../cards/WatchCard';
 // Props interface for AllWatchesSection component
 interface AllWatchesSectionProps {
   brands: Brand[]; // Passed from parent component for brand name lookup
-  brandFilter?: number | null;
-  collectionFilter?: number | null;
+  brandFilters?: number[];
+  collectionFilters?: number[];
 }
 
 // Interleave watches so no two adjacent cards share the same brand.
@@ -125,7 +125,7 @@ function hasAnyPreference(profile: TasteProfile): boolean {
 }
 
 // Main component: handles watches display, pagination, and shuffle logic
-const AllWatchesSection = ({ brands, brandFilter = null, collectionFilter = null }: AllWatchesSectionProps) => {
+const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }: AllWatchesSectionProps) => {
   const { isAuthenticated } = useAuth();
   const { hasShuffledWatches, setHasShuffledWatches } = useWatchesPage();
   const searchParams = useSearchParams();
@@ -138,11 +138,15 @@ const AllWatchesSection = ({ brands, brandFilter = null, collectionFilter = null
 
   const goToPage = (page: number) => {
     isUserPaging.current = true;
+    // Preserve existing brand/collection filter params when changing page
+    const params = new URLSearchParams(searchParams.toString());
     if (page === 1) {
-      router.push('/watches', { scroll: false });
+      params.delete('page');
     } else {
-      router.push(`/watches?page=${page}`, { scroll: false });
+      params.set('page', String(page));
     }
+    const query = params.toString();
+    router.push(query ? `/watches?${query}` : '/watches', { scroll: false });
   };
 
   const [shuffledWatches, setShuffledWatches] = useState<Watch[]>([]);
@@ -204,17 +208,19 @@ const AllWatchesSection = ({ brands, brandFilter = null, collectionFilter = null
   // Apply brand/collection filters on top of the shuffled order
   const filteredWatches = useMemo(() => {
     let result = shuffledWatches;
-    if (brandFilter != null) result = result.filter(w => w.brandId === brandFilter);
-    if (collectionFilter != null) result = result.filter(w => w.collectionId === collectionFilter);
+    if (brandFilters.length > 0) result = result.filter(w => brandFilters.includes(w.brandId));
+    if (collectionFilters.length > 0) result = result.filter(w => w.collectionId != null && collectionFilters.includes(w.collectionId));
     return result;
-  }, [shuffledWatches, brandFilter, collectionFilter]);
+  }, [shuffledWatches, brandFilters, collectionFilters]);
 
   // Heading label reflects active filter context
   const headingLabel = useMemo(() => {
-    if (collectionFilter != null) return collections.find(c => c.id === collectionFilter)?.name ?? 'All Watches';
-    if (brandFilter != null) return brands.find(b => b.id === brandFilter)?.name ?? 'All Watches';
+    if (collectionFilters.length === 1) return collections.find(c => c.id === collectionFilters[0])?.name ?? 'All Watches';
+    if (collectionFilters.length > 1) return `${collectionFilters.length} Collections`;
+    if (brandFilters.length === 1) return brands.find(b => b.id === brandFilters[0])?.name ?? 'All Watches';
+    if (brandFilters.length > 1) return `${brandFilters.length} Brands`;
     return 'All Watches';
-  }, [brandFilter, collectionFilter, brands, collections]);
+  }, [brandFilters, collectionFilters, brands, collections]);
 
   // isReady: content is in the DOM (either watches rendered, or confirmed empty)
   const isReady = shuffledWatches.length > 0 || (!watchesLoading && watches.length === 0);
