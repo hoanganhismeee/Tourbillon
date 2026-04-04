@@ -37,7 +37,7 @@ export const WatchCard = ({ watch, brands, collections, isPriority = false, curr
     saveNavigationState({
       scrollPosition: window.scrollY,
       currentPage,
-      path: window.location.pathname,
+      path: window.location.pathname + window.location.search,
       timestamp: Date.now(),
     });
   };

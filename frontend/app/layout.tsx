@@ -13,6 +13,7 @@ import { GSAPProvider } from "@/app/providers/GSAPProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 import NavBar from "./components/layout/NavBar";
+import Footer from "./components/layout/Footer";
 import AnimatedLayout from "./scrollMotion/AnimatedLayout";
 import CompareIndicator from "./components/compare/CompareIndicator";
 import ChatWidget from "./components/chat/ChatWidget";
@@ -68,6 +69,7 @@ export default function RootLayout({
                         <AnimatedLayout>
                           {children}
                         </AnimatedLayout>
+                        <Footer />
                         <CompareIndicator />
                         <ChatWidget />
                       </ChatProvider>

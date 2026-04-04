@@ -33,11 +33,16 @@ const WatchesPage = () => {
     const resolvedBrandIds = brandSlugs
       .map(s => brands.find(b => b.slug === s)?.id)
       .filter((id): id is number => id != null);
-    const resolvedCollectionIds = collectionSlugs
-      .map(s => collections.find(c => c.slug === s)?.id)
-      .filter((id): id is number => id != null);
+    const resolvedCollections = collectionSlugs
+      .map(s => collections.find(c => c.slug === s))
+      .filter((c): c is NonNullable<typeof c> => c != null);
+    const resolvedCollectionIds = resolvedCollections.map(c => c.id);
 
-    setSelectedBrandIds(resolvedBrandIds);
+    // Auto-add parent brands for any resolved collections (so nav panel expands + highlights)
+    const parentBrandIds = resolvedCollections.map(c => c.brandId);
+    const mergedBrandIds = Array.from(new Set([...resolvedBrandIds, ...parentBrandIds]));
+
+    setSelectedBrandIds(mergedBrandIds);
     setSelectedCollectionIds(resolvedCollectionIds);
   }, [brands, collections, searchParams]);
 
@@ -57,12 +62,21 @@ const WatchesPage = () => {
   };
 
   const handleBrandToggle = (brandId: number, _slug: string) => {
-    const next = selectedBrandIds.includes(brandId)
+    const isDeselecting = selectedBrandIds.includes(brandId);
+    const next = isDeselecting
       ? selectedBrandIds.filter(id => id !== brandId)
       : [...selectedBrandIds, brandId];
+    // When deselecting a brand, also clear its collections from the filter
+    const nextCols = isDeselecting
+      ? selectedCollectionIds.filter(id => {
+          const col = collections.find(c => c.id === id);
+          return col?.brandId !== brandId;
+        })
+      : selectedCollectionIds;
     setSelectedBrandIds(next);
+    setSelectedCollectionIds(nextCols);
     initializedRef.current = true;
-    router.replace(buildUrl(next, selectedCollectionIds), { scroll: false });
+    router.replace(buildUrl(next, nextCols), { scroll: false });
   };
 
   const handleCollectionToggle = (brandId: number, _brandSlug: string, collectionId: number, _collectionSlug: string) => {
