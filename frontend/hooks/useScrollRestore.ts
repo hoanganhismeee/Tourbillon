@@ -27,7 +27,7 @@ export function useScrollRestore(isReady: boolean) {
         // from a previous listing page the user navigated forward away from.
         if (
           typeof saved.scrollPosition === 'number' &&
-          saved.path === window.location.pathname
+          saved.path === window.location.pathname + window.location.search
         ) {
           window.scrollTo(0, saved.scrollPosition);
           clearNavigationState();
