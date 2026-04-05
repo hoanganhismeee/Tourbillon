@@ -10,8 +10,8 @@ import { useGSAP } from '@gsap/react';
 gsap.registerPlugin(ScrollTrigger);
 
 const LINES = [
-  ['The', 'Art', 'of', 'Fine'],
-  ['Watchmaking'],
+  ['Thirteen', 'Maisons.'],
+  ['One', 'Standard.'],
 ];
 
 export default function HeroHeading() {

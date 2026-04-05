@@ -421,3 +421,8 @@ cookies.txt;
 # Playwright MCP screenshots and snapshots
 .playwright-mcp/
 .superpowers
+
+# Design session screenshots — local only
+*.jpeg
+*.jpg
+*.png.bak
