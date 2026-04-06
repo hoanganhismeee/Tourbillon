@@ -217,7 +217,7 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                       color: 'rgba(255,255,255,0.20)',
                       marginBottom: 10,
                     }}>
-                      Try asking
+                      Explore ideas
                     </p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {SUGGESTIONS.map(s => (

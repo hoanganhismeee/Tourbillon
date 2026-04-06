@@ -45,6 +45,7 @@ const ARCHETYPES: Archetype[] = [
       'patek-philippe-grand-complications',
       'audemars-piguet-royal-oak-concept',
       'a-lange-sohne-datograph',
+      'vacheron-constantin-traditionnelle',
     ],
     gradient: 'linear-gradient(180deg, #150d2e 0%, #150d2e 50%, #111738 100%)',
     accentColor: '#a68fd4',
@@ -59,6 +60,7 @@ const ARCHETYPES: Archetype[] = [
       'audemars-piguet-royal-oak',
       'vacheron-constantin-overseas',
       'patek-philippe-nautilus',
+      'rolex-daytona',
       'omega-speedmaster',
       'rolex-submariner',
     ],
@@ -74,6 +76,7 @@ const ARCHETYPES: Archetype[] = [
     collectionSlugs: [
       'patek-philippe-calatrava',
       'a-lange-sohne-lange-1',
+      'breguet-classique',
       'jaeger-lecoultre-master-ultra-thin',
       'vacheron-constantin-patrimony',
       'alange-sohne-zeitwerk',

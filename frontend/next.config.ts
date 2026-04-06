@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: 'standalone',
   transpilePackages: ['framer-motion'],
+  allowedDevOrigins: ['*.ngrok-free.app', '*.ngrok.io'],
   images: {
     domains: [
       'res.cloudinary.com',
