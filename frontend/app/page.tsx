@@ -15,7 +15,9 @@ export default function Home() {
       <VideoSection />
 
       {/* Brand statement — gives context before any interactive element */}
-      <EditorialIntro />
+      <ScrollFade>
+        <EditorialIntro />
+      </ScrollFade>
 
       {/* Discover by style — 4 full-width archetype rows linking to filtered /watches */}
       <StyleArchetypeGrid />
