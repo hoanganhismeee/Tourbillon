@@ -2,11 +2,11 @@
 
 // Homepage discovery section — 4 archetype stages in alternating editorial layout.
 // Text column anchored left/right per stage; watch arc on the opposing side.
-// ScrollFade drives all entrance animations — section text fades as a block, watches pop in one by one.
-import { useState } from 'react';
+// Each stage fires its own scroll-triggered performance: text ScrollFades, watches appear one by one.
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
+import { motion, useInView } from 'framer-motion';
 import { useQueries } from '@tanstack/react-query';
 import { fetchWatchesByCollectionSlug, Watch } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
@@ -17,6 +17,9 @@ const PAGE_BASE = '#1e1512';
 
 // Specific showcase hero watches to exclude (Nautilus 5811, Overseas blue ref, AP Concept)
 const EXCLUDED_WATCH_IDS = new Set([2, 34, 59]);
+
+// Spring-like expo-out ease for watch entrance
+const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 interface AnimConfig {
   stagger: number; // per-watch entrance stagger delay (seconds)
@@ -43,7 +46,7 @@ const ARCHETYPES: Archetype[] = [
       'audemars-piguet-royal-oak-concept',
       'a-lange-sohne-datograph',
     ],
-    gradient: 'linear-gradient(160deg, #07050f 0%, #110a26 50%, #19103e 100%)',
+    gradient: 'linear-gradient(180deg, #1e1512 0%, #150d2e 50%, #111738 100%)',
     accentColor: '#a68fd4',
     glowColor: 'rgba(139, 111, 190, 0.18)',
     animConfig: { stagger: 0.055 },
@@ -59,7 +62,7 @@ const ARCHETYPES: Archetype[] = [
       'omega-speedmaster',
       'rolex-submariner',
     ],
-    gradient: 'linear-gradient(160deg, #050d1a 0%, #0a1f3d 50%, #0e2a52 100%)',
+    gradient: 'linear-gradient(180deg, #111738 0%, #0d2242 50%, #1e1f26 100%)',
     accentColor: '#6b9fd4',
     glowColor: 'rgba(74, 122, 181, 0.18)',
     animConfig: { stagger: 0.04 },
@@ -75,7 +78,7 @@ const ARCHETYPES: Archetype[] = [
       'vacheron-constantin-patrimony',
       'alange-sohne-zeitwerk',
     ],
-    gradient: 'linear-gradient(160deg, #1a1008 0%, #2e200d 50%, #3d2a12 100%)',
+    gradient: 'linear-gradient(180deg, #1e1f26 0%, #2f1d0b 50%, #2d1805 100%)',
     accentColor: '#d4b47a',
     glowColor: 'rgba(200, 169, 110, 0.16)',
     animConfig: { stagger: 0.05 },
@@ -89,7 +92,7 @@ const ARCHETYPES: Archetype[] = [
       'breguet-reine-de-naples',
       'greubel-forsey-collection',
     ],
-    gradient: 'linear-gradient(160deg, #130800 0%, #221100 50%, #321900 100%)',
+    gradient: 'linear-gradient(180deg, #2d1805 0%, #2b1300 50%, #1e1512 100%)',
     accentColor: '#d4924a',
     glowColor: 'rgba(200, 122, 48, 0.18)',
     animConfig: { stagger: 0.07 },
@@ -122,52 +125,55 @@ function useArchetypeWatches(slugs: string[], perCollection = 6): Watch[] {
 }
 
 // Horizontal arc of watches — flat by default, 3D fan on hover.
-// Each watch ScrollFades in with a staggered delay for the one-by-one pop effect.
+// Watches appear left-to-right one by one when the parent stage enters view.
 function WatchRow({
   watches,
+  isInView,
+  delayBase,
   sizeClass,
   opacityRange,
   stagger,
-  isHovered,
 }: {
   watches: Watch[];
+  isInView: boolean;
+  delayBase: number;
   sizeClass: string;
   opacityRange: [number, number];
   stagger: number;
-  isHovered: boolean;
 }) {
   const center = (watches.length - 1) / 2;
   return (
-    <div className="flex items-center justify-center gap-2 md:gap-3 lg:gap-4">
+    <div className="flex items-center justify-center gap-2 md:gap-3 lg:gap-5">
       {watches.map((watch, i) => {
         const src = getImageSrc(watch);
         if (!src) return null;
         const offset = i - center;
-        const hoverRotateY = offset * 8;
         const scale = 1 - Math.abs(offset) * 0.07;
         const wOpacity =
           opacityRange[0] +
           (1 - Math.abs(offset) / (center + 1)) * (opacityRange[1] - opacityRange[0]);
 
         return (
-          // ScrollFade drives entrance: opacity 0→1, y 50→0, staggered per watch
-          <ScrollFade key={watch.id} delay={0.08 + i * stagger} triggerOnce className="shrink-0">
-            {/* Inner motion.div: persistent arc opacity/scale + 3D hover fan */}
+          <motion.div
+            key={watch.id}
+            initial={{ opacity: 0, y: 28 }}
+            animate={isInView ? { opacity: wOpacity, y: 0 } : { opacity: 0, y: 28 }}
+            transition={{ duration: 0.85, ease: EASE, delay: delayBase + i * stagger }}
+            className="shrink-0"
+          >
             <motion.div
-              animate={{ rotateY: isHovered ? hoverRotateY : 0 }}
-              transition={{ duration: 0.35, ease: 'easeOut' }}
-              style={{ scale, opacity: wOpacity }}
+              style={{ scale }}
               className={`relative ${sizeClass}`}
             >
               <Image
                 src={src}
                 alt={watch.description ?? 'watch'}
                 fill
-                sizes="(max-width: 768px) 72px, (max-width: 1024px) 88px, 100px"
+                sizes="(max-width: 768px) 100px, (max-width: 1024px) 130px, 160px"
                 className="object-contain drop-shadow-[0_16px_40px_rgba(0,0,0,0.7)]"
               />
             </motion.div>
-          </ScrollFade>
+          </motion.div>
         );
       })}
     </div>
@@ -178,28 +184,23 @@ function ArchetypeTile({ archetype, index }: { archetype: Archetype; index: numb
   const watches = useArchetypeWatches(archetype.collectionSlugs, 6);
   const displayWatches = watches.filter(w => getImageSrc(w)).slice(0, 6);
   const indexLabel = String(index + 1).padStart(2, '0');
-  const [isHovered, setIsHovered] = useState(false);
 
-  const isFirst = index === 0;
-  const isLast = index === ARCHETYPES.length - 1;
+  // Single scroll trigger per stage — fires the whole performance when the section enters view
+  const sectionRef = useRef<HTMLElement>(null);
+  const isInView = useInView(sectionRef, { once: false, amount: 0.2 });
 
   // Alternate: even index (0, 2) = text left; odd (1, 3) = text right
   const textLeft = index % 2 === 0;
 
-  // Outer edges blend into the page warm-brown; inner edges use near-black for clean stage separation
-  const topColor = isFirst ? PAGE_BASE : '#030303';
-  const bottomColor = isLast ? PAGE_BASE : '#030303';
-  const topH = isFirst ? 'h-[45vh]' : 'h-[28vh]';
-  const bottomH = isLast ? 'h-[45vh]' : 'h-[28vh]';
-
   // Asymmetric padding: text side pulled toward the viewport edge for a more editorial feel
+  // Left aligned style pushed closer to the left edge
   const containerPadding = textLeft
-    ? 'pl-3 sm:pl-5 lg:pl-8 xl:pl-12 pr-8 sm:pr-12 lg:pr-16 xl:pr-20'
+    ? 'pl-0 pr-8 sm:pr-12 lg:pr-16 xl:pr-20'
     : 'pl-8 sm:pl-12 lg:pl-16 xl:pl-20 pr-3 sm:pr-5 lg:pr-8 xl:pr-12';
 
   const textColumn = (
-    <ScrollFade className="flex flex-col justify-center py-20 px-4 md:px-0" triggerOnce>
-      <div className="border-l-2 pl-8" style={{ borderColor: `${archetype.accentColor}35` }}>
+    <ScrollFade className="flex flex-col justify-center py-20 px-4 md:px-0">
+      <div className={`border-l-2 ${textLeft ? 'pl-4 lg:pl-6' : 'pl-8'}`} style={{ borderColor: `${archetype.accentColor}35` }}>
         {/* Stage index */}
         <p
           className="text-[9px] tracking-[0.55em] uppercase font-inter mb-4"
@@ -241,25 +242,22 @@ function ArchetypeTile({ archetype, index }: { archetype: Archetype; index: numb
     </ScrollFade>
   );
 
-  // Watch column: no wrapper animation — per-watch ScrollFade creates the one-by-one stagger
   const watchColumn = (
-    <div
-      className="flex items-center justify-center py-20"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className="flex items-center justify-center py-20">
       <WatchRow
         watches={displayWatches}
-        sizeClass="w-[clamp(68px,6vw,98px)] h-[clamp(87px,7.7vw,125px)]"
+        isInView={isInView}
+        delayBase={0.15}
+        sizeClass="w-[clamp(100px,9vw,160px)] h-[clamp(128px,11.5vw,204px)]"
         opacityRange={[0.45, 0.72]}
         stagger={archetype.animConfig.stagger}
-        isHovered={isHovered}
       />
     </div>
   );
 
   return (
     <section
+      ref={sectionRef}
       className="relative min-h-[85vh] flex items-center overflow-hidden"
       style={{ background: archetype.gradient }}
     >
@@ -267,20 +265,8 @@ function ArchetypeTile({ archetype, index }: { archetype: Archetype; index: numb
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: `radial-gradient(ellipse 55% 60% at 50% 50%, ${archetype.glowColor} 0%, transparent 65%)`,
+          background: `radial-gradient(ellipse 60% 45% at 50% 50%, ${archetype.glowColor} 0%, transparent 100%)`,
         }}
-      />
-
-      {/* Top blend — first stage dissolves from page warm-brown; others from near-black */}
-      <div
-        className={`absolute top-0 left-0 right-0 ${topH} pointer-events-none z-10`}
-        style={{ background: `linear-gradient(to bottom, ${topColor}, transparent)` }}
-      />
-
-      {/* Bottom blend — last stage dissolves back to page warm-brown; others to near-black */}
-      <div
-        className={`absolute bottom-0 left-0 right-0 ${bottomH} pointer-events-none z-10`}
-        style={{ background: `linear-gradient(to top, ${bottomColor}, transparent)` }}
       />
 
       {/* Two-column editorial grid — asymmetric padding pulls text toward its nearest edge */}
