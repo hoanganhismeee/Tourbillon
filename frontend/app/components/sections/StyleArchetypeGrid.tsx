@@ -46,7 +46,7 @@ const ARCHETYPES: Archetype[] = [
       'audemars-piguet-royal-oak-concept',
       'a-lange-sohne-datograph',
     ],
-    gradient: 'linear-gradient(180deg, #1e1512 0%, #150d2e 50%, #111738 100%)',
+    gradient: 'linear-gradient(180deg, #150d2e 0%, #150d2e 50%, #111738 100%)',
     accentColor: '#a68fd4',
     glowColor: 'rgba(139, 111, 190, 0.18)',
     animConfig: { stagger: 0.055 },
@@ -92,7 +92,7 @@ const ARCHETYPES: Archetype[] = [
       'breguet-reine-de-naples',
       'greubel-forsey-collection',
     ],
-    gradient: 'linear-gradient(180deg, #2d1805 0%, #2b1300 50%, #1e1512 100%)',
+    gradient: 'linear-gradient(180deg, #2d1805 0%, #2b1300 50%, #2b1300 100%)',
     accentColor: '#d4924a',
     glowColor: 'rgba(200, 122, 48, 0.18)',
     animConfig: { stagger: 0.07 },
@@ -192,15 +192,12 @@ function ArchetypeTile({ archetype, index }: { archetype: Archetype; index: numb
   // Alternate: even index (0, 2) = text left; odd (1, 3) = text right
   const textLeft = index % 2 === 0;
 
-  // Asymmetric padding: text side pulled toward the viewport edge for a more editorial feel
-  // Left aligned style pushed closer to the left edge
-  const containerPadding = textLeft
-    ? 'pl-0 pr-8 sm:pr-12 lg:pr-16 xl:pr-20'
-    : 'pl-8 sm:pl-12 lg:pl-16 xl:pl-20 pr-3 sm:pr-5 lg:pr-8 xl:pr-12';
-
   const textColumn = (
-    <ScrollFade className="flex flex-col justify-center py-20 px-4 md:px-0">
-      <div className={`border-l-2 ${textLeft ? 'pl-4 lg:pl-6' : 'pl-8'}`} style={{ borderColor: `${archetype.accentColor}35` }}>
+    <ScrollFade className={`flex flex-col justify-center py-20 px-4 md:px-0 z-10 ${textLeft ? 'md:-ml-8 lg:-ml-16 xl:-ml-20' : 'md:-mr-8 lg:-mr-16 xl:-mr-20'}`}>
+      <div 
+        className={`flex flex-col ${textLeft ? 'border-l-2 pl-6 lg:pl-8 items-start text-left' : 'border-r-2 pr-6 lg:pr-8 items-end text-right'}`} 
+        style={{ borderColor: `${archetype.accentColor}35` }}
+      >
         {/* Stage index */}
         <p
           className="text-[9px] tracking-[0.55em] uppercase font-inter mb-4"
@@ -230,7 +227,7 @@ function ArchetypeTile({ archetype, index }: { archetype: Archetype; index: numb
         {/* Explore CTA */}
         <Link
           href={buildHref(archetype.collectionSlugs)}
-          className="inline-flex items-center gap-3 text-[10px] tracking-[0.28em] uppercase font-inter text-white/60 border hover:text-[#f0e6d2] hover:border-opacity-80 px-6 py-3 transition-colors duration-300"
+          className={`inline-flex items-center gap-3 text-[10px] tracking-[0.28em] uppercase font-inter text-white/60 border hover:text-[#f0e6d2] hover:border-opacity-80 px-6 py-3 transition-colors duration-300 ${textLeft ? '' : 'flex-row-reverse'}`}
           style={{ borderColor: `${archetype.accentColor}40` }}
         >
           Explore collection
@@ -269,10 +266,10 @@ function ArchetypeTile({ archetype, index }: { archetype: Archetype; index: numb
         }}
       />
 
-      {/* Two-column editorial grid — asymmetric padding pulls text toward its nearest edge */}
+      {/* Two-column editorial grid — mirrored pulling text toward its nearest edge symmetrically */}
       <div
-        className={`container mx-auto relative z-20 w-full grid grid-cols-1 gap-4 max-w-7xl ${containerPadding} ${
-          textLeft ? 'md:grid-cols-[2fr_3fr]' : 'md:grid-cols-[3fr_2fr]'
+        className={`relative z-20 w-full mx-auto grid grid-cols-1 gap-4 max-w-[1600px] px-8 sm:px-12 md:px-16 lg:px-24 xl:px-32 ${
+          textLeft ? 'md:grid-cols-[3fr_5fr]' : 'md:grid-cols-[5fr_3fr]'
         }`}
       >
         {textLeft ? (
@@ -293,7 +290,13 @@ function ArchetypeTile({ archetype, index }: { archetype: Archetype; index: numb
 
 export default function StyleArchetypeGrid() {
   return (
-    <section className="w-full">
+    <section 
+      className="w-full relative"
+      style={{
+        maskImage: 'linear-gradient(180deg, transparent 0px, black 300px, black calc(100% - 300px), transparent 100%)',
+        WebkitMaskImage: 'linear-gradient(180deg, transparent 0px, black 300px, black calc(100% - 300px), transparent 100%)'
+      }}
+    >
       {ARCHETYPES.map((archetype, index) => (
         <ArchetypeTile key={archetype.label} archetype={archetype} index={index} />
       ))}
