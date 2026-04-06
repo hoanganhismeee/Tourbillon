@@ -2,57 +2,50 @@
 
 // Homepage Watch DNA spotlight — surfaces the platform's personalization feature.
 // Three states: unauthenticated / authenticated without profile / authenticated with profile.
-// Adapts copy and CTA to guide the user toward building or viewing their taste profile.
+// The design aligns with the homepage's floating editorial aesthetic: no boxy cards, 
+// using minimal lines, large typography, and staggered grids.
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { getTasteProfile } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import ScrollFade from '@/app/scrollMotion/ScrollFade';
 
-// The 5 taste dimensions shown as a decorative bar visual
 const DIMENSIONS = [
-  { label: 'Brand affinity',  width: '75%', pct: '75' },
-  { label: 'Case material',   width: '60%', pct: '60' },
-  { label: 'Dial character',  width: '85%', pct: '85' },
-  { label: 'Case proportion', width: '50%', pct: '50' },
-  { label: 'Price range',     width: '70%', pct: '70' },
+  { 
+    id: '01',
+    label: 'Brand Affinity',  
+    desc: 'Tracking your gravitation toward independent artisans or historic maisons.',
+    pct: 75, delay: 0 
+  },
+  { 
+    id: '02',
+    label: 'Material Language',   
+    desc: 'Mapping your choices across classic steel, warm rose gold, or high-tech ceramic.',
+    pct: 60, delay: 200 
+  },
+  { 
+    id: '03',
+    label: 'Dial Character',  
+    desc: 'Analyzing your draw to minimalist layouts versus intricate, open-worked dials.',
+    pct: 85, delay: 400 
+  },
+  { 
+    id: '04',
+    label: 'Wrist Proportion',      
+    desc: 'Finding the exact millimeter sweet spot that offers your perfect wrist presence.',
+    pct: 50, delay: 600 
+  },
 ];
-
-function DimensionBars({ filled }: { filled: boolean }) {
-  return (
-    <div className="space-y-4 w-full max-w-xs relative">
-      {/* Decorative watch-dial circle behind the bars */}
-      <div
-        className="absolute -right-8 top-1/2 -translate-y-1/2 w-56 h-56 rounded-full border border-white/[0.04] pointer-events-none"
-        style={{ background: 'radial-gradient(circle, rgba(191,166,138,0.02) 0%, transparent 70%)' }}
-      />
-      <div className="absolute -right-8 top-1/2 -translate-y-1/2 w-36 h-36 rounded-full border border-white/[0.03] pointer-events-none" />
-
-      {DIMENSIONS.map((dim, i) => (
-        <div key={dim.label} className="relative">
-          <div className="flex justify-between mb-1.5">
-            <span className="text-[10px] tracking-[0.12em] uppercase text-white/40 font-inter">{dim.label}</span>
-            <span className="text-[10px] text-white/20 font-inter tabular-nums">{filled ? dim.pct : '—'}</span>
-          </div>
-          {/* Track: h-[2px] for visibility */}
-          <div className="h-[2px] w-full bg-white/8 relative overflow-hidden">
-            <div
-              className="h-full bg-[#bfa68a] transition-all duration-1000"
-              style={{
-                width: filled ? dim.width : '0%',
-                transitionDelay: `${i * 120}ms`,
-                opacity: 0.7,
-              }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function WatchDnaSpotlight() {
   const { isAuthenticated, loading: authLoading } = useAuth();
+  const [animate, setAnimate] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setAnimate(true), 300);
+    return () => clearTimeout(t);
+  }, []);
 
   const { data: profile } = useQuery({
     queryKey: ['taste-profile'],
@@ -67,110 +60,155 @@ export default function WatchDnaSpotlight() {
   if (authLoading) return null;
 
   return (
-    <section className="relative w-full overflow-hidden border-y border-white/[0.06]">
-      {/* Subtle glow — very faint, just enough to anchor the left column */}
+    <section className="relative w-full overflow-hidden">
+      {/* Ambient glow - matches WatchFinderSearch blending */}
       <div
-        className="absolute inset-0 pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse 50% 55% at 20% 50%, rgba(191,166,138,0.04) 0%, transparent 70%)' }}
+        className="absolute inset-0 pointer-events-none mix-blend-screen"
+        style={{ background: 'radial-gradient(ellipse 55% 50% at 25% 50%, rgba(191,166,138,0.06) 0%, transparent 70%)' }}
       />
 
-      <div className="container mx-auto px-8 sm:px-12 lg:px-16 xl:px-20 max-w-7xl py-28">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+      <div className="container mx-auto px-8 sm:px-12 lg:px-16 xl:px-20 max-w-7xl py-32">
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-20 items-center">
 
-          {/* Left — text block with gold accent line */}
+          {/* Left — text block */}
           <ScrollFade>
-            <div className="border-l-2 border-[#bfa68a]/20 pl-8">
-              <p className="text-[10px] tracking-[0.3em] uppercase text-[#bfa68a] mb-5 font-inter">Watch DNA</p>
+            <div className="border-l border-[#bfa68a]/30 pl-8">
+              <p className="text-[10px] tracking-[0.3em] uppercase text-[#bfa68a]/80 mb-5 font-inter">Watch DNA</p>
 
               {hasProfile ? (
                 <>
-                  <h2 className="text-4xl font-playfair font-light text-[#f0e6d2] mb-6 leading-snug">
-                    Your taste profile
+                  <h2 className="text-4xl md:text-5xl font-playfair font-light text-[#f0e6d2] mb-6 leading-snug">
+                    Your Taste Profile
                   </h2>
                   {profile?.summary && (
-                    <p className="text-base text-white/55 font-inter leading-relaxed mb-8 max-w-sm">
+                    <p className="text-[15px] text-white/55 font-inter leading-relaxed mb-8 max-w-sm">
                       {profile.summary}
                     </p>
                   )}
                   <div className="flex flex-wrap gap-2 mb-8">
                     {profile?.preferredMaterials?.slice(0, 3).map(m => (
-                      <span key={m} className="text-[10px] tracking-[0.1em] uppercase border border-white/15 text-white/45 px-3 py-1 font-inter">
+                      <span key={m} className="text-[9px] tracking-[0.14em] uppercase border border-white/10 text-white/45 px-4 py-1.5 font-inter rounded-full">
                         {m}
                       </span>
                     ))}
                     {profile?.preferredDialColors?.slice(0, 2).map(c => (
-                      <span key={c} className="text-[10px] tracking-[0.1em] uppercase border border-white/15 text-white/45 px-3 py-1 font-inter">
+                      <span key={c} className="text-[9px] tracking-[0.14em] uppercase border border-white/10 text-white/45 px-4 py-1.5 font-inter rounded-full">
                         {c} dial
                       </span>
                     ))}
                     {profile?.preferredCaseSize && (
-                      <span className="text-[10px] tracking-[0.1em] uppercase border border-white/15 text-white/45 px-3 py-1 font-inter">
+                      <span className="text-[9px] tracking-[0.14em] uppercase border border-white/10 text-white/45 px-4 py-1.5 font-inter rounded-full">
                         {profile.preferredCaseSize} case
                       </span>
                     )}
                   </div>
                   <Link
                     href="/watches"
-                    className="inline-flex items-center gap-3 text-[11px] tracking-[0.18em] uppercase text-[#f0e6d2] border border-[#bfa68a]/45 hover:border-[#bfa68a] px-6 py-3.5 transition-colors duration-300 font-inter"
+                    className="inline-flex items-center gap-4 text-[10px] tracking-[0.25em] uppercase font-inter text-[#f0e6d2]/70 border border-[#bfa68a]/30 hover:text-[#f0e6d2] hover:border-[#bfa68a]/80 px-8 py-4 transition-all duration-500 relative overflow-hidden group mt-2"
                   >
-                    Explore Your Collection
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <span className="relative z-10">See Your Matches</span>
+                    <svg className="w-3.5 h-3.5 relative z-10 transition-transform duration-500 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
+                    <div className="absolute inset-0 bg-[#bfa68a]/5 translate-y-[100%] group-hover:translate-y-0 transition-transform duration-500 ease-out" />
                   </Link>
                 </>
               ) : isAuthenticated ? (
                 <>
-                  <h2 className="text-4xl font-playfair font-light text-[#f0e6d2] mb-6 leading-snug">
-                    Build your taste profile
+                  <h2 className="text-4xl md:text-5xl font-playfair font-light text-[#f0e6d2] mb-6 leading-snug">
+                    Your eye is forming.
                   </h2>
-                  <p className="text-base text-white/50 font-inter leading-relaxed mb-8 max-w-sm">
-                    Browse a few watches and we&apos;ll start learning your preferences — or generate your profile instantly from your activity.
+                  <p className="text-[15px] text-white/45 font-inter leading-relaxed mb-8 max-w-sm">
+                    Browse a few watches to sharpen your curation. Your Watch DNA naturally adapts to your evolving tastes.
                   </p>
                   <Link
                     href="/account/edit-details"
-                    className="inline-flex items-center gap-3 text-[11px] tracking-[0.18em] uppercase text-[#f0e6d2] border border-[#bfa68a]/45 hover:border-[#bfa68a] px-6 py-3.5 transition-colors duration-300 font-inter"
+                    className="inline-flex items-center gap-4 text-[10px] tracking-[0.25em] uppercase font-inter text-[#f0e6d2]/70 border border-[#bfa68a]/30 hover:text-[#f0e6d2] hover:border-[#bfa68a]/80 px-8 py-4 transition-all duration-500 relative overflow-hidden group mt-2"
                   >
-                    Generate Profile
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <span className="relative z-10">Generate Profile</span>
+                    <svg className="w-3.5 h-3.5 relative z-10 transition-transform duration-500 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
+                    <div className="absolute inset-0 bg-[#bfa68a]/5 translate-y-[100%] group-hover:translate-y-0 transition-transform duration-500 ease-out" />
                   </Link>
                 </>
               ) : (
                 <>
-                  <h2 className="text-4xl font-playfair font-light text-[#f0e6d2] mb-6 leading-snug">
-                    Watches that learn your taste
+                  <h2 className="text-4xl md:text-5xl font-playfair font-light text-[#f0e6d2] mb-6 leading-snug">
+                    Watches that know you.
                   </h2>
-                  <p className="text-base text-white/50 font-inter leading-relaxed mb-8 max-w-sm">
-                    Your browsing builds a silent preference map. Sign in and the collection reorders around you — surfacing the brands, materials, and complications you actually gravitate toward.
+                  <p className="text-[15px] text-white/45 font-inter leading-relaxed mb-8 max-w-sm">
+                    The more you explore, the sharper your curation gets. Watch DNA quietly learns your unparalleled taste to surface pieces you'll love.
                   </p>
                   <Link
                     href="/login"
-                    className="inline-flex items-center gap-3 text-[11px] tracking-[0.18em] uppercase text-[#f0e6d2] border border-[#bfa68a]/45 hover:border-[#bfa68a] px-6 py-3.5 transition-colors duration-300 font-inter"
+                    className="inline-flex items-center gap-4 text-[10px] tracking-[0.25em] uppercase font-inter text-[#f0e6d2]/70 border border-[#bfa68a]/30 hover:text-[#f0e6d2] hover:border-[#bfa68a]/80 px-8 py-4 transition-all duration-500 relative overflow-hidden group mt-2"
                   >
-                    Discover Your Profile
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <span className="relative z-10">Sign in to unlock Watch DNA</span>
+                    <svg className="w-3.5 h-3.5 relative z-10 transition-transform duration-500 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
+                    <div className="absolute inset-0 bg-[#bfa68a]/5 translate-y-[100%] group-hover:translate-y-0 transition-transform duration-500 ease-out" />
                   </Link>
                 </>
               )}
             </div>
           </ScrollFade>
 
-          {/* Right — dimension bars with decorative dial circle behind them */}
+          {/* Right — Dimensional breakdown, non-boxy, staggered grid */}
           <ScrollFade>
-            <div className="flex flex-col gap-5 md:pl-8 md:border-l border-white/[0.06]">
-              <p className="text-[10px] tracking-[0.2em] uppercase text-white/30 font-inter">
-                {hasProfile ? 'Your preferences' : 'Your taste fingerprint'}
-              </p>
-              <DimensionBars filled={hasProfile} />
-              <p className="text-[10px] text-white/18 font-inter leading-relaxed max-w-[200px]">
-                {hasProfile
-                  ? 'Profile active — watches ranked by affinity'
-                  : 'Builds automatically as you explore'}
-              </p>
+            <div className="relative mt-20 lg:mt-0 lg:pl-16">
+              
+              {/* Subtle ambient intersection glow */}
+              <div className="absolute inset-0 pointer-events-none mix-blend-screen opacity-50"
+                   style={{ background: 'radial-gradient(circle at 50% 50%, rgba(191,166,138,0.08) 0%, transparent 60%)' }} />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-16 md:gap-y-8 relative z-10">
+                {DIMENSIONS.map((dim, i) => (
+                  <div 
+                    key={dim.id} 
+                    className={`flex flex-col group relative ${i % 2 === 1 ? 'md:mt-24' : ''} ${i % 2 === 0 ? 'md:-mt-10' : ''}`}
+                  >
+                    {/* Animated height bar representing score or tracking */}
+                    <div 
+                      className="absolute left-[-1px] top-0 w-[2px] bg-gradient-to-b from-[#bfa68a] to-transparent transition-all duration-1000 ease-out z-10" 
+                      style={{ 
+                        height: hasProfile && animate ? `${dim.pct}%` : '0%',
+                        transitionDelay: `${dim.delay}ms` 
+                      }} 
+                    />
+                    {/* Hover interaction line when no profile */}
+                    {!hasProfile && (
+                      <div className="absolute left-[-1px] top-0 w-[2px] h-0 bg-[#bfa68a]/40 transition-all duration-700 ease-out group-hover:h-full z-10" />
+                    )}
+
+                    <div className="border-l border-white/10 pl-6 h-full flex flex-col justify-center transition-colors duration-500 group-hover:border-white/25">
+                      
+                      {/* Metric header */}
+                      <div className="flex items-center justify-between mb-5">
+                        <div className="flex items-center gap-3">
+                          <span className="text-[9px] tracking-[0.3em] font-inter text-[#bfa68a]/70">{dim.id}</span>
+                          <div className="h-px w-6 bg-[#bfa68a]/30" />
+                        </div>
+                        {hasProfile && (
+                          <span className="text-[10px] tracking-[0.2em] font-inter text-[#bfa68a]">{dim.pct}%</span>
+                        )}
+                      </div>
+                      
+                      {/* Dimension Title */}
+                      <h4 className="font-playfair text-2xl text-[#f0e6d2] mb-3 leading-tight tracking-wide group-hover:text-white transition-colors duration-500">
+                        {dim.label}
+                      </h4>
+                      
+                      {/* Dimension Copy */}
+                      <p className="font-inter text-[13px] text-white/40 leading-relaxed font-light group-hover:text-white/60 transition-colors duration-500 pr-2">
+                        {dim.desc}
+                      </p>
+
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </ScrollFade>
 

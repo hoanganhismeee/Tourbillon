@@ -11,7 +11,7 @@ gsap.registerPlugin(ScrollTrigger);
 
 const LINES = [
   ['Thirteen', 'Maisons.'],
-  ['One', 'Standard.'],
+  ['Endless', 'Discovery.'],
 ];
 
 export default function HeroHeading() {
