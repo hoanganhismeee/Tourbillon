@@ -151,21 +151,21 @@ export default function AuthStartPage() {
 
           <motion.div variants={fadeUp} className="flex items-end gap-8 mb-8">
             <div>
-              <p className="font-playfair text-[2.4rem] font-light text-[#f0e6d2]/75 leading-none">500+</p>
-              <p className="text-[8.5px] uppercase tracking-[0.32em] text-[#bfa68a]/50 mt-2">Timepieces</p>
+              <p className="font-playfair text-[2.6rem] font-light text-[#f0e6d2] leading-none">500+</p>
+              <p className="text-[8.5px] uppercase tracking-[0.32em] text-[#bfa68a]/70 mt-2">Timepieces</p>
             </div>
             <div className="w-px h-10 bg-[#bfa68a]/15 mb-1" />
             <div>
-              <p className="font-playfair text-[2.4rem] font-light text-[#f0e6d2]/75 leading-none">13</p>
-              <p className="text-[8.5px] uppercase tracking-[0.32em] text-[#bfa68a]/50 mt-2">Maisons</p>
+              <p className="font-playfair text-[2.6rem] font-light text-[#f0e6d2] leading-none">13</p>
+              <p className="text-[8.5px] uppercase tracking-[0.32em] text-[#bfa68a]/70 mt-2">Maisons</p>
             </div>
           </motion.div>
 
-          <motion.blockquote variants={fadeUp} className="border-l border-[#bfa68a]/28 pl-4">
-            <p className="text-white/30 text-[13px] italic leading-relaxed font-playfair">
+          <motion.blockquote variants={fadeUp} className="border-l-2 border-[#bfa68a]/60 pl-5 py-1">
+            <p className="text-[#f0e6d2] text-[1.1rem] italic leading-relaxed font-playfair">
               &ldquo;Time is the most valuable thing a man can spend.&rdquo;
             </p>
-            <cite className="block text-[9px] uppercase tracking-[0.28em] text-[#bfa68a]/35 mt-2 not-italic">
+            <cite className="block text-[9px] uppercase tracking-[0.28em] text-[#bfa68a]/70 mt-3 not-italic">
               Theophrastus
             </cite>
           </motion.blockquote>
