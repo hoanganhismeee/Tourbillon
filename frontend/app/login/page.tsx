@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { loginUser } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { openGoogleAuthPopup } from '@/lib/googleAuth';
 import { EASE_LUXURY, EASE_ENTER, DUR } from '@/lib/motion';
 
 const GOOGLE_AUTH_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5248/api'}/authentication/google`;
@@ -225,14 +226,23 @@ export default function LoginPage() {
           {!isSmartFlow && (
             <>
               <motion.div variants={formItem}>
-                <a
-                  href={GOOGLE_AUTH_URL}
-                  onClick={() => { if (redirect) sessionStorage.setItem('authRedirect', redirect); }}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (redirect) sessionStorage.setItem('authRedirect', redirect);
+                    openGoogleAuthPopup(GOOGLE_AUTH_URL, () => {
+                      login().then(() => {
+                        const dest = sessionStorage.getItem('authRedirect') || redirect || '/';
+                        sessionStorage.removeItem('authRedirect');
+                        router.replace(dest);
+                      });
+                    });
+                  }}
                   className="flex items-center justify-center gap-3 w-full py-3 border border-white/14 text-white/55 hover:border-[#bfa68a]/35 hover:text-white/75 transition text-[9.5px] uppercase tracking-[0.18em] mb-5"
                 >
                   <GoogleIcon />
                   Continue with Google
-                </a>
+                </button>
               </motion.div>
               <motion.div variants={formItem} className="flex items-center gap-4 mb-5">
                 <div className="flex-1 h-px bg-white/10" />

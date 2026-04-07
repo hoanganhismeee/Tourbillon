@@ -254,10 +254,11 @@ public class AuthenticationController : ControllerBase
 
     // GET: api/authentication/google
     // Initiates Google OAuth flow — full browser redirect, not XHR.
+    // Pass ?popup=true to use the popup window flow (postMessage back to opener).
     // Returns 503 if Google credentials are not configured (e.g. Docker without env vars).
     [HttpGet("google")]
     [AllowAnonymous]
-    public async Task<IActionResult> GoogleLogin()
+    public async Task<IActionResult> GoogleLogin([FromQuery] bool popup = false)
     {
         var scheme = await _schemes.GetSchemeAsync("Google");
         if (scheme == null)
@@ -265,6 +266,8 @@ public class AuthenticationController : ControllerBase
 
         var redirectUrl = Url.Action(nameof(GoogleCallback), "Authentication");
         var properties  = _signInManager.ConfigureExternalAuthenticationProperties("Google", redirectUrl);
+        if (popup)
+            properties.Items["popup"] = "1";
         return Challenge(properties, "Google");
     }
 
@@ -307,7 +310,12 @@ public class AuthenticationController : ControllerBase
         await _signInManager.SignInAsync(user, isPersistent: false);
         await _roleManagement.AssignAdminIfConfiguredAsync(user);
         _logger.LogInformation("Google OAuth sign-in: {Email}", email);
-        return Redirect($"{frontendBase}/auth/callback");
+
+        // Popup flow: redirect to a lightweight close-page that postMessages the opener
+        var isPopup = info.AuthenticationProperties?.Items.TryGetValue("popup", out var popupVal) == true
+                      && popupVal == "1";
+        var callbackPath = isPopup ? "/auth/popup-close" : "/auth/callback";
+        return Redirect($"{frontendBase}{callbackPath}");
     }
 
     // POST: api/authentication/magic-login/request
