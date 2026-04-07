@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { fetchBrands, fetchCollections } from '@/lib/api';
 import BrandNavPanel from '../components/layout/BrandNavPanel';
-import AllWatchesSection from '../components/sections/AllWatchesSection';
+import AllWatchesSection from './AllWatchesSection';
 
 const WatchesPage = () => {
   const router = useRouter();

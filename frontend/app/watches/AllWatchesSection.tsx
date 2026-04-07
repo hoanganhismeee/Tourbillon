@@ -12,7 +12,7 @@ import { BrowsingEvent, getBufferedEvents } from '@/lib/behaviorTracker';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useAuth } from '@/contexts/AuthContext';
-import { WatchCard } from '../cards/WatchCard';
+import { WatchCard } from '../components/cards/WatchCard';
 
 // Props interface for AllWatchesSection component
 interface AllWatchesSectionProps {
