@@ -414,18 +414,21 @@ export default function RegisterInterestPanel({
 
             {/* Watch of Interest — read-only product card */}
             {(brandName || collectionName || watchReference) && (
-              <div className="rounded-xl bg-white/5 border border-white/8 p-4 opacity-70">
-                <p className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Watch of Interest</p>
-                <div className="flex gap-3">
+              <div className="rounded-xl bg-gradient-to-br from-[#bfa68a]/10 to-transparent border border-[#bfa68a]/30 p-5 shadow-lg shadow-[#bfa68a]/5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#bfa68a] mb-3">Watch of Interest</p>
+                <div className="flex gap-4 items-center">
                   {watchImageUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={watchImageUrl} alt={watchReference || ''} className="w-14 h-14 object-cover rounded-lg flex-shrink-0 bg-white/5" />
+                    <img src={watchImageUrl} alt={watchReference || ''} className="w-16 h-16 object-cover rounded-lg flex-shrink-0 bg-white/5 border border-white/10" />
                   )}
                   <div>
-                    {brandName && <p className="text-white/70 text-sm font-medium">{brandName}</p>}
-                    {collectionName && <p className="text-white/50 text-sm">{collectionName}</p>}
-                    {watchReference && <p className="text-white/40 text-xs font-mono mt-1">Ref. {watchReference}</p>}
-                    {priceStr && <p className="text-white/50 text-xs mt-1">{priceStr}</p>}
+                    {brandName && <p className="text-[#f0e6d2] text-sm font-semibold tracking-wide">{brandName}</p>}
+                    {collectionName && <p className="text-[#f0e6d2]/80 text-sm mt-0.5">{collectionName}</p>}
+                    <div className="flex gap-3 mt-1.5 items-center">
+                       {watchReference && <p className="text-[#bfa68a]/80 text-xs font-mono">Ref. {watchReference}</p>}
+                       {watchReference && priceStr && <div className="w-1 h-1 rounded-full bg-[#bfa68a]/40" />}
+                       {priceStr && <p className="text-[#bfa68a] font-medium text-xs font-mono">{priceStr}</p>}
+                    </div>
                   </div>
                 </div>
               </div>

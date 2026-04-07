@@ -2,11 +2,12 @@
 // Editorial layout: label spacer column with balance icon + Playfair numeral anchor
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useCompare } from '@/stores/compareStore';
+import { fetchWatchBySlug, Watch } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { parseStructuredSpecs, getAllLabelsForSection } from '@/lib/specs';
 import { useNavigation } from '@/contexts/NavigationContext';
@@ -56,9 +57,25 @@ const EditorialSpacer = ({ count }: { count: number }) => (
 const ComparePage = () => {
   const { compareWatches, removeFromCompare, clearCompare } = useCompare();
   const [showDifferencesOnly, setShowDifferencesOnly] = useState(false);
+  // Enriched watches re-fetched from the API to ensure brandSlug/collectionSlug are always fresh
+  const [enrichedWatches, setEnrichedWatches] = useState<Watch[]>(compareWatches);
   const router = useRouter();
   const { saveNavigationState } = useNavigation();
   useScrollRestore(true);
+
+  // Re-fetch each watch by slug so stale localStorage snapshots get fresh brand/collection data
+  useEffect(() => {
+    if (compareWatches.length === 0) { setEnrichedWatches([]); return; }
+    let cancelled = false;
+    Promise.all(
+      compareWatches.map(w =>
+        fetchWatchBySlug(w.slug).catch(() => w) // fall back to cached data on error
+      )
+    ).then(results => {
+      if (!cancelled) setEnrichedWatches(results);
+    });
+    return () => { cancelled = true; };
+  }, [compareWatches]);
 
   const handleWatchClick = () => {
     saveNavigationState({
@@ -72,8 +89,8 @@ const ComparePage = () => {
   const watchCount = compareWatches.length;
 
   const parsedSpecs = useMemo(() => {
-    return compareWatches.map(w => parseStructuredSpecs(w.specs));
-  }, [compareWatches]);
+    return enrichedWatches.map(w => parseStructuredSpecs(w.specs));
+  }, [enrichedWatches]);
 
   const sections = useMemo(() => {
     return sectionKeys.map(sectionKey => {
@@ -165,15 +182,28 @@ const ComparePage = () => {
           {/* Editorial spacer occupies the label column */}
           <EditorialSpacer count={watchCount} />
 
-          {compareWatches.map((watch, idx) => {
+          {enrichedWatches.map((watch, idx) => {
             const specs = parsedSpecs[idx];
             const diameter = specs?.case?.diameter ? String(specs.case.diameter) : null;
             const movementType = specs?.movement?.type ? String(specs.movement.type) : null;
             const powerReserve = specs?.movement?.powerReserve ? String(specs.movement.powerReserve) : null;
             const pills = [diameter, movementType, powerReserve].filter(Boolean) as string[];
 
+            const slugToTitle = (slug: string) =>
+              slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+            const brandName = watch.brandSlug ? slugToTitle(watch.brandSlug) : null;
+
+            // Strip leading brand-slug prefix from collection slug (e.g. "patek-philippe-grand-complications" → "Grand Complications")
+            const rawCollection = watch.collectionSlug
+              ? (watch.brandSlug && watch.collectionSlug.startsWith(watch.brandSlug + '-')
+                  ? watch.collectionSlug.slice(watch.brandSlug.length + 1)
+                  : watch.collectionSlug)
+              : null;
+            const collectionName = rawCollection ? slugToTitle(rawCollection) : null;
+
             return (
-              <div key={watch.id} className="relative bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-5 text-center group">
+              <div key={watch.id} className="relative bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-5 text-center group flex flex-col">
                 {/* Remove button */}
                 <button
                   onClick={() => removeFromCompare(watch.id)}
@@ -203,28 +233,39 @@ const ComparePage = () => {
                   </div>
                 </Link>
 
-                {/* Watch name */}
-                <Link href={`/watches/${watch.slug || watch.id}`} onClick={handleWatchClick} className="hover:text-white transition-colors">
-                  <h3 className="text-sm font-playfair font-semibold text-[#f0e6d2] mb-1 line-clamp-2">{watch.name}</h3>
+                {/* Brand — WatchCard style scaled down for narrow grid */}
+                <div className="mb-0.5 text-center min-h-[1rem]">
+                  {brandName && (
+                    <p className="text-[10px] font-inter text-white/50 uppercase tracking-widest">{brandName}</p>
+                  )}
+                </div>
+
+                {/* Collection — WatchCard font family, one step smaller than name */}
+                <div className="mb-2 text-center min-h-[1.25rem]">
+                  {collectionName && (
+                    <p className="text-xs text-white/70 font-playfair font-medium">{collectionName}</p>
+                  )}
+                </div>
+
+                {/* Watch name — primary identity, clearly larger than brand/collection */}
+                <Link href={`/watches/${watch.slug || watch.id}`} onClick={handleWatchClick} className="group-hover:text-white transition-colors">
+                  <h3 className="text-sm font-playfair font-semibold text-[#f0e6d2] mb-3 line-clamp-2">{watch.name}</h3>
                 </Link>
 
+                {/* Spec pills — centered */}
+                <div className="flex flex-wrap justify-center gap-1.5 min-h-[1.5rem]">
+                  {pills.map((pill) => (
+                    <span
+                      key={pill}
+                      className="px-2.5 py-0.5 rounded-full text-[10px] text-white/50 border border-white/10 bg-white/5"
+                    >
+                      {pill}
+                    </span>
+                  ))}
+                </div>
 
-                {/* Spec pills */}
-                {pills.length > 0 && (
-                  <div className="flex flex-wrap justify-center gap-1.5 mb-3">
-                    {pills.map((pill) => (
-                      <span
-                        key={pill}
-                        className="px-2.5 py-0.5 rounded-full text-[10px] font-inter text-white/60 border border-white/10 bg-white/5"
-                      >
-                        {pill}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Price */}
-                <p className="text-base font-inter font-semibold text-white">
+                {/* Price — matches WatchCard: text-lg font-playfair font-medium text-white/90 */}
+                <p className="text-lg text-white/90 font-playfair font-medium mt-auto pt-4">
                   {watch.currentPrice === 0 ? 'Price on Request' : `$${watch.currentPrice.toLocaleString()}`}
                 </p>
               </div>
@@ -256,7 +297,7 @@ const ComparePage = () => {
       <div className="space-y-8">
         {parsedSpecs.some(s => s?.productionStatus) && (
           <div>
-            <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f0e6d2]/50 mb-3 font-inter">Status</h2>
+            <h2 className="text-[13px] font-semibold uppercase tracking-[0.35em] text-[#bfa68a] mb-3 font-inter">Status</h2>
             <div className="border border-white/8 rounded-xl overflow-hidden">
               <div className="grid items-stretch" style={{ gridTemplateColumns: colTemplate }}>
                 <div className="px-4 py-3 text-sm text-white/40 font-inter flex items-center bg-white/[0.02]">Production</div>
@@ -291,7 +332,7 @@ const ComparePage = () => {
 
           return (
             <div key={section.key}>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f0e6d2]/50 mb-3 font-inter">
+              <h2 className="text-[13px] font-semibold uppercase tracking-[0.35em] text-[#bfa68a] mb-3 font-inter">
                 {section.title}
               </h2>
               <div className="border border-white/8 rounded-xl overflow-hidden">
