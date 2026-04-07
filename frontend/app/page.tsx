@@ -1,5 +1,6 @@
 // Landing page: video hero → editorial intro → style discovery
 //               → brand showcase → AI search → Watch DNA.
+import Link from 'next/link';
 import VideoSection from "./components/homepage/VideoSection";
 import EditorialIntro from "./components/homepage/EditorialIntro";
 import WatchFinderSearch from "./components/WatchFinderSearch";
@@ -67,6 +68,31 @@ export default function Home() {
 
       {/* Watch DNA — personalization closing hook */}
       <WatchDnaSpotlight />
+
+      {/* Pre-footer editorial CTA — moved from footer */}
+      <section className="py-20 px-8 md:px-16 text-center border-t border-white/[0.06]">
+        <ScrollFade>
+          <p className="text-[10px] tracking-[0.35em] uppercase text-[#bfa68a] mb-5 font-inter">
+            Private Access
+          </p>
+          <h2
+            className="font-playfair font-light text-[#f0e6d2] mb-4 leading-tight"
+            style={{ fontSize: 'clamp(2rem, 4.5vw, 3.5rem)' }}
+          >
+            Begin your collection.
+          </h2>
+          <p className="text-sm text-white/35 font-inter mb-10 max-w-xs mx-auto">
+            Private viewings available in London. By appointment only.
+          </p>
+          <Link
+            href="/contact"
+            className="inline-flex items-center gap-3 text-[11px] tracking-[0.18em] uppercase text-[#f0e6d2] border border-[#bfa68a]/45 hover:border-[#bfa68a] hover:bg-[#bfa68a]/5 px-8 py-3.5 transition-all duration-300 font-inter"
+          >
+            Book a Private Viewing
+            <span className="text-[#bfa68a]">→</span>
+          </Link>
+        </ScrollFade>
+      </section>
     </>
   );
 }
