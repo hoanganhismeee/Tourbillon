@@ -1,4 +1,9 @@
-# Phase 11: Trend Intelligence Hub
+# Phase 11: Trend Intelligence Hub (Deferred Spec)
+
+> **Status: Deferred.** This feature has not been implemented. No backend models (PriceAlert, MarketInsight), controllers (TrendController), or services (PriceHistoryService, PriceAlertService) exist in the codebase.
+>
+> The active Phase 11 in ROADMAP.md is Storage Abstraction + S3 + CloudFront Migration.
+> This spec is kept for reference if Trend Intelligence is revisited.
 
 ## Context
 

@@ -121,7 +121,7 @@ Entry point: `backend/Program.cs`
 | `BrandScraperConfig` | XPath config for legacy scraper (temporary) |
 | `WatchDto` | Data transfer object for watch API responses |
 
-### DTOs (24)
+### DTOs (23)
 
 Auth: `LoginDto`, `RegisterDto`, `ResetPasswordDto`, `ForgotPasswordDto`, `VerifyCodeDto`, `MagicLoginDto`
 User: `UpdateUserDto`, `UserProfileDto`, `DeleteAccountDto`
@@ -132,7 +132,7 @@ Email: `TestEmailDto`
 ### Database
 
 - **DbContext**: `Database/TourbillonContext.cs` — PostgreSQL via Npgsql + pgvector extension
-- **DbInitializer**: Seeds 9 "Holy Trinity" showcase watches (PP Nautilus, VC Overseas, AP Royal Oak) on startup. Ensures Admin role exists.
+- **DbInitializer**: No-op on startup — all seed data is managed via EF migrations. Ensures Admin role exists.
 - **Migrations**: `backend/Migrations/` — includes pgvector support, editorial tables, contact/appointment/register-interest, favourites/collections, taste profiles, unique index expansion (WatchId, ChunkType, Feature)
 - **Connection**: `appsettings.json` -> `ConnectionStrings.DefaultConnection`
 
@@ -226,7 +226,7 @@ Email: `TestEmailDto`
 ### Image Configuration (next.config.ts)
 
 - Cloudinary: `res.cloudinary.com`
-- Brand CDNs whitelisted: Patek, VC, AP, ALS, Breguet, Rolex, Blancpain, Omega, Grand Seiko, Frederique Constant
+- Brand CDNs whitelisted: Patek, VC, AP, ALS, Breguet, Rolex, Omega, Grand Seiko, Frederique Constant (Blancpain removed — brand deleted from DB)
 - Local backend: `http://localhost:5248/images/**`
 - Formats: AVIF + WebP with auto DPR
 
@@ -303,7 +303,7 @@ docker compose up
 
 ## Vector Search Architecture
 
-Full explanation in `docs/AI_PLAN.md` section 4 and `docs/AI_CONCEPTS.md`.
+Full explanation in `docs/AI_PLAN.md` section 4.
 
 ### Two-layer design
 
