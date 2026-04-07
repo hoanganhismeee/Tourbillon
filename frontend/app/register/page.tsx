@@ -33,19 +33,19 @@ const formItem = {
 
 const GoogleIcon = () => (
   <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-    <path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.6 4.418 1.582L19.91 3C17.782 1.145 15.055 0 12 0 7.27 0 3.198 2.698 1.24 6.65l4.026 3.115Z"/>
-    <path fill="#34A853" d="M16.04 18.013c-1.09.703-2.474 1.078-4.04 1.078a7.077 7.077 0 0 1-6.723-4.823l-4.04 3.067A11.965 11.965 0 0 0 12 24c2.933 0 5.735-1.043 7.834-3l-3.793-2.987Z"/>
-    <path fill="#4A90D9" d="M19.834 21c2.195-2.048 3.62-5.096 3.62-9 0-.71-.109-1.473-.272-2.182H12v4.637h6.436c-.317 1.559-1.17 2.766-2.395 3.558L19.834 21Z"/>
-    <path fill="#FBBC05" d="M5.277 14.268A7.12 7.12 0 0 1 4.909 12c0-.782.125-1.533.357-2.235L1.24 6.65A11.934 11.934 0 0 0 0 12c0 1.92.445 3.73 1.237 5.335l4.04-3.067Z"/>
+    <path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.6 4.418 1.582L19.91 3C17.782 1.145 15.055 0 12 0 7.27 0 3.198 2.698 1.24 6.65l4.026 3.115Z" />
+    <path fill="#34A853" d="M16.04 18.013c-1.09.703-2.474 1.078-4.04 1.078a7.077 7.077 0 0 1-6.723-4.823l-4.04 3.067A11.965 11.965 0 0 0 12 24c2.933 0 5.735-1.043 7.834-3l-3.793-2.987Z" />
+    <path fill="#4A90D9" d="M19.834 21c2.195-2.048 3.62-5.096 3.62-9 0-.71-.109-1.473-.272-2.182H12v4.637h6.436c-.317 1.559-1.17 2.766-2.395 3.558L19.834 21Z" />
+    <path fill="#FBBC05" d="M5.277 14.268A7.12 7.12 0 0 1 4.909 12c0-.782.125-1.533.357-2.235L1.24 6.65A11.934 11.934 0 0 0 0 12c0 1.92.445 3.73 1.237 5.335l4.04-3.067Z" />
   </svg>
 );
 
 const WatchIcon = () => (
   <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-hidden="true" style={{ opacity: 0.10 }}>
-    <circle cx="16" cy="16" r="13" stroke="#bfa68a" strokeWidth="0.8"/>
-    <circle cx="16" cy="16" r="1.2" fill="#bfa68a"/>
-    <line x1="16" y1="16" x2="11.5" y2="10.5" stroke="#bfa68a" strokeWidth="0.8" strokeLinecap="round"/>
-    <line x1="16" y1="16" x2="21" y2="10" stroke="#bfa68a" strokeWidth="0.6" strokeLinecap="round"/>
+    <circle cx="16" cy="16" r="13" stroke="#bfa68a" strokeWidth="0.8" />
+    <circle cx="16" cy="16" r="1.2" fill="#bfa68a" />
+    <line x1="16" y1="16" x2="11.5" y2="10.5" stroke="#bfa68a" strokeWidth="0.8" strokeLinecap="round" />
+    <line x1="16" y1="16" x2="21" y2="10" stroke="#bfa68a" strokeWidth="0.6" strokeLinecap="round" />
   </svg>
 );
 
@@ -178,7 +178,7 @@ export default function RegisterPage() {
   return (
     <div className="flex h-[calc(100vh-3rem-50px)] overflow-hidden">
 
-      {/* Left brand panel — content centered within the 40% column */}
+      {/* Left brand panel */}
       <div className="hidden lg:flex flex-col items-center w-[40%] shrink-0 relative border-r border-[#bfa68a]/10 overflow-hidden">
 
         {/* Ambient radial glow */}
@@ -187,25 +187,25 @@ export default function RegisterPage() {
           style={{
             top: '50%', left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: 340, height: 340,
+            width: 420, height: 420,
             borderRadius: '50%',
             background: 'radial-gradient(ellipse, rgba(191,166,138,0.055) 0%, transparent 70%)',
           }}
         />
 
-        {/* Fixed-width content block, centered in the 40% column */}
+        {/* Fixed-width content block */}
         <motion.div
           variants={staggerContainer}
           initial="hidden"
           animate="visible"
-          className="relative z-10 flex flex-col justify-center flex-1 py-10 w-[272px]"
+          className="relative z-10 flex flex-col justify-center flex-1 py-10 w-full max-w-[420px] px-8 xl:px-12"
         >
           <motion.div variants={fadeUp} className="w-8 h-px bg-[#bfa68a]/50 mb-5" />
           <motion.p variants={fadeUp} className="text-[9px] uppercase tracking-[0.5em] text-[#bfa68a]/70 mb-3">
-            New Member
+            Register
           </motion.p>
-          <motion.h2 variants={fadeUp} className="font-playfair text-[2.75rem] font-light text-[#f0e6d2] leading-[1.1] mb-4">
-            Join<br />Tourbillon
+          <motion.h2 variants={fadeUp} className="font-playfair text-[2.75rem] font-light text-[#f0e6d2] leading-[1.1] mb-4 whitespace-nowrap">
+            Welcome
           </motion.h2>
           <motion.p variants={fadeUp} className="text-white/38 text-[13px] leading-relaxed max-w-[240px] mb-6">
             Explore exclusive collections, save favourites, and speak with our private advisors.
@@ -226,8 +226,8 @@ export default function RegisterPage() {
             ))}
           </motion.div>
 
-          <motion.blockquote variants={fadeUp} className="border-l border-[#bfa68a]/28 pl-4">
-            <p className="text-white/28 text-[12px] italic leading-relaxed font-playfair">
+          <motion.blockquote variants={fadeUp} className="border-l-2 border-[#bfa68a]/60 pl-6 py-1">
+            <p className="text-[#f0e6d2] font-playfair text-[1.4rem] leading-relaxed italic">
               &ldquo;A watch is more than a timepiece — it is a statement of values.&rdquo;
             </p>
           </motion.blockquote>
@@ -239,13 +239,13 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      {/* Right form panel — form centered within the 60% column */}
-      <div className="flex-1 flex items-center justify-center px-8">
+      {/* Right form panel */}
+      <div className="flex-1 flex items-center justify-center px-8 lg:px-12 xl:px-20">
         <motion.div
           variants={formContainer}
           initial="hidden"
           animate="visible"
-          className="w-full max-w-[420px]"
+          className="w-full max-w-[460px]"
         >
           <motion.p variants={formItem} className="text-[9px] uppercase tracking-[0.4em] text-[#bfa68a]/80 mb-2">
             Create Account
@@ -329,7 +329,7 @@ export default function RegisterPage() {
               >
                 {formData.agreeToTerms && (
                   <svg viewBox="0 0 12 12" className="w-full h-full p-[2px]">
-                    <path d="M1 6l4 4 6-7" stroke="#1a100c" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                    <path d="M1 6l4 4 6-7" stroke="#1a100c" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
                   </svg>
                 )}
               </button>
