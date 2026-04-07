@@ -208,8 +208,6 @@ const ComparePage = () => {
                   <h3 className="text-sm font-playfair font-semibold text-[#f0e6d2] mb-1 line-clamp-2">{watch.name}</h3>
                 </Link>
 
-                {/* Description */}
-                <p className="text-[11px] text-white/40 font-inter mb-3 line-clamp-2">{watch.description}</p>
 
                 {/* Spec pills */}
                 {pills.length > 0 && (

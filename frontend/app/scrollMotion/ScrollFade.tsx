@@ -4,7 +4,7 @@
 "use client";
 import { motion } from "framer-motion";
 import { useInView } from "react-intersection-observer";
-import { EASE_ENTER, DUR } from "@/lib/motion";
+import { EASE_ENTER } from "@/lib/motion";
 
 // Animates its child: fades in on scroll into view, fades out on scroll out of view (both directions)
 export default function ScrollFade({ 

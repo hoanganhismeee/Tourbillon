@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePathname } from 'next/navigation';
 import SearchOverlay from './SearchOverlay';
 import { useFavourites } from '@/stores/favouritesStore';
-import { EASE_ENTER, EASE_EXIT, DUR } from '@/lib/motion';
+import { EASE_ENTER, EASE_EXIT } from '@/lib/motion';
 
 // Custom SVG icon components for consistent styling and easy maintenance
 

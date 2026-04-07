@@ -3,7 +3,7 @@
 // Homepage discovery section — 4 archetype stages in alternating editorial layout.
 // Text column anchored left/right per stage; watch arc on the opposing side.
 // Each stage fires its own scroll-triggered performance: text ScrollFades, watches appear one by one.
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion, useInView } from 'framer-motion';
@@ -11,9 +11,6 @@ import { useQueries } from '@tanstack/react-query';
 import { fetchWatchesByCollectionSlug, Watch } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import ScrollFade from '@/app/scrollMotion/ScrollFade';
-
-// Page base color — used to blend the first and last stages into the surrounding warm-brown page
-const PAGE_BASE = '#1e1512';
 
 // Specific showcase hero watches to exclude (Nautilus 5811, Overseas blue ref, AP Concept)
 const EXCLUDED_WATCH_IDS = new Set([2, 34, 59]);
