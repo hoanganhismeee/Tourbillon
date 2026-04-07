@@ -86,10 +86,14 @@ export default function Home() {
           </p>
           <Link
             href="/contact"
-            className="inline-flex items-center gap-3 text-[11px] tracking-[0.18em] uppercase text-[#f0e6d2] border border-[#bfa68a]/45 hover:border-[#bfa68a] hover:bg-[#bfa68a]/5 px-8 py-3.5 transition-all duration-300 font-inter"
+            className="relative inline-flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] border border-[#bfa68a]/25 px-12 py-4 hover:bg-[#bfa68a]/8 hover:border-[#bfa68a]/40 transition-all duration-500 group overflow-hidden mx-auto"
           >
-            Book a Private Viewing
-            <span className="text-[#bfa68a]">→</span>
+            <span className="transform transition-transform duration-500 group-hover:-translate-x-3">
+              Book a Private Viewing
+            </span>
+            <span className="absolute right-6 opacity-0 -translate-x-4 transition-all duration-500 group-hover:opacity-100 group-hover:translate-x-0 text-[14px]">
+              →
+            </span>
           </Link>
         </ScrollFade>
       </section>

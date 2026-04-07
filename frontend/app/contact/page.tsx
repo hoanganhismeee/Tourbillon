@@ -117,14 +117,12 @@ export default function ContactPage() {
               </blockquote>
 
               <p className="text-white/35 text-sm leading-relaxed mb-10 max-w-sm">
-                For personalised assistance — including bespoke acquisition requests,
-                watch valuations, or information about Price on Request timepieces —
-                reach out directly. Our specialists respond within 24–48 hours.
+                Reach out for personalised assistance with bespoke acquisitions, watch valuations, or Price on Request timepieces. Our specialists respond within 24 to 48 hours.
               </p>
 
               <a
                 href="mailto:hoanganh31012005@gmail.com"
-                className="relative inline-flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] border border-[#bfa68a]/25 w-[240px] py-4 hover:bg-[#bfa68a]/8 hover:border-[#bfa68a]/40 transition-all duration-500 group overflow-hidden"
+                className="relative inline-flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] border border-[#bfa68a]/25 px-12 py-4 hover:bg-[#bfa68a]/8 hover:border-[#bfa68a]/40 transition-all duration-500 group overflow-hidden"
               >
                 <span className="transform transition-transform duration-500 group-hover:-translate-x-3">
                   Send an Email
