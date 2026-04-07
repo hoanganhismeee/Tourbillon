@@ -15,7 +15,7 @@
 | Persistent Query Cache (semantic result cache, pre-seeded, survives deploys) | Done | 3A |
 | Vector Similarity Search + QueryIntent Hybrid Filtering | Done | 3B |
 | Category-Aware Embeddings + Spec-Level Filter Pre-Selection | Done | 3B |
-| Story-first Product Pages (editorial seeded 339/339, admin inline editor) | Done | 2 |
+| Story-first Product Pages (editorial seeded 174/174, admin inline editor) | Done | 2 |
 | Watch DNA / Taste Profile (manual text input) | Done | 3C |
 | Watch DNA — Behavioural Tracking (anonymous + authenticated, AI generation, login merge) | Done | 3C |
 | Google OAuth + Email Magic Login (passwordless OTP) | Done | 3C |
@@ -38,12 +38,12 @@
 | Chat Concierge — grounding, safety & editorial enrichment | Done | 9 |
 | Slug-based URLs + Cloudinary public ID sync | In Progress | 9 |
 | Search & Recommendation Analytics Dashboard | Planned | 9.5 |
-| 10A Smooth Scroll (Lenis) | Planned | 10 |
-| 10B shadcn/ui Integration | Planned | 10 |
-| 10C Homepage Cinematic Scroll (GSAP) | Planned | 10 |
-| 10D Watch Card Near-3D Tilt + Shimmer | Planned | 10 |
+| 10A Smooth Scroll (Lenis) | Done | 10 |
+| 10B shadcn/ui Integration | Done | 10 |
+| 10C Homepage Cinematic Scroll (GSAP) | Done | 10 |
+| 10D Watch Card Near-3D Tilt + Shimmer | Done | 10 |
 | 10E Watch Detail: Video Gallery + Spec Reveal | Planned | 10 |
-| 10F Nav Scroll-Response + Transitions + Grain | Planned | 10 |
+| 10F Nav Scroll-Response + Transitions + Grain | Done | 10 |
 | 10G React Three Fiber (deferred, awaiting 3D assets) | Planned | 10 |
 | Storage Abstraction + S3 + CloudFront Migration | Planned | 11 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | 12 |

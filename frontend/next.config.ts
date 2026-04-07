@@ -36,7 +36,7 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'www.greubelforsey.com', pathname: '/**' },
       { protocol: 'https', hostname: 'www.rolex.com', pathname: '/**' },
       { protocol: 'https', hostname: 'www.breguet.com', pathname: '/**' },
-      { protocol: 'https', hostname: 'www.blancpain.com', pathname: '/**' },
+
       { protocol: 'https', hostname: 'www.omegawatches.com', pathname: '/**' },
       { protocol: 'https', hostname: 'www.grand-seiko.com', pathname: '/**' },
       { protocol: 'https', hostname: 'frederiqueconstant.com', pathname: '/**' },
