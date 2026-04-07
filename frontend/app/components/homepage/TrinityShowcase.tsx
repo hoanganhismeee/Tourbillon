@@ -9,7 +9,7 @@ import { useGSAP } from '@gsap/react';
 import { Brand, Watch, fetchWatchById, fetchWatchesByBrand } from '@/lib/api';
 import WatchCard from '../../watches/[slug]/WatchCard';
 import ScrollFade from '../../scrollMotion/ScrollFade';
-import WatchCardSkeleton from '../ui/WatchCardSkeleton';
+import WatchCardSkeleton from '../cards/WatchCardSkeleton';
 
 gsap.registerPlugin(ScrollTrigger);
 

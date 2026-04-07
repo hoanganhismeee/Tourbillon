@@ -1,11 +1,11 @@
 // Landing page: video hero → editorial intro → style discovery
 //               → brand showcase → AI search → Watch DNA.
-import VideoSection from "./components/sections/VideoSection";
-import EditorialIntro from "./components/sections/EditorialIntro";
+import VideoSection from "./components/homepage/VideoSection";
+import EditorialIntro from "./components/homepage/EditorialIntro";
 import WatchFinderSearch from "./components/WatchFinderSearch";
-import StyleArchetypeGrid from "./components/sections/StyleArchetypeGrid";
-import BrandShowcaseSection from "./components/sections/BrandShowcaseSection";
-import WatchDnaSpotlight from "./components/sections/WatchDnaSpotlight";
+import StyleArchetypeGrid from "./components/homepage/StyleArchetypeGrid";
+import BrandShowcaseSection from "./components/homepage/BrandShowcaseSection";
+import WatchDnaSpotlight from "./components/homepage/WatchDnaSpotlight";
 import ScrollFade from "./scrollMotion/ScrollFade";
 
 export default function Home() {
