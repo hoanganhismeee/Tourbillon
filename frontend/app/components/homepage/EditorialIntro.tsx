@@ -38,16 +38,17 @@ export default function EditorialIntro() {
 
         <ScrollFade delay={0.25}>
           <div className="flex gap-4 justify-center">
-            {/* Primary CTA — gold border, uses shadcn buttonVariants with custom overrides */}
+            {/* Primary CTA — Standard button design */}
             <Link
               href="/watches"
-              className={cn(
-                buttonVariants({ variant: 'outline' }),
-                'border-[#bfa68a] text-[#bfa68a] bg-transparent hover:bg-[#bfa68a]/10 hover:text-[#bfa68a] text-[11px] tracking-[0.12em] uppercase px-7 h-auto py-3.5 rounded-none font-inter gap-2'
-              )}
+              className="relative inline-flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] border border-[#bfa68a]/25 px-12 py-4 hover:bg-[#bfa68a]/8 hover:border-[#bfa68a]/40 transition-all duration-500 group overflow-hidden"
             >
-              Explore Watches
-              <ArrowRight className="w-3 h-3" />
+              <span className="transform transition-transform duration-500 group-hover:-translate-x-3">
+                Explore Watches
+              </span>
+              <span className="absolute right-8 opacity-0 -translate-x-4 transition-all duration-500 group-hover:opacity-100 group-hover:translate-x-0 text-[14px]">
+                →
+              </span>
             </Link>
 
             {/* Secondary CTA — muted border */}
