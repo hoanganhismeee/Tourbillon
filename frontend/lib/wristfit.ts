@@ -24,36 +24,38 @@ export function parseSpecMm(value: string | undefined | null): number | null {
 }
 
 function scoreDiameter(diameterMm: number, wristCm: number): number {
+  // Approximate wrist width from circumference (circular cross-section model)
   const wristWidth = (wristCm * 10) / Math.PI;
   const ratio = diameterMm / wristWidth;
 
-  if (ratio >= 0.68 && ratio <= 0.76) return 100;
+  // Perfect zone: 64–74% of wrist width (~36–40mm on a 17cm wrist)
+  if (ratio >= 0.64 && ratio <= 0.74) return 100;
 
-  if (ratio >= 0.64 && ratio < 0.68) {
-    // 80 -> 100
-    return 80 + ((ratio - 0.64) / (0.68 - 0.64)) * 20;
-  }
+  // Slightly small: 58–64% → 60 to 100
+  if (ratio >= 0.58 && ratio < 0.64)
+    return 60 + ((ratio - 0.58) / (0.64 - 0.58)) * 40;
 
-  if (ratio > 0.76 && ratio <= 0.82) {
-    // 100 -> 80
-    return 100 - ((ratio - 0.76) / (0.82 - 0.76)) * 20;
-  }
+  // Moderately small: 50–58% → 30 to 60
+  if (ratio >= 0.50 && ratio < 0.58)
+    return 30 + ((ratio - 0.50) / (0.58 - 0.50)) * 30;
 
-  if (ratio >= 0.58 && ratio < 0.64) {
-    // 40 -> 80
-    return 40 + ((ratio - 0.58) / (0.64 - 0.58)) * 40;
-  }
+  // Very small: below 50%
+  if (ratio < 0.50)
+    return Math.max(0, 30 - ((0.50 - ratio) / 0.50) * 30);
 
-  if (ratio > 0.82 && ratio <= 0.88) {
-    // 80 -> 40
-    return 80 - ((ratio - 0.82) / (0.88 - 0.82)) * 40;
-  }
+  // Slightly large: 74–80% → 100 to 72
+  if (ratio > 0.74 && ratio <= 0.80)
+    return 100 - ((ratio - 0.74) / (0.80 - 0.74)) * 28;
 
-  if (ratio > 0.88 && ratio <= 1.00) {
-    // 40 -> 0
-    return 40 - ((ratio - 0.88) / (1.00 - 0.88)) * 40;
-  }
+  // Noticeably large: 80–85% → 72 to 35
+  if (ratio > 0.80 && ratio <= 0.85)
+    return 72 - ((ratio - 0.80) / (0.85 - 0.80)) * 37;
 
+  // Too large: 85–100% → 35 to 0
+  if (ratio > 0.85 && ratio <= 1.00)
+    return 35 - ((ratio - 0.85) / (1.00 - 0.85)) * 35;
+
+  // Exceeds wrist entirely
   return 0;
 }
 

@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { checkEmailExists } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { openGoogleAuthPopup } from '@/lib/googleAuth';
 import { EASE_LUXURY, EASE_ENTER, DUR } from '@/lib/motion';
 
 const GOOGLE_AUTH_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5248/api'}/authentication/google`;
@@ -83,6 +85,7 @@ export default function AuthStartPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect');
+  const { login } = useAuth();
 
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -245,14 +248,23 @@ export default function AuthStartPage() {
           </motion.div>
 
           <motion.div variants={formItem}>
-            <a
-              href={GOOGLE_AUTH_URL}
-              onClick={() => { if (redirect) sessionStorage.setItem('authRedirect', redirect); }}
+            <button
+              type="button"
+              onClick={() => {
+                if (redirect) sessionStorage.setItem('authRedirect', redirect);
+                openGoogleAuthPopup(GOOGLE_AUTH_URL, () => {
+                  login().then(() => {
+                    const dest = sessionStorage.getItem('authRedirect') || redirect || '/';
+                    sessionStorage.removeItem('authRedirect');
+                    router.replace(dest);
+                  });
+                });
+              }}
               className="flex items-center justify-center gap-3 w-full py-3 border border-white/14 text-white/55 hover:border-[#bfa68a]/35 hover:text-white/75 transition text-[9.5px] uppercase tracking-[0.18em]"
             >
               <GoogleIcon />
               Continue with Google
-            </a>
+            </button>
           </motion.div>
         </motion.div>
       </div>
