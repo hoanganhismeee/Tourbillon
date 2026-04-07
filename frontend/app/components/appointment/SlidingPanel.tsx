@@ -50,6 +50,7 @@ export default function SlidingPanel({
           <motion.div
             key="backdrop"
             onClick={onClose}
+            data-lenis-prevent="true"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: DUR.fast, ease: EASE_EXIT } }}
@@ -59,12 +60,14 @@ export default function SlidingPanel({
               backdropFilter: 'blur(4px)',
               WebkitBackdropFilter: 'blur(4px)',
               backgroundColor: 'rgba(4,2,0,0.25)',
+              overscrollBehavior: 'none',
             }}
           />
 
           {/* Panel — slides from right */}
           <motion.div
             key="panel"
+            data-lenis-prevent="true"
             onClick={e => e.stopPropagation()}
             onScroll={onPanelScroll}
             initial={{ x: '100%' }}
@@ -77,6 +80,7 @@ export default function SlidingPanel({
               background: '#1a1613',
               borderLeft: '1px solid rgba(255,255,255,0.08)',
               overflowY: 'auto',
+              overscrollBehavior: 'contain',
               willChange: 'transform',
             }}
           >

@@ -1,15 +1,43 @@
 // Forgot password — three-step flow: email → verify OTP → reset password.
-// Card-centered layout. AnimatePresence drives step transitions.
+// Now using the split-panel luxury design.
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { forgotPassword, verifyCode, resetPassword } from '@/lib/api';
-import { EASE_LUXURY, EASE_ENTER } from '@/lib/motion';
+import { EASE_LUXURY, EASE_ENTER, DUR } from '@/lib/motion';
 
-// Underline-animated label + input, consistent with login/register style
+const staggerContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+};
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 8 },
+  visible: { opacity: 1, y: 0, transition: { duration: DUR.mid, ease: EASE_LUXURY } },
+};
+
+const formContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.06, delayChildren: 0.1 } },
+};
+
+const formItem = {
+  hidden: { opacity: 0, y: 6 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: EASE_ENTER } },
+};
+
+const WatchIcon = () => (
+  <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-hidden="true" style={{ opacity: 0.10 }}>
+    <circle cx="16" cy="16" r="13" stroke="#bfa68a" strokeWidth="0.8"/>
+    <circle cx="16" cy="16" r="1.2" fill="#bfa68a"/>
+    <line x1="16" y1="16" x2="11.5" y2="10.5" stroke="#bfa68a" strokeWidth="0.8" strokeLinecap="round"/>
+    <line x1="16" y1="16" x2="21" y2="10" stroke="#bfa68a" strokeWidth="0.6" strokeLinecap="round"/>
+  </svg>
+);
+
 function FieldInput({
   label, type = 'text', value, onChange, placeholder, right, autoFocus,
 }: {
@@ -49,7 +77,6 @@ function FieldInput({
   );
 }
 
-// Six individual digit boxes — auto-advance, backspace, arrow nav, paste support
 function OtpInput({ value, onChange, disabled }: {
   value: string;
   onChange: (v: string) => void;
@@ -88,9 +115,9 @@ function OtpInput({ value, onChange, disabled }: {
   };
 
   return (
-    <div className="flex gap-3 justify-center py-2">
+    <div className="flex justify-between gap-2 py-2">
       {cells.map((digit, i) => (
-        <div key={i} className="relative">
+        <div key={i} className="relative w-10">
           <input
             ref={el => { refs.current[i] = el; }}
             type="text"
@@ -102,7 +129,7 @@ function OtpInput({ value, onChange, disabled }: {
             onPaste={handlePaste}
             disabled={disabled}
             autoFocus={i === 0}
-            className="w-11 h-14 text-center text-2xl font-playfair font-light text-white bg-transparent border-b-2 focus:outline-none transition-colors duration-200"
+            className="w-full h-12 text-center text-xl font-playfair font-light text-white bg-transparent border-b-2 focus:outline-none transition-colors duration-200"
             style={{ borderColor: digit ? 'rgba(191,166,138,0.65)' : 'rgba(255,255,255,0.15)' }}
           />
         </div>
@@ -111,7 +138,6 @@ function OtpInput({ value, onChange, disabled }: {
   );
 }
 
-// Gold gradient CTA button — same shimmer pattern as login/register
 function GoldButton({ loading, label, loadingLabel, disabled }: {
   loading: boolean;
   label: string;
@@ -141,9 +167,9 @@ const STEPS = ['email', 'verify', 'reset'] as const;
 type Step = typeof STEPS[number];
 
 const stepVariants = {
-  enter:  { opacity: 0, x: 24 },
-  center: { opacity: 1, x: 0,  transition: { duration: 0.3, ease: EASE_ENTER } },
-  exit:   { opacity: 0, x: -24, transition: { duration: 0.2, ease: EASE_ENTER } },
+  enter:  { opacity: 0, x: 20 },
+  center: { opacity: 1, x: 0,  transition: { duration: 0.35, ease: EASE_ENTER } },
+  exit:   { opacity: 0, x: -20, transition: { duration: 0.25, ease: EASE_ENTER } },
 };
 
 export default function ForgotPasswordPage() {
@@ -160,9 +186,17 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
+  useEffect(() => {
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   const stepIndex = STEPS.indexOf(step);
 
-  // Countdown ticker — started when code is sent
   const startCountdown = (secs = 30) => {
     setCountdown(secs);
     const tick = setInterval(() => {
@@ -200,7 +234,6 @@ export default function ForgotPasswordPage() {
     }
   };
 
-  // Called from OTP onChange (auto-submit) and form submit
   const runVerify = async (codeValue: string) => {
     if (codeValue.length !== 6 || loading) return;
     setError(''); setLoading(true);
@@ -246,167 +279,235 @@ export default function ForgotPasswordPage() {
   const passwordsMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
 
   return (
-    <div className="flex justify-center items-center h-[calc(100vh-3rem-50px)] overflow-hidden px-4">
-      <motion.div
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, ease: EASE_LUXURY }}
-        className="w-full max-w-[420px] bg-white/[0.04] border border-[#bfa68a]/20 rounded-2xl shadow-2xl backdrop-blur-xl p-10"
-      >
-        {/* Step progress — three dashes */}
-        <div className="flex gap-1.5 mb-8">
-          {STEPS.map((s, i) => (
-            <div
-              key={s}
-              className="h-px transition-all duration-500"
-              style={{
-                flex: i === stepIndex ? '2' : '1',
-                background: i < stepIndex
-                  ? 'rgba(191,166,138,0.45)'
-                  : i === stepIndex
-                  ? 'rgba(191,166,138,0.85)'
-                  : 'rgba(255,255,255,0.1)',
-              }}
-            />
-          ))}
+    <div className="flex h-[calc(100vh-3rem-50px)] overflow-hidden">
+      {/* Left brand panel */}
+      <div className="hidden lg:flex flex-col items-center w-[40%] shrink-0 relative border-r border-[#bfa68a]/10 overflow-hidden">
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 420, height: 420,
+            borderRadius: '50%',
+            background: 'radial-gradient(ellipse, rgba(191,166,138,0.055) 0%, transparent 70%)',
+          }}
+        />
+
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          className="relative z-10 flex flex-col justify-center flex-1 py-10 w-full max-w-[420px] px-8 xl:px-12"
+        >
+          <motion.div variants={fadeUp} className="w-8 h-px bg-[#bfa68a]/50 mb-5" />
+          <motion.p variants={fadeUp} className="text-[9px] uppercase tracking-[0.5em] text-[#bfa68a] mb-3">
+            Account Access
+          </motion.p>
+          <motion.h2 variants={fadeUp} className="font-playfair text-[2.75rem] font-light text-[#f0e6d2] leading-[1.1] mb-4 whitespace-nowrap">
+            Secure Recovery
+          </motion.h2>
+          <motion.p variants={fadeUp} className="text-white/38 text-[13px] leading-relaxed mb-6">
+            Regain access to your Tourbillon vault and private advisory.
+          </motion.p>
+
+          <motion.div variants={fadeUp} className="space-y-3.5 mb-6">
+            {[
+              ['Secure Process', 'Protected by multi-factor authentication'],
+              ['Privacy First', 'Your collection data remains safely encrypted'],
+            ].map(([title, desc]) => (
+              <div key={title} className="flex gap-3">
+                <div className="w-px h-9 bg-[#bfa68a]/22 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[10.5px] text-[#f0e6d2]/65 font-medium tracking-wide">{title}</p>
+                  <p className="text-[10.5px] text-white/22 leading-relaxed mt-0.5">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </motion.div>
+
+          <motion.blockquote variants={fadeUp} className="border-l-2 border-[#bfa68a]/60 pl-6 py-1 mt-2">
+            <p className="text-[#f0e6d2] font-playfair text-[1.4rem] leading-relaxed italic">
+              &ldquo;Time is the most valuable thing a man can spend.&rdquo;
+            </p>
+            <cite className="block text-[9px] uppercase tracking-[0.28em] text-[#bfa68a]/70 mt-3 not-italic">
+              Theophrastus
+            </cite>
+          </motion.blockquote>
+        </motion.div>
+
+        <div className="absolute bottom-7 left-1/2 -translate-x-1/2">
+          <WatchIcon />
         </div>
+      </div>
 
-        {/* Step content — transitions sideways */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={step}
-            variants={stepVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-          >
-            {/* Eyebrow + heading */}
-            <p className="text-[9px] uppercase tracking-[0.4em] text-[#bfa68a] mb-2">
-              {stepLabels[step].eyebrow}
-            </p>
-            <h1 className="font-playfair text-[1.85rem] font-light text-[#f0e6d2] mb-1.5">
-              {stepLabels[step].heading}
-            </h1>
-            <p className="text-white/35 text-[12px] mb-7 leading-relaxed">
-              {stepLabels[step].sub}
-            </p>
+      {/* Right form panel */}
+      <div className="flex-1 flex items-center justify-center px-8 lg:px-12 xl:px-20">
+        <motion.div
+          variants={formContainer}
+          initial="hidden"
+          animate="visible"
+          className="w-full max-w-[400px]"
+        >
+          {/* Progress bar */}
+          <motion.div variants={formItem} className="flex gap-1.5 mb-8">
+            {STEPS.map((s, i) => (
+              <div
+                key={s}
+                className="h-px transition-all duration-500"
+                style={{
+                  flex: i === stepIndex ? '2' : '1',
+                  background: i < stepIndex
+                    ? 'rgba(191,166,138,0.45)'
+                    : i === stepIndex
+                    ? 'rgba(191,166,138,0.85)'
+                    : 'rgba(255,255,255,0.1)',
+                }}
+              />
+            ))}
+          </motion.div>
 
-            {/* ── Step 1: Email ── */}
-            {step === 'email' && (
-              <form onSubmit={handleSendCode} className="space-y-5">
-                <FieldInput
-                  label="Email Address"
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  autoFocus
-                />
-                {error && <p className="text-[#e07575] text-xs">{error}</p>}
-                <GoldButton loading={loading} label="Send Code" loadingLabel="Sending…" />
-              </form>
-            )}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={step}
+              variants={stepVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              className="min-h-[220px]"
+            >
+              <p className="text-[9px] uppercase tracking-[0.4em] text-[#bfa68a] mb-2.5">
+                {stepLabels[step].eyebrow}
+              </p>
+              <h1 className="font-playfair text-[1.85rem] font-light text-[#f0e6d2] mb-3">
+                {stepLabels[step].heading}
+              </h1>
+              <p className="text-white/35 text-[12px] mb-7 leading-relaxed">
+                {stepLabels[step].sub}
+              </p>
 
-            {/* ── Step 2: OTP ── */}
-            {step === 'verify' && (
-              <form onSubmit={handleVerifySubmit} className="space-y-5">
-                <OtpInput
-                  value={code}
-                  onChange={v => { setCode(v); if (v.length === 6) runVerify(v); }}
-                  disabled={loading}
-                />
-                {error && <p className="text-[#e07575] text-xs text-center">{error}</p>}
-                {success && <p className="text-[#bfa68a]/75 text-xs text-center">{success}</p>}
+              {/* ── Step 1: Email ── */}
+              {step === 'email' && (
+                <form onSubmit={handleSendCode} className="space-y-6" noValidate>
+                  <FieldInput
+                    label="Email Address"
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    autoFocus
+                  />
+                  {error && <p className="text-[#e07575] text-xs">{error}</p>}
+                  <GoldButton loading={loading} label="Send Code" loadingLabel="Sending…" />
+                </form>
+              )}
 
-                {/* Verify or resend depending on code state */}
-                {code.length === 6 ? (
-                  <GoldButton loading={loading} label="Verify Code" loadingLabel="Verifying…" />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleResend}
-                    disabled={loading || countdown > 0}
-                    className="w-full py-3.5 text-[9.5px] uppercase tracking-[0.32em] font-medium border border-white/12 text-white/45 hover:border-[#bfa68a]/35 hover:text-white/70 disabled:opacity-35 disabled:cursor-not-allowed transition-all duration-300"
-                  >
-                    {countdown > 0 ? `Resend Code (${countdown}s)` : 'Resend Code'}
-                  </button>
-                )}
+              {/* ── Step 2: OTP ── */}
+              {step === 'verify' && (
+                <form onSubmit={handleVerifySubmit} className="space-y-6" noValidate>
+                  <OtpInput
+                    value={code}
+                    onChange={v => { setCode(v); if (v.length === 6) runVerify(v); }}
+                    disabled={loading}
+                  />
+                  
+                  {error && <p className="text-[#e07575] text-xs">{error}</p>}
+                  {success && <p className="text-[#bfa68a]/75 text-xs">{success}</p>}
 
-                <button
-                  type="button"
-                  onClick={() => { setStep('email'); setCode(''); setError(''); setSuccess(''); }}
-                  className="block w-full text-center text-[10px] text-white/25 hover:text-white/45 transition uppercase tracking-[0.2em]"
-                >
-                  ← Different email
-                </button>
-              </form>
-            )}
+                  <div className="pt-2 space-y-4">
+                    {code.length === 6 ? (
+                      <GoldButton loading={loading} label="Verify Code" loadingLabel="Verifying…" />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResend}
+                        disabled={loading || countdown > 0}
+                        className="w-full py-3.5 text-[9.5px] uppercase tracking-[0.32em] font-medium border border-white/12 text-white/45 hover:border-[#bfa68a]/35 hover:text-white/70 disabled:opacity-35 disabled:cursor-not-allowed transition-all duration-300"
+                      >
+                        {countdown > 0 ? `Resend Code (${countdown}s)` : 'Resend Code'}
+                      </button>
+                    )}
 
-            {/* ── Step 3: New password ── */}
-            {step === 'reset' && (
-              <form onSubmit={handleReset} className="space-y-5">
-                <FieldInput
-                  label="New Password"
-                  type={showNew ? 'text' : 'password'}
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoFocus
-                  right={
                     <button
                       type="button"
-                      onClick={() => setShowNew(v => !v)}
-                      tabIndex={-1}
-                      className="absolute right-0 top-1/2 -translate-y-1/2 text-white/28 hover:text-white/55 transition text-[8.5px] uppercase tracking-widest"
+                      onClick={() => { setStep('email'); setCode(''); setError(''); setSuccess(''); }}
+                      className="block w-full text-center text-[9px] uppercase tracking-[0.2em] text-white/25 hover:text-white/45 transition"
                     >
-                      {showNew ? 'Hide' : 'Show'}
+                      ← Different email
                     </button>
-                  }
-                />
-                <div>
+                  </div>
+                </form>
+              )}
+
+              {/* ── Step 3: New password ── */}
+              {step === 'reset' && (
+                <form onSubmit={handleReset} className="space-y-5" noValidate>
                   <FieldInput
-                    label="Confirm Password"
-                    type={showConfirm ? 'text' : 'password'}
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
+                    label="New Password"
+                    type={showNew ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
                     placeholder="••••••••"
+                    autoFocus
                     right={
                       <button
                         type="button"
-                        onClick={() => setShowConfirm(v => !v)}
+                        onClick={() => setShowNew(v => !v)}
                         tabIndex={-1}
                         className="absolute right-0 top-1/2 -translate-y-1/2 text-white/28 hover:text-white/55 transition text-[8.5px] uppercase tracking-widest"
                       >
-                        {showConfirm ? 'Hide' : 'Show'}
+                        {showNew ? 'Hide' : 'Show'}
                       </button>
                     }
                   />
-                  {/* Real-time match feedback */}
-                  {passwordsMatch && (
-                    <p className="text-[10px] text-[#bfa68a]/65 mt-2 tracking-wide">Passwords match</p>
-                  )}
-                  {passwordsMismatch && (
-                    <p className="text-[10px] text-[#e07575]/80 mt-2">Passwords do not match</p>
-                  )}
-                </div>
+                  <div>
+                    <FieldInput
+                      label="Confirm Password"
+                      type={showConfirm ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      right={
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirm(v => !v)}
+                          tabIndex={-1}
+                          className="absolute right-0 top-1/2 -translate-y-1/2 text-white/28 hover:text-white/55 transition text-[8.5px] uppercase tracking-widest"
+                        >
+                          {showConfirm ? 'Hide' : 'Show'}
+                        </button>
+                      }
+                    />
+                    {passwordsMatch && (
+                      <p className="text-[10px] text-[#bfa68a]/65 mt-2 tracking-wide">Passwords match</p>
+                    )}
+                    {passwordsMismatch && (
+                      <p className="text-[10px] text-[#e07575]/80 mt-2">Passwords do not match</p>
+                    )}
+                  </div>
 
-                {error && <p className="text-[#e07575] text-xs">{error}</p>}
-                {success && <p className="text-[#bfa68a]/75 text-xs">{success}</p>}
+                  {error && <p className="text-[#e07575] text-xs pt-1">{error}</p>}
+                  {success && <p className="text-[#bfa68a]/75 text-xs pt-1">{success}</p>}
 
-                <GoldButton loading={loading} label="Set New Password" loadingLabel="Saving…" />
-              </form>
-            )}
+                  <div className="pt-2">
+                    <GoldButton loading={loading} label="Set New Password" loadingLabel="Saving…" />
+                  </div>
+                </form>
+              )}
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Footer link */}
+          <motion.div variants={formItem} className="mt-8 text-center">
+            <p className="text-[10.5px] text-white/22">
+              Remember your password?{' '}
+              <Link href="/login" className="text-[#bfa68a]/65 hover:text-[#bfa68a] transition">
+                Sign In
+              </Link>
+            </p>
           </motion.div>
-        </AnimatePresence>
 
-        {/* Footer link */}
-        <p className="mt-7 text-[10.5px] text-white/22 text-center">
-          Remember your password?{' '}
-          <Link href="/auth/start" className="text-[#bfa68a]/65 hover:text-[#bfa68a] transition">
-            Sign In
-          </Link>
-        </p>
-      </motion.div>
+        </motion.div>
+      </div>
     </div>
   );
 }

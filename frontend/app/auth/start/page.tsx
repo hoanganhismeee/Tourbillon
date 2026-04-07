@@ -119,14 +119,14 @@ export default function AuthStartPage() {
   return (
     <div className="flex h-[calc(100vh-3rem-50px)] overflow-hidden">
 
-      {/* Left brand panel — centered within 40% */}
+      {/* Left brand panel */}
       <div className="hidden lg:flex flex-col items-center w-[40%] shrink-0 relative border-r border-[#bfa68a]/10 overflow-hidden">
         <div
           className="absolute pointer-events-none"
           style={{
             top: '50%', left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: 340, height: 340,
+            width: 420, height: 420,
             borderRadius: '50%',
             background: 'radial-gradient(ellipse, rgba(191,166,138,0.055) 0%, transparent 70%)',
           }}
@@ -136,7 +136,7 @@ export default function AuthStartPage() {
           variants={staggerContainer}
           initial="hidden"
           animate="visible"
-          className="relative z-10 flex flex-col justify-center flex-1 py-10 w-[290px]"
+          className="relative z-10 flex flex-col justify-center flex-1 py-10 w-full max-w-[420px] px-8 xl:px-12"
         >
           <motion.div variants={fadeUp} className="w-8 h-px bg-[#bfa68a]/50 mb-5" />
           <motion.p variants={fadeUp} className="text-[9px] uppercase tracking-[0.5em] text-[#bfa68a] mb-3">
@@ -161,8 +161,8 @@ export default function AuthStartPage() {
             </div>
           </motion.div>
 
-          <motion.blockquote variants={fadeUp} className="border-l-2 border-[#bfa68a]/60 pl-5 py-1">
-            <p className="text-[#f0e6d2] text-[1.1rem] italic leading-relaxed font-playfair">
+          <motion.blockquote variants={fadeUp} className="border-l-2 border-[#bfa68a]/60 pl-6 py-1">
+            <p className="text-[#f0e6d2] font-playfair text-[1.4rem] leading-relaxed italic">
               &ldquo;Time is the most valuable thing a man can spend.&rdquo;
             </p>
             <cite className="block text-[9px] uppercase tracking-[0.28em] text-[#bfa68a]/70 mt-3 not-italic">
@@ -176,13 +176,13 @@ export default function AuthStartPage() {
         </div>
       </div>
 
-      {/* Right form panel — centered within 60% */}
-      <div className="flex-1 flex items-center justify-center px-12">
+      {/* Right form panel */}
+      <div className="flex-1 flex items-center justify-center px-8 lg:px-12 xl:px-20">
         <motion.div
           variants={formContainer}
           initial="hidden"
           animate="visible"
-          className="w-full max-w-[400px]"
+          className="w-full max-w-[440px]"
         >
           <motion.p variants={formItem} className="text-[9px] uppercase tracking-[0.4em] text-[#bfa68a] mb-2.5">
             Access
