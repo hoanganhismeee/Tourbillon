@@ -138,7 +138,7 @@ export default function WatchDnaSpotlight() {
                     Watches that know you.
                   </h2>
                   <p className="text-[15px] text-white/45 font-inter leading-relaxed mb-8 max-w-sm">
-                    The more you explore, the sharper your curation gets. Watch DNA quietly learns your unparalleled taste to surface pieces you'll love.
+                    The more you explore, the sharper your curation gets. Watch DNA quietly learns your unparalleled taste to surface pieces you&apos;ll love.
                   </p>
                   <Link
                     href="/login"

@@ -7,7 +7,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { fetchWatches, fetchCollections, getTasteProfile, Watch, Collection, Brand, TasteProfile } from '@/lib/api';
+import { fetchWatches, fetchCollections, getTasteProfile, Watch, Brand, TasteProfile } from '@/lib/api';
 import { BrowsingEvent, getBufferedEvents } from '@/lib/behaviorTracker';
 import { useWatchesPage } from '@/contexts/WatchesPageContext';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
