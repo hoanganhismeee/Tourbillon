@@ -11,8 +11,11 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+    if (!response.ok) {
+      throw new Error(`Backend responded with status: ${response.status}`);
+    }
     const data = await response.json();
-    return NextResponse.json(data, { status: response.status });
+    return NextResponse.json(data);
   } catch (error) {
     console.error('Watch explain error:', error);
     return NextResponse.json({ error: 'Explain service unavailable' }, { status: 503 });

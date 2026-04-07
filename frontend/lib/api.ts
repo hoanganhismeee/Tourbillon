@@ -145,7 +145,7 @@ export const fetchWatchesByCollection = async (collectionId: number): Promise<Wa
 };
 
 export const fetchCollectionsByBrand = async (brandId: number): Promise<Collection[]> => {
-  const response = await fetch(`${API_BASE_URL}/collection/brand/${brandId}`, { credentials: 'include' });
+  const response = await fetchWithTimeout(`${API_BASE_URL}/collection/brand/${brandId}`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error(`Failed to fetch collections for brandId: ${brandId}`);
   }

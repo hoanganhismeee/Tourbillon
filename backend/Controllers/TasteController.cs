@@ -1,7 +1,7 @@
 // Manages watch taste profiles for authenticated users.
 // GET returns the current profile (empty defaults if not yet set).
 // POST sends plain text to the LLM extraction pipeline and upserts the structured profile.
-using System.Security.Claims;
+using backend.Extensions;
 using backend.DTOs;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -25,7 +25,7 @@ public class TasteController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetProfile()
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         var profile = await _tasteService.GetProfileAsync(userId.Value);
@@ -36,7 +36,7 @@ public class TasteController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> SaveTaste([FromBody] SaveTasteDto dto)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         // Enforce 50-word limit server-side (client enforces too, but never trust only the client)
@@ -52,17 +52,11 @@ public class TasteController : ControllerBase
     [HttpPost("generate")]
     public async Task<IActionResult> GenerateFromBehavior()
     {
-        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(userIdClaim, out int userId))
-            return Unauthorized();
+        var userId = User.GetUserId();
+        if (userId == null) return Unauthorized();
 
-        var profile = await _tasteService.GenerateFromBehaviorAsync(userId);
+        var profile = await _tasteService.GenerateFromBehaviorAsync(userId.Value);
         return Ok(profile);
     }
 
-    private int? GetCurrentUserId()
-    {
-        var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return int.TryParse(claim, out var id) ? id : null;
-    }
 }

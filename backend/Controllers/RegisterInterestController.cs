@@ -1,5 +1,5 @@
 // Handles Register Your Interest submissions — supports both authenticated and guest users.
-using System.Security.Claims;
+using backend.Extensions;
 using backend.Models;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -23,7 +23,7 @@ public class RegisterInterestController : ControllerBase
     [Authorize]
     public async Task<IActionResult> GetMySubmissions()
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         var submissions = await _service.GetByUserIdAsync(userId.Value);
@@ -43,7 +43,7 @@ public class RegisterInterestController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> RegisterInterest([FromBody] CreateRegisterInterestDto dto)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
 
         try
         {
@@ -60,9 +60,4 @@ public class RegisterInterestController : ControllerBase
         }
     }
 
-    private int? GetCurrentUserId()
-    {
-        var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return int.TryParse(claim, out var id) ? id : null;
-    }
 }

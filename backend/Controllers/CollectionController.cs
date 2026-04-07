@@ -1,6 +1,7 @@
 // Manage collection within each brands
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using backend.Database;
 using backend.Models;
 
@@ -18,39 +19,43 @@ public class CollectionController : ControllerBase
     }
 
     [HttpGet]
-    public IActionResult GetCollections() => Ok(_context.Collections.ToList()); // Return all collection from database
+    public async Task<IActionResult> GetCollections() // Return all collections from database
+    {
+        var collections = await _context.Collections.ToListAsync();
+        return Ok(collections);
+    }
 
     // Slug-based detail — primary public endpoint
     [HttpGet("by-slug/{slug}")]
-    public IActionResult GetCollectionBySlug(string slug)
+    public async Task<IActionResult> GetCollectionBySlug(string slug)
     {
-        var collection = _context.Collections.FirstOrDefault(c => c.Slug == slug);
+        var collection = await _context.Collections.FirstOrDefaultAsync(c => c.Slug == slug);
         return collection == null ? NotFound() : Ok(collection);
     }
 
     // Numeric ID detail — kept for admin/internal use
     [HttpGet("{id:int}")]
-    public IActionResult GetCollection(int id)
+    public async Task<IActionResult> GetCollection(int id)
     {
-        var collection = _context.Collections.Find(id);
+        var collection = await _context.Collections.FindAsync(id);
         return collection == null ? NotFound() : Ok(collection);
     }
 
     // Slug-based brand filter — primary public endpoint
     [HttpGet("brand/by-slug/{slug}")]
-    public IActionResult GetCollectionsByBrandSlug(string slug)
+    public async Task<IActionResult> GetCollectionsByBrandSlug(string slug)
     {
-        var brand = _context.Brands.FirstOrDefault(b => b.Slug == slug);
+        var brand = await _context.Brands.FirstOrDefaultAsync(b => b.Slug == slug);
         if (brand == null) return NotFound();
 
-        var collections = _context.Collections.Where(c => c.BrandId == brand.Id).ToList();
+        var collections = await _context.Collections.Where(c => c.BrandId == brand.Id).ToListAsync();
         return Ok(collections);
     }
 
     [HttpGet("brand/{brandId:int}")]
-    public IActionResult GetCollectionsByBrand(int brandId)
+    public async Task<IActionResult> GetCollectionsByBrand(int brandId)
     {
-        var collections = _context.Collections.Where(c => c.BrandId == brandId).ToList();
+        var collections = await _context.Collections.Where(c => c.BrandId == brandId).ToListAsync();
         return Ok(collections);
     }
 
