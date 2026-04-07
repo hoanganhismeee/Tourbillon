@@ -1,6 +1,6 @@
 // Handles all favourites and user collection endpoints.
-// All routes require authentication; uses GetCurrentUserId() helper for safe claim extraction.
-using System.Security.Claims;
+// All routes require authentication; uses User.GetUserId() helper for safe claim extraction.
+using backend.Extensions;
 using backend.DTOs;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -24,7 +24,7 @@ public class FavouritesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetState()
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         var state = await _favouritesService.GetStateAsync(userId.Value);
@@ -35,7 +35,7 @@ public class FavouritesController : ControllerBase
     [HttpPost("{watchId:int}")]
     public async Task<IActionResult> AddFavourite(int watchId)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         await _favouritesService.AddFavouriteAsync(userId.Value, watchId);
@@ -46,7 +46,7 @@ public class FavouritesController : ControllerBase
     [HttpDelete("{watchId:int}")]
     public async Task<IActionResult> RemoveFavourite(int watchId)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         await _favouritesService.RemoveFavouriteAsync(userId.Value, watchId);
@@ -57,7 +57,7 @@ public class FavouritesController : ControllerBase
     [HttpGet("watches")]
     public async Task<IActionResult> GetFavouriteWatches([FromQuery] FavouriteWatchesQueryDto query)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         var result = await _favouritesService.GetFavouriteWatchesAsync(userId.Value, query);
@@ -68,7 +68,7 @@ public class FavouritesController : ControllerBase
     [HttpPost("collections")]
     public async Task<IActionResult> CreateCollection([FromBody] CreateCollectionDto dto)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         try
@@ -86,7 +86,7 @@ public class FavouritesController : ControllerBase
     [HttpPatch("collections/{id:int}")]
     public async Task<IActionResult> RenameCollection(int id, [FromBody] RenameCollectionDto dto)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         try
@@ -108,7 +108,7 @@ public class FavouritesController : ControllerBase
     [HttpDelete("collections/{id:int}")]
     public async Task<IActionResult> DeleteCollection(int id)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         try
@@ -130,7 +130,7 @@ public class FavouritesController : ControllerBase
     [HttpPut("collections/{id:int}/watches/{watchId:int}")]
     public async Task<IActionResult> AddToCollection(int id, int watchId)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         try
@@ -152,7 +152,7 @@ public class FavouritesController : ControllerBase
     [HttpDelete("collections/{id:int}/watches/{watchId:int}")]
     public async Task<IActionResult> RemoveFromCollection(int id, int watchId)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         try
@@ -170,9 +170,4 @@ public class FavouritesController : ControllerBase
         }
     }
 
-    private int? GetCurrentUserId()
-    {
-        var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return int.TryParse(claim, out var id) ? id : null;
-    }
 }

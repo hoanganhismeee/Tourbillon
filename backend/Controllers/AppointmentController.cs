@@ -1,5 +1,5 @@
 // Handles appointment bookings — supports both authenticated and guest users.
-using System.Security.Claims;
+using backend.Extensions;
 using backend.Models;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -23,7 +23,7 @@ public class AppointmentController : ControllerBase
     [Authorize]
     public async Task<IActionResult> GetMyAppointments()
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         var appointments = await _appointmentService.GetByUserIdAsync(userId.Value);
@@ -43,7 +43,7 @@ public class AppointmentController : ControllerBase
     [HttpPost("book")]
     public async Task<IActionResult> BookAppointment([FromBody] CreateAppointmentDto dto)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
 
         try
         {
@@ -62,9 +62,4 @@ public class AppointmentController : ControllerBase
         }
     }
 
-    private int? GetCurrentUserId()
-    {
-        var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return int.TryParse(claim, out var id) ? id : null;
-    }
 }

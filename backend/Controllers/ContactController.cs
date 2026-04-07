@@ -1,6 +1,6 @@
 // Handles advisor inquiries — primarily for Price on Request watches.
 // Requires authentication; sends confirmation email to user and notification to admin.
-using System.Security.Claims;
+using backend.Extensions;
 using backend.Models;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -24,7 +24,7 @@ public class ContactController : ControllerBase
     [HttpGet("my-inquiries")]
     public async Task<IActionResult> GetMyInquiries()
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         var inquiries = await _inquiryService.GetByUserIdAsync(userId.Value);
@@ -43,7 +43,7 @@ public class ContactController : ControllerBase
     [HttpPost("inquiry")]
     public async Task<IActionResult> SubmitInquiry([FromBody] CreateContactInquiryDto dto)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
         if (userId == null) return Unauthorized();
 
         try
@@ -61,9 +61,4 @@ public class ContactController : ControllerBase
         }
     }
 
-    private int? GetCurrentUserId()
-    {
-        var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return int.TryParse(claim, out var id) ? id : null;
-    }
 }

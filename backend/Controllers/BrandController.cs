@@ -1,6 +1,7 @@
 // Handle everything related to brands
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using backend.Database;
 using backend.Models;
 
@@ -18,25 +19,25 @@ public class BrandController : ControllerBase
     }
 
     [HttpGet]
-    public IActionResult GetAllBrands() // Return all brands ordered by ID
+    public async Task<IActionResult> GetAllBrands() // Return all brands ordered by ID
     {
-        var brands = _context.Brands.OrderBy(b => b.Id).ToList();
+        var brands = await _context.Brands.OrderBy(b => b.Id).ToListAsync();
         return Ok(brands);
     }
 
     // Slug-based detail — primary public endpoint
     [HttpGet("by-slug/{slug}")]
-    public IActionResult GetBrandBySlug(string slug)
+    public async Task<IActionResult> GetBrandBySlug(string slug)
     {
-        var brand = _context.Brands.FirstOrDefault(b => b.Slug == slug);
+        var brand = await _context.Brands.FirstOrDefaultAsync(b => b.Slug == slug);
         return brand == null ? NotFound() : Ok(brand);
     }
 
     // Numeric ID detail — kept for admin/internal use
     [HttpGet("{id:int}")]
-    public IActionResult GetBrand(int id)
+    public async Task<IActionResult> GetBrand(int id)
     {
-        var brand = _context.Brands.Find(id);
+        var brand = await _context.Brands.FindAsync(id);
         return brand == null ? NotFound() : Ok(brand);
     }
 

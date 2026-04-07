@@ -23,6 +23,7 @@ public class AuthenticationController : ControllerBase
     private readonly IRoleManagementService _roleManagement;
     private readonly ILogger<AuthenticationController> _logger;
     private readonly Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider _schemes;
+    private readonly IConfiguration _configuration;
 
     public AuthenticationController(
         SignInManager<User> signInManager,
@@ -33,7 +34,8 @@ public class AuthenticationController : ControllerBase
         IMagicLoginService magicLoginService,
         IRoleManagementService roleManagement,
         ILogger<AuthenticationController> logger,
-        Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider schemes)
+        Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider schemes,
+        IConfiguration configuration)
     {
         _signInManager = signInManager;
         _userManager = userManager;
@@ -44,6 +46,7 @@ public class AuthenticationController : ControllerBase
         _roleManagement = roleManagement;
         _logger = logger;
         _schemes = schemes;
+        _configuration = configuration;
     }
 
     // POST: api/authentication/register
@@ -273,7 +276,7 @@ public class AuthenticationController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> GoogleCallback()
     {
-        const string frontendBase = "http://localhost:3000";
+        var frontendBase = _configuration["AppSettings:FrontendBaseUrl"] ?? "http://localhost:3000";
 
         var info = await _signInManager.GetExternalLoginInfoAsync();
         if (info == null)

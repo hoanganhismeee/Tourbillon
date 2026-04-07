@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Watch } from '@/lib/api';
 
-const MAX_COMPARE = 4;
+export const MAX_COMPARE_COUNT = 4;
 
 interface CompareStore {
   compareWatches: Watch[];
@@ -22,7 +22,7 @@ export const useCompare = create<CompareStore>()(
 
       addToCompare: (watch) => {
         const { compareWatches } = get();
-        if (compareWatches.length >= MAX_COMPARE) return false;
+        if (compareWatches.length >= MAX_COMPARE_COUNT) return false;
         if (compareWatches.some(w => w.id === watch.id)) return false;
         set({ compareWatches: [...compareWatches, watch] });
         return true;
@@ -43,5 +43,3 @@ export const useCompare = create<CompareStore>()(
     }
   )
 );
-
-export const MAX_COMPARE_COUNT = MAX_COMPARE;
