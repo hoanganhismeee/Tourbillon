@@ -47,7 +47,7 @@ export default function ContactPage() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.05 }}
-            className="relative font-playfair font-light text-[#f0e6d2] leading-none mb-6"
+            className="relative font-playfair font-light text-[#f0e6d2] leading-none mb-6 -ml-[0.06em]"
             style={{ fontSize: 'clamp(3.5rem, 8vw, 7rem)' }}
           >
             Contact Us
@@ -56,7 +56,7 @@ export default function ContactPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.7, delay: 0.15 }}
-            className="relative text-white/35 text-sm max-w-[320px] leading-relaxed"
+            className="relative text-white/35 text-sm max-w-[380px] leading-relaxed text-balance"
           >
             Our advisors are available to assist with acquisitions, valuations,
             and any enquiry about our collection.
@@ -68,7 +68,7 @@ export default function ContactPage() {
 
           {/* Left — contact details */}
           <div className="lg:border-r border-[#bfa68a]/8 lg:pr-20 pb-16 lg:pb-0">
-            <p className="text-[9px] uppercase tracking-[0.4em] text-white/22 mb-10">Contact Information</p>
+            <p className="text-[10px] uppercase tracking-[0.45em] text-[#bfa68a]/80 mb-10">Contact Information</p>
             <div>
               {contactItems.map((item, i) => (
                 <motion.div
@@ -108,10 +108,10 @@ export default function ContactPage() {
             className="lg:pl-20 pt-16 lg:pt-0 flex flex-col justify-between"
           >
             <div>
-              <p className="text-[9px] uppercase tracking-[0.4em] text-white/22 mb-10">Private Advisory</p>
+              <p className="text-[10px] uppercase tracking-[0.45em] text-[#bfa68a]/80 mb-10">Private Advisory</p>
 
-              <blockquote className="border-l-2 border-[#bfa68a]/30 pl-6 mb-10">
-                <p className="text-[#f0e6d2]/65 font-playfair text-[1.35rem] leading-relaxed italic">
+              <blockquote className="border-l-2 border-[#bfa68a]/60 pl-6 mb-10 py-1">
+                <p className="text-[#f0e6d2] font-playfair text-[1.4rem] leading-relaxed italic">
                   &ldquo;Every great timepiece deserves a conversation.&rdquo;
                 </p>
               </blockquote>
@@ -124,17 +124,17 @@ export default function ContactPage() {
 
               <a
                 href="mailto:hoanganh31012005@gmail.com"
-                className="inline-flex items-center gap-3 text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] border border-[#bfa68a]/25 px-8 py-4 hover:bg-[#bfa68a]/8 hover:border-[#bfa68a]/40 transition group"
+                className="relative inline-flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] border border-[#bfa68a]/25 w-[240px] py-4 hover:bg-[#bfa68a]/8 hover:border-[#bfa68a]/40 transition-all duration-500 group overflow-hidden"
               >
-                Send an Email
-                <span className="opacity-0 group-hover:opacity-100 transition translate-x-0 group-hover:translate-x-1 duration-200">→</span>
+                <span className="transform transition-transform duration-500 group-hover:-translate-x-3">
+                  Send an Email
+                </span>
+                <span className="absolute right-8 opacity-0 -translate-x-4 transition-all duration-500 group-hover:opacity-100 group-hover:translate-x-0 text-[14px]">
+                  →
+                </span>
               </a>
             </div>
 
-            <div className="hidden lg:flex items-center gap-4 mt-16 pt-8 border-t border-white/5">
-              <div className="h-px flex-1 bg-gradient-to-r from-[#bfa68a]/25 to-transparent" />
-              <span className="font-playfair text-white/12 text-base">Tourbillon</span>
-            </div>
           </motion.div>
 
         </div>

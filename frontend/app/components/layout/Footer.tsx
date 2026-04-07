@@ -8,28 +8,6 @@ export default function Footer() {
   return (
     <footer className="border-t border-white/[0.06]">
 
-      {/* Pre-footer editorial CTA — replaces old amateurish watermark block */}
-      <div className="py-20 px-8 md:px-16 text-center border-b border-white/[0.06]">
-        <p className="text-[10px] tracking-[0.35em] uppercase text-[#bfa68a] mb-5 font-inter">
-          Private Access
-        </p>
-        <h2
-          className="font-playfair font-light text-[#f0e6d2] mb-4 leading-tight"
-          style={{ fontSize: 'clamp(2rem, 4.5vw, 3.5rem)' }}
-        >
-          Begin your collection.
-        </h2>
-        <p className="text-sm text-white/35 font-inter mb-10 max-w-xs mx-auto">
-          Private viewings available in London. By appointment only.
-        </p>
-        <Link
-          href="/contact"
-          className="inline-flex items-center gap-3 text-[11px] tracking-[0.18em] uppercase text-[#f0e6d2] border border-[#bfa68a]/45 hover:border-[#bfa68a] hover:bg-[#bfa68a]/5 px-8 py-3.5 transition-all duration-300 font-inter"
-        >
-          Book a Private Viewing
-          <span className="text-[#bfa68a]">→</span>
-        </Link>
-      </div>
 
       {/* 3-column grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 border-b border-white/[0.06]">
