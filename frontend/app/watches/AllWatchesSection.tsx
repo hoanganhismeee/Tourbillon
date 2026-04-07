@@ -4,7 +4,8 @@
 // Includes one-time retry for transient image load issues.
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWatches, fetchCollections, getTasteProfile, Watch, Brand, TasteProfile } from '@/lib/api';
@@ -124,6 +125,81 @@ function hasAnyPreference(profile: TasteProfile): boolean {
   );
 }
 
+type SortOrder = 'default' | 'price-asc' | 'price-desc';
+
+// Compact sort dropdown — shows current sort inline, expands on click.
+function SortDropdown({ sortOrder, onSelect, isPersonalized }: {
+  sortOrder: SortOrder;
+  onSelect: (s: SortOrder) => void;
+  isPersonalized: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  const handleOutside = useCallback((e: MouseEvent) => {
+    if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+  }, []);
+  useEffect(() => {
+    if (open) document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [open, handleOutside]);
+
+  const options: { key: SortOrder; label: string }[] = [
+    { key: 'default',    label: isPersonalized ? 'Recommended' : 'Featured' },
+    { key: 'price-asc',  label: 'Price: Low to High' },
+    { key: 'price-desc', label: 'Price: High to Low' },
+  ];
+  const active = options.find(o => o.key === sortOrder)!;
+
+  return (
+    <div ref={ref} className="relative flex justify-end mt-8">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 text-[10px] tracking-[0.18em] uppercase transition-colors duration-200 text-white/40 hover:text-white/70 group"
+      >
+        <span className="text-white/20">Sort</span>
+        <span className="text-[#bfa68a]">{active.label}</span>
+        <svg
+          className={`w-2.5 h-2.5 text-white/20 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className="absolute top-full right-0 mt-2 min-w-[160px] bg-[#0e0e0e] border border-white/10 py-1 z-20"
+          >
+            {options.map(opt => (
+              <button
+                key={opt.key}
+                onClick={() => { onSelect(opt.key); setOpen(false); }}
+                className={`w-full text-left px-4 py-2.5 text-[10px] tracking-[0.14em] uppercase transition-colors duration-150 flex items-center justify-between ${
+                  sortOrder === opt.key
+                    ? 'text-[#bfa68a]'
+                    : 'text-white/35 hover:text-white/70'
+                }`}
+              >
+                {opt.label}
+                {sortOrder === opt.key && (
+                  <span className="w-1 h-1 rounded-full bg-[#bfa68a] shrink-0" />
+                )}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // Main component: handles watches display, pagination, and shuffle logic
 const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }: AllWatchesSectionProps) => {
   const { isAuthenticated } = useAuth();
@@ -151,6 +227,7 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
 
   const [shuffledWatches, setShuffledWatches] = useState<Watch[]>([]);
   const [showAllWatches, setShowAllWatches] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'default' | 'price-asc' | 'price-desc'>('default');
   const watchesPerPage = 20;
 
   // Read browsing events from localStorage once on mount — drives instant scoring
@@ -213,13 +290,28 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
     return result;
   }, [shuffledWatches, brandFilters, collectionFilters]);
 
+  // Apply price sort on top of personalized/shuffled order. PoR watches (price=0) always sort last.
+  const sortedWatches = useMemo(() => {
+    if (sortOrder === 'default') return filteredWatches;
+    return [...filteredWatches].sort((a, b) => {
+      const aPoR = a.currentPrice === 0;
+      const bPoR = b.currentPrice === 0;
+      if (aPoR && bPoR) return 0;
+      if (aPoR) return 1;
+      if (bPoR) return -1;
+      return sortOrder === 'price-asc'
+        ? a.currentPrice - b.currentPrice
+        : b.currentPrice - a.currentPrice;
+    });
+  }, [filteredWatches, sortOrder]);
+
   // Heading label reflects active filter context
   const headingLabel = useMemo(() => {
-    if (collectionFilters.length === 1) return collections.find(c => c.id === collectionFilters[0])?.name ?? 'All Watches';
+    if (collectionFilters.length === 1) return collections.find(c => c.id === collectionFilters[0])?.name ?? 'All Timepieces';
     if (collectionFilters.length > 1) return `${collectionFilters.length} Collections`;
-    if (brandFilters.length === 1) return brands.find(b => b.id === brandFilters[0])?.name ?? 'All Watches';
+    if (brandFilters.length === 1) return brands.find(b => b.id === brandFilters[0])?.name ?? 'All Timepieces';
     if (brandFilters.length > 1) return `${brandFilters.length} Brands`;
-    return 'All Watches';
+    return 'All Timepieces';
   }, [brandFilters, collectionFilters, brands, collections]);
 
   // isReady: content is in the DOM (either watches rendered, or confirmed empty)
@@ -234,25 +326,36 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
   }, [currentPage]);
 
   // Page 1 grid slices
-  const initialWatches = filteredWatches.slice(0, 12);
-  const additionalWatches = filteredWatches.slice(12, 20);
+  const initialWatches = sortedWatches.slice(0, 12);
+  const additionalWatches = sortedWatches.slice(12, 20);
   const displayedWatches = showAllWatches ? [...initialWatches, ...additionalWatches] : initialWatches;
 
   // Pages 2+ pagination
-  const totalPages = Math.ceil(filteredWatches.length / watchesPerPage);
+  const totalPages = Math.ceil(sortedWatches.length / watchesPerPage);
   const startIndex = (currentPage - 1) * watchesPerPage;
-  const paginatedWatches = filteredWatches.slice(startIndex, startIndex + watchesPerPage);
+  const paginatedWatches = sortedWatches.slice(startIndex, startIndex + watchesPerPage);
 
   return (
     <section>
-      <div className="text-center mb-20">
-        <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2]">
-          {currentPage === 1 ? headingLabel : `${headingLabel} — Page ${currentPage}`}
-        </h2>
-        {isPersonalized && (
-          <span className="inline-block mt-3 px-3 py-1 rounded-full text-xs border border-[var(--primary-brown)]/40 text-[var(--primary-brown)]">
-            Personalized for you
-          </span>
+      <div className="mb-16">
+        <div className="text-center">
+          <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2]">
+            {currentPage === 1 ? headingLabel : `${headingLabel} — Page ${currentPage}`}
+          </h2>
+          {isPersonalized && (
+            <span className="inline-block mt-3 px-3 py-1 rounded-full text-xs border border-[var(--primary-brown)]/40 text-[var(--primary-brown)]">
+              Personalized for you
+            </span>
+          )}
+        </div>
+
+        {/* Sort dropdown */}
+        {!watchesLoading && (
+          <SortDropdown
+            sortOrder={sortOrder}
+            onSelect={setSortOrder}
+            isPersonalized={isPersonalized}
+          />
         )}
       </div>
 
@@ -280,7 +383,7 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
                 ))}
               </div>
 
-              {filteredWatches.length > 16 && (
+              {sortedWatches.length > 16 && (
                 <div className="text-center mt-8">
                   <button
                     onClick={(e) => {

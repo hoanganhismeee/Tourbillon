@@ -4,9 +4,11 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { fetchBrands, fetchCollections } from '@/lib/api';
+import { useNavigation } from '@/contexts/NavigationContext';
 
 interface BrandNavPanelProps {
   selectedBrandIds: number[];
@@ -23,6 +25,8 @@ export default function BrandNavPanel({
   onCollectionToggle,
   onClearAll,
 }: BrandNavPanelProps) {
+  const router = useRouter();
+  const { saveNavigationState } = useNavigation();
   const [expandedBrandIds, setExpandedBrandIds] = useState<number[]>([]);
 
   const { data: brands = [] } = useQuery({ queryKey: ['brands'], queryFn: fetchBrands });
@@ -53,7 +57,7 @@ export default function BrandNavPanel({
               : 'border-transparent text-white/45 hover:text-white/80'
           }`}
         >
-          All Watches
+          All Timepieces
         </button>
 
         {hasActiveFilters && (
@@ -77,7 +81,7 @@ export default function BrandNavPanel({
           <div key={brand.id} className="mb-0.5">
             <button
               onClick={() => handleBrandClick(brand.id, brand.slug)}
-              className={`w-full text-left py-2 pl-4 pr-2 flex items-center justify-between border-l-2 transition-all duration-200 ${
+              className={`group w-full text-left py-2 pl-4 pr-2 flex items-center justify-between border-l-2 transition-all duration-200 ${
                 isBrandSelected
                   ? 'border-[#bfa68a] text-[#f0e6d2]'
                   : 'border-transparent text-white/45 hover:text-white/80'
@@ -85,6 +89,25 @@ export default function BrandNavPanel({
             >
               <span className="text-sm font-playfair tracking-wide">{brand.name}</span>
               <div className="flex items-center gap-1.5 shrink-0">
+                {/* Navigate to brand page — visible on row hover, stops filter toggle */}
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    saveNavigationState({
+                      scrollPosition: window.scrollY,
+                      currentPage: 1,
+                      path: window.location.pathname + window.location.search,
+                      timestamp: Date.now(),
+                    });
+                    router.push(`/brands/${brand.slug}`);
+                  }}
+                  title={`View ${brand.name}`}
+                  className="opacity-0 group-hover:opacity-40 hover:!opacity-90 transition-opacity duration-150 cursor-pointer"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </span>
                 {/* Selected indicator dot */}
                 {isBrandSelected && (
                   <span className="w-1.5 h-1.5 rounded-full bg-[#bfa68a]" />
