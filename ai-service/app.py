@@ -134,7 +134,7 @@ Key guidance:
 - maxPrice / minPrice: number in USD. "under 10k" → maxPrice: 10000. "exactly 5000" → both maxPrice and minPrice: 5000. null if not stated.
 - maxThicknessMm: number. Only when user says "thin", "slim", "ultra-thin" → 9. null otherwise.
 - minDiameterMm / maxDiameterMm: ONLY when user explicitly states a size in mm ("38mm", "40mm") or explicit size language ("small wrist" → maxDiameterMm: 38). Never infer from style or gender alone.
-- movement: "Automatic", "Manual-winding", or "Quartz". Only when explicitly stated.
+- movement: "Automatic", "Manual-winding", or "Quartz". ONLY when user explicitly states movement type ("automatic watch", "I want manual winding"). Complications (e.g. tourbillon, chronograph) and watch style do NOT imply movement type — leave null.
 - complications: ONLY when the user explicitly names a complication OR the collection name contains it. "office watch", "dress watch", "simple watch" do NOT imply any complication. "no complications" → empty [].
 - waterResistanceMin: metres as number. Only when user explicitly mentions water resistance, diving, "waterproof", or a depth ("300m"). "diver" style alone → null. "dive watch" or "good water resistance" → 50.
 - powerReserveHours: hours as number. Only when explicitly stated ("long power reserve" → 72, "100 hours" → 100).
@@ -185,7 +185,7 @@ RERANK_SYSTEM_PROMPT = """You are a luxury watch expert. Score EVERY watch 0-100
 
 Category guidance — apply strictly:
 - "dress watch": thin, minimalist, time-only or simple complications. Chronographs, divers, and sport watches are NOT dress watches regardless of case material or price.
-- "sport watch": case and bracelet designed as one integrated unit — the bracelet IS the design identity. AP Royal Oak, Patek Nautilus, Vacheron Overseas, Frederique Constant Highlife score 80+ for sport queries. A dress watch sold with a bracelet option (e.g. Calatrava on bracelet) is still dress, not sport.
+- "sport watch": case and bracelet designed as one integrated unit — the bracelet IS the design identity. A dress watch sold with a bracelet option is still dress, not sport.
 - "diver": high water resistance (100m+), rotating or fixed bezel, legible dial. Score 80+ for dive/waterproof queries.
 - "chronograph": stopwatch complication present in movement functions. Score 80+ for chronograph queries.
 

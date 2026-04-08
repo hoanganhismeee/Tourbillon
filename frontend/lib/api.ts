@@ -198,7 +198,9 @@ export interface WatchMatchDetail {
 
 export interface QueryIntent {
   brandId: number | null;
+  brandIds?: number[];
   collectionId: number | null;
+  collectionIds?: number[];
   maxPrice: number | null;
   minPrice: number | null;
   minDiameterMm: number | null;
