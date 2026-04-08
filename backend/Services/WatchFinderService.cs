@@ -732,6 +732,7 @@ public class WatchFinderService
         ApplyCollectionMatches(
             intent,
             ResolveFuzzyCollections(query, collections, matchedBrands.Select(b => b!.Id).ToHashSet()));
+        ReconcileCollectionBrandScope(intent, collections);
 
         // ── Soft filters (frontend pre-population only) ───────────────────────────
         // Note: MovementType is intentionally omitted — the LLM infers it from complications
@@ -954,7 +955,8 @@ public class WatchFinderService
     };
 
     internal static bool IsLikelyReferenceQuery(string query) =>
-        Regex.IsMatch(query.Trim(), @"\b[A-Z0-9]+(?:[./-][A-Z0-9]+){2,}\b", RegexOptions.IgnoreCase);
+        Regex.IsMatch(query.Trim(), @"\b[A-Z0-9]+(?:[./-][A-Z0-9]+)+\b", RegexOptions.IgnoreCase)
+        || Regex.IsMatch(query.Trim(), @"\b(?=[A-Z0-9]{8,}\b)(?=.*[A-Z])(?=.*\d)[A-Z0-9]+\b", RegexOptions.IgnoreCase);
 
     internal static bool HasWatchDomainSignal(string query) =>
         IsLikelyReferenceQuery(query)
@@ -1000,12 +1002,12 @@ public class WatchFinderService
             ("$10k – $25k", 10_000, 24_999),
             ("$25k – $50k", 25_000, 49_999),
             ("$50k – $100k", 50_000, 100_000),
-            ("Over $100k", 100_001, decimal.MaxValue),
+            ("Over $100k", 100_000, decimal.MaxValue),
         };
 
         var selected = new List<string> { "Price on Request" };
         selected.AddRange(buckets
-            .Where(b => (maxPrice == null || b.Min <= maxPrice) && (minPrice == null || b.Max >= minPrice))
+            .Where(b => (maxPrice == null || b.Min < maxPrice) && (minPrice == null || b.Max > minPrice))
             .Select(b => b.Label));
         return selected;
     }
@@ -1142,6 +1144,7 @@ public class WatchFinderService
 
         ApplyCollectionMatches(intent, exactCollections);
         ApplyCollectionMatches(intent, ResolveFuzzyCollections(query, collections, matchedBrandIds));
+        ReconcileCollectionBrandScope(intent, collections);
 
         ApplyRegexFilters(query, intent);
 
@@ -1167,7 +1170,7 @@ public class WatchFinderService
 
         // ── Price matching ──────────────────────────────────────────────────────────
         var between = Regex.Match(q,
-            @"between\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)\s*and\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
+            @"between\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)\s*(?:and|to|[-–])\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
             RegexOptions.IgnoreCase);
         if (between.Success)
         {
@@ -1270,7 +1273,7 @@ public class WatchFinderService
         }
 
         // ── Style matching ──────────────────────────────────────────────────────────
-        if (Regex.IsMatch(q, @"\b(?:sport|sporty)\b", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(q, @"\b(?:sport|sports|sporty)\b", RegexOptions.IgnoreCase))
             intent.Style = "sport";
         else if (Regex.IsMatch(q, @"\b(?:dress|formal|elegant|elegance)\b", RegexOptions.IgnoreCase))
             intent.Style = "dress";
