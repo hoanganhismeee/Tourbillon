@@ -53,6 +53,9 @@ public class QueryIntent
 {
     public int? BrandId { get; set; }
     public int? CollectionId { get; set; }
+    /// Multi-collection filter — populated when one or more collection names are matched,
+    /// including fuzzy typo-tolerant matches. CollectionId remains for single exact matches.
+    public List<int> CollectionIds { get; set; } = [];
     public decimal? MaxPrice { get; set; }
     public decimal? MinPrice { get; set; }
     /// Parsed diameter range in mm — frontend uses these to pre-select the Diameter filter.
@@ -67,6 +70,9 @@ public class QueryIntent
     /// Style category — "sport", "dress", "diver". Resolved to collection IDs via DB taxonomy.
     /// Applied as SQL WHERE CollectionId IN (collections with matching Style).
     public string? Style { get; set; }
+    /// Multi-brand filter — populated when 2+ brands are named in the query.
+    /// Applied as SQL WHERE BrandId IN (ids). Exclusive with BrandId (single-brand path).
+    public List<int> BrandIds { get; set; } = [];
     /// Complication labels from query text (e.g. "Chronograph", "Perpetual Calendar").
     /// Client-side filter only — complications live in Watch.Specs JSON, not a DB column.
     /// Labels must match frontend COMPLICATION_OPTIONS labels exactly.
@@ -79,6 +85,16 @@ public class QueryIntent
     /// Client-side filter only. Labels must match frontend WATER_RESISTANCE_BUCKETS exactly.
     public List<string> WaterResistanceBuckets { get; set; } = [];
 }
+
+public record SmartSearchFilterState(
+    List<int> BrandIds,
+    List<int> CollectionIds,
+    List<string> PriceBuckets,
+    List<string> DiameterBuckets,
+    List<string> WaterResistances,
+    List<string> CaseMaterials,
+    List<string> Complications,
+    List<string> PowerReserves);
 
 public class WatchFinderResult
 {
@@ -131,22 +147,36 @@ public class WatchFinderService
 
     public async Task<WatchFinderResult> FindWatchesAsync(string query)
     {
+        var deterministicIntent = await ParseQueryIntentAsync(query);
+        if (deterministicIntent == null && !HasWatchDomainSignal(query))
+        {
+            _logger.LogInformation("WatchFinder ignored non-watch query={QueryPreview}",
+                query.Length > 60 ? query[..60] + "..." : query);
+            return EmptyResult();
+        }
+
+        var directResult = await TryDirectSqlSearchAsync(query, deterministicIntent);
+        if (directResult != null)
+            return directResult;
+
         var httpClient = _httpClientFactory.CreateClient("ai-service");
 
         // Steps 0a + 0b run in parallel — LLM parse and embedding have similar latency (~200ms each).
         // LLM parse replaces the old regex approach: the model understands nuanced phrasing,
         // multi-brand queries, and all filter dimensions without hardcoded patterns.
-        var parseTask = ParseIntentFromLlmAsync(httpClient, query);
+        var parseTask = ParseIntentFromLlmAsync(httpClient, query, deterministicIntent);
         var embedTask = EmbedQueryAsync(httpClient, query);
         await Task.WhenAll(parseTask, embedTask);
 
         var queryIntent   = await parseTask;
         var queryEmbedding = await embedTask;
 
-        // Skip cache when hard SQL filters are active (price or single brand) — a cached
+        // Skip cache when hard SQL filters are active (price or brand) — a cached
         // "dress watch" result must not be reused for "Vacheron dress watch".
         var hasHardFilters = queryIntent?.BrandId != null || queryIntent?.CollectionId != null
-            || queryIntent?.MaxPrice != null || queryIntent?.MinPrice != null;
+            || queryIntent?.MaxPrice != null || queryIntent?.MinPrice != null
+            || queryIntent?.BrandIds?.Count > 0
+            || queryIntent?.CollectionIds?.Count > 0;
         if (queryEmbedding != null && !hasHardFilters)
         {
             var cached = await _queryCache.LookupAsync(queryEmbedding);
@@ -160,7 +190,7 @@ public class WatchFinderService
         }
 
         // Step 1: retrieve candidates via vector similarity.
-        // Hard SQL pre-filters: only price + single-brand (high-confidence explicit constraints).
+        // Hard SQL pre-filters: price, single-brand, and multi-brand constraints.
         // Everything else (style, water resistance, complications) is soft — pre-populates the
         // frontend filter bar but does not remove candidates from the pool.
         List<Watch> candidates;
@@ -169,6 +199,50 @@ public class WatchFinderService
         if (queryEmbedding != null)
         {
             (candidates, bestDistance) = await VectorSearchAsync(queryEmbedding, queryIntent);
+
+            // Brand fallback: if vector search returned nothing but a specific brand was requested,
+            // the query embedding likely diverged from watch descriptions (e.g. unusual phrasing).
+            // Load watches for that brand directly so the user sees something to rerank.
+            if (candidates.Count == 0 && queryIntent != null
+                && (queryIntent.BrandId != null || queryIntent.BrandIds.Count > 0))
+            {
+                var brandFilter = queryIntent.BrandId != null
+                    ? new[] { queryIntent.BrandId.Value }
+                    : queryIntent.BrandIds.ToArray();
+                var fallbackQuery = _context.Watches
+                    .Include(w => w.Brand)
+                    .Include(w => w.Collection)
+                    .AsNoTracking()
+                    .Where(w => brandFilter.Contains(w.BrandId));
+
+                if (queryIntent.CollectionId != null)
+                    fallbackQuery = fallbackQuery.Where(w => w.CollectionId == queryIntent.CollectionId);
+                if (queryIntent.CollectionIds.Count > 0)
+                    fallbackQuery = fallbackQuery.Where(w => w.CollectionId != null && queryIntent.CollectionIds.Contains(w.CollectionId.Value));
+                if (queryIntent.MaxPrice != null)
+                    fallbackQuery = fallbackQuery.Where(w => w.CurrentPrice == 0 || w.CurrentPrice <= queryIntent.MaxPrice);
+                if (queryIntent.MinPrice != null)
+                    fallbackQuery = fallbackQuery.Where(w => w.CurrentPrice == 0 || w.CurrentPrice >= queryIntent.MinPrice);
+
+                if (queryIntent.Style != null && !HasCollectionIntent(queryIntent))
+                {
+                    var fallbackStyleCollectionIds = await _context.Collections
+                        .Where(c => c.Style == queryIntent.Style)
+                        .Select(c => c.Id)
+                        .ToListAsync();
+                    if (fallbackStyleCollectionIds.Count > 0)
+                        fallbackQuery = fallbackQuery.Where(w => w.CollectionId != null && fallbackStyleCollectionIds.Contains(w.CollectionId.Value));
+                }
+
+                candidates = await fallbackQuery
+                    .OrderByDescending(w => w.Id)
+                    .Take(TopMatchLimit * 2)
+                    .ToListAsync();
+                bestDistance = 0.5f; // treat as Tier 3 so LLM rerank orders by relevance
+                _logger.LogInformation(
+                    "WatchFinder brand fallback — vector miss, loaded {Count} watches for brandIds=[{Ids}]",
+                    candidates.Count, string.Join(",", brandFilter));
+            }
         }
         else
         {
@@ -317,6 +391,111 @@ public class WatchFinderService
         return result;
     }
 
+    private static WatchFinderResult EmptyResult(QueryIntent? intent = null) => new()
+    {
+        Watches = [],
+        OtherCandidates = [],
+        MatchDetails = [],
+        ParsedIntent = null,
+        QueryIntent = intent
+    };
+
+    private static bool HasCollectionIntent(QueryIntent? intent) =>
+        intent?.CollectionId != null || intent?.CollectionIds.Count > 0;
+
+    private async Task<WatchFinderResult?> TryDirectSqlSearchAsync(string query, QueryIntent? intent)
+    {
+        var isReferenceQuery = IsLikelyReferenceQuery(query);
+        var hasEntityIntent = intent?.BrandId != null || intent?.BrandIds.Count > 0
+            || intent?.CollectionId != null || intent?.CollectionIds.Count > 0;
+
+        if (!isReferenceQuery && !hasEntityIntent)
+            return null;
+
+        var q = _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (intent?.BrandId != null)
+            q = q.Where(w => w.BrandId == intent.BrandId);
+        if (intent?.BrandIds.Count > 0)
+            q = q.Where(w => intent.BrandIds.Contains(w.BrandId));
+        if (intent?.CollectionId != null)
+            q = q.Where(w => w.CollectionId == intent.CollectionId);
+        if (intent?.CollectionIds.Count > 0)
+            q = q.Where(w => w.CollectionId != null && intent.CollectionIds.Contains(w.CollectionId.Value));
+        if (intent?.MaxPrice != null)
+            q = q.Where(w => w.CurrentPrice == 0 || w.CurrentPrice <= intent.MaxPrice);
+        if (intent?.MinPrice != null)
+            q = q.Where(w => w.CurrentPrice == 0 || w.CurrentPrice >= intent.MinPrice);
+
+        var candidates = isReferenceQuery
+            ? await q.ToListAsync()
+            : await q.Take(300).ToListAsync();
+        if (candidates.Count == 0)
+            return hasEntityIntent ? EmptyResult(intent) : null;
+
+        var ranked = candidates
+            .Select(w => new { Watch = w, Score = DirectSqlScore(query, w, intent, isReferenceQuery) })
+            .Where(x => !isReferenceQuery || x.Score >= 900)
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.Watch.CurrentPrice == 0 ? 1 : 0)
+            .ThenBy(x => x.Watch.CurrentPrice == 0 ? decimal.MaxValue : x.Watch.CurrentPrice)
+            .Select(x => x.Watch)
+            .ToList();
+
+        if (ranked.Count == 0)
+            return isReferenceQuery && !hasEntityIntent ? null : EmptyResult(intent);
+
+        _logger.LogInformation(
+            "WatchFinder direct SQL path query={QueryPreview} candidates={CandidateCount}",
+            query.Length > 60 ? query[..60] + "..." : query,
+            ranked.Count);
+
+        return new WatchFinderResult
+        {
+            Watches = ranked.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList(),
+            OtherCandidates = ranked.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList(),
+            MatchDetails = [],
+            ParsedIntent = null,
+            QueryIntent = intent
+        };
+    }
+
+    internal static int DirectSqlScore(string query, Watch watch, QueryIntent? intent, bool isReferenceQuery)
+    {
+        var queryKey = NormaliseEntityText(query);
+        var watchNameKey = NormaliseEntityText(watch.Name);
+        var collectionKey = NormaliseEntityText(watch.Collection?.Name ?? "");
+        var brandKey = NormaliseEntityText(watch.Brand?.Name ?? "");
+
+        var score = 0;
+        if (isReferenceQuery)
+        {
+            if (watchNameKey == queryKey) score += 1200;
+            else if (watchNameKey.Contains(queryKey) || queryKey.Contains(watchNameKey)) score += 950;
+            else if (queryKey.Length >= 8 && watchNameKey.Contains(queryKey[..Math.Min(queryKey.Length, 12)])) score += 900;
+        }
+
+        if (intent?.BrandId == watch.BrandId || intent?.BrandIds.Contains(watch.BrandId) == true)
+            score += 80;
+        if (watch.CollectionId != null &&
+            (intent?.CollectionId == watch.CollectionId || intent?.CollectionIds.Contains(watch.CollectionId.Value) == true))
+            score += 120;
+
+        foreach (var token in TokenizeQuery(query))
+        {
+            if (watchNameKey.Contains(token)) score += 30;
+            if (collectionKey.Contains(token)) score += 45;
+            if (brandKey.Contains(token)) score += 25;
+        }
+
+        if (watch.CurrentPrice > 0) score += 5;
+        return score;
+    }
+
     // Phase 3B retrieval: cosine similarity search against watch chunk embeddings.
     // Applies hard SQL pre-filters from QueryIntent (brand/collection/price) before cosine ranking.
     // Deduplicates chunks per watch in memory and returns best distance.
@@ -333,7 +512,9 @@ public class WatchFinderService
         // Hard SQL pre-filters from parsed intent — eliminate irrelevant candidates entirely.
         // Price 0 = "Price on Request"; never exclude PoR watches from a price-filtered search.
         if (intent?.BrandId      != null) q = q.Where(e => e.Watch.BrandId      == intent.BrandId);
+        if (intent?.BrandIds?.Count > 0)  q = q.Where(e => intent.BrandIds.Contains(e.Watch.BrandId));
         if (intent?.CollectionId != null) q = q.Where(e => e.Watch.CollectionId == intent.CollectionId);
+        if (intent?.CollectionIds?.Count > 0) q = q.Where(e => e.Watch.CollectionId != null && intent.CollectionIds.Contains(e.Watch.CollectionId.Value));
         if (intent?.MaxPrice     != null) q = q.Where(e => e.Watch.CurrentPrice == 0 || e.Watch.CurrentPrice <= intent.MaxPrice);
         if (intent?.MinPrice     != null) q = q.Where(e => e.Watch.CurrentPrice == 0 || e.Watch.CurrentPrice >= intent.MinPrice);
 
@@ -342,7 +523,7 @@ public class WatchFinderService
         // if no collections are tagged (filter silently skips, vector + rerank handle style).
         // Untagged collections are not excluded — they surface as candidates naturally.
         List<int> styleCollectionIds = [];
-        if (intent?.Style != null)
+        if (intent?.Style != null && !HasCollectionIntent(intent))
         {
             styleCollectionIds = await _context.Collections
                 .Where(c => c.Style == intent.Style)
@@ -378,6 +559,8 @@ public class WatchFinderService
         // (that gate exists only to reject noise in fully unconstrained open queries).
         var hasHardFilters = intent?.BrandId != null || intent?.CollectionId != null
             || intent?.MaxPrice != null || intent?.MinPrice != null
+            || intent?.BrandIds?.Count > 0
+            || intent?.CollectionIds?.Count > 0
             || styleCollectionIds.Count > 0;
 
         if (topIds.Count == 0 || (!hasHardFilters && bestDist >= MinRelevance))
@@ -423,8 +606,11 @@ public class WatchFinderService
 
     // LLM-based intent extraction — calls /watch-finder/parse and maps the result to QueryIntent.
     // Runs in parallel with EmbedQueryAsync. Returns null on parse failure (graceful degradation).
-    private async Task<QueryIntent?> ParseIntentFromLlmAsync(HttpClient httpClient, string query)
+    private async Task<QueryIntent?> ParseIntentFromLlmAsync(HttpClient httpClient, string query, QueryIntent? deterministicIntent = null)
     {
+        if (IsLikelyReferenceQuery(query))
+            return deterministicIntent ?? await ParseQueryIntentAsync(query);
+
         ParsedIntent? parsed = null;
         try
         {
@@ -432,23 +618,59 @@ public class WatchFinderService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "LLM intent parse failed — returning null intent");
-            return null;
+            _logger.LogWarning(ex, "LLM intent parse failed — using deterministic fallback");
+            return await ParseQueryIntentAsync(query);
         }
 
-        if (parsed == null) return null;
+        if (parsed == null) return deterministicIntent;
 
         // Load brands + collections for name → ID resolution
         var brands      = await _context.Brands.AsNoTracking().ToListAsync();
         var collections = await _context.Collections.AsNoTracking().ToListAsync();
 
-        return MapParsedIntentToQueryIntent(parsed, brands, collections);
+        var llmIntent = MapParsedIntentToQueryIntent(parsed, brands, collections, query);
+        return MergeIntentFallback(llmIntent, deterministicIntent, collections);
+    }
+
+    // Fill missing LLM fields with deterministic regex/alias extraction. The fallback parser is
+    // intentionally conservative, so this restores explicit terms when the model misses them.
+    private static QueryIntent? MergeIntentFallback(QueryIntent? primary, QueryIntent? fallback, List<Collection>? collections = null)
+    {
+        if (primary == null) return fallback;
+        if (fallback == null) return primary;
+
+        if (primary.BrandId == null && primary.BrandIds.Count == 0)
+        {
+            primary.BrandId = fallback.BrandId;
+            primary.BrandIds = fallback.BrandIds;
+        }
+
+        ApplyCollectionMatches(primary, IntentCollections(fallback, collections));
+        primary.MaxPrice ??= fallback.MaxPrice;
+        primary.MinPrice ??= fallback.MinPrice;
+        if (fallback.MinDiameterMm != null || fallback.MaxDiameterMm != null)
+        {
+            primary.MinDiameterMm = fallback.MinDiameterMm;
+            primary.MaxDiameterMm = fallback.MaxDiameterMm;
+        }
+        primary.CaseMaterial ??= fallback.CaseMaterial;
+        primary.MovementType ??= fallback.MovementType;
+        primary.WaterResistance ??= fallback.WaterResistance;
+        primary.Style ??= fallback.Style;
+
+        if (primary.Complications.Count == 0) primary.Complications = fallback.Complications;
+        if (primary.PowerReserves.Count == 0) primary.PowerReserves = fallback.PowerReserves;
+        if (primary.WaterResistanceBuckets.Count == 0) primary.WaterResistanceBuckets = fallback.WaterResistanceBuckets;
+
+        ReconcileCollectionBrandScope(primary, collections);
+        return primary;
     }
 
     // Maps a ParsedIntent (LLM output) to a QueryIntent (hard SQL + soft frontend filters).
-    // Hard SQL: price (explicit) and single brand (exactly 1 named). Everything else is soft.
+    // Hard SQL: price (explicit) and brand(s) (named). Everything else is soft.
+    // query: raw user query text, used for brand alias fallback + style keyword check.
     private static QueryIntent? MapParsedIntentToQueryIntent(
-        ParsedIntent parsed, List<Brand> brands, List<Collection> collections)
+        ParsedIntent parsed, List<Brand> brands, List<Collection> collections, string query)
     {
         var intent = new QueryIntent();
 
@@ -457,46 +679,88 @@ public class WatchFinderService
         intent.MinPrice = parsed.MinPrice;
 
         // ── Brand resolution ──────────────────────────────────────────────────────
-        // Match LLM-returned brand names against DB brands (case-insensitive substring).
-        var matchedBrands = parsed.Brands
+        // Step 1: match LLM-returned brand names against DB brands (substring, case-insensitive).
+        var matchedBrands = (parsed.Brands ?? [])
             .Select(name => brands.FirstOrDefault(b =>
                 b.Name.Contains(name, StringComparison.OrdinalIgnoreCase) ||
                 name.Contains(b.Name, StringComparison.OrdinalIgnoreCase)))
             .Where(b => b != null)
-            .Distinct()
             .ToList();
 
-        // Hard SQL brand filter only when exactly 1 brand named — multi-brand queries rely on vector.
+        // Step 2: fallback — also scan the raw query for brands the LLM may have missed.
+        // Checks alias shortcuts (JLC, VC, etc.) then full DB brand names.
+        var matched = new HashSet<int>(matchedBrands.Select(b => b!.Id));
+        foreach (var (alias, canonical) in _brandAliases)
+        {
+            if (Regex.IsMatch(query, @$"\b{Regex.Escape(alias)}\b", RegexOptions.IgnoreCase))
+            {
+                var b = brands.FirstOrDefault(br => br.Name.Equals(canonical, StringComparison.OrdinalIgnoreCase));
+                if (b != null && matched.Add(b.Id)) matchedBrands.Add(b);
+            }
+        }
+        foreach (var brand in brands.OrderByDescending(b => b.Name.Length))
+        {
+            // Match full name OR first significant word (e.g. "Omega" from "Omega Watches")
+            var first = brand.Name.Split(' ')[0];
+            if ((query.Contains(brand.Name, StringComparison.OrdinalIgnoreCase)
+                 || (first.Length >= 4 && Regex.IsMatch(query, @$"\b{Regex.Escape(first)}\b", RegexOptions.IgnoreCase)))
+                && matched.Add(brand.Id))
+            {
+                matchedBrands.Add(brand);
+            }
+        }
+
+        // Single brand: hard SQL BrandId filter + enables collection resolution.
+        // Multi-brand: hard SQL BrandIds IN filter so only stated brands surface.
         if (matchedBrands.Count == 1)
             intent.BrandId = matchedBrands[0]!.Id;
+        else if (matchedBrands.Count > 1)
+            intent.BrandIds = matchedBrands.Select(b => b!.Id).Distinct().ToList();
 
         // ── Collection resolution ─────────────────────────────────────────────────
         // Only apply when a single brand was matched (scoped search).
         if (parsed.Collection != null && matchedBrands.Count == 1)
         {
             var pool = collections.Where(c => c.BrandId == matchedBrands[0]!.Id).ToList();
-            var matched = pool.FirstOrDefault(c =>
+            var matchedCol = pool.FirstOrDefault(c =>
                 c.Name.Contains(parsed.Collection, StringComparison.OrdinalIgnoreCase) ||
                 parsed.Collection.Contains(c.Name, StringComparison.OrdinalIgnoreCase));
-            if (matched != null)
-                intent.CollectionId = matched.Id;
+            if (matchedCol != null)
+                intent.CollectionId = matchedCol.Id;
         }
 
+        ApplyCollectionMatches(
+            intent,
+            ResolveFuzzyCollections(query, collections, matchedBrands.Select(b => b!.Id).ToHashSet()));
+
         // ── Soft filters (frontend pre-population only) ───────────────────────────
-        intent.Style         = parsed.Style;
-        intent.MovementType  = NormaliseMovement(parsed.Movement);
-        intent.CaseMaterial  = NormaliseMaterial(parsed.Material.FirstOrDefault());
+        // Note: MovementType is intentionally omitted — the LLM infers it from complications
+        // (e.g. tourbillon → Manual-winding) even when not explicitly stated, causing over-filtering.
+        intent.Style = parsed.Style;
+
+        // Style keyword fallback — style→collection taxonomy is an allowed deterministic mapping.
+        // If the LLM missed an obvious style keyword ("sport watches", "dress watch", "diver"),
+        // detect it from the raw query so the SQL style filter is always applied correctly.
+        if (intent.Style == null)
+        {
+            var qLow = query.ToLowerInvariant();
+            if (Regex.IsMatch(qLow, @"\bsport\s+watch"))      intent.Style = "sport";
+            else if (Regex.IsMatch(qLow, @"\bdress\s+watch")) intent.Style = "dress";
+            else if (Regex.IsMatch(qLow, @"\bdiv(?:er|e\s+watch|ing\s+watch)")) intent.Style = "diver";
+        }
+        intent.CaseMaterial  = NormaliseMaterial((parsed.Material ?? []).FirstOrDefault());
         intent.MinDiameterMm = parsed.MinDiameterMm;
         intent.MaxDiameterMm = parsed.MaxDiameterMm;
-        intent.Complications = NormaliseComplications(parsed.Complications);
+        intent.Complications = NormaliseComplications(parsed.Complications ?? []);
         intent.PowerReserves = NormalisePowerReserve(parsed.PowerReserveHours);
-        intent.WaterResistanceBuckets = NormaliseWaterResistance(parsed.WaterResistanceMin);
+        if (QueryMentionsWaterResistance(query))
+            intent.WaterResistanceBuckets = NormaliseWaterResistance(parsed.WaterResistanceMin);
 
         // Return null if nothing was extracted — avoids unnecessary intent propagation
-        if (intent.BrandId == null && intent.CollectionId == null
+        if (intent.BrandId == null && intent.CollectionId == null && intent.BrandIds.Count == 0 && intent.CollectionIds.Count == 0
             && intent.MaxPrice == null && intent.MinPrice == null
             && intent.Style == null && intent.CaseMaterial == null
-            && intent.MovementType == null && intent.WaterResistanceBuckets.Count == 0
+            && intent.WaterResistanceBuckets.Count == 0
             && intent.Complications.Count == 0 && intent.PowerReserves.Count == 0
             && intent.MinDiameterMm == null && intent.MaxDiameterMm == null)
             return null;
@@ -569,8 +833,244 @@ public class WatchFinderService
         return ["600m+"];
     }
 
-    // Legacy regex-based intent extractor — kept for reference and unit testing.
-    // No longer called in the main pipeline (replaced by ParseIntentFromLlmAsync).
+    private static bool QueryMentionsWaterResistance(string query) =>
+        Regex.IsMatch(query,
+            @"\b(?:water[\s-]?resist(?:ant|ance)?|water[\s-]?proof|waterproof|dive|diver|diving|wr|atm|bar)\b",
+            RegexOptions.IgnoreCase)
+        || Regex.IsMatch(query,
+            @"\b\d+\s*(?:m(?!m)\b|meters?\b|metres?\b)",
+            RegexOptions.IgnoreCase);
+
+    internal static List<Collection> ResolveFuzzyCollections(string query, List<Collection> collections, HashSet<int> matchedBrandIds)
+    {
+        var tokens = TokenizeQuery(query);
+        var normalisedQuery = NormaliseEntityText(query);
+        if (tokens.Count == 0 && normalisedQuery.Length == 0) return [];
+
+        var pool = matchedBrandIds.Count > 0
+            ? collections.Where(c => matchedBrandIds.Contains(c.BrandId)).ToList()
+            : collections;
+
+        return pool
+            .Select(c => new { Collection = c, Score = CollectionTokenScore(c, normalisedQuery, tokens) })
+            .Where(x => x.Score >= 100)
+            .GroupBy(x => x.Collection.Id)
+            .Select(g => g.OrderByDescending(x => x.Score).First())
+            .OrderByDescending(x => x.Score)
+            .Take(4)
+            .Select(x => x.Collection)
+            .ToList();
+    }
+
+    private static int CollectionTokenScore(Collection collection, string normalisedQuery, List<string> tokens)
+    {
+        var collectionKey = NormaliseEntityText(collection.Name);
+        if (collectionKey.Length >= 4 && normalisedQuery.Contains(collectionKey))
+            return 300 + collectionKey.Length;
+
+        var nameTokens = TokenizeQuery(collection.Name);
+        if (nameTokens.Count == 0) return 0;
+
+        var score = 0;
+        foreach (var queryToken in tokens)
+        {
+            foreach (var nameToken in nameTokens)
+            {
+                if (nameToken == queryToken) score += 200;
+                else if (nameToken.StartsWith(queryToken) || queryToken.StartsWith(nameToken)) score += 120;
+                else if (IsFuzzyTokenMatch(nameToken, queryToken)) score += 100;
+            }
+        }
+
+        return score;
+    }
+
+    private static void ApplyCollectionMatches(QueryIntent intent, IEnumerable<Collection> matches)
+    {
+        var ids = new List<int>();
+        if (intent.CollectionId != null) ids.Add(intent.CollectionId.Value);
+        ids.AddRange(intent.CollectionIds);
+        ids.AddRange(matches.Select(c => c.Id));
+        ids = ids.Distinct().ToList();
+
+        if (ids.Count == 0) return;
+        if (ids.Count == 1)
+        {
+            intent.CollectionId = ids[0];
+            intent.CollectionIds = [];
+            return;
+        }
+
+        intent.CollectionId = null;
+        intent.CollectionIds = ids;
+    }
+
+    private static IEnumerable<Collection> IntentCollections(QueryIntent intent, List<Collection>? collections)
+    {
+        if (collections == null) return [];
+        var ids = new HashSet<int>(intent.CollectionIds);
+        if (intent.CollectionId != null) ids.Add(intent.CollectionId.Value);
+        return collections.Where(c => ids.Contains(c.Id));
+    }
+
+    private static void ReconcileCollectionBrandScope(QueryIntent intent, List<Collection>? collections)
+    {
+        if (collections == null) return;
+
+        var collectionBrandIds = IntentCollections(intent, collections)
+            .Select(c => c.BrandId)
+            .Distinct()
+            .ToList();
+        if (collectionBrandIds.Count == 0) return;
+
+        if (collectionBrandIds.Count == 1)
+        {
+            if (intent.BrandId == null && intent.BrandIds.Count == 0)
+                intent.BrandId = collectionBrandIds[0];
+            return;
+        }
+
+        intent.BrandId = null;
+        intent.BrandIds = collectionBrandIds;
+    }
+
+    private static List<string> TokenizeQuery(string text) =>
+        Regex.Split(text.ToLowerInvariant(), @"[^a-z0-9]+")
+            .Where(t => t.Length >= 4)
+            .Where(t => !CollectionTokenStopWords.Contains(t))
+            .Distinct()
+            .ToList();
+
+    private static string NormaliseEntityText(string text) =>
+        Regex.Replace(text.ToLowerInvariant(), @"[^a-z0-9]+", "");
+
+    private static readonly HashSet<string> CollectionTokenStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "watch", "watches", "timepiece", "timepieces", "collection",
+        "sport", "sporty", "dress", "formal", "elegant", "elegance",
+        "dive", "diver", "diving", "water", "resistance", "resistant", "waterproof",
+        "under", "below", "less", "than", "over", "above", "more", "between",
+        "with", "good", "decent", "solid", "high",
+    };
+
+    internal static bool IsLikelyReferenceQuery(string query) =>
+        Regex.IsMatch(query.Trim(), @"\b[A-Z0-9]+(?:[./-][A-Z0-9]+){2,}\b", RegexOptions.IgnoreCase);
+
+    internal static bool HasWatchDomainSignal(string query) =>
+        IsLikelyReferenceQuery(query)
+        || Regex.IsMatch(query,
+            @"\b(?:watch|watches|timepiece|timepieces|horology|luxury|wrist|diameter|dial|case|bracelet|strap|movement|automatic|manual|quartz|dress|sport|sporty|diver|diving|water[\s-]?resist(?:ant|ance)?|waterproof|gmt|chronograph|perpetual|annual|calendar|moonphase|tourbillon|repeater|steel|gold|titanium|ceramic|platinum)\b",
+            RegexOptions.IgnoreCase)
+        || Regex.IsMatch(query, @"\b(?:under|below|over|above|between)\s*\$?\s*\d[\d,]*\s*k?\b", RegexOptions.IgnoreCase)
+        || Regex.IsMatch(query, @"\b\d+(?:\.\d+)?\s*mm\b", RegexOptions.IgnoreCase);
+
+    internal static SmartSearchFilterState BuildFilterStateForDiagnostics(QueryIntent? intent)
+    {
+        if (intent == null)
+            return new([], [], [], [], [], [], [], []);
+
+        var brandIds = intent.BrandIds.Count > 0
+            ? intent.BrandIds.ToList()
+            : intent.BrandId != null ? [intent.BrandId.Value] : [];
+
+        var collectionIds = intent.CollectionIds.Count > 0
+            ? intent.CollectionIds.ToList()
+            : intent.CollectionId != null ? [intent.CollectionId.Value] : [];
+
+        return new(
+            BrandIds: brandIds,
+            CollectionIds: collectionIds,
+            PriceBuckets: PriceBucketsFor(intent.MinPrice, intent.MaxPrice),
+            DiameterBuckets: DiameterBucketsFor(intent.MinDiameterMm, intent.MaxDiameterMm),
+            WaterResistances: intent.WaterResistanceBuckets.Count > 0
+                ? intent.WaterResistanceBuckets.ToList()
+                : WaterBucketsFor(intent.WaterResistance),
+            CaseMaterials: intent.CaseMaterial != null ? [intent.CaseMaterial] : [],
+            Complications: intent.Complications.ToList(),
+            PowerReserves: intent.PowerReserves.ToList());
+    }
+
+    private static List<string> PriceBucketsFor(decimal? minPrice, decimal? maxPrice)
+    {
+        if (minPrice == null && maxPrice == null) return [];
+        var buckets = new (string Label, decimal Min, decimal Max)[]
+        {
+            ("Under $5k", 1, 4_999),
+            ("$5k – $10k", 5_000, 9_999),
+            ("$10k – $25k", 10_000, 24_999),
+            ("$25k – $50k", 25_000, 49_999),
+            ("$50k – $100k", 50_000, 100_000),
+            ("Over $100k", 100_001, decimal.MaxValue),
+        };
+
+        var selected = new List<string> { "Price on Request" };
+        selected.AddRange(buckets
+            .Where(b => (maxPrice == null || b.Min <= maxPrice) && (minPrice == null || b.Max >= minPrice))
+            .Select(b => b.Label));
+        return selected;
+    }
+
+    private static List<string> DiameterBucketsFor(double? minDiameterMm, double? maxDiameterMm)
+    {
+        if (minDiameterMm == null && maxDiameterMm == null) return [];
+        if (minDiameterMm != null && maxDiameterMm != null)
+        {
+            var min = (int)Math.Floor(minDiameterMm.Value);
+            var max = (int)Math.Floor(maxDiameterMm.Value);
+            if (max - min > 10) return [];
+            return Enumerable.Range(min, max - min + 1).Select(mm => $"{mm}mm").ToList();
+        }
+
+        if (maxDiameterMm != null)
+        {
+            var max = (int)Math.Floor(maxDiameterMm.Value);
+            return Enumerable.Range(30, Math.Max(0, max - 30 + 1)).Select(mm => $"{mm}mm").ToList();
+        }
+
+        return [];
+    }
+
+    private static List<string> WaterBucketsFor(string? waterResistance)
+    {
+        if (!int.TryParse(waterResistance, out var metres)) return [];
+        if (metres <= 30) return ["Up to 30m", "50m – 120m", "150m – 300m", "600m+"];
+        if (metres <= 120) return ["50m – 120m", "150m – 300m", "600m+"];
+        if (metres <= 300) return ["150m – 300m", "600m+"];
+        return ["600m+"];
+    }
+
+    private static bool IsFuzzyTokenMatch(string a, string b)
+    {
+        if (a.Length < 4 || b.Length < 4) return false;
+        var maxDistance = Math.Max(a.Length, b.Length) >= 7 ? 2 : 1;
+        return Math.Abs(a.Length - b.Length) <= maxDistance && LevenshteinDistance(a, b) <= maxDistance;
+    }
+
+    private static int LevenshteinDistance(string s, string t)
+    {
+        if (s.Length == 0) return t.Length;
+        if (t.Length == 0) return s.Length;
+
+        var d = new int[s.Length + 1, t.Length + 1];
+        for (var i = 0; i <= s.Length; i++) d[i, 0] = i;
+        for (var j = 0; j <= t.Length; j++) d[0, j] = j;
+
+        for (var i = 1; i <= s.Length; i++)
+        {
+            for (var j = 1; j <= t.Length; j++)
+            {
+                var cost = s[i - 1] == t[j - 1] ? 0 : 1;
+                d[i, j] = Math.Min(
+                    Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1),
+                    d[i - 1, j - 1] + cost);
+            }
+        }
+
+        return d[s.Length, t.Length];
+    }
+
+    // Deterministic fallback intent extractor — used when LLM parsing is unavailable or misses
+    // explicit terms. Kept conservative so it only recovers obvious brand/spec constraints.
     private async Task<QueryIntent?> ParseQueryIntentAsync(string query)
     {
         var intent = new QueryIntent();
@@ -605,43 +1105,49 @@ public class WatchFinderService
             }
         }
 
-        // Single brand: apply as hard SQL filter. Multiple brands: let vector search handle it.
+        // Single brand: apply as hard SQL filter. Multiple brands use BrandIds IN.
         Brand? matchedBrand = matchedBrands.Count == 1 ? matchedBrands[0] : null;
 
         if (matchedBrand != null)
             intent.BrandId = matchedBrand.Id;
+        else if (matchedBrands.Count > 1)
+            intent.BrandIds = matchedBrands.Select(b => b.Id).Distinct().ToList();
 
         // ── Collection matching ───────────────────────────────────────────────────
-        // Skip collection filter on multi-brand queries — each brand has its own collections.
         var collections = await _context.Collections.AsNoTracking().ToListAsync();
 
-        if (matchedBrands.Count <= 1)
+        var matchedBrandIds = matchedBrands.Select(b => b.Id).ToHashSet();
+        var pool = matchedBrandIds.Count > 0
+            ? collections.Where(c => matchedBrandIds.Contains(c.BrandId)).ToList()
+            : collections;
+        var normalisedQuery = NormaliseEntityText(query);
+
+        var exactCollections = pool
+            .OrderByDescending(c => c.Name.Length)
+            .Where(c =>
+                query.Contains(c.Name, StringComparison.OrdinalIgnoreCase) ||
+                (NormaliseEntityText(c.Name).Length >= 4 && normalisedQuery.Contains(NormaliseEntityText(c.Name))))
+            .ToList();
+
+        // If no hit within the brand pool, try all collections (e.g. generic query).
+        if (exactCollections.Count == 0 && matchedBrandIds.Count > 0)
         {
-            // Prefer collections belonging to the matched brand, then try all collections.
-            var pool = matchedBrand != null
-                ? collections.Where(c => c.BrandId == matchedBrand.Id).ToList()
-                : collections;
-
-            var matchedCollection = pool
+            exactCollections = collections
                 .OrderByDescending(c => c.Name.Length)
-                .FirstOrDefault(c => query.Contains(c.Name, StringComparison.OrdinalIgnoreCase));
-
-            // If no hit within the brand pool, try all collections (e.g. generic query)
-            if (matchedCollection == null && matchedBrand != null)
-            {
-                matchedCollection = collections
-                    .OrderByDescending(c => c.Name.Length)
-                    .FirstOrDefault(c => query.Contains(c.Name, StringComparison.OrdinalIgnoreCase));
-            }
-
-            if (matchedCollection != null)
-                intent.CollectionId = matchedCollection.Id;
+                .Where(c =>
+                    query.Contains(c.Name, StringComparison.OrdinalIgnoreCase) ||
+                    (NormaliseEntityText(c.Name).Length >= 4 && normalisedQuery.Contains(NormaliseEntityText(c.Name))))
+                .ToList();
         }
+
+        ApplyCollectionMatches(intent, exactCollections);
+        ApplyCollectionMatches(intent, ResolveFuzzyCollections(query, collections, matchedBrandIds));
 
         ApplyRegexFilters(query, intent);
 
         // Return null if nothing was extracted — no filters to apply
         if (intent.BrandId == null && intent.CollectionId == null
+            && intent.BrandIds.Count == 0 && intent.CollectionIds.Count == 0
             && intent.MaxPrice == null && intent.MinPrice == null
             && intent.MinDiameterMm == null && intent.MaxDiameterMm == null
             && intent.CaseMaterial == null && intent.MovementType == null
@@ -687,7 +1193,7 @@ public class WatchFinderService
 
         // ── Diameter matching ───────────────────────────────────────────────────────
         var diamRange = Regex.Match(q,
-            @"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*mm",
+            @"(\d+(?:\.\d+)?)\s*(?:[-–]|\bto\b)\s*(\d+(?:\.\d+)?)\s*mm",
             RegexOptions.IgnoreCase);
         if (diamRange.Success)
         {
@@ -740,7 +1246,7 @@ public class WatchFinderService
         // ── Water resistance matching ───────────────────────────────────────────────
         // Explicit value (e.g. "100m water resist", "300m WR") — map to the matching bucket.
         var wrExplicit = Regex.Match(q,
-            @"(\d+)\s*(?:m(?:eters?)?|atm|bar)\s*(?:water\s*resist(?:ant|ance)?|waterproof|WR)?",
+            @"(\d+)\s*(?:(?:m(?!m)\b|meters?\b|metres?\b)|atm\b|bar\b)\s*(?:water\s*resist(?:ant|ance)?|waterproof|WR)?",
             RegexOptions.IgnoreCase);
         if (wrExplicit.Success && int.TryParse(wrExplicit.Groups[1].Value, out var wrMetres))
         {

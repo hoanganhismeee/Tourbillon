@@ -36,42 +36,62 @@ import {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 // Builds the initial filter bar state after AI results arrive.
-// Brand/collection: facets derived from the actual result set — every brand and collection
-// present in results is pre-checked so the user sees a full picture and can narrow by unchecking.
-// Spec filters (price, water resistance, complications, material, movement, diameter) come from
-// QueryIntent — these are explicit constraints the user stated in the query.
+// Only explicit QueryIntent fields are pre-checked. Result-set facets remain available in
+// dropdown options, but they are not active filters because that over-narrows broad searches.
 function buildFiltersFromResults(
-  result: WatchFinderResult,
-  intent: QueryIntent | null | undefined
+  _result: WatchFinderResult,
+  intent: QueryIntent | null | undefined,
+  diameterOptions: string[] = []
 ): WatchFilters {
   const f = { ...EMPTY_WATCH_FILTERS };
-  const all = [...result.watches, ...result.otherCandidates];
 
-  // Entity facets — derived from what the AI actually returned
-  f.brandIds      = [...new Set(all.map(w => w.brandId))];
-  f.collectionIds = [...new Set(all.map(w => w.collectionId).filter((id): id is number => id !== null))];
+  // Brand and collection pre-selection: only explicit query intent should become active.
+  // Result-derived brands/collections are options, not filters.
+  if (intent?.brandIds && intent.brandIds.length > 0) {
+    f.brandIds = [...intent.brandIds];
+  } else if (intent?.brandId) {
+    f.brandIds = [intent.brandId];
+  }
+  if (intent?.collectionIds && intent.collectionIds.length > 0) {
+    f.collectionIds = [...intent.collectionIds];
+  } else if (intent?.collectionId) {
+    f.collectionIds = [intent.collectionId];
+  }
 
   if (!intent) return f;
 
   // Spec filters — explicit constraints from the query
-  if (intent.maxPrice) {
+  if (intent.maxPrice || intent.minPrice) {
     // Always include PoR — backend never excludes PoR from price-filtered searches,
     // so the client-side filter must match. PoR watches are sorted after priced ones.
     f.priceBuckets = PRICE_BUCKETS
       .filter(b => {
         if (b.label === 'Price on Request') return true;
-        if (b.label === 'Under $5k')    return intent.maxPrice! > 0;
-        if (b.label === '$5k – $10k')   return intent.maxPrice! >= 5_000;
-        if (b.label === '$10k – $25k')  return intent.maxPrice! >= 10_000;
-        if (b.label === '$25k – $50k')  return intent.maxPrice! >= 25_000;
-        if (b.label === '$50k – $100k') return intent.maxPrice! >= 50_000;
-        if (b.label === 'Over $100k')   return intent.maxPrice! > 100_000;
-        return false;
+        const bucketMin =
+          b.label === 'Under $5k' ? 1 :
+          b.label === '$5k – $10k' ? 5_000 :
+          b.label === '$10k – $25k' ? 10_000 :
+          b.label === '$25k – $50k' ? 25_000 :
+          b.label === '$50k – $100k' ? 50_000 :
+          b.label === 'Over $100k' ? 100_001 :
+          0;
+        const bucketMax =
+          b.label === 'Under $5k' ? 4_999 :
+          b.label === '$5k – $10k' ? 9_999 :
+          b.label === '$10k – $25k' ? 24_999 :
+          b.label === '$25k – $50k' ? 49_999 :
+          b.label === '$50k – $100k' ? 100_000 :
+          b.label === 'Over $100k' ? Number.POSITIVE_INFINITY :
+          0;
+        if (intent.maxPrice && bucketMin > intent.maxPrice) return false;
+        if (intent.minPrice && bucketMax < intent.minPrice) return false;
+        return true;
       })
       .map(b => b.label);
   }
   if (intent.caseMaterial) f.caseMaterials = [intent.caseMaterial];
-  if (intent.movementType) f.movementTypes = [intent.movementType];
+  // movementType intentionally not pre-populated — the LLM infers it from complications
+  // (e.g. tourbillon → Manual-winding) causing over-filtering when not explicitly stated.
   if (intent.waterResistanceBuckets && intent.waterResistanceBuckets.length > 0) {
     const valid = new Set(WATER_RESISTANCE_BUCKETS.map(b => b.label));
     f.waterResistances = intent.waterResistanceBuckets.filter(b => valid.has(b));
@@ -97,14 +117,18 @@ function buildFiltersFromResults(
     if (max - min <= 10) {
       const labels: string[] = [];
       for (let mm = min; mm <= max; mm++) labels.push(`${mm}mm`);
-      f.diameterBuckets = labels;
+      f.diameterBuckets = diameterOptions.length > 0
+        ? labels.filter(label => diameterOptions.includes(label))
+        : labels;
     }
   } else if (intent.maxDiameterMm !== null && intent.minDiameterMm === null) {
     // "small wrist" → maxDiameterMm: 38 — pre-check all sizes up to that cap
     const max = Math.floor(intent.maxDiameterMm);
     const labels: string[] = [];
     for (let mm = 30; mm <= max; mm++) labels.push(`${mm}mm`);
-    f.diameterBuckets = labels;
+    f.diameterBuckets = diameterOptions.length > 0
+      ? labels.filter(label => diameterOptions.includes(label))
+      : labels;
   }
 
   return f;
@@ -153,38 +177,63 @@ export default function SmartSearchClient() {
   // Track which query has already had its result filters applied — prevents double-apply.
   const intentAppliedRef = useRef<string | null>(null);
 
-  // Unique brands and collections present in AI results — used for filter bar pre-population
-  // and Jump To navigation chips. Both derived from the result set, not from query intent.
+  // Explicit brands/collections used for Jump To navigation chips. Avoid deriving collection
+  // chips from broad result sets, which makes unrelated collections look intentionally selected.
   const resultBrands = useMemo(() => {
     if (!result || brands.length === 0) return [];
-    const seen = new Set<number>();
-    return [...result.watches, ...result.otherCandidates]
-      .filter(w => { if (seen.has(w.brandId)) return false; seen.add(w.brandId); return true; })
-      .map(w => ({ id: w.brandId, name: brands.find(b => b.id === w.brandId)?.name ?? '', slug: w.brandSlug }))
-      .filter(b => b.name);
+    const explicitBrandIds =
+      result.queryIntent?.brandIds && result.queryIntent.brandIds.length > 0
+        ? result.queryIntent.brandIds
+        : result.queryIntent?.brandId
+          ? [result.queryIntent.brandId]
+          : [];
+    if (explicitBrandIds.length === 0) return [];
+    return explicitBrandIds
+      .map(id => brands.find(b => b.id === id))
+      .filter((b): b is Brand => b !== undefined)
+      .map(b => ({ id: b.id, name: b.name, slug: b.slug }));
   }, [result, brands]);
 
   const resultCollections = useMemo(() => {
     if (!result || collections.length === 0) return [];
-    const seen = new Set<number>();
-    return [...result.watches, ...result.otherCandidates]
-      .filter(w => w.collectionId && !seen.has(w.collectionId) && (seen.add(w.collectionId), true))
-      .map(w => {
-        const col = collections.find(c => c.id === w.collectionId);
-        const brand = brands.find(b => b.id === w.brandId);
-        return col ? { id: col.id, name: col.name, slug: w.collectionSlug ?? col.slug, brand: brand ? { name: brand.name } : undefined } : null;
-      })
-      .filter((c): c is NonNullable<typeof c> => c !== null);
+    const explicitCollectionIds =
+      result.queryIntent?.collectionIds && result.queryIntent.collectionIds.length > 0
+        ? result.queryIntent.collectionIds
+        : result.queryIntent?.collectionId
+          ? [result.queryIntent.collectionId]
+          : [];
+    if (explicitCollectionIds.length === 0) return [];
+    return explicitCollectionIds
+      .map(id => collections.find(c => c.id === id))
+      .filter((c): c is Collection => c !== undefined)
+      .map(c => {
+        const brand = brands.find(b => b.id === c.brandId);
+        return { id: c.id, name: c.name, slug: c.slug, brand: brand ? { name: brand.name } : undefined };
+      });
   }, [result, collections, brands]);
 
-  // Apply result-based filters once result arrives (no need to wait for collections —
-  // brand/collection IDs come directly from result watches, not from a DB lookup).
+  // Diameter options derived from actual result watches — only sizes present are shown.
+  // Sorted numerically so the dropdown reads 36mm, 37mm, 38mm, 39mm...
+  const diameterOptions = useMemo(() => {
+    if (!result) return [];
+    const sizes = new Set<number>();
+    for (const w of [...result.watches, ...result.otherCandidates]) {
+      const specs = parseSpecs(w.specs);
+      const mm = parseDiameterMm(specs?.case?.diameter as string | undefined);
+      if (mm !== null) sizes.add(Math.floor(mm));
+    }
+    return Array.from(sizes).sort((a, b) => a - b).map(n => `${n}mm`);
+  }, [result]);
+
+  // Apply explicit intent filters once per query.
+  // intentAppliedRef guards against double-apply if one dependency fires twice.
   useEffect(() => {
     if (!result) return;
     if (intentAppliedRef.current === query) return;
     intentAppliedRef.current = query;
-    setFilters(buildFiltersFromResults(result, result.queryIntent));
-  }, [result, query]);
+    setFilters(buildFiltersFromResults(result, result.queryIntent, diameterOptions));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, query, diameterOptions]);
 
   // Track each unique search query once when results arrive successfully
   const trackedQueryRef = useRef<string | null>(null);
@@ -233,7 +282,7 @@ export default function SmartSearchClient() {
     } catch { setWristFit(''); }
 
     const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
-    const cacheKey = `smartsearch:${query}`;
+    const cacheKey = `smartsearch:v5:${query}`;
 
     try {
       const cached = sessionStorage.getItem(cacheKey);
@@ -320,19 +369,6 @@ export default function SmartSearchClient() {
 
   const hasActiveFilters =
     Object.values(filters).some(v => Array.isArray(v) && v.length > 0) || wristFit !== '';
-
-  // Diameter options derived from actual result watches — only sizes present are shown.
-  // Sorted numerically so the dropdown reads 36mm, 37mm, 38mm, 39mm...
-  const diameterOptions = useMemo(() => {
-    if (!result) return [];
-    const sizes = new Set<number>();
-    for (const w of [...result.watches, ...result.otherCandidates]) {
-      const specs = parseSpecs(w.specs);
-      const mm = parseDiameterMm(specs?.case?.diameter as string | undefined);
-      if (mm !== null) sizes.add(Math.floor(mm));
-    }
-    return Array.from(sizes).sort((a, b) => a - b).map(n => `${n}mm`);
-  }, [result]);
 
   // Client-side filter + split top / others.
   // Keyword-exclusive watches (exact ref matches like "4063" not found by AI) go first —
