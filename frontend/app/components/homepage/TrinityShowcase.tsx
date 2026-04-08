@@ -6,7 +6,7 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-import { Brand, Watch, fetchWatchById, fetchWatchesByBrand } from '@/lib/api';
+import { Brand, Watch, fetchWatchBySlug, fetchWatchesByBrand } from '@/lib/api';
 import WatchCard from '../../watches/[slug]/WatchCard';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import WatchCardSkeleton from '../cards/WatchCardSkeleton';
@@ -17,23 +17,35 @@ interface TrinityShowcaseProps {
     brand: Brand;
 }
 
-// Hardcoded watch IDs for the three Holy Trinity brands
-const TRINITY_WATCH_IDS: Record<number, number[]> = {
-    1: [1, 2, 3],    // Patek Philippe
-    2: [32, 33, 34], // Vacheron Constantin
-    3: [57, 58, 59], // Audemars Piguet
+// Hardcoded watch slugs for the three Holy Trinity brands
+const TRINITY_WATCH_SLUGS: Record<number, string[]> = {
+    1: [
+        'patek-philippe-calatrava-5227g-010-automatic-date',
+        'patek-philippe-nautilus-5811-1g-blue-dial',
+        'patek-philippe-grand-complications-5303r-minute-repeater-tourbillon',
+    ],
+    2: [
+        'vacheron-constantin-patrimony-43175-000r-9687-perpetual-calendar',
+        'vacheron-constantin-overseas-6000v-210t-h032-overseas-tourbillon',
+        'vacheron-constantin-metiers-d-art-6007a-000g-h049-tribute-to-the-celestial-scorpio',
+    ],
+    3: [
+        'audemars-piguet-royal-oak-16202st-oo-1240st-02-jumbo-extra-thin',
+        'audemars-piguet-royal-oak-26585xt-oo-1220xt-01-perpetual-calendar-150th-anniversary',
+        'audemars-piguet-royal-oak-concept-26620io-oo-d077ca-01-black-panther-flying-tourbillon',
+    ],
 };
 
 const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
     const gridRef = useRef<HTMLDivElement>(null);
-    const isSpecificBrand = brand.id in TRINITY_WATCH_IDS;
-    const specificIds = TRINITY_WATCH_IDS[brand.id] ?? [];
+    const isSpecificBrand = brand.id in TRINITY_WATCH_SLUGS;
+    const specificSlugs = TRINITY_WATCH_SLUGS[brand.id] ?? [];
 
-    // For trinity brands: fetch the 3 hardcoded watch IDs individually (cached per watch)
+    // For trinity brands: fetch the 3 hardcoded watch slugs individually (cached per watch)
     const specificResults = useQueries({
-        queries: specificIds.map(id => ({
-            queryKey: ['watch', id] as const,
-            queryFn: () => fetchWatchById(id),
+        queries: specificSlugs.map(slug => ({
+            queryKey: ['watch', 'slug', slug] as const,
+            queryFn: () => fetchWatchBySlug(slug),
             enabled: isSpecificBrand,
         })),
     });
