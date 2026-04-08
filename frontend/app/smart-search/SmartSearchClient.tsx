@@ -35,25 +35,25 @@ import {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-// Converts a QueryIntent (brand/collection/price from the backend) into a WatchFilters object
-// so the filter bar is pre-populated to match what the query implied.
-function buildFiltersFromIntent(intent: QueryIntent, collections: Collection[]): WatchFilters {
+// Builds the initial filter bar state after AI results arrive.
+// Brand/collection: facets derived from the actual result set — every brand and collection
+// present in results is pre-checked so the user sees a full picture and can narrow by unchecking.
+// Spec filters (price, water resistance, complications, material, movement, diameter) come from
+// QueryIntent — these are explicit constraints the user stated in the query.
+function buildFiltersFromResults(
+  result: WatchFinderResult,
+  intent: QueryIntent | null | undefined
+): WatchFilters {
   const f = { ...EMPTY_WATCH_FILTERS };
-  if (intent.brandId)       f.brandIds      = [intent.brandId];
-  if (intent.collectionId)  f.collectionIds = [intent.collectionId];
-  // Style → collection IDs: restrict results to collections tagged with that style in the DB.
-  // This filters out keyword-exclusive watches from non-matching collections (e.g. Calatrava for "sport").
-  if (intent.style && !intent.collectionId && collections.length > 0) {
-    const styleIds = collections.filter(c => c.style === intent.style).map(c => c.id);
-    if (styleIds.length > 0) f.collectionIds = styleIds;
-  }
-  if (intent.minDiameterMm !== null || intent.maxDiameterMm !== null) {
-    const min = Math.floor(intent.minDiameterMm ?? 1);
-    const max = Math.floor(intent.maxDiameterMm ?? 200);
-    const labels: string[] = [];
-    for (let mm = min; mm <= max; mm++) labels.push(`${mm}mm`);
-    f.diameterBuckets = labels;
-  }
+  const all = [...result.watches, ...result.otherCandidates];
+
+  // Entity facets — derived from what the AI actually returned
+  f.brandIds      = [...new Set(all.map(w => w.brandId))];
+  f.collectionIds = [...new Set(all.map(w => w.collectionId).filter((id): id is number => id !== null))];
+
+  if (!intent) return f;
+
+  // Spec filters — explicit constraints from the query
   if (intent.maxPrice) {
     // Always include PoR — backend never excludes PoR from price-filtered searches,
     // so the client-side filter must match. PoR watches are sorted after priced ones.
@@ -73,7 +73,6 @@ function buildFiltersFromIntent(intent: QueryIntent, collections: Collection[]):
   if (intent.caseMaterial) f.caseMaterials = [intent.caseMaterial];
   if (intent.movementType) f.movementTypes = [intent.movementType];
   if (intent.waterResistanceBuckets && intent.waterResistanceBuckets.length > 0) {
-    // Backend resolved bucket labels directly (generic or explicit multi-bucket phrase)
     const valid = new Set(WATER_RESISTANCE_BUCKETS.map(b => b.label));
     f.waterResistances = intent.waterResistanceBuckets.filter(b => valid.has(b));
   } else if (intent.waterResistance) {
@@ -89,6 +88,25 @@ function buildFiltersFromIntent(intent: QueryIntent, collections: Collection[]):
     const validLabels = new Set(POWER_RESERVE_OPTIONS);
     f.powerReserves = intent.powerReserves.filter(p => validLabels.has(p));
   }
+  // Only pre-select diameter when both bounds are present and the range is reasonably tight.
+  // A one-sided bound (e.g. minDiameterMm only) with no max defaults to 200mm, which would
+  // pre-check 100+ options and look broken. Require both, or a max-only constraint ≤ 42mm.
+  if (intent.minDiameterMm !== null && intent.maxDiameterMm !== null) {
+    const min = Math.floor(intent.minDiameterMm);
+    const max = Math.floor(intent.maxDiameterMm);
+    if (max - min <= 10) {
+      const labels: string[] = [];
+      for (let mm = min; mm <= max; mm++) labels.push(`${mm}mm`);
+      f.diameterBuckets = labels;
+    }
+  } else if (intent.maxDiameterMm !== null && intent.minDiameterMm === null) {
+    // "small wrist" → maxDiameterMm: 38 — pre-check all sizes up to that cap
+    const max = Math.floor(intent.maxDiameterMm);
+    const labels: string[] = [];
+    for (let mm = 30; mm <= max; mm++) labels.push(`${mm}mm`);
+    f.diameterBuckets = labels;
+  }
+
   return f;
 }
 
@@ -132,18 +150,41 @@ export default function SmartSearchClient() {
   // Normalized Watch[] so SmartCard can render them during AI loading
   const [kwWatches, setKwWatches] = useState<Watch[]>([]);
 
-  // Track which query has already had its intent filters applied — prevents a double-apply
-  // when both result and collections settle (either can arrive first).
+  // Track which query has already had its result filters applied — prevents double-apply.
   const intentAppliedRef = useRef<string | null>(null);
 
-  // Apply intent-based filters as soon as BOTH the AI result and collections are loaded.
-  // Runs whenever either changes so it succeeds even if collections arrive after the result.
+  // Unique brands and collections present in AI results — used for filter bar pre-population
+  // and Jump To navigation chips. Both derived from the result set, not from query intent.
+  const resultBrands = useMemo(() => {
+    if (!result || brands.length === 0) return [];
+    const seen = new Set<number>();
+    return [...result.watches, ...result.otherCandidates]
+      .filter(w => { if (seen.has(w.brandId)) return false; seen.add(w.brandId); return true; })
+      .map(w => ({ id: w.brandId, name: brands.find(b => b.id === w.brandId)?.name ?? '', slug: w.brandSlug }))
+      .filter(b => b.name);
+  }, [result, brands]);
+
+  const resultCollections = useMemo(() => {
+    if (!result || collections.length === 0) return [];
+    const seen = new Set<number>();
+    return [...result.watches, ...result.otherCandidates]
+      .filter(w => w.collectionId && !seen.has(w.collectionId) && (seen.add(w.collectionId), true))
+      .map(w => {
+        const col = collections.find(c => c.id === w.collectionId);
+        const brand = brands.find(b => b.id === w.brandId);
+        return col ? { id: col.id, name: col.name, slug: w.collectionSlug ?? col.slug, brand: brand ? { name: brand.name } : undefined } : null;
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+  }, [result, collections, brands]);
+
+  // Apply result-based filters once result arrives (no need to wait for collections —
+  // brand/collection IDs come directly from result watches, not from a DB lookup).
   useEffect(() => {
-    if (!result?.queryIntent || collections.length === 0) return;
+    if (!result) return;
     if (intentAppliedRef.current === query) return;
     intentAppliedRef.current = query;
-    setFilters(buildFiltersFromIntent(result.queryIntent, collections));
-  }, [result, collections, query]);
+    setFilters(buildFiltersFromResults(result, result.queryIntent));
+  }, [result, query]);
 
   // Track each unique search query once when results arrive successfully
   const trackedQueryRef = useRef<string | null>(null);
@@ -414,32 +455,37 @@ export default function SmartSearchClient() {
         )}
       </div>
 
-      {/* ── Keyword matches: brands & collections ── */}
-      {(kwBrands.length > 0 || kwCollections.length > 0) && (
-        <div className="flex items-center gap-2 flex-wrap mb-5">
-          <span className="text-xs font-inter text-white/30 uppercase tracking-widest mr-1 flex-shrink-0">
-            Jump to
-          </span>
-          {kwBrands.map(b => (
-            <a
-              key={`brand-${b.id}`}
-              href={`/brands/${b.slug || b.id}`}
-              className="px-3 py-1 text-xs font-inter text-white/60 hover:text-white border border-white/15 hover:border-white/35 rounded-full bg-white/5 hover:bg-white/10 transition-all"
-            >
-              {b.name}
-            </a>
-          ))}
-          {kwCollections.map(c => (
-            <a
-              key={`col-${c.id}`}
-              href={`/collections/${c.slug || c.id}`}
-              className="px-3 py-1 text-xs font-inter text-white/50 hover:text-white/80 border border-white/10 hover:border-white/25 rounded-full bg-white/3 hover:bg-white/8 transition-all"
-            >
-              {c.brand ? `${c.brand.name} ${c.name}` : c.name}
-            </a>
-          ))}
-        </div>
-      )}
+      {/* ── Jump To: result-based brands/collections when AI loads, keyword-based during loading ── */}
+      {(() => {
+        const jumpBrands      = result ? resultBrands      : kwBrands;
+        const jumpCollections = result ? resultCollections  : kwCollections;
+        if (jumpBrands.length === 0 && jumpCollections.length === 0) return null;
+        return (
+          <div className="flex items-center gap-2 flex-wrap mb-5">
+            <span className="text-xs font-inter text-white/30 uppercase tracking-widest mr-1 flex-shrink-0">
+              Jump to
+            </span>
+            {jumpBrands.map(b => (
+              <a
+                key={`brand-${b.id}`}
+                href={`/brands/${b.slug || b.id}`}
+                className="px-3 py-1 text-xs font-inter text-white/60 hover:text-white border border-white/15 hover:border-white/35 rounded-full bg-white/5 hover:bg-white/10 transition-all"
+              >
+                {b.name}
+              </a>
+            ))}
+            {jumpCollections.map(c => (
+              <a
+                key={`col-${c.id}`}
+                href={`/collections/${c.slug || c.id}`}
+                className="px-3 py-1 text-xs font-inter text-white/50 hover:text-white/80 border border-white/10 hover:border-white/25 rounded-full bg-white/3 hover:bg-white/8 transition-all"
+              >
+                {c.brand ? `${c.brand.name} ${c.name}` : c.name}
+              </a>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* ── Filter Bar ── */}
       <WatchFilterBar

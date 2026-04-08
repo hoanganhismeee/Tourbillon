@@ -337,10 +337,21 @@ public class WatchFinderService
         if (intent?.MaxPrice     != null) q = q.Where(e => e.Watch.CurrentPrice == 0 || e.Watch.CurrentPrice <= intent.MaxPrice);
         if (intent?.MinPrice     != null) q = q.Where(e => e.Watch.CurrentPrice == 0 || e.Watch.CurrentPrice >= intent.MinPrice);
 
-        // Style is a soft constraint — vector similarity + LLM rerank already rank dress/sport/diver
-        // watches correctly from the embeddings. Applying it as a hard SQL filter would exclude
-        // watches whose collections haven't been tagged yet, silently degrading results.
-        // Style is returned in QueryIntent so the frontend can pre-populate the Collection filter.
+        // Style filter: resolve style → tagged collection IDs → SQL IN.
+        // Hard filter only when collection tags exist for that style — graceful degradation
+        // if no collections are tagged (filter silently skips, vector + rerank handle style).
+        // Untagged collections are not excluded — they surface as candidates naturally.
+        List<int> styleCollectionIds = [];
+        if (intent?.Style != null)
+        {
+            styleCollectionIds = await _context.Collections
+                .Where(c => c.Style == intent.Style)
+                .Select(c => c.Id)
+                .ToListAsync();
+            if (styleCollectionIds.Count > 0)
+                q = q.Where(e => e.Watch.CollectionId != null
+                              && styleCollectionIds.Contains((int)e.Watch.CollectionId));
+        }
 
         // Push distance order and LIMIT to DB — project WatchId + distance in one round-trip.
         var orderedRows = await q
@@ -363,10 +374,11 @@ public class WatchFinderService
             }
         }
 
-        // When hard SQL filters are active (price, brand, collection), the candidate pool is
-        // already narrowed — skip the MinRelevance quality gate (noise rejection for open queries).
+        // When hard SQL filters narrow the pool, skip the MinRelevance quality gate
+        // (that gate exists only to reject noise in fully unconstrained open queries).
         var hasHardFilters = intent?.BrandId != null || intent?.CollectionId != null
-            || intent?.MaxPrice != null || intent?.MinPrice != null;
+            || intent?.MaxPrice != null || intent?.MinPrice != null
+            || styleCollectionIds.Count > 0;
 
         if (topIds.Count == 0 || (!hasHardFilters && bestDist >= MinRelevance))
             return ([], float.MaxValue);
