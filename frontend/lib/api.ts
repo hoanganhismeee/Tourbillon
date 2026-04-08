@@ -206,6 +206,7 @@ export interface QueryIntent {
   caseMaterial: string | null;
   movementType: string | null;
   waterResistance: string | null;
+  waterResistanceBuckets?: string[];
   style?: string | null;
   complications?: string[];
   powerReserves?: string[];
@@ -911,9 +912,17 @@ export interface ChatWatchCard {
   brandId: number;
 }
 
+export interface ChatAction {
+  type: 'compare' | 'search';
+  label: string;
+  slugs?: string[];
+  query?: string;
+}
+
 export interface ChatApiResponse {
   message: string;
   watchCards: ChatWatchCard[];
+  actions?: ChatAction[];
   rateLimited?: boolean;
   dailyUsed?: number | null;
   dailyLimit?: number | null;
@@ -922,11 +931,12 @@ export interface ChatApiResponse {
 export const sendChatMessage = async (
   sessionId: string,
   message: string,
+  behaviorSummary?: string,
 ): Promise<ChatApiResponse> => {
   const response = await fetchWithTimeout(`${API_BASE_URL}/chat/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, message }),
+    body: JSON.stringify({ sessionId, message, behaviorSummary }),
     credentials: 'include',
     timeoutMs: 30000,
   });

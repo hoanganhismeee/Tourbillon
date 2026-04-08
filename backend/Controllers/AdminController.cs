@@ -1784,6 +1784,90 @@ public class AdminController : ControllerBase
         return Ok(new { Success = true, Deleted = deleted });
     }
 
+    // ── Collection style tagging ───────────────────────────────────────────────
+
+    /// One-time AI-assisted classification of collection styles (dress / sport / diver).
+    /// Run once after DB seeding; new collections should be tagged when created via admin UI.
+    /// Pass ?overwrite=true to re-classify already-tagged collections.
+    /// POST: api/admin/collections/tag-styles
+    [AllowAnonymous]
+    [HttpPost("collections/tag-styles")]
+    public async Task<IActionResult> TagCollectionStyles([FromQuery] bool overwrite = false)
+    {
+        var db          = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var httpFactory = HttpContext.RequestServices.GetRequiredService<IHttpClientFactory>();
+        var httpClient  = httpFactory.CreateClient("ai-service");
+
+        var collections = await db.Collections
+            .Include(c => c.Brand)
+            .Where(c => overwrite || c.Style == null)
+            .ToListAsync();
+
+        if (collections.Count == 0)
+            return Ok(new { message = "All collections already tagged.", tagged = 0, skipped = 0 });
+
+        _logger.LogInformation("Admin: classifying styles for {Count} collections", collections.Count);
+
+        var payload = collections.Select(c => new
+        {
+            id          = c.Id,
+            name        = c.Name,
+            brand       = c.Brand?.Name ?? "",
+            description = c.Description ?? ""
+        });
+
+        var response = await httpClient.PostAsJsonAsync("/collections/classify-styles", new { collections = payload });
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            _logger.LogError("AI service style classification failed: {Body}", body);
+            return StatusCode(502, new { error = "AI service classification failed.", detail = body });
+        }
+
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("results", out var results))
+            return StatusCode(502, new { error = "Unexpected AI service response format." });
+
+        int tagged = 0, nulled = 0;
+        foreach (var item in results.EnumerateArray())
+        {
+            if (!item.TryGetProperty("id", out var idEl)) continue;
+            var col = collections.FirstOrDefault(c => c.Id == idEl.GetInt32());
+            if (col == null) continue;
+
+            string? style = null;
+            if (item.TryGetProperty("style", out var styleEl) && styleEl.ValueKind == JsonValueKind.String)
+                style = styleEl.GetString()?.ToLowerInvariant();
+
+            col.Style = style;
+            if (style != null) tagged++; else nulled++;
+        }
+
+        await db.SaveChangesAsync();
+        _logger.LogInformation("Admin: collection styles saved — tagged={Tagged} null={Nulled}", tagged, nulled);
+        return Ok(new { tagged, nulled, total = collections.Count });
+    }
+
+    /// Returns style tag coverage across all collections.
+    /// GET: api/admin/collections/style-status
+    [AllowAnonymous]
+    [HttpGet("collections/style-status")]
+    public async Task<IActionResult> GetCollectionStyleStatus()
+    {
+        var db       = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var all      = await db.Collections.Include(c => c.Brand).AsNoTracking().ToListAsync();
+        var tagged   = all.Where(c => c.Style != null).ToList();
+        var untagged = all.Where(c => c.Style == null).ToList();
+        return Ok(new
+        {
+            total    = all.Count,
+            tagged   = tagged.Count,
+            untagged = untagged.Count,
+            breakdown = tagged.GroupBy(c => c.Style).ToDictionary(g => g.Key!, g => g.Count()),
+            untaggedCollections = untagged.Select(c => new { c.Id, c.Name, brand = c.Brand?.Name })
+        });
+    }
+
     /// Updates the editorial content linked to a specific watch.
     /// Because editorial is shared per-collection, this affects all watches in the same collection.
     /// PUT: api/admin/editorial/{watchId}

@@ -101,32 +101,37 @@ def call_llm(system_prompt: str, user_content: str, max_tokens: int = 512) -> st
 
 PARSE_SYSTEM_PROMPT = """You are a luxury watch expert assistant.
 Convert the user's plain-language watch query into structured JSON.
-Use your knowledge to infer occasion, style, and preferences from context clues.
+Use your watch knowledge to infer style, features, and constraints from context — even indirect phrasing.
 
-Return ONLY valid JSON with these exact keys. Use null for fields not mentioned or inferable, [] for empty lists:
+Return ONLY valid JSON with these exact keys. Use null for unmentioned fields, [] for empty lists:
 {
-  "occasion": null,
+  "brands": [],
+  "collection": null,
   "style": null,
   "material": [],
   "maxPrice": null,
   "minPrice": null,
   "maxThicknessMm": null,
+  "minDiameterMm": null,
   "maxDiameterMm": null,
-  "strap": null,
   "movement": null,
-  "complications": []
+  "complications": [],
+  "waterResistanceMin": null,
+  "powerReserveHours": null
 }
 
 Key guidance:
-- occasion: "wedding", "diving", "business", "daily", "sport", "casual", "formal"
-- style: "dress", "sport", "casual", "field", "pilot", "diver"
-- material: array from ["rose gold", "yellow gold", "white gold", "platinum", "steel", "titanium", "ceramic"]
-- maxPrice / minPrice: number in USD. Convert "20k" → 20000, "under 10k" → maxPrice 10000
-- maxThicknessMm: number. "thin" → 9, "slim" → 9
-- maxDiameterMm: number. "small wrist" → 38, "large" → 42
-- strap: "leather", "bracelet", "rubber", "nato", "alligator"
-- movement: "automatic", "manual", "quartz"
-- complications: array from ["date", "chronograph", "moonphase", "tourbillon", "gmt", "alarm", "power reserve"]
+- brands: list of full brand names mentioned or strongly implied. Use canonical names: "Jaeger-LeCoultre", "Audemars Piguet", "Vacheron Constantin", "Patek Philippe", "A. Lange & Söhne", "Rolex", "Omega Watches", "Grand Seiko", "F.P.Journe", "Glashütte Original", "IWC Schaffhausen", "Breguet", "Frederique Constant". Empty [] if no brand mentioned.
+- collection: single collection name if mentioned (e.g. "Reverso", "Nautilus", "Royal Oak", "Overseas", "Aquanaut"). null if not mentioned.
+- style: one of "dress", "sport", "diver". Infer from context: "beach vacation" → "diver", "boardroom" → "dress", "active lifestyle" → "sport". null if ambiguous. Note: asking for "a bracelet" alone does not imply "sport" — sport means integrated-bracelet design DNA (Royal Oak, Nautilus style). A user asking for "a dress watch on a bracelet" wants style="dress".
+- material: array from ["Steel", "Titanium", "Rose Gold", "Yellow Gold", "White Gold", "Platinum", "Ceramic", "Carbon"].
+- maxPrice / minPrice: number in USD. "20k" → 20000, "under 10k" → maxPrice: 10000. null if not stated.
+- maxThicknessMm: number. "thin" or "slim" → 9. null if not stated.
+- minDiameterMm / maxDiameterMm: numbers in mm. "small wrist" → maxDiameterMm: 38. "large" → minDiameterMm: 42. null if not stated.
+- movement: one of "Automatic", "Manual-winding", "Quartz". null if not stated.
+- complications: array from ["Chronograph", "Perpetual Calendar", "Annual Calendar", "Moonphase", "Tourbillon", "Minute Repeater", "GMT / World Time"]. Include only complications explicitly or strongly implied.
+- waterResistanceMin: minimum water resistance in metres as a number. "good water resistance" or "water resistant" → 50. "dive watch" or "diver" → 100. "300m" → 300. null if not mentioned.
+- powerReserveHours: minimum power reserve in hours as a number. "long power reserve" → 72. "100 hours" → 100. null if not mentioned.
 
 No preamble. No explanation. JSON only."""
 
@@ -170,7 +175,7 @@ RERANK_SYSTEM_PROMPT = """You are a luxury watch expert. Score EVERY watch 0-100
 
 Category guidance — apply strictly:
 - "dress watch": thin, minimalist, time-only or simple complications. Chronographs, divers, and sport watches are NOT dress watches regardless of case material or price.
-- "sport watch": integrated bracelet design, robust case, often with date window. The AP Royal Oak, Patek Nautilus, Vacheron Overseas, Frederique Constant Highlife are classic sport watches — score them 80+ for sport queries regardless of precious metal or high price.
+- "sport watch": case and bracelet designed as one integrated unit — the bracelet IS the design identity. AP Royal Oak, Patek Nautilus, Vacheron Overseas, Frederique Constant Highlife score 80+ for sport queries. A dress watch sold with a bracelet option (e.g. Calatrava on bracelet) is still dress, not sport.
 - "diver": high water resistance (100m+), rotating or fixed bezel, legible dial. Score 80+ for dive/waterproof queries.
 - "chronograph": stopwatch complication present in movement functions. Score 80+ for chronograph queries.
 
@@ -665,7 +670,37 @@ Slugs come from the provided context (e.g. "Slug: patek-philippe"). Never invent
 **Content**
 For brand or collection questions: lead with Tourbillon's catalogue data and collection links first. Then supplement with 1-2 interesting facts the user might not find on the site.
 When recommending, explain why using specs from context (e.g. case size, water resistance, movement type) rather than subjective adjectives.
-Always refer to the store as "Tourbillon", never "we" or "our store"."""
+Always refer to the store as "Tourbillon", never "we" or "our store".
+
+**Actions (only when user explicitly requests)**
+If the user asks to compare two or more specific watches, add this on its own line AT THE END of your response:
+ACTIONS: [{"type":"compare","slugs":["slug-a","slug-b"],"label":"Compare these watches"}]
+If the user asks you to search for something specific (e.g. "find me a sport watch"), add:
+ACTIONS: [{"type":"search","query":"the exact search terms","label":"Search for this"}]
+Slugs must come from context only — never invent one. Omit ACTIONS entirely if no action applies."""
+
+
+def _extract_actions(raw: str) -> tuple[str, list]:
+    """Extract and strip the ACTIONS: [...] line from the end of the LLM response.
+    Returns (text_without_actions, parsed_actions_list)."""
+    import json as _json
+    lines = raw.rstrip().splitlines()
+    actions = []
+    text_lines = lines[:]
+    # Scan from end — ACTIONS line may be the very last line
+    for i in range(len(lines) - 1, max(len(lines) - 4, -1), -1):
+        stripped = lines[i].strip()
+        if stripped.startswith("ACTIONS:"):
+            payload = stripped[len("ACTIONS:"):].strip()
+            try:
+                parsed = _json.loads(payload)
+                if isinstance(parsed, list):
+                    actions = parsed
+            except Exception:
+                pass
+            text_lines = lines[:i]
+            break
+    return "\n".join(text_lines).strip(), actions
 
 
 def _truncate_chat_response(text: str, max_words: int = 130) -> str:
@@ -782,11 +817,79 @@ def chat():
             temperature=0.3,
         )
         raw = resp.choices[0].message.content.strip()
-        trimmed = _truncate_chat_response(raw)
+        # Extract ACTIONS before truncation so the action line is never cut mid-parse
+        text_only, actions = _extract_actions(raw)
+        trimmed = _truncate_chat_response(text_only)
         linked  = _inject_entity_links(trimmed, context)
-        return jsonify({"message": linked})
+        return jsonify({"message": linked, "actions": actions})
     except Exception as e:
         return jsonify({"error": f"Chat LLM call failed: {str(e)}"}), 502
+
+
+# ── Collection style classification ──────────────────────────────────────────
+
+CLASSIFY_STYLE_PROMPT = """You are a luxury watch expert. Classify each watch collection into one style category.
+
+Return ONLY this JSON array — one entry per collection, same order as input:
+[{"id": 1, "style": "dress"}]
+
+Valid style values (choose the best single fit, or null if genuinely mixed):
+- "dress"  — formal, elegant, thin case, minimalist dial. Style is defined by its design DNA — a dress
+             collection remains dress even if it offers a bracelet variant alongside a strap.
+             Examples: Calatrava, Patrimony, Villeret, Classique, Senator Excellence, PanoMatic Luna,
+             Master Ultra Thin, Glashutte Original Spezialist, Senator Perpetual Calendar
+- "sport"  — the bracelet and case are designed as a single integrated unit (the bracelet IS the design).
+             Robust, casual-luxury, often thicker. A bracelet option alone does NOT make a watch sport.
+             Examples: Royal Oak, Nautilus, Overseas, Aquanaut, Highlife, Portugieser Chronograph,
+             Master Geographic, Big Bang
+- "diver"  — water-resistance as primary purpose, rotating or fixed diver bezel, 100m+ rated.
+             Examples: Seamaster 300, Submariner, SeaQ, Fifty Fathoms, Aquatimer
+- null     — genuinely spans multiple styles (Grand Complications, Métiers d'Art, mixed lines)
+             or too ambiguous to classify confidently
+
+Key rule: strap/bracelet availability is a variant option, not a style signal.
+A Calatrava sold on a bracelet is still "dress". Only classify "sport" when the case-bracelet
+integration is the defining design identity of the collection.
+
+No explanation. No preamble. JSON array only."""
+
+
+@app.route("/collections/classify-styles", methods=["POST"])
+def classify_collection_styles():
+    """Admin one-time: classify watch collection style (dress/sport/diver) for DB tagging.
+    Accepts a list of {id, name, brand, description} and returns [{id, style}]."""
+    body = request.get_json(silent=True) or {}
+    collections = body.get("collections") or []
+    if not collections:
+        return jsonify({"error": "collections list is required"}), 400
+
+    # Format collections as a compact list for one LLM call (avoids N round-trips)
+    lines = [
+        f"{c.get('id')}: {c.get('brand', '')} {c.get('name', '')} — {str(c.get('description', ''))[:120]}"
+        for c in collections
+    ]
+    prompt = "\n".join(lines)
+
+    try:
+        raw = call_llm(CLASSIFY_STYLE_PROMPT, prompt, max_tokens=len(collections) * 30 + 50)
+        results = parse_llm_json(raw)
+        if not isinstance(results, list):
+            raise ValueError("Expected a JSON array")
+    except (ValueError, json.JSONDecodeError) as e:
+        return jsonify({"error": f"LLM classification failed: {str(e)}"}), 502
+
+    # Validate style values — reject anything outside the allowed set
+    valid_styles = {"dress", "sport", "diver", None}
+    cleaned = []
+    for item in results:
+        style = item.get("style")
+        if isinstance(style, str):
+            style = style.lower()
+        if style not in valid_styles:
+            style = None
+        cleaned.append({"id": item.get("id"), "style": style})
+
+    return jsonify({"results": cleaned})
 
 
 # ── Readiness + health checks ─────────────────────────────────────────────────

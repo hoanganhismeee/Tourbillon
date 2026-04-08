@@ -72,7 +72,11 @@ function buildFiltersFromIntent(intent: QueryIntent, collections: Collection[]):
   }
   if (intent.caseMaterial) f.caseMaterials = [intent.caseMaterial];
   if (intent.movementType) f.movementTypes = [intent.movementType];
-  if (intent.waterResistance) {
+  if (intent.waterResistanceBuckets && intent.waterResistanceBuckets.length > 0) {
+    // Backend resolved bucket labels directly (generic or explicit multi-bucket phrase)
+    const valid = new Set(WATER_RESISTANCE_BUCKETS.map(b => b.label));
+    f.waterResistances = intent.waterResistanceBuckets.filter(b => valid.has(b));
+  } else if (intent.waterResistance) {
     const m = parseInt(intent.waterResistance);
     const bucket = WATER_RESISTANCE_BUCKETS.find(b => b.test(m));
     if (bucket) f.waterResistances = [bucket.label];
@@ -128,6 +132,19 @@ export default function SmartSearchClient() {
   // Normalized Watch[] so SmartCard can render them during AI loading
   const [kwWatches, setKwWatches] = useState<Watch[]>([]);
 
+  // Track which query has already had its intent filters applied — prevents a double-apply
+  // when both result and collections settle (either can arrive first).
+  const intentAppliedRef = useRef<string | null>(null);
+
+  // Apply intent-based filters as soon as BOTH the AI result and collections are loaded.
+  // Runs whenever either changes so it succeeds even if collections arrive after the result.
+  useEffect(() => {
+    if (!result?.queryIntent || collections.length === 0) return;
+    if (intentAppliedRef.current === query) return;
+    intentAppliedRef.current = query;
+    setFilters(buildFiltersFromIntent(result.queryIntent, collections));
+  }, [result, collections, query]);
+
   // Track each unique search query once when results arrive successfully
   const trackedQueryRef = useRef<string | null>(null);
   useEffect(() => {
@@ -166,6 +183,7 @@ export default function SmartSearchClient() {
     setStatus('loading');
     setResult(null);
     setFilters(EMPTY_WATCH_FILTERS);
+    intentAppliedRef.current = null; // allow intent filters for the new query
 
     // Restore wrist fit from sessionStorage (back navigation) or reset
     try {
@@ -182,7 +200,7 @@ export default function SmartSearchClient() {
         const { result: cachedResult, ts } = JSON.parse(cached) as { result: WatchFinderResult; ts: number };
         if (Date.now() - ts < CACHE_TTL) {
           setResult(cachedResult);
-          if (cachedResult.queryIntent) setFilters(buildFiltersFromIntent(cachedResult.queryIntent, collections));
+          // Intent filters applied reactively by the intentFilters effect below
           setStatus('success');
           return;
         }
@@ -203,8 +221,18 @@ export default function SmartSearchClient() {
         collections?: Array<{ id: number; name: string; slug?: string; brand?: { name: string } }>;
       } | null) => {
         if (data) {
-          setKwBrands(data.brands?.slice(0, 5) ?? []);
-          setKwCollections(data.collections?.slice(0, 5) ?? []);
+          // Only surface brands/collections explicitly named in the query — prevents
+          // the full-text search from showing irrelevant collections (e.g. Submariner
+          // when the user typed "Daydate").
+          const queryLower = query.toLowerCase();
+          const relevantBrands = (data.brands ?? [])
+            .filter(b => queryLower.includes(b.name.toLowerCase()))
+            .slice(0, 5);
+          const relevantCollections = (data.collections ?? [])
+            .filter(c => queryLower.includes(c.name.toLowerCase()))
+            .slice(0, 5);
+          setKwBrands(relevantBrands);
+          setKwCollections(relevantCollections);
           // Normalize to Watch type so SmartCard renders them without changes
           const normalized: Watch[] = (data.watches ?? []).map(kw => ({
             id: kw.id,
@@ -227,7 +255,8 @@ export default function SmartSearchClient() {
     watchFinderSearch(query)
       .then(res => {
         setResult(res);
-        if (res.queryIntent) setFilters(buildFiltersFromIntent(res.queryIntent, collections));
+        // Don't apply intent filters here — collections may not be loaded yet.
+        // The intentFilters effect below re-applies once both are ready.
         setStatus('success');
         // Only cache non-empty results — empty results are often transient (threshold tuning, cold start)
         if (res.watches.length > 0 || res.otherCandidates.length > 0) {
