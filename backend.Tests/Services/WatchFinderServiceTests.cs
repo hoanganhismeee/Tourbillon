@@ -7,6 +7,98 @@ namespace backend.Tests.Services;
 
 public class WatchFinderServiceTests
 {
+    public static IEnumerable<object[]> RegexQueryCases()
+    {
+        yield return
+        [
+            "Sport Watches Under 100k",
+            (decimal?)null,
+            100_000m,
+            (double?)null,
+            (double?)null,
+            "sport",
+            new[] { "Price on Request", "Under $5k", "$5k \u2013 $10k", "$10k \u2013 $25k", "$25k \u2013 $50k", "$50k \u2013 $100k" },
+            Array.Empty<string>(),
+            Array.Empty<string>()
+        ];
+        yield return
+        [
+            "sports watches between 50-100k",
+            50_000m,
+            100_000m,
+            (double?)null,
+            (double?)null,
+            "sport",
+            new[] { "Price on Request", "$50k \u2013 $100k" },
+            Array.Empty<string>(),
+            Array.Empty<string>()
+        ];
+        yield return
+        [
+            "Vacheron Dress Watch 39 to 40mm Dial Above 200k",
+            200_000m,
+            (decimal?)null,
+            39d,
+            40d,
+            "dress",
+            new[] { "Price on Request", "Over $100k" },
+            new[] { "39mm", "40mm" },
+            Array.Empty<string>()
+        ];
+        yield return
+        [
+            "diver watch 300m under 20k",
+            (decimal?)null,
+            20_000m,
+            (double?)null,
+            (double?)null,
+            "diver",
+            new[] { "Price on Request", "Under $5k", "$5k \u2013 $10k", "$10k \u2013 $25k" },
+            Array.Empty<string>(),
+            new[] { "150m \u2013 300m", "600m+" }
+        ];
+        yield return
+        [
+            "40mm dress watch under 50k",
+            (decimal?)null,
+            50_000m,
+            40d,
+            40d,
+            "dress",
+            new[] { "Price on Request", "Under $5k", "$5k \u2013 $10k", "$10k \u2013 $25k", "$25k \u2013 $50k" },
+            new[] { "40mm" },
+            Array.Empty<string>()
+        ];
+    }
+
+    [Theory]
+    [MemberData(nameof(RegexQueryCases))]
+    public void ApplyRegexFilters_ProducesExpectedFilterBarState(
+        string query,
+        decimal? expectedMinPrice,
+        decimal? expectedMaxPrice,
+        double? expectedMinDiameter,
+        double? expectedMaxDiameter,
+        string? expectedStyle,
+        string[] expectedPriceBuckets,
+        string[] expectedDiameterBuckets,
+        string[] expectedWaterBuckets)
+    {
+        var intent = new QueryIntent();
+
+        WatchFinderService.ApplyRegexFilters(query, intent);
+        var state = WatchFinderService.BuildFilterStateForDiagnostics(intent);
+
+        Assert.Equal(expectedMinPrice, intent.MinPrice);
+        Assert.Equal(expectedMaxPrice, intent.MaxPrice);
+        Assert.Equal(expectedMinDiameter, intent.MinDiameterMm);
+        Assert.Equal(expectedMaxDiameter, intent.MaxDiameterMm);
+        Assert.Equal(expectedStyle, intent.Style);
+        Assert.Equal(expectedPriceBuckets, state.PriceBuckets);
+        Assert.Equal(expectedDiameterBuckets, state.DiameterBuckets);
+        Assert.Equal(expectedWaterBuckets, state.WaterResistances);
+    }
+
     [Fact]
     public void ApplyRegexFilters_ParsesToDiameterRangeAndMinPrice()
     {
@@ -83,6 +175,12 @@ public class WatchFinderServiceTests
     }
 
     [Fact]
+    public void IsLikelyReferenceQuery_MatchesRolexStyleReference()
+    {
+        Assert.True(WatchFinderService.IsLikelyReferenceQuery("M126710BLRO-0001"));
+    }
+
+    [Fact]
     public void ApplyRegexFilters_DoesNotTreatDottedReferenceAsSpecs()
     {
         var intent = new QueryIntent();
@@ -94,6 +192,46 @@ public class WatchFinderServiceTests
         Assert.Null(intent.MinDiameterMm);
         Assert.Null(intent.MaxDiameterMm);
         Assert.Null(intent.WaterResistance);
+    }
+
+    [Fact]
+    public void HasWatchDomainSignal_ReturnsFalseForBreakfast()
+    {
+        Assert.False(WatchFinderService.HasWatchDomainSignal("what's for breakfast?"));
+    }
+
+    [Fact]
+    public void BuildFilterStateForDiagnostics_MapsMultiBrandAndCollectionIds()
+    {
+        var intent = new QueryIntent
+        {
+            BrandIds = [2, 12],
+            CollectionIds = [46, 6],
+            MaxPrice = 100_000m,
+            Style = "diver"
+        };
+
+        var state = WatchFinderService.BuildFilterStateForDiagnostics(intent);
+
+        Assert.Equal([2, 12], state.BrandIds);
+        Assert.Equal([46, 6], state.CollectionIds);
+        Assert.Equal(
+            ["Price on Request", "Under $5k", "$5k \u2013 $10k", "$10k \u2013 $25k", "$25k \u2013 $50k", "$50k \u2013 $100k"],
+            state.PriceBuckets);
+    }
+
+    [Fact]
+    public void DirectSqlScore_PrioritisesExactReference()
+    {
+        var intent = new QueryIntent();
+        var exact = new Watch { Name = "M126710BLRO-0001", CurrentPrice = 20_100m, BrandId = 9 };
+        var other = new Watch { Name = "M126200-0003", CurrentPrice = 14_050m, BrandId = 9 };
+
+        var exactScore = WatchFinderService.DirectSqlScore("M126710BLRO-0001", exact, intent, true);
+        var otherScore = WatchFinderService.DirectSqlScore("M126710BLRO-0001", other, intent, true);
+
+        Assert.True(exactScore > otherScore);
+        Assert.True(exactScore >= 900);
     }
 
     [Fact]

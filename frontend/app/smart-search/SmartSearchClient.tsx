@@ -73,7 +73,7 @@ function buildFiltersFromResults(
           b.label === '$10k – $25k' ? 10_000 :
           b.label === '$25k – $50k' ? 25_000 :
           b.label === '$50k – $100k' ? 50_000 :
-          b.label === 'Over $100k' ? 100_001 :
+          b.label === 'Over $100k' ? 100_000 :
           0;
         const bucketMax =
           b.label === 'Under $5k' ? 4_999 :
@@ -83,8 +83,8 @@ function buildFiltersFromResults(
           b.label === '$50k – $100k' ? 100_000 :
           b.label === 'Over $100k' ? Number.POSITIVE_INFINITY :
           0;
-        if (intent.maxPrice && bucketMin > intent.maxPrice) return false;
-        if (intent.minPrice && bucketMax < intent.minPrice) return false;
+        if (intent.maxPrice && bucketMin >= intent.maxPrice) return false;
+        if (intent.minPrice && bucketMax <= intent.minPrice) return false;
         return true;
       })
       .map(b => b.label);

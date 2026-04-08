@@ -1,6 +1,6 @@
 COMPOSE := docker compose
 
-.PHONY: up down reset dev logs frontend \
+.PHONY: up down reset back dev logs frontend \
         up-cpu up-nvidia detect-gpu gpu-detect seed-editorial help
 
 # ---- Auto-detect GPU and start the right stack ----
@@ -27,6 +27,11 @@ down:
 
 # Tear down, rebuild, bring up docker stack, then start frontend dev server.
 reset:
+	$(MAKE) back
+	cd frontend && npm run dev
+
+# Tear down, rebuild, and leave the backend Docker stack running.
+back:
 	$(COMPOSE) down
 	@GPU=$$($(MAKE) -s detect-gpu); \
 	echo "==> Detected GPU: $$GPU"; \
@@ -35,7 +40,6 @@ reset:
 	else \
 		$(COMPOSE) up --build -d; \
 	fi
-	cd frontend && npm run dev
 
 # ---- Combo: start docker stack + frontend together ----
 
@@ -109,6 +113,7 @@ help:
 	@echo "  make up-nvidia   Start stack with NVIDIA GPU (explicit)"
 	@echo "  make up-cpu      Start stack CPU-only (explicit)"
 	@echo "  make down        Stop docker stack"
+	@echo "  make back        Rebuild docker stack only; no frontend"
 	@echo "  make reset       Rebuild docker stack + start frontend"
 	@echo "  make dev         Start docker stack then frontend (same terminal)"
 	@echo "  make gpu-detect  Verbose GPU check (driver, CUDA, Docker runtime, Ollama)"
