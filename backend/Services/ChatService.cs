@@ -29,6 +29,9 @@ public class ChatMessageRequest
 {
     public string SessionId { get; set; } = "";
     public string Message { get; set; } = "";
+    /// Summary of the user's recent browsing behavior and Watch DNA (formatted client-side).
+    /// Injected into AI context to personalize responses without exposing raw event data.
+    public string? BehaviorSummary { get; set; }
 }
 
 public class ChatWatchCard
@@ -43,10 +46,20 @@ public class ChatWatchCard
     public int BrandId { get; set; }
 }
 
+/// Concierge action returned alongside the text response — executed client-side.
+public class ChatAction
+{
+    public string Type { get; set; } = "";   // "compare" | "search"
+    public string Label { get; set; } = "";
+    public List<string>? Slugs { get; set; } // watch slugs for "compare"
+    public string? Query { get; set; }        // search query for "search"
+}
+
 public class ChatApiResponse
 {
     public string Message { get; set; } = "";
     public List<ChatWatchCard> WatchCards { get; set; } = [];
+    public List<ChatAction> Actions { get; set; } = [];
     public bool RateLimited { get; set; }
     public int? DailyUsed { get; set; }
     public int? DailyLimit { get; set; }
@@ -111,7 +124,7 @@ public class ChatService
     }
 
     public async Task<ChatApiResponse> HandleMessageAsync(
-        string sessionId, string message, string? userId, string? ipAddress)
+        string sessionId, string message, string? userId, string? ipAddress, string? behaviorSummary = null)
     {
         // ── Rate limiting ─────────────────────────────────────────────────────────
         var disableLimit = _config.GetValue<bool>("ChatSettings:DisableLimitInDev");
@@ -184,8 +197,13 @@ public class ChatService
         if (contextStrings.Count == 0 && queryType == QueryType.General)
             contextStrings.Add("No matching watches found in the Tourbillon catalogue for this query.");
 
+        // Prepend user behavior summary so the AI can personalise responses when relevant
+        if (!string.IsNullOrWhiteSpace(behaviorSummary))
+            contextStrings.Insert(0, $"[User context] {behaviorSummary}");
+
         // ── Call ai-service /chat ─────────────────────────────────────────────────
         string aiMessage;
+        List<ChatAction> actions = [];
         var chatSw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
@@ -204,6 +222,15 @@ public class ChatService
                 _logger.LogInformation("Chat ai-service /chat {ElapsedMs}ms", chatSw.ElapsedMilliseconds);
                 var json  = await resp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
                 aiMessage = json.TryGetProperty("message", out var el) ? el.GetString() ?? "" : "";
+                // Parse actions returned by ai-service (extracted from ACTIONS: line before text was returned)
+                if (json.TryGetProperty("actions", out var actionsEl) && actionsEl.ValueKind == JsonValueKind.Array)
+                {
+                    try
+                    {
+                        actions = JsonSerializer.Deserialize<List<ChatAction>>(actionsEl.GetRawText(), _jsonOptions) ?? [];
+                    }
+                    catch { /* malformed actions — ignore, don't crash */ }
+                }
             }
         }
         catch (Exception ex)
@@ -234,6 +261,7 @@ public class ChatService
         {
             Message    = aiMessage,
             WatchCards = watchCards,
+            Actions    = actions,
             DailyUsed  = disableLimit ? null : newUsed,
             DailyLimit = disableLimit ? null : dailyLimit,
         };

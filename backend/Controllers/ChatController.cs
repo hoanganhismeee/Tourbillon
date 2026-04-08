@@ -30,7 +30,7 @@ public class ChatController : ControllerBase
             : null;
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
 
-        var result = await _chatService.HandleMessageAsync(request.SessionId, request.Message, userId, ipAddress);
+        var result = await _chatService.HandleMessageAsync(request.SessionId, request.Message, userId, ipAddress, request.BehaviorSummary);
 
         if (result.RateLimited)
             return StatusCode(429, result);

@@ -7,24 +7,100 @@ AI-powered natural language watch search. Users describe what they want in plain
 
 ---
 
-## Pipeline (Phase 3B — current)
+## How It Works (Simple Version)
+
+A query goes through three stages:
+
+1. **Understand** — figure out what the user wants (brand, price, style, features)
+2. **Retrieve** — find watches that could match using vector similarity
+3. **Rank** — score the candidates with the LLM and return the best ones
+
+The key design question is: **who does the "understand" step?**
+
+### Old approach (regex) — what we had and why it's bad
+
+```
+Query: "JLC Reverso, Rolex Daydate, Omega under 50k with good water resistance"
+
+Regex scans the text:
+  Finds "JLC"    → BrandId = JLC ✓
+  Finds "Reverso" → CollectionId = Reverso ✓
+  Finds "50k"    → MaxPrice = 50000 ✓
+  "good water resistance" → no regex pattern → skipped ✗
+  "Rolex", "Omega" → only first brand match kept → they disappear ✗
+
+SQL WHERE locks it in BEFORE vector search:
+  WHERE BrandId = JLC AND CollectionId = Reverso AND Price ≤ 50k
+  → Rolex and Omega are now physically excluded from the candidate pool
+  → LLM rerank never sees them, can't surface them
+
+Vector search runs inside that locked pool.
+LLM reranks what's left.
+```
+
+Problems:
+- Regex decides relevance *before* the AI sees the query — gets it wrong on complex queries
+- Multi-brand queries ("JLC + Rolex + Omega") collapse to just the first brand found
+- Unrecognised phrasing ("good water resistance", "beach vacation") silently skips the filter
+- Every new filter type needs new hardcoded regex — fragile, grows forever
+
+### New approach (LLM-first) — what we're moving to
+
+Run the LLM parse call **in parallel with the embed call** — same wall-clock latency, smarter output:
+
+```
+Query: "JLC Reverso, Rolex Daydate, Omega under 50k with good water resistance"
+
+LLM parse (runs at same time as embed, ~200ms):
+  Returns: {
+    brands: ["Jaeger-LeCoultre", "Rolex", "Omega Watches"],
+    maxPrice: 50000,
+    waterResistanceBuckets: ["50m–120m", "150m–300m", "600m+"],
+    style: null,
+    complications: []
+  }
+
+Hard SQL pre-filters (only high-confidence explicit constraints):
+  Price ≤ 50k   ← always hard, user stated it explicitly
+  No brand lock ← 3 brands named = multi-brand query → let vector decide
+
+Soft filters returned to frontend for pre-population:
+  Water resistance checkboxes: 50m–120m ✓, 150m–300m ✓, 600m+ ✓
+  Brand filter bar: JLC, Rolex, Omega pre-checked
+
+Vector search runs on the loosely-filtered pool (price only).
+LLM reranks top 15 → JLC Reverso, Rolex Daydate, Omega Seamaster all surface.
+```
+
+The LLM handles any phrasing naturally — "beach vacation" → sport + water-resistant, "dress watch for a wedding" → dress style + no complications — without any new code.
+
+**Rule for hard SQL vs soft filters:**
+- **Hard SQL** (physically excludes candidates): explicit price range, single brand if only one is named
+- **Soft / client-side** (pre-populates filter bar, user can adjust): style, water resistance, complications, power reserve, material, movement, multi-brand queries
+
+---
+
+## Pipeline (Phase 3B — current implementation)
 
 ```
 User query (plain text)
   ↓
-0a. PARSE INTENT — ParseQueryIntentAsync (no LLM)
-                   regex + DB name lookup → brand, collection, price hard constraints
-  ↓
-0b. EMBED QUERY — nomic-embed-text (~50ms)
-  ↓
-0c. CACHE CHECK — QueryCaches cosine similarity ≥ 0.92
+0a. PARSE INTENT  ← runs in parallel with 0b
+    LLM-based: /watch-finder/parse → structured JSON
+    (brand[], maxPrice, minPrice, style, waterResistance, complications, powerReserve, ...)
+    Hard constraints: price (explicit), brandId (exactly 1 brand named)
+    Soft constraints: all others → returned in QueryIntent for frontend
+  ║
+0b. EMBED QUERY  ← runs in parallel with 0a
+    nomic-embed-text (~50ms) → float[]
+  ↓ (both complete)
+0c. CACHE CHECK — QueryCache cosine similarity ≥ 0.92
   ├─ hit  → attach QueryIntent → return immediately (~200ms)
   └─ miss
        ↓
 1. VECTOR SEARCH — WatchEmbeddings cosine similarity < 0.55
-                   Hard SQL pre-filters from QueryIntent applied first
-                   (brand WHERE, collection WHERE, price WHERE)
-                   Cosine ranking within filtered pool → up to 50 candidates
+                   Hard SQL pre-filters from QueryIntent (price, single brand if applicable)
+                   Cosine ranking within loosely filtered pool → up to 50 candidates
   ↓
 2. TIER ROUTING
    Tier 2: best distance < 0.20 → return top 15 by vector order (no LLM)
@@ -38,39 +114,45 @@ User query (plain text)
 4. EMBED   — background fire-and-forget
              WatchEmbeddingService generates vectors for returned watches
   ↓
-Response to frontend → /smart-search?q=... (includes QueryIntent)
+Response to frontend → /smart-search?q=...
+  Includes QueryIntent (LLM-parsed brand/price/style/water resistance/complications)
+  Frontend pre-populates filter bar from QueryIntent
+  All further filtering is client-side on the full result set (no re-fetch)
 ```
 
-**Fallback (embed call fails):** LLM parse → SQL filter → LLM rerank
+**Fallback (both embed and parse calls fail):** return empty result with error state.
 
 ---
 
-## Hybrid Filtering (Elasticsearch bool+kNN pattern)
+## Filter Architecture
 
-Every query is split into two parallel processing tracks:
+### Hard filters (SQL WHERE — applied before vector search)
 
-**Structured track** — `ParseQueryIntentAsync` extracts hard constraints using regex + DB name matching (no LLM):
-- Brand: alias map (`JLC` → Jaeger-LeCoultre, `AP` → Audemars Piguet) + full-name substring
-- Collection: scoped to matched brand first, then all collections
-- Price: regex patterns (`under 50k`, `below $50,000`, `between 20k and 50k`)
+These physically remove candidates. Used only when the constraint is explicit and unambiguous:
 
-These constraints become SQL `WHERE` clauses applied to the `WatchEmbeddings` join with `Watches` before cosine distance is calculated. Non-matching watches are physically excluded — they never appear in results regardless of vector similarity.
+| Constraint | Applied when |
+|---|---|
+| `MaxPrice` | User says "under X" or "below $X" |
+| `MinPrice` | User says "over X" or "above $X" |
+| `BrandId` | Exactly 1 brand named in query |
 
-**Semantic track** — the full query text is embedded as-is and cosine-ranked within the filtered pool. Nuanced descriptors (`dress`, `ultra-thin`, `moonphase`) that aren't hard constraints still drive the similarity ranking.
+Everything else is soft. Hard filters should be minimal — the LLM reranker is better at relevance judgment than SQL.
 
-**Result:** `QueryIntent` is returned to the frontend alongside watch results. The Smart Search page reads it and pre-populates the filter bar (Brand, Collection, Price buckets) to match what the query implied.
+### Soft filters (QueryIntent → frontend filter bar)
 
-Example — "JLC Reverso under 50k":
-```
-Structured → Brand=Jaeger-LeCoultre (4), Collection=Reverso (13), MaxPrice=50000
-             Applied as SQL WHERE before cosine sort
-Semantic   → "JLC Reverso under 50k" embedded → cosine sort within JLC Reverso pool
-Frontend   → Brand filter pre-selected: Jaeger-LeCoultre
-             Collection filter pre-selected: Reverso
-             Price filter pre-selected: Under $10k, $10k–$25k, $25k–$50k
-```
+Returned alongside results and used to pre-populate the filter bar. The user sees the AI's interpretation and can adjust. All applied client-side on the full result set:
 
-**On-demand explain:** `POST /api/watch/explain` → ai-service `/watch-finder/explain` — called only when user requests "Why this watch?" Single-sentence explanation, cached.
+| Field | Frontend filter |
+|---|---|
+| `style` | Collection filter (resolved to collection IDs with matching style) |
+| `waterResistanceBuckets` | Water Resistance checkboxes |
+| `complications` | Complication checkboxes |
+| `powerReserves` | Power Reserve checkboxes |
+| `caseMaterial` | Case Material dropdown |
+| `movementType` | Movement dropdown |
+| `minDiameterMm / maxDiameterMm` | Diameter filter |
+
+Multi-brand queries: brands are returned in `QueryIntent` for UI display but not applied as a SQL filter — the user can check/uncheck individual brands.
 
 ---
 
@@ -122,6 +204,8 @@ LLM_MODEL=claude-haiku-4-5             # production
 | Warm (any request after cold) | ~2s | ~1.5s | Model resident in VRAM |
 | Cache hit | ~5ms | ~5ms | Flask in-memory cache, GPU not touched |
 
+LLM parse and embed run in parallel — total latency is `max(parse, embed)`, not `parse + embed`.
+
 Cold start happens **once per container run** — every `make reset` or `docker compose restart ai-service` triggers it again. While the container stays up, the model stays warm.
 
 Idle eviction: Ollama unloads the model from VRAM after 5 minutes of no requests by default. Set `OLLAMA_KEEP_ALIVE: -1` in `docker-compose.yml` to keep it loaded permanently.
@@ -134,7 +218,7 @@ Idle eviction: Ollama unloads the model from VRAM after 5 minutes of no requests
 | All subsequent requests | ~1s | ~0.5s | Stateless API, consistent |
 | Cache hit | ~5ms | ~5ms | Flask cache same as local |
 
-No cold start problem in production — Haiku is a remote API call, always ready. The only warm-up concern is on the local model during development.
+No cold start problem in production — Haiku is a remote API call, always ready.
 
 **Warmup tip for local dev:** `entrypoint.sh` can fire a dummy parse request right after Flask starts so the first real user never sees the cold delay:
 ```bash
@@ -147,19 +231,18 @@ curl -sf -X POST http://localhost:5000/watch-finder/parse \
 
 ## Caching
 
-- Keyed by normalised query string (lowercase, stripped punctuation, collapsed whitespace)
-- Separate keys for parse and rerank endpoints
+- Query cache keyed by embedding (cosine similarity ≥ 0.92 = cache hit)
 - In-memory (Flask process), cleared on container restart
-- Cache hits do not count against the AI usage quota (5 searches/user/day)
+- Cache hits do not count against the AI usage quota
 
 ---
 
 ## Candidate Selection
 
-1. SQL filter returns up to **30 candidates** using a brand-spread algorithm (round-robin across brands for variety)
-2. All 30 sent to rerank — scores only (no explanations), `max_tokens` 600
-3. **Top section**: score ≥ 60, capped at 8 watches. If < 3 qualify, relax threshold and take top 8 regardless of score
-4. **"Also interested in" section**: all remaining candidates (lower-scored + unscored), ordered by score descending
+1. Vector search returns up to **50 candidates** (deduplicated by watch, best chunk distance kept)
+2. Top 15 sent to LLM rerank — scores only, `max_tokens` 600
+3. **Top section**: score ≥ 60, capped at 15. If < 3 qualify, relax threshold and take top 15 regardless
+4. **"Also interested in" section**: remaining candidates ordered by score descending
 
 ## Cold Start UX
 
@@ -171,6 +254,7 @@ Search from homepage redirects to `/smart-search?q=...` instead of showing inlin
 - Fetches AI results + brands + filter options in parallel on load
 - Shows a **horizontal accordion filter bar** (multi-select checkboxes per filter category)
 - Filters: Brand, Collection (cascades from brand), Case Material, Diameter, Movement, Dial Color, Water Resistance, Power Reserve, Complication, Price — all multi-select
+- Filter bar is pre-populated from `QueryIntent` returned by the backend (LLM-parsed intent)
 - **Wrist Fit input**: number → appended as `?wristFit=17` to all watch card links → pre-fills `WristFitWidget` on the detail page
 - All filtering is client-side (`useMemo`) on the full AI result set — no re-fetch
 - Results show in full-width 4-column grid with divider between top/other sections

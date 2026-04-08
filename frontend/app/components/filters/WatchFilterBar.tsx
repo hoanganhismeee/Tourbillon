@@ -439,6 +439,11 @@ interface WatchFilterBarProps {
 export function WatchFilterBar({
   filters, brands, collections, diameterOptions, wristFit, hasActiveFilters, onChange, onWristFitChange, onClear,
 }: WatchFilterBarProps) {
+  // Cascade: when brands are selected, only show collections belonging to those brands.
+  const visibleCollections = filters.brandIds.length > 0
+    ? collections.filter(c => filters.brandIds.includes(c.brandId))
+    : collections;
+
   return (
     <div className="pb-5 mb-6 border-b border-white/8">
       <div className="flex items-center gap-2 flex-wrap">
@@ -450,10 +455,20 @@ export function WatchFilterBar({
         <BrandDropdown
           brands={brands}
           selected={filters.brandIds}
-          onChange={v => onChange('brandIds', v)}
+          onChange={v => {
+            onChange('brandIds', v);
+            // Drop any selected collections that no longer belong to the new brand set
+            if (filters.collectionIds.length > 0) {
+              const validIds = new Set(
+                collections.filter(c => v.includes(c.brandId)).map(c => c.id)
+              );
+              const kept = filters.collectionIds.filter(id => validIds.has(id));
+              if (kept.length !== filters.collectionIds.length) onChange('collectionIds', kept);
+            }
+          }}
         />
         <CollectionDropdown
-          collections={collections}
+          collections={visibleCollections}
           selected={filters.collectionIds}
           onChange={v => onChange('collectionIds', v)}
         />

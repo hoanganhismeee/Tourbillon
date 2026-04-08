@@ -1,14 +1,16 @@
-// Chat concierge context — manages message history, session ID, and loading state.
+// Chat concierge context — manages message history, session ID, loading state, and actions.
 // SessionID persisted in sessionStorage so history survives navigations but resets on hard reload.
 'use client';
 
 import { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
-import { sendChatMessage, clearChatSession, type ChatWatchCard } from '@/lib/api';
+import { sendChatMessage, clearChatSession, type ChatWatchCard, type ChatAction } from '@/lib/api';
+import { getBufferedEvents } from '@/lib/behaviorTracker';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   watchCards?: ChatWatchCard[];
+  actions?: ChatAction[];
 }
 
 interface ChatContextValue {
@@ -24,6 +26,39 @@ interface ChatContextValue {
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
+
+// Builds a short human-readable summary of recent browsing behavior from localStorage.
+// Returned as a context string to personalize concierge responses.
+function buildBehaviorSummary(): string | undefined {
+  const events = getBufferedEvents();
+  if (events.length === 0) return undefined;
+
+  const brandCounts: Record<string, number> = {};
+  const collectionCounts: Record<string, number> = {};
+
+  for (const e of events) {
+    if (e.type === 'brand_view' && e.entityName) {
+      brandCounts[e.entityName] = (brandCounts[e.entityName] || 0) + 1;
+    } else if (e.type === 'collection_view' && e.entityName) {
+      collectionCounts[e.entityName] = (collectionCounts[e.entityName] || 0) + 1;
+    }
+  }
+
+  const parts: string[] = [];
+  const topBrands = Object.entries(brandCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name, count]) => `${name} (${count}x)`);
+  if (topBrands.length > 0) parts.push(`Recently browsed brands: ${topBrands.join(', ')}`);
+
+  const topCollections = Object.entries(collectionCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name, count]) => `${name} (${count}x)`);
+  if (topCollections.length > 0) parts.push(`Recently browsed collections: ${topCollections.join(', ')}`);
+
+  return parts.length > 0 ? parts.join('. ') + '.' : undefined;
+}
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -53,7 +88,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
 
     try {
-      const result = await sendChatMessage(sessionIdRef.current, text);
+      const behaviorSummary = buildBehaviorSummary();
+      const result = await sendChatMessage(sessionIdRef.current, text, behaviorSummary);
       setDailyUsed(result.dailyUsed ?? null);
       setDailyLimit(result.dailyLimit ?? null);
 
@@ -61,6 +97,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         role: 'assistant',
         content: result.message,
         watchCards: result.watchCards?.length ? result.watchCards : undefined,
+        actions: result.actions?.length ? result.actions : undefined,
       };
       setMessages(prev => [...prev, assistantMessage]);
     } catch {

@@ -1,12 +1,16 @@
 // Chat panel — full interactive implementation of the concierge chat interface.
-// Renders message bubbles, markdown, watch thumbnail cards, and example prompt chips.
+// Renders message bubbles, markdown, watch thumbnail cards, action chips, and example prompts.
 'use client';
 
-import { useEffect, useRef, useState, KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, KeyboardEvent, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useChat } from '@/contexts/ChatContext';
+import { useCursor } from '@/contexts/CursorContext';
 import { imageTransformations } from '@/lib/cloudinary';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { ChatWatchCard } from '@/lib/api';
+import type { ChatWatchCard, ChatAction } from '@/lib/api';
+import { fetchWatchBySlug } from '@/lib/api';
+import { useCompare } from '@/stores/compareStore';
 
 const EXAMPLE_PROMPTS = [
   'Compare the Aquanaut and the Overseas',
@@ -16,21 +20,18 @@ const EXAMPLE_PROMPTS = [
 
 // Simple markdown renderer — handles bold, italic, links, and line breaks
 function renderMarkdown(text: string): React.ReactNode[] {
-  // Split on newlines first
   const lines = text.split('\n');
   const result: React.ReactNode[] = [];
 
   lines.forEach((line, lineIdx) => {
     if (lineIdx > 0) result.push(<br key={`br-${lineIdx}`} />);
 
-    // Process inline patterns: **bold**, *italic*, [text](url)
     const parts: React.ReactNode[] = [];
     const pattern = /(\*\*([^*]+)\*\*|\*([^*]+)\*|\[([^\]]+)\]\(([^)]+)\))/g;
     let lastIndex = 0;
     let match: RegExpExecArray | null;
 
     while ((match = pattern.exec(line)) !== null) {
-      // Text before this match
       if (match.index > lastIndex) {
         parts.push(line.slice(lastIndex, match.index));
       }
@@ -40,7 +41,6 @@ function renderMarkdown(text: string): React.ReactNode[] {
       } else if (match[0].startsWith('*')) {
         parts.push(<em key={`${lineIdx}-${match.index}`}>{match[3]}</em>);
       } else {
-        // Link — pill chip for internal nav links (/collections, /brands, /watches), underline for external
         const href = match[5];
         const isInternal = href.startsWith('/');
         const isNavLink = /^\/(collections|brands|watches)\//.test(href);
@@ -70,7 +70,6 @@ function renderMarkdown(text: string): React.ReactNode[] {
       lastIndex = match.index + match[0].length;
     }
 
-    // Remaining text after last match
     if (lastIndex < line.length) {
       parts.push(line.slice(lastIndex));
     }
@@ -81,8 +80,9 @@ function renderMarkdown(text: string): React.ReactNode[] {
   return result;
 }
 
-// Compact watch card shown below assistant messages
+// Compact watch card shown below assistant messages — switches cursor to tourbillon on hover
 function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
+  const { setCursor } = useCursor();
   return (
     <div className="flex gap-3 mt-3 overflow-x-auto pb-1">
       {cards.map(card => (
@@ -91,6 +91,8 @@ function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
           href={`/watches/${card.slug || card.id}`}
           className="flex-shrink-0 flex flex-col items-center gap-1.5 rounded-xl border border-white/10 p-2.5 hover:border-[#bfa68a]/40 transition-colors"
           style={{ background: 'rgba(255,255,255,0.04)', width: 100 }}
+          onMouseEnter={() => setCursor('tourbillon')}
+          onMouseLeave={() => setCursor('default')}
         >
           <div className="w-16 h-16 relative overflow-hidden rounded-lg bg-white/5">
             {card.imageUrl || card.image ? (
@@ -118,18 +120,77 @@ function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
   );
 }
 
+// Action chips rendered below assistant messages — compare and smart-search actions
+function ActionChips({ actions }: { actions: ChatAction[] }) {
+  const router = useRouter();
+  const { addToCompare } = useCompare();
+  const [compareStatus, setCompareStatus] = useState<Record<number, 'idle' | 'adding' | 'done'>>({});
+
+  const handleCompare = useCallback(async (action: ChatAction, idx: number) => {
+    if (!action.slugs?.length || compareStatus[idx] !== 'idle') return;
+    setCompareStatus(prev => ({ ...prev, [idx]: 'adding' }));
+    try {
+      const watches = await Promise.all(action.slugs.map(slug => fetchWatchBySlug(slug)));
+      watches.forEach(w => addToCompare(w));
+      setCompareStatus(prev => ({ ...prev, [idx]: 'done' }));
+    } catch {
+      setCompareStatus(prev => ({ ...prev, [idx]: 'idle' }));
+    }
+  }, [addToCompare, compareStatus]);
+
+  if (!actions.length) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 mt-3">
+      {actions.map((action, idx) => {
+        if (action.type === 'search' && action.query) {
+          return (
+            <button
+              key={idx}
+              onClick={() => router.push(`/smart-search?q=${encodeURIComponent(action.query!)}`)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#bfa68a]/30 text-[#bfa68a] text-[11px] px-3 py-1.5 hover:border-[#bfa68a]/60 hover:text-[#ecddc8] hover:bg-[#bfa68a]/10 transition-colors"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+              </svg>
+              {action.label}
+            </button>
+          );
+        }
+
+        if (action.type === 'compare' && action.slugs?.length) {
+          const status = compareStatus[idx] ?? 'idle';
+          return (
+            <button
+              key={idx}
+              onClick={() => handleCompare(action, idx)}
+              disabled={status !== 'idle'}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#bfa68a]/30 text-[#bfa68a] text-[11px] px-3 py-1.5 hover:border-[#bfa68a]/60 hover:text-[#ecddc8] hover:bg-[#bfa68a]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="7" height="18" rx="1" /><rect x="14" y="3" width="7" height="18" rx="1" />
+              </svg>
+              {status === 'adding' ? 'Adding…' : status === 'done' ? 'Added to compare' : action.label}
+            </button>
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
+}
+
 export default function ChatPanel() {
   const { messages, isLoading, dailyUsed, dailyLimit, sendMessage, clearSession } = useChat();
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll to bottom on new message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -190,7 +251,6 @@ export default function ChatPanel() {
             </svg>
             <h3 className="text-[#ecddc8]/70 text-base font-playfair">How can I help you?</h3>
 
-            {/* Clickable example prompt chips */}
             <div className="flex flex-col items-center gap-2 w-full max-w-xs">
               {EXAMPLE_PROMPTS.map((prompt) => (
                 <button
@@ -223,6 +283,9 @@ export default function ChatPanel() {
               <div>{renderMarkdown(msg.content)}</div>
               {msg.watchCards && msg.watchCards.length > 0 && (
                 <WatchCardRow cards={msg.watchCards} />
+              )}
+              {msg.actions && msg.actions.length > 0 && (
+                <ActionChips actions={msg.actions} />
               )}
             </div>
           </div>
