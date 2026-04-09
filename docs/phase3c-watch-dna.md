@@ -134,6 +134,8 @@ Click "Continue with Google"
 
 **Conflict resolution:** If a user registered with email + password, then tries Google with the same email, they are signed into their existing account. No duplicate user.
 
+**Frontend proxy note:** Even when general frontend API traffic uses `NEXT_PUBLIC_API_URL=/api/backend`, Google OAuth should still open the ASP.NET backend auth URL directly. This keeps the external-auth challenge, correlation cookie, `/signin-google` callback, and `/api/authentication/google-callback` controller on the same host with less proxy-specific failure risk.
+
 ### Setup (user-secrets)
 
 ```bash
