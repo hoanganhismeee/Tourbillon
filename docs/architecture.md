@@ -63,7 +63,8 @@ Entry point: `backend/Program.cs`
 ### Services (28)
 
 **AI & Retrieval:**
-- `WatchFinderService` — Orchestrates the hybrid pipeline: (1) `ParseQueryIntentAsync` extracts brand/collection/price as hard SQL pre-filters (no LLM, ~5ms); (2) embed query -> check QueryCache; (3) on miss: vector similarity search with pre-filters -> tier routing (Tier 2 skip LLM / Tier 3 rerank / Tier 4 empty) -> background cache store. Returns QueryIntent to frontend for filter bar pre-population.
+- `WatchFinderService` — Orchestrates Smart Search routing. Deterministic intent parsing runs first; non-watch queries return empty early; high-confidence catalogue queries go through direct SQL / deterministic fallback before vector retrieval; semantic or weakly structured queries continue to embedding + rerank. Returns `QueryIntent` to the frontend for filter-bar pre-population, including style-derived collection suggestions that are UI-only and not hard SQL collection filters.
+- `DeterministicWatchSearchService` — Catalogue-first Smart Search path for exact references, reference fragments, explicit brand / collection queries, and structured spec queries (price, diameter, material, movement, WR). Includes relaxed near-match fallback so over-tight spec combinations prefer close catalogue matches over empty results.
 - `WatchFilterMapper` — Maps parsed intent to SQL predicates.
 - `WatchEmbeddingService` — Builds 4 text chunks per watch (full, brand_style, specs, use_case), calls ai-service `/embed` in true batches (50 watches / 200 texts per HTTP call), upserts into WatchEmbeddings. Category taxonomy is deterministic (`InferCategory`, `InferOccasions`).
 - `QueryCacheService` — Persistent semantic query cache. Cosine similarity threshold 0.92. Cache bypassed when hard SQL filters detected.
