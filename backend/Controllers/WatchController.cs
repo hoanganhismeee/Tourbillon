@@ -94,10 +94,25 @@ public class WatchController : ControllerBase
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(v => v);
 
+        static string? DiameterLabel(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            var match = System.Text.RegularExpressions.Regex.Match(raw, @"(\d+(?:\.\d+)?)");
+            if (!match.Success) return null;
+            return double.TryParse(
+                match.Groups[1].Value,
+                System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var mm)
+                ? $"{Math.Floor(mm)}mm"
+                : null;
+        }
+
         var options = new
         {
             caseMaterials    = Distinct(specsList.Select(s => s.Case?.Material)).ToList(),
             movementTypes    = Distinct(specsList.Select(s => s.Movement?.Type)).ToList(),
+            diameters        = Distinct(specsList.Select(s => DiameterLabel(s.Case?.Diameter))).ToList(),
             dialColors       = Distinct(specsList.Select(s => s.Dial?.Color)).ToList(),
             waterResistance  = Distinct(specsList.Select(s => s.Case?.WaterResistance)).ToList(),
             powerReserve     = Distinct(specsList.Select(s => s.Movement?.PowerReserve)).ToList(),

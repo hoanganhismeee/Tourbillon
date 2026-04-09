@@ -157,6 +157,7 @@ builder.Services.AddHttpClient("ai-service", c =>
     c.Timeout = TimeSpan.FromSeconds(360); // 6 min — covers gemma2:9b at 1200 tokens (~3-5 min)
 });
 builder.Services.AddSingleton<WatchFilterMapper>();
+builder.Services.AddScoped<IDeterministicWatchSearchService, DeterministicWatchSearchService>();
 builder.Services.AddScoped<WatchFinderService>();
 builder.Services.AddScoped<WatchEmbeddingService>();
 builder.Services.AddScoped<QueryCacheService>();
