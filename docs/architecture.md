@@ -68,8 +68,8 @@ Entry point: `backend/Program.cs`
 - `WatchFilterMapper` — Maps parsed intent to SQL predicates.
 - `WatchEmbeddingService` — Builds 4 text chunks per watch (full, brand_style, specs, use_case), calls ai-service `/embed` in true batches (50 watches / 200 texts per HTTP call), upserts into WatchEmbeddings. Category taxonomy is deterministic (`InferCategory`, `InferOccasions`).
 - `QueryCacheService` — Persistent semantic query cache. Cosine similarity threshold 0.92. Cache bypassed when hard SQL filters detected.
-- `ChatService` — Chat concierge orchestration. Short-circuits abusive and unrelated prompts, resolves exact watches and compare requests deterministically, reuses `WatchFinderService` for discovery queries, and sends only compact Tourbillon catalogue context to ai-service when explanation helps. Redis session store with 1-hour TTL. Rate-limited per user/day. System prompt is scoped, grounded, and anti-hallucination by default.
-- `TasteProfileService` — Watch DNA. Two AI paths: `ParseAndSaveAsync` (manual text → `/parse-taste`) and `GenerateFromBehaviorAsync` (browsing events → `/generate-dna-from-behavior`). `ScoreWatch()` is a pure static method (brand +3, material +2, dial +2, size +1, price +1 = 9 max). Zero AI cost at browse time.
+- `ChatService` — Chat concierge orchestration. Short-circuits abusive and unrelated prompts, resolves exact watches and compare requests deterministically, reuses `WatchFinderService` for discovery queries, and sends only compact Tourbillon catalogue context to ai-service when explanation helps. Signed-in users also send a compact Watch DNA + behavior summary so responses can adapt to their inferred taste without exposing raw profile internals. Redis session store with 1-hour TTL. Rate-limited per user/day. System prompt is scoped, grounded, anti-hallucination, and catalogue-bound by default.
+- `TasteProfileService` — Watch DNA. Two AI paths: `ParseAndSaveAsync` (manual text → `/parse-taste`) and `GenerateFromBehaviorAsync` (browsing events → `/generate-dna-from-behavior`). Manual taste remains the durable source of truth; behavior analysis is stored separately and only fills gaps in the effective profile. `ScoreWatch()` is a pure static method (brand +3, material +2, dial +2, size +1, price +1 = 9 max). Zero AI cost at browse time.
 - `BehaviorService` — Browsing event storage for Watch DNA. `FlushEventsAsync` bulk-inserts with time-window deduplication (single batch query). `MergeAnonymousAsync` reassigns anonymous events to authenticated user. `GetRecentEventsAsync` returns recent events for AI profile generation. Requires ≥ 3 events before generation is attempted.
 - `WatchEditorialService` — Editorial content per collection. Generated once, stored in DB, served at zero runtime cost. 339/339 coverage.
 
@@ -112,7 +112,7 @@ Entry point: `backend/Program.cs`
 | `UserFavourite` | Composite PK (UserId, WatchId) |
 | `UserCollection` | Named user collections |
 | `UserCollectionWatch` | Junction: watches in collections |
-| `UserTasteProfile` | Watch DNA preferences (JSON arrays as text columns, unique per user) + `Summary` (AI-generated 1–2 sentence taste description) |
+| `UserTasteProfile` | Watch DNA preferences (JSON arrays as text columns, unique per user) + separate behavior-analysis fields + `Summary` (AI-generated 1–2 sentence taste description) |
 | `UserBrowsingEvent` | Browsing event for Watch DNA generation. `UserId` nullable (anonymous until merge). `AnonymousId` = client UUID from localStorage. EventType: watch_view, brand_view, collection_view, search. |
 | `ChatSession` | In-memory chat session with conversation history |
 | `ContactInquiry` | Advisor inquiry with snapshot fields |
@@ -170,13 +170,13 @@ Email: `TestEmailDto`
 | `/contact` | Contact advisor inquiry form |
 | `/search` | Redirects to `/smart-search` |
 | `/stories` | Curated editorial articles (5 horological stories) |
-| `/trend` | Trend page (placeholder) |
+| `/trend` | Trend-led Watch DNA page with auto behavior analysis |
 | `/login`, `/register` | Auth |
 | `/login/magic` | Magic link OTP entry |
 | `/auth/callback` | Google OAuth callback |
 | `/forgot-password`, `/reset-password` | Password recovery |
 | `/account` | User account management |
-| `/account/edit-details` | Profile editing + Watch DNA form |
+| `/account/edit-details` | Profile editing + link out to Watch DNA on `/trend` |
 | `/scrape` | Admin watch management (temporary) |
 | `/debug-images` | Image debugging utility |
 
@@ -200,7 +200,7 @@ Email: `TestEmailDto`
 - `AuthContext` — User auth state, login/logout, profile
 - `WatchesPageContext` — Watch listing, filter, pagination state
 - `NavigationContext` — Navigation state
-- `ChatContext` — Chat concierge state
+- `ChatContext` — Chat concierge state. Persists session ID, visible message history, and usage counters in `sessionStorage` so chat survives soft navigation and hard refresh in the same tab. When authenticated, it also fetches the user's Watch DNA profile and folds a compact taste summary into chat requests.
 - `CursorContext` — Custom cursor state
 
 ### Key Libraries

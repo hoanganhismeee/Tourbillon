@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { getTasteProfile } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { ROUTES } from '@/app/constants/routes';
 import ScrollFade from '@/app/scrollMotion/ScrollFade';
 
 const DIMENSIONS = [
@@ -48,14 +49,17 @@ export default function WatchDnaSpotlight() {
   }, []);
 
   const { data: profile } = useQuery({
-    queryKey: ['taste-profile'],
+    queryKey: ['tasteProfile'],
     queryFn: getTasteProfile,
     enabled: isAuthenticated,
     retry: false,
     throwOnError: false,
   });
 
-  const hasProfile = !!profile?.summary || (profile?.preferredBrandIds?.length ?? 0) > 0;
+  const hasProfile =
+    !!profile?.behaviorSummary ||
+    !!profile?.tasteText ||
+    (profile?.preferredBrandIds?.length ?? 0) > 0;
 
   if (authLoading) return null;
 
@@ -103,10 +107,10 @@ export default function WatchDnaSpotlight() {
                     )}
                   </div>
                   <Link
-                    href="/watches"
+                    href={ROUTES.TREND}
                     className="inline-flex items-center gap-4 text-[10px] tracking-[0.25em] uppercase font-inter text-[#f0e6d2]/70 border border-[#bfa68a]/30 hover:text-[#f0e6d2] hover:border-[#bfa68a]/80 px-8 py-4 transition-all duration-500 relative overflow-hidden group mt-2"
                   >
-                    <span className="relative z-10">See Your Matches</span>
+                    <span className="relative z-10">Open Watch DNA</span>
                     <svg className="w-3.5 h-3.5 relative z-10 transition-transform duration-500 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
@@ -122,10 +126,10 @@ export default function WatchDnaSpotlight() {
                     Browse a few watches to sharpen your curation. Your Watch DNA naturally adapts to your evolving tastes.
                   </p>
                   <Link
-                    href="/account/edit-details"
+                    href={ROUTES.TREND}
                     className="inline-flex items-center gap-4 text-[10px] tracking-[0.25em] uppercase font-inter text-[#f0e6d2]/70 border border-[#bfa68a]/30 hover:text-[#f0e6d2] hover:border-[#bfa68a]/80 px-8 py-4 transition-all duration-500 relative overflow-hidden group mt-2"
                   >
-                    <span className="relative z-10">Generate Profile</span>
+                    <span className="relative z-10">Open Watch DNA</span>
                     <svg className="w-3.5 h-3.5 relative z-10 transition-transform duration-500 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                     </svg>
@@ -141,7 +145,7 @@ export default function WatchDnaSpotlight() {
                     The more you explore, the sharper your curation gets. Watch DNA quietly learns your unparalleled taste to surface pieces you&apos;ll love.
                   </p>
                   <Link
-                    href="/login"
+                    href={`${ROUTES.LOGIN}?redirect=${ROUTES.TREND}`}
                     className="inline-flex items-center gap-4 text-[10px] tracking-[0.25em] uppercase font-inter text-[#f0e6d2]/70 border border-[#bfa68a]/30 hover:text-[#f0e6d2] hover:border-[#bfa68a]/80 px-8 py-4 transition-all duration-500 relative overflow-hidden group mt-2"
                   >
                     <span className="relative z-10">Sign in to unlock Watch DNA</span>

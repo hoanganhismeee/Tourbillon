@@ -4,22 +4,31 @@
 
 ### Overview
 
-Registered users describe their watch taste in plain text (≤50 words). The AI service extracts structured preferences from that text. Those preferences drive a rule-based scoring function that re-orders the All Watches grid — preferred watches float to the top; unmatched watches keep the interleaved-by-brand shuffle in the tail.
+Users can still describe their watch taste in plain text (≤50 words), but Watch DNA now lives primarily on `/trend`. The AI also produces a separate behavior analysis from recent browsing events. Manual taste remains durable; behavior analysis fills the gaps and explains the user's current direction.
 
-Zero AI cost at browse time. The LLM is called exactly once when the user saves their taste.
+Browse-time ranking stays zero-AI. The catalogue keeps a deterministic base order, then applies capped trend-led boosts so recent signals shape the opening rows without replacing the whole list.
 
 ---
 
 ### User-facing flow
 
-1. Registered user navigates to **Edit Details** (`/account/edit-details`)
-2. The **Watch DNA** section is at the top of the page (above personal details)
-3. User types a free-text description: e.g. *"I like Vacheron dress watch 39-40mm"*
-4. Live word count shows `X / 50 words`. Hard-coded note: *"Limit to 50 words to save model token, cause I'm broke"*
-5. User clicks **Save My Taste** → loading spinner while AI processes (~2–5s)
-6. After save: extracted preference chips appear: *"We understood: Vacheron Constantin · medium case"*
-7. TanStack Query's `['tasteProfile']` key is invalidated → All Watches grid re-sorts immediately
-8. Anonymous visitors see a CTA on the homepage below Watch Finder: *"Sign in to personalise your watch feed"*
+1. Signed-in user opens **Trend** (`/trend`)
+2. Watch DNA auto-runs behavior analysis on load via `POST /api/taste/generate`
+3. While analysis runs, Trend shows a loading state instead of a manual regenerate button
+4. When enough data exists, the behavior summary and extracted chips appear automatically
+5. Users can still write a manual taste note; that save goes through `POST /api/taste`
+6. TanStack Query's `['tasteProfile']` key is invalidated → All Watches re-ranks immediately
+7. Account details now link out to Trend instead of embedding the full Watch DNA form
+8. Anonymous visitors see a guest CTA on Trend and can still sign in from the homepage spotlight
+
+### Anonymous browsing flow
+
+1. Anonymous visitor browses watches, brands, or collections
+2. `behaviorTracker.ts` writes events into localStorage under `tourbillon-behavior` and keeps a persistent `tourbillon-anon-id`
+3. On login or session restore, `AuthContext` flushes that local buffer to `POST /api/behavior/events`
+4. `POST /api/behavior/merge` reassigns those anonymous `UserBrowsingEvents` rows to the authenticated user
+5. No taste profile row is written during anonymous browsing itself
+6. `UserTasteProfiles` updates only when manual save runs or when `/api/taste/generate` runs for the signed-in user
 
 ---
 
@@ -36,7 +45,7 @@ Applied client-side in `AllWatchesSection.tsx` via `scoreTasteMatch()`. The same
 | Price range | +1 | `currentPrice` within `[priceMin, priceMax]` — PoR watches (price=0) excluded |
 | **Max** | **9** | |
 
-Sort order: `matched` watches (score > 0) sorted DESC by score → `unmatched` (score = 0) interleaved by brand.
+Sort order: deterministic base catalogue order first, then a capped personalized re-rank inside the opening window. Brand caps keep the first rows visually diverse even when recent behavior leans heavily toward one maison.
 
 ---
 
@@ -73,9 +82,17 @@ POST /api/taste { tasteText }
 | PriceMin | numeric? | |
 | PriceMax | numeric? | |
 | PreferredCaseSize | text? | `"small"` / `"medium"` / `"large"` / null |
+| Summary | text? | Latest behavior-analysis summary |
+| BehaviorPreferredBrandIds | text | JSON int[] default `[]` |
+| BehaviorPreferredMaterials | text | JSON string[] default `[]` |
+| BehaviorPreferredDialColors | text | JSON string[] default `[]` |
+| BehaviorPriceMin | numeric? | |
+| BehaviorPriceMax | numeric? | |
+| BehaviorPreferredCaseSize | text? | `"small"` / `"medium"` / `"large"` / null |
+| BehaviorAnalyzedAt | timestamptz? | Cooldown + freshness marker for auto generation |
 | UpdatedAt | timestamptz | |
 
-Migration: `20260322010000_AddUserTasteProfile.cs`
+Migrations: `20260322010000_AddUserTasteProfile.cs`, `20260409051736_AddBehaviorTasteAnalysisFields.cs`
 
 ---
 
@@ -90,8 +107,8 @@ Migration: `20260322010000_AddUserTasteProfile.cs`
 | `backend/Controllers/TasteController.cs` | GET + POST `/api/taste` |
 | `ai-service/prompts/taste.py`, `ai-service/routes/taste.py` | `TASTE_SYSTEM_PROMPT` + `POST /parse-taste` |
 | `frontend/lib/api.ts` | `TasteProfile`, `getTasteProfile`, `saveTasteProfile` |
-| `frontend/app/account/edit-details/WatchDnaForm.tsx` | Textarea + word count + chips |
-| `frontend/app/components/sections/AllWatchesSection.tsx` | `scoreTasteMatch()` + personalized sort |
+| `frontend/app/trend/TrendWatchDnaStudio.tsx` | Auto analysis surface + manual note editor |
+| `frontend/app/watches/AllWatchesSection.tsx` | `scoreTasteMatch()` + capped trend-led sort |
 | `frontend/app/components/TasteCTA.tsx` | Anonymous visitor CTA |
 | `backend.Tests/Services/TasteProfileServiceTests.cs` | 12 ScoreWatch unit tests |
 

@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import StaggeredFade from "../../scrollMotion/StaggeredFade";
-import WatchDnaForm from "./WatchDnaForm";
 import UpdateDetailsForm from "./UpdateDetailsForm";
 import ChangePasswordForm from "./ChangePasswordForm";
 import DeleteAccountForm from "./DeleteAccountForm";
@@ -29,9 +28,6 @@ export default function EditDetailsPage() {
               Update your personal information and preferences
             </p>
           </div>
-
-          {/* Watch DNA — taste-based personalisation, placed first */}
-          <WatchDnaForm />
 
           {/* Update Details Form */}
           <UpdateDetailsForm user={user} />
