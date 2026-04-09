@@ -213,4 +213,81 @@ public class TasteProfileServiceTests
 
         Assert.Equal(9, TasteProfileService.ScoreWatch(watch, profile));
     }
+
+    [Fact]
+    public void MergePreferenceLayers_UsesBehaviorOnlyWhenManualFieldMissing()
+    {
+        var manual = new TasteProfileDto
+        {
+            PreferredCaseSize = "medium",
+            PriceMin = 10000,
+            PriceMax = 20000,
+        };
+        manual.PreferredBrandIds.Add(2);
+
+        var behavior = new TasteProfileDto
+        {
+            PreferredCaseSize = "large",
+            Summary = "Integrated bracelet sport watches are surfacing most often.",
+        };
+        behavior.PreferredBrandIds.Add(5);
+        behavior.PreferredMaterials.Add("titanium");
+
+        var merged = TasteProfileService.MergePreferenceLayers(manual, behavior);
+
+        Assert.Equal([2], merged.PreferredBrandIds);
+        Assert.Equal(["titanium"], merged.PreferredMaterials);
+        Assert.Equal("medium", merged.PreferredCaseSize);
+        Assert.Equal(10000, merged.PriceMin);
+        Assert.Equal(20000, merged.PriceMax);
+        Assert.Equal(behavior.Summary, merged.Summary);
+    }
+
+    [Fact]
+    public void ShouldRefreshBehaviorAnalysis_ReturnsFalse_WithinCooldown()
+    {
+        var now = new DateTime(2026, 4, 9, 18, 0, 0, DateTimeKind.Utc);
+        var analyzedAt = now.AddHours(-2);
+        var latestEventAt = now.AddMinutes(-30);
+
+        var shouldRefresh = TasteProfileService.ShouldRefreshBehaviorAnalysis(
+            analyzedAt,
+            latestEventAt,
+            now,
+            TimeSpan.FromHours(6));
+
+        Assert.False(shouldRefresh);
+    }
+
+    [Fact]
+    public void ShouldRefreshBehaviorAnalysis_ReturnsFalse_WhenNoNewEvents()
+    {
+        var now = new DateTime(2026, 4, 9, 18, 0, 0, DateTimeKind.Utc);
+        var analyzedAt = now.AddHours(-8);
+        var latestEventAt = now.AddHours(-9);
+
+        var shouldRefresh = TasteProfileService.ShouldRefreshBehaviorAnalysis(
+            analyzedAt,
+            latestEventAt,
+            now,
+            TimeSpan.FromHours(6));
+
+        Assert.False(shouldRefresh);
+    }
+
+    [Fact]
+    public void ShouldRefreshBehaviorAnalysis_ReturnsTrue_WhenNewEventsExistPastCooldown()
+    {
+        var now = new DateTime(2026, 4, 9, 18, 0, 0, DateTimeKind.Utc);
+        var analyzedAt = now.AddHours(-8);
+        var latestEventAt = now.AddHours(-1);
+
+        var shouldRefresh = TasteProfileService.ShouldRefreshBehaviorAnalysis(
+            analyzedAt,
+            latestEventAt,
+            now,
+            TimeSpan.FromHours(6));
+
+        Assert.True(shouldRefresh);
+    }
 }

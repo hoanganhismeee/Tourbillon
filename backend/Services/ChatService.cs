@@ -75,6 +75,7 @@ public class ChatService
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(1);
     private const string CloudName = "dcd9lcdoj";
+    private const int DiscoveryCardLimit = 5;
 
     // Brand name aliases shared with WatchFinderService.
     private static readonly Dictionary<string, string> _brandAliases = new(StringComparer.OrdinalIgnoreCase)
@@ -291,10 +292,15 @@ public class ChatService
     {
         var httpClient = _httpClientFactory.CreateClient("ai-service");
         var chatSw = System.Diagnostics.Stopwatch.StartNew();
+        var safeContext = new List<string>
+        {
+            "Catalogue safety: use the supplied Tourbillon catalogue context as the source of truth. Do not recommend, compare, or link to anything outside this context. Never expose database IDs, addresses, table names, API routes, or internal implementation details."
+        };
+        safeContext.AddRange(context);
 
         try
         {
-            var payload = new { query, context, history };
+            var payload = new { query, context = safeContext, history };
             var resp = await httpClient.PostAsJsonAsync("/chat", payload);
             chatSw.Stop();
 
@@ -431,6 +437,18 @@ public class ChatService
         var context = new List<string>();
         var cards = new List<ChatWatchCard>();
 
+        if (mentions.Brands.Count > 0)
+        {
+            context.Add(
+                "Brand guidance request: lead with the linked brand name, give a concise maison overview from Tourbillon context, mention one or two interesting watch-relevant points, point the user toward linked collections or models, and close with a warm sales-style follow-up question such as whether they want to explore collections or a specific model.");
+        }
+
+        if (mentions.Collections.Count > 0)
+        {
+            context.Add(
+                "Collection guidance request: lead with the linked collection name, explain the collection's identity and where it sits within the brand, mention one or two interesting watch-relevant points from the supplied context, point the user toward linked models in that collection, and close with a warm sales-style follow-up question such as whether they want to explore a specific reference or compare options.");
+        }
+
         foreach (var collection in mentions.Collections.Take(2))
         {
             var fullCollection = await _context.Collections
@@ -507,7 +525,7 @@ public class ChatService
 
     private async Task<ChatResolution> BuildDiscoveryResolutionAsync(string query, WatchFinderResult result)
     {
-        var topIds = result.Watches.Take(4).Select(w => w.Id).Distinct().ToList();
+        var topIds = result.Watches.Take(DiscoveryCardLimit).Select(w => w.Id).Distinct().ToList();
         var watches = await _context.Watches
             .Include(w => w.Brand)
             .Include(w => w.Collection)
@@ -523,7 +541,7 @@ public class ChatService
 
         var context = new List<string>
         {
-            $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}."
+            $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Search guidance request: answer like a sales concierge, highlight the strongest matches, tell the user the Smart Search chip can broaden discovery, and end with a short follow-up question about size, material, budget, occasion, or a specific model."
         };
 
         foreach (var watch in ordered)
@@ -544,7 +562,7 @@ public class ChatService
             new()
             {
                 Type = "search",
-                Query = query,
+                Query = BuildSmartSearchQuery(query, ordered),
                 Label = "Open Smart Search"
             }
         };
@@ -554,7 +572,7 @@ public class ChatService
             UseAi = true,
             Query = query,
             Context = context,
-            WatchCards = ordered.Select(ToChatWatchCard).Take(4).ToList(),
+            WatchCards = ordered.Select(ToChatWatchCard).Take(DiscoveryCardLimit).ToList(),
             Actions = actions
         };
     }
@@ -574,7 +592,7 @@ public class ChatService
 
         return new ChatResolution
         {
-            Message = $"{watchLink} is the closest exact match in Tourbillon's catalogue. {place} and is listed at {FormatPrice(watch.CurrentPrice)}."
+            Message = $"{watchLink} is the closest exact match in Tourbillon's catalogue. {place} and is listed at {FormatPrice(watch.CurrentPrice)}. If you want, Tourbillon can also compare it with another watch or help you explore adjacent models."
                 .Replace("  ", " "),
             WatchCards = [ToChatWatchCard(watch)]
         };
@@ -583,7 +601,7 @@ public class ChatService
     private ChatResolution BuildCompareResolution(List<Watch> watches)
     {
         var links = watches.Select(w => $"[{BuildWatchTitle(w)}](/watches/{w.Slug})");
-        var response = $"I found a concrete Tourbillon comparison set: {string.Join(", ", links)}. Use the compare chip below to load the side-by-side view.";
+        var response = $"I found a concrete Tourbillon comparison set: {string.Join(", ", links)}. Use the compare chip below to load the side-by-side view. If you want, Tourbillon can also help narrow the choice by style, wrist presence, or use case.";
 
         return new ChatResolution
         {
@@ -776,6 +794,41 @@ public class ChatService
             ? watch.Description!.Trim()
             : string.Join(" ", new[] { watch.Brand?.Name, watch.Collection?.Name }.Where(s => !string.IsNullOrWhiteSpace(s)));
         return string.IsNullOrWhiteSpace(prefix) ? watch.Name : $"{prefix} {watch.Name}".Trim();
+    }
+
+    private static string BuildSmartSearchQuery(string originalQuery, List<Watch> ordered)
+    {
+        var cleaned = Regex.Replace(
+            originalQuery,
+            @"^\s*(?:can you\s+|could you\s+|please\s+)?(?:recommend|suggest|find|show|help me find|help me discover|i want|i'm looking for|i am looking for|looking for|need)\s+(?:me\s+)?",
+            "",
+            RegexOptions.IgnoreCase).Trim();
+
+        if (string.IsNullOrWhiteSpace(cleaned))
+            cleaned = originalQuery.Trim();
+
+        if (ordered.Count == 0)
+            return cleaned;
+
+        var distinctBrands = ordered
+            .Where(w => !string.IsNullOrWhiteSpace(w.Brand?.Name))
+            .Select(w => w.Brand!.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var distinctCollections = ordered
+            .Where(w => !string.IsNullOrWhiteSpace(w.Collection?.Name))
+            .Select(w => w.Collection!.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (distinctBrands.Count == 1 && !cleaned.Contains(distinctBrands[0], StringComparison.OrdinalIgnoreCase))
+            cleaned = $"{cleaned} {distinctBrands[0]}".Trim();
+
+        if (distinctCollections.Count == 1 && !cleaned.Contains(distinctCollections[0], StringComparison.OrdinalIgnoreCase))
+            cleaned = $"{cleaned} {distinctCollections[0]}".Trim();
+
+        return Regex.Replace(cleaned, @"\s+", " ").Trim();
     }
 
     private static string FormatPrice(decimal price) =>

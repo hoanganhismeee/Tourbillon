@@ -21,6 +21,7 @@ public interface ITasteProfileService
 
 public class TasteProfileService : ITasteProfileService
 {
+    private static readonly TimeSpan BehaviorAnalysisCooldown = TimeSpan.FromHours(6);
     private readonly TourbillonContext _context;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IBehaviorService _behaviorService;
@@ -35,11 +36,14 @@ public class TasteProfileService : ITasteProfileService
     // Returns the user's current taste profile, or empty defaults if none exists.
     public async Task<TasteProfileDto> GetProfileAsync(int userId)
     {
+        var hasEnoughBehaviorData = (await _behaviorService.GetRecentEventsAsync(userId, 3)).Count >= 3;
         var profile = await _context.UserTasteProfiles
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.UserId == userId);
 
-        return profile == null ? new TasteProfileDto() : MapToDto(profile);
+        return profile == null
+            ? new TasteProfileDto { HasEnoughBehaviorData = hasEnoughBehaviorData }
+            : MapToDto(profile, hasEnoughBehaviorData);
     }
 
     // Sends taste text to ai-service for LLM extraction, resolves brand IDs, then upserts.
@@ -96,7 +100,7 @@ public class TasteProfileService : ITasteProfileService
         }
 
         await _context.SaveChangesAsync();
-        return MapToDto(profile);
+        return await GetProfileAsync(userId);
     }
 
     // Pure scoring function: rates a watch against a taste profile.
@@ -135,6 +139,42 @@ public class TasteProfileService : ITasteProfileService
         return score;
     }
 
+    // Manual taste is durable. Behavior analysis only fills gaps and should never replace
+    // explicit user choices.
+    public static TasteProfileDto MergePreferenceLayers(TasteProfileDto manual, TasteProfileDto behavior)
+    {
+        return new TasteProfileDto
+        {
+            PreferredBrandIds = manual.PreferredBrandIds.Count > 0
+                ? new List<int>(manual.PreferredBrandIds)
+                : new List<int>(behavior.PreferredBrandIds),
+            PreferredMaterials = manual.PreferredMaterials.Count > 0
+                ? new List<string>(manual.PreferredMaterials)
+                : new List<string>(behavior.PreferredMaterials),
+            PreferredDialColors = manual.PreferredDialColors.Count > 0
+                ? new List<string>(manual.PreferredDialColors)
+                : new List<string>(behavior.PreferredDialColors),
+            PriceMin = manual.PriceMin ?? behavior.PriceMin,
+            PriceMax = manual.PriceMax ?? behavior.PriceMax,
+            PreferredCaseSize = manual.PreferredCaseSize ?? behavior.PreferredCaseSize,
+            Summary = behavior.Summary,
+        };
+    }
+
+    public static bool ShouldRefreshBehaviorAnalysis(DateTime? analyzedAtUtc, DateTime? latestEventAtUtc, DateTime utcNow, TimeSpan cooldown)
+    {
+        if (!latestEventAtUtc.HasValue)
+            return false;
+
+        if (!analyzedAtUtc.HasValue)
+            return true;
+
+        if (latestEventAtUtc <= analyzedAtUtc)
+            return false;
+
+        return utcNow - analyzedAtUtc.Value >= cooldown;
+    }
+
     private static int ScoreCaseSize(string diameter, string preferredSize)
     {
         var match = Regex.Match(diameter, @"\d+\.?\d*");
@@ -150,17 +190,54 @@ public class TasteProfileService : ITasteProfileService
         return matches ? 1 : 0;
     }
 
-    private static TasteProfileDto MapToDto(UserTasteProfile p) => new()
+    private static TasteProfileDto MapToDto(UserTasteProfile p, bool hasEnoughBehaviorData)
     {
-        TasteText           = p.TasteText,
-        PreferredBrandIds   = Deserialise<List<int>>(p.PreferredBrandIds)    ?? new(),
-        PreferredMaterials  = Deserialise<List<string>>(p.PreferredMaterials) ?? new(),
-        PreferredDialColors = Deserialise<List<string>>(p.PreferredDialColors) ?? new(),
-        PriceMin            = p.PriceMin,
-        PriceMax            = p.PriceMax,
-        PreferredCaseSize   = p.PreferredCaseSize,
-        Summary             = p.Summary,
-    };
+        var manual = new TasteProfileDto
+        {
+            PreferredBrandIds = Deserialise<List<int>>(p.PreferredBrandIds) ?? new(),
+            PreferredMaterials = Deserialise<List<string>>(p.PreferredMaterials) ?? new(),
+            PreferredDialColors = Deserialise<List<string>>(p.PreferredDialColors) ?? new(),
+            PriceMin = p.PriceMin,
+            PriceMax = p.PriceMax,
+            PreferredCaseSize = p.PreferredCaseSize,
+        };
+
+        var behavior = new TasteProfileDto
+        {
+            PreferredBrandIds = Deserialise<List<int>>(p.BehaviorPreferredBrandIds) ?? new(),
+            PreferredMaterials = Deserialise<List<string>>(p.BehaviorPreferredMaterials) ?? new(),
+            PreferredDialColors = Deserialise<List<string>>(p.BehaviorPreferredDialColors) ?? new(),
+            PriceMin = p.BehaviorPriceMin,
+            PriceMax = p.BehaviorPriceMax,
+            PreferredCaseSize = p.BehaviorPreferredCaseSize,
+            Summary = p.Summary,
+        };
+
+        var merged = MergePreferenceLayers(manual, behavior);
+        merged.TasteText = p.TasteText;
+        merged.BehaviorPreferredBrandIds = new List<int>(behavior.PreferredBrandIds);
+        merged.BehaviorPreferredMaterials = new List<string>(behavior.PreferredMaterials);
+        merged.BehaviorPreferredDialColors = new List<string>(behavior.PreferredDialColors);
+        merged.BehaviorPriceMin = behavior.PriceMin;
+        merged.BehaviorPriceMax = behavior.PriceMax;
+        merged.BehaviorPreferredCaseSize = behavior.PreferredCaseSize;
+        merged.BehaviorSummary = behavior.Summary;
+        merged.BehaviorAnalyzedAt = p.BehaviorAnalyzedAt;
+        merged.HasBehaviorAnalysis = HasAnyPreference(behavior) || !string.IsNullOrWhiteSpace(behavior.Summary);
+        merged.HasEnoughBehaviorData = hasEnoughBehaviorData;
+
+        return merged;
+    }
+
+    private static bool HasAnyPreference(TasteProfileDto profile)
+    {
+        return profile.PreferredBrandIds.Count > 0 ||
+               profile.PreferredMaterials.Count > 0 ||
+               profile.PreferredDialColors.Count > 0 ||
+               profile.PriceMin.HasValue ||
+               profile.PriceMax.HasValue ||
+               !string.IsNullOrWhiteSpace(profile.PreferredCaseSize);
+    }
 
     private static T? Deserialise<T>(string? json)
     {
@@ -182,6 +259,8 @@ public class TasteProfileService : ITasteProfileService
         var events = await _behaviorService.GetRecentEventsAsync(userId, 100);
         if (events.Count < 3)
             return await GetProfileAsync(userId); // Not enough data yet
+
+        var latestEventAt = events.Max(e => e.Timestamp);
 
         var brands = await _context.Brands.AsNoTracking().ToListAsync();
         var brandNames = brands.Select(b => b.Name).ToList();
@@ -205,6 +284,9 @@ public class TasteProfileService : ITasteProfileService
             _context.UserTasteProfiles.Add(profile);
         }
 
+        if (!ShouldRefreshBehaviorAnalysis(profile.BehaviorAnalyzedAt, latestEventAt, DateTime.UtcNow, BehaviorAnalysisCooldown))
+            return MapToDto(profile, hasEnoughBehaviorData: true);
+
         profile.UpdatedAt = DateTime.UtcNow;
 
         try
@@ -222,13 +304,14 @@ public class TasteProfileService : ITasteProfileService
                 .Select(id => id!.Value)
                 .ToList();
 
-            profile.PreferredBrandIds   = JsonSerializer.Serialize(preferredBrandIds);
-            profile.PreferredMaterials  = JsonSerializer.Serialize(parsed.PreferredMaterials ?? []);
-            profile.PreferredDialColors = JsonSerializer.Serialize(parsed.PreferredDialColors ?? []);
-            profile.PriceMin            = parsed.PriceMin;
-            profile.PriceMax            = parsed.PriceMax;
-            profile.PreferredCaseSize   = parsed.PreferredCaseSize;
-            profile.Summary             = parsed.Summary;
+            profile.BehaviorPreferredBrandIds = JsonSerializer.Serialize(preferredBrandIds);
+            profile.BehaviorPreferredMaterials = JsonSerializer.Serialize(parsed.PreferredMaterials ?? []);
+            profile.BehaviorPreferredDialColors = JsonSerializer.Serialize(parsed.PreferredDialColors ?? []);
+            profile.BehaviorPriceMin = parsed.PriceMin;
+            profile.BehaviorPriceMax = parsed.PriceMax;
+            profile.BehaviorPreferredCaseSize = parsed.PreferredCaseSize;
+            profile.Summary = parsed.Summary;
+            profile.BehaviorAnalyzedAt = DateTime.UtcNow;
         }
         catch
         {
@@ -236,7 +319,7 @@ public class TasteProfileService : ITasteProfileService
         }
 
         await _context.SaveChangesAsync();
-        return MapToDto(profile);
+        return MapToDto(profile, hasEnoughBehaviorData: true);
     }
 
     // Internal DTO for deserializing the ai-service /parse-taste and /generate-dna-from-behavior responses.

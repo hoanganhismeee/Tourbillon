@@ -12,4 +12,14 @@ public class TasteProfileDto
     public decimal? PriceMax { get; set; }
     public string? PreferredCaseSize { get; set; }
     public string? Summary { get; set; }
+    public List<int> BehaviorPreferredBrandIds { get; set; } = new();
+    public List<string> BehaviorPreferredMaterials { get; set; } = new();
+    public List<string> BehaviorPreferredDialColors { get; set; } = new();
+    public decimal? BehaviorPriceMin { get; set; }
+    public decimal? BehaviorPriceMax { get; set; }
+    public string? BehaviorPreferredCaseSize { get; set; }
+    public string? BehaviorSummary { get; set; }
+    public DateTime? BehaviorAnalyzedAt { get; set; }
+    public bool HasBehaviorAnalysis { get; set; }
+    public bool HasEnoughBehaviorData { get; set; }
 }

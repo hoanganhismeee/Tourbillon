@@ -623,6 +623,16 @@ export interface TasteProfile {
   priceMax: number | null;
   preferredCaseSize: 'small' | 'medium' | 'large' | null;
   summary?: string | null;
+  behaviorPreferredBrandIds: number[];
+  behaviorPreferredMaterials: string[];
+  behaviorPreferredDialColors: string[];
+  behaviorPriceMin: number | null;
+  behaviorPriceMax: number | null;
+  behaviorPreferredCaseSize: 'small' | 'medium' | 'large' | null;
+  behaviorSummary?: string | null;
+  behaviorAnalyzedAt: string | null;
+  hasBehaviorAnalysis: boolean;
+  hasEnoughBehaviorData: boolean;
 }
 
 export const getTasteProfile = async (): Promise<TasteProfile> => {
