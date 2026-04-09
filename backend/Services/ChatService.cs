@@ -807,6 +807,8 @@ public class ChatService
         if (string.IsNullOrWhiteSpace(cleaned))
             cleaned = originalQuery.Trim();
 
+        cleaned = Regex.Replace(cleaned, @"^(?:the|a|an)\s+", "", RegexOptions.IgnoreCase).Trim();
+
         if (ordered.Count == 0)
             return cleaned;
 

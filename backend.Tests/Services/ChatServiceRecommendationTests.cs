@@ -188,7 +188,7 @@ public class ChatServiceRecommendationTests
 
         Assert.Equal(5, result.WatchCards.Count);
         Assert.Equal(watches.Take(5).Select(w => w.Slug), result.WatchCards.Select(w => w.Slug));
-        Assert.Contains(result.Actions, a => a.Type == "search" && a.Query == "a versatile Omega Seamaster");
+        Assert.Contains(result.Actions, a => a.Type == "search" && a.Query == "versatile Omega Seamaster");
         Assert.Equal(1, handler.CallCount);
     }
 }

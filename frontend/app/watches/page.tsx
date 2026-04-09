@@ -49,6 +49,9 @@ const WatchesPage = () => {
   // Build URL from current ID selections using slugs
   const buildUrl = (brandIds: number[], collectionIds: number[]) => {
     const params = new URLSearchParams();
+    const sort = searchParams.get('sort');
+    if (sort) params.set('sort', sort);
+
     brandIds.forEach(id => {
       const slug = brands.find(b => b.id === id)?.slug;
       if (slug) params.append('brand', slug);
@@ -97,7 +100,7 @@ const WatchesPage = () => {
     setSelectedBrandIds([]);
     setSelectedCollectionIds([]);
     initializedRef.current = true;
-    router.replace('/watches', { scroll: false });
+    router.replace(buildUrl([], []), { scroll: false });
   };
 
   return (

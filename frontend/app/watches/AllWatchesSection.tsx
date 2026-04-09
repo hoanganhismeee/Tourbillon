@@ -1,6 +1,5 @@
 // All watches grid + pagination.
-// Uses a deterministic catalogue order, then applies a capped trend-led boost
-// so recent behavior influences the first rows without taking over the page.
+// Featured keeps a stable catalogue order; personalized is an explicit sort mode.
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
@@ -8,7 +7,6 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWatches, fetchCollections, getTasteProfile, Watch, Brand, TasteProfile } from '@/lib/api';
-import { BrowsingEvent, getBufferedEvents } from '@/lib/behaviorTracker';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { WatchCard } from '../components/cards/WatchCard';
@@ -24,7 +22,7 @@ interface WatchSpecsParsed {
   dial?: { color?: string };
 }
 
-type SortOrder = 'default' | 'price-asc' | 'price-desc';
+type SortOrder = 'default' | 'personalized' | 'price-asc' | 'price-desc';
 
 type RankedWatch = {
   watch: Watch;
@@ -34,6 +32,7 @@ type RankedWatch = {
 
 const PERSONALIZED_WINDOW_SIZE = 48;
 const PERSONALIZED_MIN_SCORE = 1;
+const PERSONALIZED_EMPTY_COPY = 'Your Watch DNA is still taking shape. Continue exploring and a more personal edit will emerge.';
 
 function stableHash(input: string): number {
   let hash = 2166136261;
@@ -111,37 +110,6 @@ function scoreTasteMatch(watch: Watch, profile: TasteProfile): number {
   return score;
 }
 
-function behaviorRecencyWeight(timestamp: number): number {
-  const ageInDays = (Date.now() - timestamp) / (1000 * 60 * 60 * 24);
-  if (ageInDays <= 1) return 1.4;
-  if (ageInDays <= 3) return 1.1;
-  if (ageInDays <= 7) return 0.8;
-  if (ageInDays <= 21) return 0.45;
-  return 0.2;
-}
-
-function scoreBehaviorMatch(watch: Watch, events: BrowsingEvent[]): number {
-  if (events.length === 0) return 0;
-
-  let brandSignal = 0;
-  let collectionSignal = 0;
-
-  for (const event of events) {
-    const weight = behaviorRecencyWeight(event.timestamp);
-
-    if ((event.type === 'watch_view' && event.brandId === watch.brandId) ||
-        (event.type === 'brand_view' && event.entityId === watch.brandId)) {
-      brandSignal += event.type === 'watch_view' ? 1.15 * weight : 0.8 * weight;
-    }
-
-    if (event.type === 'collection_view' && watch.collectionId != null && event.entityId === watch.collectionId) {
-      collectionSignal += 1.05 * weight;
-    }
-  }
-
-  return Math.min(brandSignal, 2.6) + Math.min(collectionSignal, 1.8);
-}
-
 function hasAnyPreference(profile: TasteProfile): boolean {
   return (
     profile.preferredBrandIds.length > 0 ||
@@ -156,15 +124,14 @@ function hasAnyPreference(profile: TasteProfile): boolean {
 function blendPersonalizedOrder(
   baseWatches: Watch[],
   tasteProfile: TasteProfile | undefined,
-  behaviorEvents: BrowsingEvent[],
-  isPersonalized: boolean
+  isPersonalizationAvailable: boolean
 ): Watch[] {
-  if (!isPersonalized) return baseWatches;
+  if (!isPersonalizationAvailable) return baseWatches;
 
   const ranked: RankedWatch[] = baseWatches.map((watch, baseIndex) => ({
     watch,
     baseIndex,
-    score: (tasteProfile ? scoreTasteMatch(watch, tasteProfile) : 0) + scoreBehaviorMatch(watch, behaviorEvents),
+    score: tasteProfile ? scoreTasteMatch(watch, tasteProfile) : 0,
   }));
 
   const head = ranked.slice(0, PERSONALIZED_WINDOW_SIZE);
@@ -217,10 +184,20 @@ function blendPersonalizedOrder(
   return [...result, ...tail].map(item => item.watch);
 }
 
-function SortDropdown({ sortOrder, onSelect, isPersonalized }: {
+function parseSortOrder(value: string | null): SortOrder {
+  switch (value) {
+    case 'personalized':
+    case 'price-asc':
+    case 'price-desc':
+      return value;
+    default:
+      return 'default';
+  }
+}
+
+function SortDropdown({ sortOrder, onSelect }: {
   sortOrder: SortOrder;
   onSelect: (value: SortOrder) => void;
-  isPersonalized: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -235,7 +212,8 @@ function SortDropdown({ sortOrder, onSelect, isPersonalized }: {
   }, [open, handleOutside]);
 
   const options: { key: SortOrder; label: string }[] = [
-    { key: 'default', label: isPersonalized ? 'Trend-Led' : 'Featured' },
+    { key: 'default', label: 'Featured' },
+    { key: 'personalized', label: 'Personalized for You' },
     { key: 'price-asc', label: 'Price: Low to High' },
     { key: 'price-desc', label: 'Price: High to Low' },
   ];
@@ -297,6 +275,7 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
   const searchParams = useSearchParams();
   const router = useRouter();
   const currentPage = Number(searchParams.get('page') ?? '1');
+  const sortOrder = parseSortOrder(searchParams.get('sort'));
   const isUserPaging = useRef(false);
 
   const goToPage = (page: number) => {
@@ -312,11 +291,7 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
   };
 
   const [showAllWatches, setShowAllWatches] = useState(false);
-  const [sortOrder, setSortOrder] = useState<SortOrder>('default');
   const watchesPerPage = 20;
-
-  const [behaviorEvents, setBehaviorEvents] = useState<BrowsingEvent[]>([]);
-  useEffect(() => { setBehaviorEvents(getBufferedEvents()); }, []);
 
   const { data: watches = [], isLoading: watchesLoading } = useQuery({
     queryKey: ['watches'],
@@ -335,27 +310,45 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
     retry: false,
   });
 
-  const isPersonalized = isAuthenticated && (
-    (!!tasteProfile && hasAnyPreference(tasteProfile)) || behaviorEvents.length > 0
-  );
+  const hasPersonalizedTaste = isAuthenticated && !!tasteProfile && hasAnyPreference(tasteProfile);
 
-  const orderedWatches = useMemo(() => {
+  const handleSortChange = (nextSortOrder: SortOrder) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextSortOrder === 'default') {
+      params.delete('sort');
+    } else {
+      params.set('sort', nextSortOrder);
+    }
+    params.delete('page');
+
+    const query = params.toString();
+    router.push(query ? `/watches?${query}` : '/watches', { scroll: false });
+  };
+
+  const featuredWatches = useMemo(() => {
     if (watches.length === 0) return [];
-    const baseOrder = interleaveByBrand(watches);
-    return blendPersonalizedOrder(baseOrder, tasteProfile, behaviorEvents, isPersonalized);
-  }, [watches, tasteProfile, behaviorEvents, isPersonalized]);
+    return interleaveByBrand(watches);
+  }, [watches]);
+
+  const personalizedWatches = useMemo(() => (
+    blendPersonalizedOrder(featuredWatches, tasteProfile, hasPersonalizedTaste)
+  ), [featuredWatches, tasteProfile, hasPersonalizedTaste]);
+
+  const activeOrder = useMemo(() => (
+    sortOrder === 'personalized' && hasPersonalizedTaste ? personalizedWatches : featuredWatches
+  ), [sortOrder, hasPersonalizedTaste, personalizedWatches, featuredWatches]);
 
   const filteredWatches = useMemo(() => {
-    let result = orderedWatches;
+    let result = activeOrder;
     if (brandFilters.length > 0) result = result.filter(watch => brandFilters.includes(watch.brandId));
     if (collectionFilters.length > 0) {
       result = result.filter(watch => watch.collectionId != null && collectionFilters.includes(watch.collectionId));
     }
     return result;
-  }, [orderedWatches, brandFilters, collectionFilters]);
+  }, [activeOrder, brandFilters, collectionFilters]);
 
   const sortedWatches = useMemo(() => {
-    if (sortOrder === 'default') return filteredWatches;
+    if (sortOrder === 'default' || sortOrder === 'personalized') return filteredWatches;
     return [...filteredWatches].sort((a, b) => {
       const aPoR = a.currentPrice === 0;
       const bPoR = b.currentPrice === 0;
@@ -376,7 +369,9 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
     return 'All Timepieces';
   }, [brandFilters, collectionFilters, brands, collections]);
 
-  const isReady = orderedWatches.length > 0 || (!watchesLoading && watches.length === 0);
+  const showPersonalizedHint = sortOrder === 'personalized' && !hasPersonalizedTaste;
+
+  const isReady = featuredWatches.length > 0 || (!watchesLoading && watches.length === 0);
   useScrollRestore(isReady);
 
   useEffect(() => {
@@ -400,24 +395,20 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
           <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2]">
             {currentPage === 1 ? headingLabel : `${headingLabel} - Page ${currentPage}`}
           </h2>
-          {isPersonalized && (
-            <>
-              <span className="inline-block mt-3 px-3 py-1 rounded-full text-xs border border-[var(--primary-brown)]/40 text-[var(--primary-brown)]">
-                Trend-led for you
-              </span>
-              <p className="mt-4 text-[10px] uppercase tracking-[0.28em] text-white/35">
-                Recent signals shape the first rows. The wider catalog stays curated.
-              </p>
-            </>
-          )}
         </div>
 
         {!watchesLoading && (
-          <SortDropdown
-            sortOrder={sortOrder}
-            onSelect={setSortOrder}
-            isPersonalized={isPersonalized}
-          />
+          <>
+            <SortDropdown
+              sortOrder={sortOrder}
+              onSelect={handleSortChange}
+            />
+            {showPersonalizedHint && (
+              <p className="mt-4 max-w-md ml-auto text-right text-[10px] uppercase tracking-[0.18em] text-white/32">
+                {PERSONALIZED_EMPTY_COPY}
+              </p>
+            )}
+          </>
         )}
       </div>
 
