@@ -318,7 +318,7 @@ Floating conversational assistant available on every page — handles both speci
 - Floating pill at bottom-right on all pages; panel slides up on click
 - Product comparison: "I like the Overseas and the Aquanaut, I go to the beach, which should I choose?" → specs analysis + recommendation + watch thumbnail cards
 - Brand knowledge: "Tell me about Vacheron's history" → DB description + catalogue context → narrative with brand page link
-- Conversation-aware: follow-ups reference earlier turns in session; state survives in-app navigation (layout.tsx mount, never unmounted on soft nav)
+- Conversation-aware: follow-ups reference earlier turns in session; visible chat history survives in-app navigation and hard refresh within the same tab via `sessionStorage`
 
 **Architecture — reuses Phase 3 infrastructure:**
 - `ParseQueryIntentAsync` (no LLM) pre-filters brand/collection/reference number signals for query type routing
@@ -329,19 +329,20 @@ Floating conversational assistant available on every page — handles both speci
 - Rate limit: 5/day deployed (`ChatSettings:DailyLimit`); `DisableLimitInDev: true` for local
 
 **Infrastructure:**
-- In-memory session store via `ConcurrentDictionary` (MVP; upgrade to Redis for horizontal scale)
+- Redis-backed session store with 1-hour TTL on the backend; frontend persists session ID, visible history, and usage counters in `sessionStorage`
 - `POST /chat` endpoint in ai-service — compact Tourbillon-only answer generation
 - Pill UI matches `CompareIndicator` design; chat pill `bottom-8`, compare pill moves to `bottom-24`
 - Brand/collection detection uses direct DB substring matching — no dedicated embeddings needed for a 13-brand catalogue
+- Signed-in requests can include a compact Watch DNA summary so concierge replies reflect the user's inferred taste
 
 **Full spec:** `docs/phase5-rag-chatbot.md`
 
 **Files involved:**
 - `ai-service/routes/chat.py`, `ai-service/prompts/chat.py` — `POST /chat` + `CHAT_SYSTEM_PROMPT` for Tourbillon-only responses
-- `ai-service/requirements.txt` — `duckduckgo-search`
 - `backend/Controllers/ChatController.cs` — `POST /api/chat/message`, `DELETE /api/chat/session/{id}`
 - `backend/Services/ChatService.cs` — orchestration pipeline (deterministic refusal/exact/compare routing + compact AI context)
 - `frontend/app/components/chat/ChatWidget.tsx`, `ChatPanel.tsx`
+- `frontend/contexts/ChatContext.tsx` — sessionStorage-backed visible history + Watch DNA summary injection
 - `frontend/app/layout.tsx` — mount ChatWidget
 - `frontend/lib/api.ts` — `sendChatMessage()`, `clearChatSession()`
 
