@@ -59,6 +59,9 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
             entity.Property(e => e.PreferredBrandIds).HasDefaultValue("[]");
             entity.Property(e => e.PreferredMaterials).HasDefaultValue("[]");
             entity.Property(e => e.PreferredDialColors).HasDefaultValue("[]");
+            entity.Property(e => e.BehaviorPreferredBrandIds).HasDefaultValue("[]");
+            entity.Property(e => e.BehaviorPreferredMaterials).HasDefaultValue("[]");
+            entity.Property(e => e.BehaviorPreferredDialColors).HasDefaultValue("[]");
         });
 
         modelBuilder.Entity<WatchEditorialLink>(entity =>

@@ -364,7 +364,7 @@ public class ChatServiceTests
         var service = CreateService(context, watchFinder, handler);
         var result = await service.HandleMessageAsync("session-1", "Find me a slim steel dress watch under 15k", null, "127.0.0.1");
 
-        Assert.Contains(result.Actions, a => a.Type == "search" && a.Query == "Find me a slim steel dress watch under 15k");
+        Assert.Contains(result.Actions, a => a.Type == "search" && a.Query == "slim steel dress watch under 15k Rolex Datejust");
         Assert.NotEmpty(result.WatchCards);
         Assert.Equal(1, handler.CallCount);
     }

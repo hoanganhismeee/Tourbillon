@@ -29,5 +29,15 @@ public class UserTasteProfile
     // AI-generated plain-English summary of the user's inferred taste (from behavioral analysis)
     public string? Summary { get; set; }
 
+    // JSON-serialized behavior-derived signals. These are kept separate so manual taste
+    // remains the durable source of truth while behavior analysis can update independently.
+    public string BehaviorPreferredBrandIds { get; set; } = "[]";
+    public string BehaviorPreferredMaterials { get; set; } = "[]";
+    public string BehaviorPreferredDialColors { get; set; } = "[]";
+    public decimal? BehaviorPriceMin { get; set; }
+    public decimal? BehaviorPriceMax { get; set; }
+    public string? BehaviorPreferredCaseSize { get; set; }
+    public DateTime? BehaviorAnalyzedAt { get; set; }
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
