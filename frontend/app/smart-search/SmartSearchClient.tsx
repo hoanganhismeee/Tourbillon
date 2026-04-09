@@ -250,7 +250,6 @@ export default function SmartSearchClient() {
     if (intentAppliedRef.current === query) return;
     intentAppliedRef.current = query;
     setFilters(buildFiltersFromResults(result, result.queryIntent, diameterOptions));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result, query, diameterOptions]);
 
   // Track each unique search query once when results arrive successfully
@@ -377,7 +376,6 @@ export default function SmartSearchClient() {
         }
       })
       .catch(() => setStatus('error'));
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- collections is read but must not re-trigger the search
   }, [query]);
 
   const setFilter = useCallback(<K extends keyof WatchFilters>(key: K, value: WatchFilters[K]) => {

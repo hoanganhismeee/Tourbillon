@@ -88,6 +88,15 @@ public class WatchFinderServiceLocalIntegrationTests
         ];
     }
 
+    public static IEnumerable<object[]> StructuredCatalogueQueries()
+    {
+        yield return ["Omega Seamaster 300"];
+        yield return ["Patek Philippe Calatrava under 50k"];
+        yield return ["Jaeger-LeCoultre Reverso manual winding"];
+        yield return ["Audemars Piguet Royal Oak 39mm"];
+        yield return ["diver watch 300m under 20k"];
+    }
+
     private static async Task<TourbillonContext?> TryCreateContextAsync()
     {
         var dataSourceBuilder = new NpgsqlDataSourceBuilder(LocalConnection);
@@ -149,7 +158,7 @@ public class WatchFinderServiceLocalIntegrationTests
     }
 
     [Theory]
-    [MemberData(nameof(WatchFinderQueryCorpus.StructuredCatalogueQueries), MemberType = typeof(WatchFinderQueryCorpus))]
+    [MemberData(nameof(StructuredCatalogueQueries))]
     public async Task StructuredCatalogueQueryCorpus_ReturnsStructuredWatchSearchResult(string query)
     {
         await using var context = await TryCreateContextAsync();

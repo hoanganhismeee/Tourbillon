@@ -56,7 +56,7 @@ POST /api/taste { tasteText }
   → return TasteProfileDto
 ```
 
-**Architecture rule:** All prompt strings live in `ai-service/app.py`. The C# backend sends plain data and receives structured JSON — no prompt strings in C#.
+**Architecture rule:** All prompt strings live in the `ai-service` Python package (currently `ai-service/prompts/`). The C# backend sends plain data and receives structured JSON — no prompt strings in C#.
 
 ---
 
@@ -88,7 +88,7 @@ Migration: `20260322010000_AddUserTasteProfile.cs`
 | `backend/DTOs/SaveTasteDto.cs` | Request DTO (TasteText, ≤50 words) |
 | `backend/Services/TasteProfileService.cs` | LLM call, brand resolution, upsert, `ScoreWatch()` |
 | `backend/Controllers/TasteController.cs` | GET + POST `/api/taste` |
-| `ai-service/app.py` | `TASTE_SYSTEM_PROMPT` + `POST /parse-taste` |
+| `ai-service/prompts/taste.py`, `ai-service/routes/taste.py` | `TASTE_SYSTEM_PROMPT` + `POST /parse-taste` |
 | `frontend/lib/api.ts` | `TasteProfile`, `getTasteProfile`, `saveTasteProfile` |
 | `frontend/app/account/edit-details/WatchDnaForm.tsx` | Textarea + word count + chips |
 | `frontend/app/components/sections/AllWatchesSection.tsx` | `scoreTasteMatch()` + personalized sort |
@@ -163,3 +163,4 @@ Step 2 — Verify:
 | `frontend/app/login/magic/page.tsx` | Two-step OTP UI |
 | `frontend/app/auth/callback/page.tsx` | Post-OAuth / post-magic-login landing |
 | `backend.Tests/Services/MagicLoginServiceTests.cs` | 4 cache + one-time-use tests |
+
