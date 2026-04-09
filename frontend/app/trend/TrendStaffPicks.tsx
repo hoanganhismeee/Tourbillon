@@ -72,7 +72,7 @@ function StaffPickPair({
   return (
     <div className="flex flex-col lg:flex-row min-h-[420px] lg:min-h-[520px]">
       {/* Video — always left */}
-      <div className="w-full lg:w-1/2 min-h-[280px] lg:min-h-0 relative overflow-hidden">
+      <div className="w-full lg:w-3/5 min-h-[280px] lg:min-h-0 relative overflow-hidden">
         <video autoPlay muted loop playsInline className="absolute inset-0 w-full h-full object-cover">
           <source src={pick.video} type="video/mp4" />
         </video>
@@ -80,7 +80,7 @@ function StaffPickPair({
       </div>
 
       {/* Watch card — always right */}
-      <div className="w-full lg:w-1/2 border border-[#bfa68a]/10 lg:border-l-0 flex flex-col">
+      <div className="w-full lg:w-2/5 border border-[#bfa68a]/10 lg:border-l-0 flex flex-col">
         {isLoading ? <FeaturedCardSkeleton /> : watch ? <FeaturedWatchCard watch={watch} /> : null}
       </div>
     </div>
