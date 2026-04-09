@@ -1,16 +1,17 @@
 // Hardcoded editorial data for the Trend page.
 // Replace placeholder slugs with real watch slugs from the database before deploying.
+import { videoUrl } from '@/lib/cloudinary';
 
 export interface StaffPick {
   slug: string;
-  video: string; // path relative to /public
+  video: string;
 }
 
 // Each entry renders as a full-width video + watch card pair.
-// Videos alternate sides (left on even index, right on odd) for editorial rhythm.
 export const STAFF_PICKS: StaffPick[] = [
-  { slug: 'jaeger-lecoultre-reverso-q389257j-chronograph', video: '/JLC.mp4' },
-  { slug: 'audemars-piguet-26735sg-oo-1320sg-01-selfwinding-flying-tourbillon-openworked', video: '/AP.mp4' },
+  { slug: 'jaeger-lecoultre-reverso-q389257j-chronograph', video: videoUrl('JLC') },
+  { slug: 'audemars-piguet-royal-oak-26735sg-oo-1320sg-01-selfwinding-flying-tourbillon-openworked', video: videoUrl('AP') },
+  { slug: 'vacheron-constantin-metiers-d-art-6007a-000g-h049-tribute-to-the-celestial-scorpio', video: videoUrl('VC') },
 ];
 
 export const MOST_VIEWED_SLUGS: string[] = [

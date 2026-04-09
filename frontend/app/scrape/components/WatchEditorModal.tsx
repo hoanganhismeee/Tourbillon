@@ -212,6 +212,7 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
     return (
         <div
             className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm overflow-y-auto"
+            data-lenis-prevent="true"
             onPaste={handlePaste}
             onKeyDown={handleKeyDown}
             tabIndex={0}

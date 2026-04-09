@@ -51,7 +51,7 @@ export default function VideoSection() {
         playsInline
         className="absolute inset-0 w-full h-full object-cover"
       >
-        <source src="/tourbillon.mp4" type="video/mp4" />
+        <source src="https://res.cloudinary.com/dcd9lcdoj/video/upload/tourbillon/videos/tourbillon.mp4" type="video/mp4" />
       </video>
 
       {/* Fades into the page's dark-brown base — avoids black-to-brown jump */}

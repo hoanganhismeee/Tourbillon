@@ -876,14 +876,15 @@ public class AdminController : ControllerBase
             if (dto.CurrentPrice < 0)
                 return BadRequest(new { Message = "Price cannot be negative" });
 
-            var brandExists = await context.Brands.AnyAsync(b => b.Id == dto.BrandId);
-            if (!brandExists)
+            var brand = await context.Brands.FindAsync(dto.BrandId);
+            if (brand == null)
                 return BadRequest(new { Message = "Brand not found" });
 
+            Collection? collection = null;
             if (dto.CollectionId.HasValue)
             {
-                var collectionExists = await context.Collections.AnyAsync(c => c.Id == dto.CollectionId.Value && c.BrandId == dto.BrandId);
-                if (!collectionExists)
+                collection = await context.Collections.FirstOrDefaultAsync(c => c.Id == dto.CollectionId.Value && c.BrandId == dto.BrandId);
+                if (collection == null)
                     return BadRequest(new { Message = "Collection does not exist for this brand" });
             }
 
@@ -893,9 +894,19 @@ public class AdminController : ControllerBase
                 catch { return BadRequest(new { Message = "Invalid Specs JSON format" }); }
             }
 
+            // Generate a unique slug at creation time — avoids unique-index violations on SaveChanges
+            var existingSlugs = new HashSet<string>(
+                await context.Watches.Select(w => w.Slug).ToListAsync());
+            var baseSlug = backend.Helpers.SlugHelper.GenerateSlug(brand.Name, collection?.Name, dto.Name);
+            var slug = baseSlug;
+            var i = 2;
+            while (!existingSlugs.Add(slug))
+                slug = $"{baseSlug}-{i++}";
+
             var watch = new Watch
             {
                 Name = dto.Name,
+                Slug = slug,
                 Description = dto.Description,
                 CurrentPrice = dto.CurrentPrice,
                 Image = dto.Image,
