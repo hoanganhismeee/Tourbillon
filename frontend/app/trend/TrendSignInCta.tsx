@@ -13,13 +13,13 @@ const TrendSignInCta = () => {
   return (
     <section className="mt-20 border-t border-[#bfa68a]/12 pt-12">
       <div className="max-w-3xl border-l border-[#bfa68a]/35 pl-7 md:pl-10">
-        <p className="text-[10px] uppercase tracking-[0.42em] text-[#bfa68a]/82">
+        <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/80">
           Sign in
         </p>
-        <h2 className="mt-5 font-playfair font-light text-[#f0e6d2]" style={{ fontSize: 'clamp(2rem, 3.6vw, 3.2rem)' }}>
+        <h2 className="mt-5 font-playfair font-light leading-tight text-[#f0e6d2]" style={{ fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)' }}>
           Keep the trend analysis attached to your account.
         </h2>
-        <p className="mt-5 max-w-xl text-[13.5px] leading-[1.85] text-white/45">
+        <p className="mt-6 max-w-xl text-[13.5px] leading-relaxed text-white/50">
           Sign in to let Watch DNA follow your browsing over time, shape the first rows of the catalogue, and carry your signals back into the Trend page.
         </p>
       </div>

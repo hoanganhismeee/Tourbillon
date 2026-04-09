@@ -20,6 +20,7 @@ export const ROUTES = {
 
 export const DYNAMIC_ROUTES = {
   WATCH_DETAIL: (slug: string) => `/watches/${slug}`,
+  WATCHES_SORT: (sort: string) => `/watches?sort=${encodeURIComponent(sort)}`,
   BRAND_DETAIL: (slug: string) => `/brands/${slug}`,
   COLLECTION_DETAIL: (slug: string) => `/collections/${slug}`,
   SEARCH_RESULTS: (query: string) => `/search?q=${encodeURIComponent(query)}`,

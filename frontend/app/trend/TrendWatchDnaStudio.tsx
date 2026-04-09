@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchBrands, generateTasteProfile, saveTasteProfile, TasteProfile } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { ROUTES } from '@/app/constants/routes';
+import { DYNAMIC_ROUTES } from '@/app/constants/routes';
 
 function formatMoney(value: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -150,36 +150,36 @@ export default function TrendWatchDnaStudio() {
     <section className="border-t border-[#bfa68a]/12 pt-12">
       <div className="grid gap-16 lg:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.8fr)] lg:gap-20">
         <div>
-          <p className="text-[9px] uppercase tracking-[0.45em] text-[#bfa68a]/75">Watch DNA</p>
-          <h2 className="mt-5 font-playfair font-light text-[#f0e6d2]" style={{ fontSize: 'clamp(2.4rem, 4.6vw, 4.4rem)' }}>
+          <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]">Watch DNA</p>
+          <h2 className="mt-5 font-playfair font-light text-[#f0e6d2] leading-tight" style={{ fontSize: 'clamp(2rem, 4vw, 3.5rem)' }}>
             Your recent direction, with the catalogue still intact.
           </h2>
-          <p className="mt-5 max-w-2xl text-[13.5px] leading-[1.85] text-white/45">
+          <p className="mt-6 max-w-xl text-[13.5px] leading-relaxed text-white/60">
             The analysis reads your latest browsing behavior and nudges the opening rows. Manual taste stays in control wherever you have already been explicit.
           </p>
 
-          <div className="mt-10 border-l-2 border-[#bfa68a]/50 pl-6 py-2">
+          <div className="mt-10 border-l-2 border-[#bfa68a]/60 pl-5 py-1 mb-8">
             {isLoading || isFetching ? (
               <div className="flex items-center gap-4">
                 <span className="inline-block h-4 w-4 rounded-full border border-[#bfa68a]/30 border-t-[#bfa68a] animate-spin" />
-                <p className="font-playfair italic text-[1.15rem] leading-relaxed text-[#f0e6d2]">
+                <p className="font-playfair italic text-[1.2rem] leading-relaxed text-[#f0e6d2]">
                   Reading your recent browsing and refining the feed...
                 </p>
               </div>
             ) : error ? (
-              <p className="font-playfair italic text-[1.15rem] leading-relaxed text-[#f0e6d2]">
+              <p className="font-playfair italic text-[1.2rem] leading-relaxed text-[#f0e6d2]">
                 The last analysis could not be refreshed right now. Your saved preferences are still active.
               </p>
             ) : profile?.behaviorSummary ? (
-              <p className="font-playfair italic text-[1.15rem] leading-relaxed text-[#f0e6d2]">
+              <p className="font-playfair italic text-[1.2rem] leading-relaxed text-[#f0e6d2]">
                 {profile.behaviorSummary}
               </p>
             ) : profile?.hasEnoughBehaviorData ? (
-              <p className="font-playfair italic text-[1.15rem] leading-relaxed text-[#f0e6d2]">
+              <p className="font-playfair italic text-[1.2rem] leading-relaxed text-[#f0e6d2]">
                 The feed is watching your recent direction, but the pattern is still too light to describe cleanly.
               </p>
             ) : (
-              <p className="font-playfair italic text-[1.15rem] leading-relaxed text-[#f0e6d2]">
+              <p className="font-playfair italic text-[1.2rem] leading-relaxed text-[#f0e6d2]">
                 Browse a few more watches and come back. Once there is enough signal, this analysis will fill itself in.
               </p>
             )}
@@ -190,7 +190,7 @@ export default function TrendWatchDnaStudio() {
 
           <div className="mt-10 flex flex-wrap items-center gap-4">
             <Link
-              href={ROUTES.WATCHES}
+              href={DYNAMIC_ROUTES.WATCHES_SORT('personalized')}
               className="inline-flex items-center justify-center border border-[#bfa68a]/25 px-10 py-4 text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] transition-all duration-500 hover:border-[#bfa68a]/40 hover:bg-[#bfa68a]/8"
             >
               Open the catalogue
@@ -241,25 +241,25 @@ export default function TrendWatchDnaStudio() {
         </div>
 
         <aside className="border-t border-[#bfa68a]/12 pt-8 lg:border-t-0 lg:border-l lg:pl-10">
-          <p className="text-[9px] uppercase tracking-[0.45em] text-[#bfa68a]/75">Feed notes</p>
+          <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/80">Feed notes</p>
           <div className="mt-8 space-y-8">
             <div>
               <p className="text-[8.5px] uppercase tracking-[0.32em] text-[#bfa68a]/70">Ordering</p>
-              <p className="mt-3 text-[13px] leading-[1.8] text-white/42">
+              <p className="mt-3 text-[13px] leading-relaxed text-white/50">
                 The first rows respond to recent behavior, but the wider list keeps its stable catalogue order instead of reshuffling on every reload.
               </p>
             </div>
 
             <div>
               <p className="text-[8.5px] uppercase tracking-[0.32em] text-[#bfa68a]/70">Latest read</p>
-              <p className="mt-3 text-[13px] leading-[1.8] text-white/42">
+              <p className="mt-3 text-[13px] leading-relaxed text-white/50">
                 {formattedBehaviorDate ? `Last behavior analysis ${formattedBehaviorDate}.` : 'No behavior analysis has been saved yet.'}
               </p>
             </div>
 
             <div>
               <p className="text-[8.5px] uppercase tracking-[0.32em] text-[#bfa68a]/70">Manual note</p>
-              <p className="mt-3 text-[13px] leading-[1.8] text-white/42">
+              <p className="mt-3 text-[13px] leading-relaxed text-white/50">
                 {profile?.tasteText
                   ? 'A written taste note is active, so those preferences take priority wherever they are specific.'
                   : 'No manual note yet. The feed is currently learning from browsing behavior alone.'}
