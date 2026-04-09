@@ -9,10 +9,8 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { loginUser } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { openGoogleAuthPopup } from '@/lib/googleAuth';
+import { getGoogleAuthUrl, openGoogleAuthPopup } from '@/lib/googleAuth';
 import { EASE_LUXURY, EASE_ENTER, DUR } from '@/lib/motion';
-
-const GOOGLE_AUTH_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5248/api'}/authentication/google`;
 
 const staggerContainer = {
   hidden: {},
@@ -230,7 +228,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => {
                     if (redirect) sessionStorage.setItem('authRedirect', redirect);
-                    openGoogleAuthPopup(GOOGLE_AUTH_URL, () => {
+                    openGoogleAuthPopup(getGoogleAuthUrl(), () => {
                       login().then(() => {
                         const dest = sessionStorage.getItem('authRedirect') || redirect || '/';
                         sessionStorage.removeItem('authRedirect');

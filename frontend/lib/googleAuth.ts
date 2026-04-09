@@ -4,6 +4,17 @@
 const POPUP_WIDTH  = 480;
 const POPUP_HEIGHT = 620;
 
+// Google OAuth should bypass the Next.js backend proxy so ASP.NET owns the full
+// external-auth handshake and callback path end-to-end.
+export function getGoogleAuthUrl(): string {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL;
+  const directApiBase = process.env.NEXT_PUBLIC_OAUTH_API_URL
+    || (apiBase?.startsWith('/api/backend') ? 'http://localhost:5248/api' : apiBase)
+    || 'http://localhost:5248/api';
+
+  return `${directApiBase.replace(/\/$/, '')}/authentication/google`;
+}
+
 export function openGoogleAuthPopup(authUrl: string, onSuccess: () => void): void {
   // Center the popup relative to the current window
   const left = window.screenX + Math.round((window.outerWidth  - POPUP_WIDTH)  / 2);
