@@ -1,7 +1,6 @@
-// Orchestrates the RAG chat concierge pipeline.
-// Detects query type (PRODUCT/BRAND/GENERAL), fetches DB context, calls ai-service /chat,
-// and returns the LLM response with extracted watch cards.
-// Sessions are stored in Redis hashes with a 1-hour TTL.
+// Chat concierge orchestration for Tourbillon.
+// Resolves exact watches, compare requests, and discovery redirects before using the LLM,
+// then sends only compact Tourbillon-specific context to ai-service when explanation helps.
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -9,19 +8,18 @@ using System.Text.RegularExpressions;
 using backend.Database;
 using backend.Models;
 using Microsoft.EntityFrameworkCore;
-using Pgvector;
-using Pgvector.EntityFrameworkCore;
 
 namespace backend.Services;
 
-// ── DTOs ─────────────────────────────────────────────────────────────────────
+public interface IWatchFinderService
+{
+    Task<WatchFinderResult> FindWatchesAsync(string query);
+}
 
-// Used when serializing conversation history to ai-service — explicit type avoids
-// System.Text.Json object-erasure when the payload is typed as List<object>.
-// JsonPropertyName ensures lowercase keys match the Python side's expected format.
+// Used when serializing conversation history to ai-service.
 public class ChatHistoryEntry
 {
-    [JsonPropertyName("role")]    public string Role    { get; set; } = "";
+    [JsonPropertyName("role")] public string Role { get; set; } = "";
     [JsonPropertyName("content")] public string Content { get; set; } = "";
 }
 
@@ -29,8 +27,8 @@ public class ChatMessageRequest
 {
     public string SessionId { get; set; } = "";
     public string Message { get; set; } = "";
-    /// Summary of the user's recent browsing behavior and Watch DNA (formatted client-side).
-    /// Injected into AI context to personalize responses without exposing raw event data.
+
+    // Summary of the user's recent browsing behavior and Watch DNA.
     public string? BehaviorSummary { get; set; }
 }
 
@@ -46,13 +44,13 @@ public class ChatWatchCard
     public int BrandId { get; set; }
 }
 
-/// Concierge action returned alongside the text response — executed client-side.
+// Concierge action returned alongside the text response and executed client-side.
 public class ChatAction
 {
     public string Type { get; set; } = "";   // "compare" | "search"
     public string Label { get; set; } = "";
     public List<string>? Slugs { get; set; } // watch slugs for "compare"
-    public string? Query { get; set; }        // search query for "search"
+    public string? Query { get; set; }       // search query for "search"
 }
 
 public class ChatApiResponse
@@ -65,50 +63,74 @@ public class ChatApiResponse
     public int? DailyLimit { get; set; }
 }
 
-// ── Service ───────────────────────────────────────────────────────────────────
-
 public class ChatService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly TourbillonContext _context;
     private readonly IRedisService _redis;
     private readonly IConfiguration _config;
+    private readonly IWatchFinderService _watchFinderService;
     private readonly ILogger<ChatService> _logger;
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(1);
+    private const string CloudName = "dcd9lcdoj";
 
-    // Brand name aliases shared with WatchFinderService — short names users commonly type
+    // Brand name aliases shared with WatchFinderService.
     private static readonly Dictionary<string, string> _brandAliases = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["JLC"] = "Jaeger-LeCoultre",   ["AP"]  = "Audemars Piguet",
-        ["VC"]  = "Vacheron Constantin", ["PP"]  = "Patek Philippe",
-        ["ALS"] = "A. Lange & Söhne",   ["GS"]  = "Grand Seiko",
-        ["GO"]  = "Glashütte Original", ["FC"]  = "Frederique Constant",
-        ["Vacheron"]  = "Vacheron Constantin",  ["Patek"]      = "Patek Philippe",
-        ["Audemars"]  = "Audemars Piguet",      ["Lange"]      = "A. Lange & Söhne",
-        ["Glashutte"] = "Glashütte Original",   ["Glashütte"]  = "Glashütte Original",
-        ["Frederique"]= "Frederique Constant",  ["FP Journe"]  = "F.P.Journe",
-        ["FPJourne"]  = "F.P.Journe",           ["Journe"]     = "F.P.Journe",
+        ["JLC"] = "Jaeger-LeCoultre",
+        ["AP"] = "Audemars Piguet",
+        ["VC"] = "Vacheron Constantin",
+        ["PP"] = "Patek Philippe",
+        ["ALS"] = "A. Lange & Sohne",
+        ["GS"] = "Grand Seiko",
+        ["GO"] = "Glashutte Original",
+        ["FC"] = "Frederique Constant",
+        ["Vacheron"] = "Vacheron Constantin",
+        ["Patek"] = "Patek Philippe",
+        ["Audemars"] = "Audemars Piguet",
+        ["Lange"] = "A. Lange & Sohne",
+        ["Glashutte"] = "Glashutte Original",
+        ["Frederique"] = "Frederique Constant",
+        ["FP Journe"] = "F.P.Journe",
+        ["FPJourne"] = "F.P.Journe",
+        ["Journe"] = "F.P.Journe",
     };
 
-    private enum QueryType { Product, Brand, General }
+    private sealed class ChatResolution
+    {
+        public bool UseAi { get; set; }
+        public string Message { get; set; } = "";
+        public string Query { get; set; } = "";
+        public List<string> Context { get; set; } = [];
+        public List<ChatWatchCard> WatchCards { get; set; } = [];
+        public List<ChatAction> Actions { get; set; } = [];
+    }
+
+    private sealed class EntityMentions
+    {
+        public List<Brand> Brands { get; set; } = [];
+        public List<Collection> Collections { get; set; } = [];
+        public bool HasAny => Brands.Count > 0 || Collections.Count > 0;
+    }
 
     public ChatService(
         IHttpClientFactory httpClientFactory,
         TourbillonContext context,
         IRedisService redis,
         IConfiguration config,
+        IWatchFinderService watchFinderService,
         ILogger<ChatService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _context = context;
         _redis = redis;
         _config = config;
+        _watchFinderService = watchFinderService;
         _logger = logger;
     }
 
-    // Loads history from Redis; returns empty list if session doesn't exist.
     private async Task<List<ChatMessage>> GetSessionHistoryAsync(string sessionId)
     {
         var json = await _redis.GetHashFieldAsync($"chat:session:{sessionId}", "history");
@@ -116,7 +138,6 @@ public class ChatService
         return JsonSerializer.Deserialize<List<ChatMessage>>(json, _jsonOptions) ?? [];
     }
 
-    // Persists history to Redis, refreshing the 1-hour TTL.
     private async Task SaveSessionHistoryAsync(string sessionId, List<ChatMessage> history)
     {
         var json = JsonSerializer.Serialize(history, _jsonOptions);
@@ -126,9 +147,8 @@ public class ChatService
     public async Task<ChatApiResponse> HandleMessageAsync(
         string sessionId, string message, string? userId, string? ipAddress, string? behaviorSummary = null)
     {
-        // ── Rate limiting ─────────────────────────────────────────────────────────
         var disableLimit = _config.GetValue<bool>("ChatSettings:DisableLimitInDev");
-        var dailyLimit   = _config.GetValue<int>("ChatSettings:DailyLimit", 5);
+        var dailyLimit = _config.GetValue<int>("ChatSettings:DailyLimit", 5);
 
         if (!disableLimit)
         {
@@ -142,114 +162,58 @@ public class ChatService
                 return new ChatApiResponse
                 {
                     RateLimited = true,
-                    DailyUsed   = used,
-                    DailyLimit  = dailyLimit,
-                    Message     = "You have reached your daily message limit. Please try again tomorrow."
+                    DailyUsed = used,
+                    DailyLimit = dailyLimit,
+                    Message = "You have reached your daily message limit. Please try again tomorrow."
                 };
             }
         }
 
-        // ── Session management (Redis) ────────────────────────────────────────────
         var sessionHistory = await GetSessionHistoryAsync(sessionId);
-
-        // Last 10 turns — typed DTO avoids System.Text.Json object-erasure with anonymous types
         var history = sessionHistory
             .TakeLast(10)
             .Select(m => new ChatHistoryEntry { Role = m.Role, Content = m.Content })
             .ToList();
 
-        // ── Query type detection + context fetch (wrapped to prevent 500s) ─────────
-        var httpClient = _httpClientFactory.CreateClient("ai-service");
-        List<string> contextStrings;
-        var enableWebSearch = false;
-        var queryType = QueryType.General;
-        int? matchedBrandId, matchedCollectionId;
-
+        ChatResolution resolution;
         try
         {
-            (queryType, matchedBrandId, matchedCollectionId) = await DetectQueryTypeAsync(message);
-            _logger.LogInformation(
-                "Chat queryType={QueryType} brandId={BrandId} collectionId={CollectionId}",
-                queryType, matchedBrandId, matchedCollectionId);
-
-            switch (queryType)
-            {
-                case QueryType.Product:
-                    contextStrings = await FetchProductContextAsync(matchedCollectionId, message);
-                    break;
-                case QueryType.Brand:
-                    contextStrings = await FetchBrandContextAsync(matchedBrandId!.Value);
-                    enableWebSearch = true;
-                    break;
-                default:
-                    contextStrings = await FetchGeneralContextAsync(httpClient, message);
-                    break;
-            }
+            resolution = await ResolveMessageAsync(message.Trim());
         }
         catch (Exception ex)
         {
-            _logger.LogWarning("Context fetch failed: {Err}", ex.Message);
-            contextStrings = [];
-            queryType = QueryType.General;
-        }
-
-        // Tell the AI when no catalogue data matched — prevents hallucination
-        if (contextStrings.Count == 0 && queryType == QueryType.General)
-            contextStrings.Add("No matching watches found in the Tourbillon catalogue for this query.");
-
-        // Prepend user behavior summary so the AI can personalise responses when relevant
-        if (!string.IsNullOrWhiteSpace(behaviorSummary))
-            contextStrings.Insert(0, $"[User context] {behaviorSummary}");
-
-        // ── Call ai-service /chat ─────────────────────────────────────────────────
-        string aiMessage;
-        List<ChatAction> actions = [];
-        var chatSw = System.Diagnostics.Stopwatch.StartNew();
-        try
-        {
-            var payload = new { query = message, context = contextStrings, history, enableWebSearch };
-            var resp    = await httpClient.PostAsJsonAsync("/chat", payload);
-            chatSw.Stop();
-
-            if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning(ex, "Chat routing failed for message preview={Preview}",
+                message.Length > 80 ? message[..80] + "..." : message);
+            resolution = new ChatResolution
             {
-                _logger.LogWarning("Chat ai-service /chat returned {Status} after {ElapsedMs}ms",
-                    (int)resp.StatusCode, chatSw.ElapsedMilliseconds);
-                aiMessage = "I'm having trouble connecting to the concierge service right now. Please try again in a moment.";
-            }
-            else
-            {
-                _logger.LogInformation("Chat ai-service /chat {ElapsedMs}ms", chatSw.ElapsedMilliseconds);
-                var json  = await resp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
-                aiMessage = json.TryGetProperty("message", out var el) ? el.GetString() ?? "" : "";
-                // Parse actions returned by ai-service (extracted from ACTIONS: line before text was returned)
-                if (json.TryGetProperty("actions", out var actionsEl) && actionsEl.ValueKind == JsonValueKind.Array)
-                {
-                    try
-                    {
-                        actions = JsonSerializer.Deserialize<List<ChatAction>>(actionsEl.GetRawText(), _jsonOptions) ?? [];
-                    }
-                    catch { /* malformed actions — ignore, don't crash */ }
-                }
-            }
+                Message = "I am having trouble processing that request right now. Please try again in a moment."
+            };
         }
-        catch (Exception ex)
+
+        string aiMessage = resolution.Message;
+        var actions = resolution.Actions;
+        var watchCards = resolution.WatchCards;
+
+        if (resolution.UseAi)
         {
-            chatSw.Stop();
-            _logger.LogWarning(ex, "Chat ai-service call threw after {ElapsedMs}ms", chatSw.ElapsedMilliseconds);
-            aiMessage = "I'm having trouble connecting right now. Please try again in a moment.";
+            if (!string.IsNullOrWhiteSpace(behaviorSummary))
+                resolution.Context.Insert(0, $"[User context] {behaviorSummary}");
+
+            if (resolution.Context.Count == 0)
+                resolution.Context.Add("Stay within Tourbillon's catalogue and watch expertise. No relevant catalogue records were resolved.");
+
+            var aiResult = await CallAiServiceAsync(history, resolution.Query, resolution.Context);
+            aiMessage = aiResult.Message;
+            actions = MergeActions(resolution.Actions, aiResult.Actions);
+            if (watchCards.Count == 0)
+                watchCards = await ExtractWatchCardsAsync(aiMessage, actions);
         }
 
-        // ── Extract watch cards from response markdown links ──────────────────────
-        var watchCards = await ExtractWatchCardsAsync(aiMessage);
-
-        // ── Persist turn to session (Redis) ──────────────────────────────────────
-        sessionHistory.Add(new ChatMessage { Role = "user",      Content = message  });
+        sessionHistory.Add(new ChatMessage { Role = "user", Content = message });
         sessionHistory.Add(new ChatMessage { Role = "assistant", Content = aiMessage });
         await SaveSessionHistoryAsync(sessionId, sessionHistory);
 
-        // ── Increment rate limit counter (resets at midnight UTC) ────────────────
-        int newUsed = 1;
+        var newUsed = 1;
         if (!disableLimit)
         {
             var rlKey = $"chat_rl:{userId ?? ipAddress ?? "anon"}";
@@ -259,256 +223,573 @@ public class ChatService
 
         return new ChatApiResponse
         {
-            Message    = aiMessage,
+            Message = aiMessage,
             WatchCards = watchCards,
-            Actions    = actions,
-            DailyUsed  = disableLimit ? null : newUsed,
+            Actions = actions,
+            DailyUsed = disableLimit ? null : newUsed,
             DailyLimit = disableLimit ? null : dailyLimit,
         };
     }
 
-    // Remove session from Redis
     public async Task ClearSessionAsync(string sessionId) =>
         await _redis.RemoveHashAsync($"chat:session:{sessionId}");
 
-    // ── Query type detection ──────────────────────────────────────────────────────
-
-    private async Task<(QueryType Type, int? BrandId, int? CollectionId)> DetectQueryTypeAsync(string query)
+    private async Task<ChatResolution> ResolveMessageAsync(string message)
     {
-        var brands      = await _context.Brands.AsNoTracking().ToListAsync();
-        var collections = await _context.Collections.AsNoTracking().ToListAsync();
-
-        // Collection match wins (more specific) → PRODUCT
-        var col = collections
-            .OrderByDescending(c => c.Name.Length)
-            .FirstOrDefault(c => query.Contains(c.Name, StringComparison.OrdinalIgnoreCase));
-        if (col != null)
-            return (QueryType.Product, col.BrandId, col.Id);
-
-        // Brand alias match → BRAND
-        Brand? brand = null;
-        foreach (var (alias, canonical) in _brandAliases)
-        {
-            if (Regex.IsMatch(query, @$"\b{Regex.Escape(alias)}\b", RegexOptions.IgnoreCase))
+        if (IsAbusiveQuery(message))
+            return new ChatResolution
             {
-                brand = brands.FirstOrDefault(b => b.Name.Equals(canonical, StringComparison.OrdinalIgnoreCase));
-                if (brand != null) break;
-            }
-        }
-        if (brand == null)
-        {
-            brand = brands
-                .OrderByDescending(b => b.Name.Length)
-                .FirstOrDefault(b => query.Contains(b.Name, StringComparison.OrdinalIgnoreCase));
-        }
-        if (brand != null)
-            return (QueryType.Brand, brand.Id, null);
+                Message = "I am here to help with Tourbillon watches and horology only. If you want, ask about a watch, brand, comparison, or product search."
+            };
 
-        return (QueryType.General, null, null);
+        var mentions = await ResolveEntityMentionsAsync(message);
+        var hasWatchScope = mentions.HasAny || WatchFinderService.HasWatchDomainSignal(message);
+
+        if (IsExplicitCompareQuery(message))
+        {
+            var compareWatches = await TryResolveCompareWatchesAsync(message);
+            if (compareWatches.Count >= 2)
+                return BuildCompareResolution(compareWatches);
+        }
+
+        if (!hasWatchScope)
+            return new ChatResolution
+            {
+                Message = "I specialise in Tourbillon watches and horology. Ask about a watch, brand, comparison, or something you want to find in the catalogue."
+            };
+
+        if (LooksLikeEntityInfoRequest(message, mentions))
+            return await BuildEntityInfoResolutionAsync(message, mentions);
+
+        var searchResult = await _watchFinderService.FindWatchesAsync(message);
+        if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ChatResolution
+            {
+                Message = "I specialise in Tourbillon watches and horology. Ask about a watch, brand, comparison, or something you want to find in the catalogue."
+            };
+        }
+
+        var exactWatch = await TryResolveExactWatchAsync(message, searchResult);
+        if (exactWatch != null)
+            return BuildExactWatchResolution(exactWatch);
+
+        if (searchResult.Watches.Count > 0)
+            return await BuildDiscoveryResolutionAsync(message, searchResult);
+
+        if (mentions.HasAny)
+            return await BuildEntityInfoResolutionAsync(message, mentions, noDirectMatch: true);
+
+        return new ChatResolution
+        {
+            Message = "I could not find a close Tourbillon catalogue match for that request. Try asking with a brand, collection, reference, size, material, or price range."
+        };
     }
 
-    // ── Context fetchers ──────────────────────────────────────────────────────────
-
-    private async Task<List<string>> FetchProductContextAsync(int? collectionId, string query)
+    private async Task<(string Message, List<ChatAction> Actions)> CallAiServiceAsync(
+        List<ChatHistoryEntry> history, string query, List<string> context)
     {
-        var watchQuery = _context.Watches
+        var httpClient = _httpClientFactory.CreateClient("ai-service");
+        var chatSw = System.Diagnostics.Stopwatch.StartNew();
+
+        try
+        {
+            var payload = new { query, context, history };
+            var resp = await httpClient.PostAsJsonAsync("/chat", payload);
+            chatSw.Stop();
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Chat ai-service /chat returned {Status} after {ElapsedMs}ms",
+                    (int)resp.StatusCode, chatSw.ElapsedMilliseconds);
+                return ("I am having trouble connecting to the concierge service right now. Please try again in a moment.", []);
+            }
+
+            _logger.LogInformation("Chat ai-service /chat {ElapsedMs}ms", chatSw.ElapsedMilliseconds);
+            var json = await resp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
+            var message = json.TryGetProperty("message", out var messageEl) ? messageEl.GetString() ?? "" : "";
+            var actions = new List<ChatAction>();
+
+            if (json.TryGetProperty("actions", out var actionsEl) && actionsEl.ValueKind == JsonValueKind.Array)
+            {
+                try
+                {
+                    actions = JsonSerializer.Deserialize<List<ChatAction>>(actionsEl.GetRawText(), _jsonOptions) ?? [];
+                }
+                catch
+                {
+                    actions = [];
+                }
+            }
+
+            return (string.IsNullOrWhiteSpace(message)
+                ? "I could not produce a useful answer from the catalogue context."
+                : message, actions);
+        }
+        catch (Exception ex)
+        {
+            chatSw.Stop();
+            _logger.LogWarning(ex, "Chat ai-service call threw after {ElapsedMs}ms", chatSw.ElapsedMilliseconds);
+            return ("I am having trouble connecting right now. Please try again in a moment.", []);
+        }
+    }
+
+    private async Task<EntityMentions> ResolveEntityMentionsAsync(string query)
+    {
+        var brands = await _context.Brands.AsNoTracking().ToListAsync();
+        var collections = await _context.Collections.AsNoTracking().ToListAsync();
+        var mentions = new EntityMentions();
+        var matchedBrandIds = new HashSet<int>();
+        var normalizedQuery = NormalizeEntityText(query);
+
+        foreach (var (alias, canonical) in _brandAliases)
+        {
+            if (!Regex.IsMatch(query, $@"\b{Regex.Escape(alias)}\b", RegexOptions.IgnoreCase))
+                continue;
+
+            var brand = brands.FirstOrDefault(b =>
+                string.Equals(NormalizeEntityText(b.Name), NormalizeEntityText(canonical), StringComparison.OrdinalIgnoreCase));
+            if (brand != null && matchedBrandIds.Add(brand.Id))
+                mentions.Brands.Add(brand);
+        }
+
+        foreach (var brand in brands.OrderByDescending(b => b.Name.Length))
+        {
+            var normalizedName = NormalizeEntityText(brand.Name);
+            if (!query.Contains(brand.Name, StringComparison.OrdinalIgnoreCase) && !normalizedQuery.Contains(normalizedName))
+                continue;
+
+            if (matchedBrandIds.Add(brand.Id))
+                mentions.Brands.Add(brand);
+        }
+
+        var collectionPool = mentions.Brands.Count > 0
+            ? collections.Where(c => mentions.Brands.Any(b => b.Id == c.BrandId)).ToList()
+            : collections;
+
+        var matchedCollectionIds = new HashSet<int>();
+        foreach (var collection in collectionPool.OrderByDescending(c => c.Name.Length))
+        {
+            var normalizedName = NormalizeEntityText(collection.Name);
+            if (!query.Contains(collection.Name, StringComparison.OrdinalIgnoreCase) && !normalizedQuery.Contains(normalizedName))
+                continue;
+
+            if (matchedCollectionIds.Add(collection.Id))
+                mentions.Collections.Add(collection);
+        }
+
+        return mentions;
+    }
+
+    private async Task<List<Watch>> TryResolveCompareWatchesAsync(string query)
+    {
+        var parts = ExtractCompareParts(query);
+        if (parts.Count < 2) return [];
+
+        var resolved = new List<Watch>();
+        foreach (var part in parts.Take(4))
+        {
+            var result = await _watchFinderService.FindWatchesAsync(part);
+            var watch = await TryResolveExactWatchAsync(part, result);
+            if (watch == null)
+                return [];
+
+            if (resolved.All(w => w.Id != watch.Id))
+                resolved.Add(watch);
+        }
+
+        return resolved.Count >= 2 ? resolved : [];
+    }
+
+    private async Task<Watch?> TryResolveExactWatchAsync(string query, WatchFinderResult result)
+    {
+        if (result.Watches.Count == 0)
+            return null;
+
+        var totalMatches = result.Watches.Count + result.OtherCandidates.Count;
+        var hasSingleUniqueCandidate = totalMatches == 1;
+        var isDirectExactPath = result.SearchPath?.StartsWith("direct_sql", StringComparison.OrdinalIgnoreCase) == true
+            && result.Watches.Count == 1
+            && result.OtherCandidates.Count == 0;
+        var isReferenceLike = WatchFinderService.IsLikelyReferenceQuery(query)
+            || WatchFinderService.IsLikelyReferenceFragment(query);
+
+        if (!hasSingleUniqueCandidate && !isDirectExactPath && !isReferenceLike)
+            return null;
+
+        var watchId = result.Watches[0].Id;
+        return await _context.Watches
             .Include(w => w.Brand)
             .Include(w => w.Collection)
-            .AsNoTracking();
+            .AsNoTracking()
+            .FirstOrDefaultAsync(w => w.Id == watchId);
+    }
 
-        List<Watch> watches;
-        if (collectionId.HasValue)
-        {
-            watches = await watchQuery
-                .Where(w => w.CollectionId == collectionId)
-                .Take(10)
-                .ToListAsync();
-        }
-        else
-        {
-            // Fallback to name/description substring match
-            var q = query.ToLower();
-            watches = await watchQuery
-                .Where(w => (w.Description != null && w.Description.ToLower().Contains(q))
-                         || w.Name.ToLower().Contains(q))
-                .Take(10)
-                .ToListAsync();
-        }
-
+    private async Task<ChatResolution> BuildEntityInfoResolutionAsync(
+        string query, EntityMentions mentions, bool noDirectMatch = false)
+    {
         var context = new List<string>();
+        var cards = new List<ChatWatchCard>();
 
-        // Prepend collection description with style label
-        if (collectionId.HasValue)
+        foreach (var collection in mentions.Collections.Take(2))
         {
-            var col = await _context.Collections.AsNoTracking().FirstOrDefaultAsync(c => c.Id == collectionId);
-            if (col?.Description is { Length: > 0 } desc)
-            {
-                var style = !string.IsNullOrWhiteSpace(col.Style) ? $" [Style: {col.Style}]" : "";
-                context.Add($"Collection \"{col.Name}\" (Slug: {col.Slug}){style}: {desc}");
-            }
+            var fullCollection = await _context.Collections
+                .Include(c => c.Brand)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == collection.Id);
+
+            if (fullCollection == null) continue;
+
+            context.Add(BuildCollectionContext(fullCollection));
+
+            var sampleWatches = await _context.Watches
+                .Include(w => w.Brand)
+                .Include(w => w.Collection)
+                .Where(w => w.CollectionId == fullCollection.Id)
+                .OrderByDescending(w => w.Id)
+                .Take(3)
+                .AsNoTracking()
+                .ToListAsync();
+
+            foreach (var watch in sampleWatches)
+                context.Add(BuildWatchContext(watch));
+
+            cards.AddRange(sampleWatches.Select(ToChatWatchCard));
         }
 
-        foreach (var w in watches)
+        foreach (var brand in mentions.Brands.Take(2))
         {
-            var brand = w.Brand?.Name ?? "";
-            var coll  = w.Collection?.Name ?? "";
-            var price = w.CurrentPrice == 0 ? "Price on Request" : $"${w.CurrentPrice:N0}";
-            context.Add($"[Watch Slug {w.Slug}] {brand} {coll} | Ref: {w.Name} | {price}\nDescription: {w.Description}\nSpecs: {w.Specs}");
+            var fullBrand = await _context.Brands.AsNoTracking().FirstOrDefaultAsync(b => b.Id == brand.Id);
+            if (fullBrand == null) continue;
+
+            context.Add(BuildBrandContext(fullBrand));
+
+            var brandCollections = await _context.Collections
+                .Where(c => c.BrandId == fullBrand.Id)
+                .OrderBy(c => c.Name)
+                .Take(3)
+                .AsNoTracking()
+                .ToListAsync();
+
+            foreach (var collection in brandCollections)
+                context.Add(BuildCollectionContext(collection));
+
+            var sampleWatches = await _context.Watches
+                .Include(w => w.Brand)
+                .Include(w => w.Collection)
+                .Where(w => w.BrandId == fullBrand.Id)
+                .OrderByDescending(w => w.Id)
+                .Take(2)
+                .AsNoTracking()
+                .ToListAsync();
+
+            foreach (var watch in sampleWatches)
+                context.Add(BuildWatchContext(watch));
+
+            cards.AddRange(sampleWatches.Select(ToChatWatchCard));
         }
 
-        // Include editorial insights (WhyItMatters, BestFor) for richer AI responses
-        var watchIds = watches.Select(w => w.Id).ToList();
-        var editorials = await _context.WatchEditorialLinks
-            .Include(l => l.EditorialContent)
-            .Where(l => watchIds.Contains(l.WatchId) && l.EditorialContent != null)
+        if (noDirectMatch)
+            context.Insert(0, "No exact Tourbillon product match was resolved for the request. Answer using the matched brand and collection context only.");
+
+        return new ChatResolution
+        {
+            UseAi = true,
+            Query = query,
+            Context = context,
+            WatchCards = cards
+                .GroupBy(c => c.Id)
+                .Select(g => g.First())
+                .Take(4)
+                .ToList(),
+        };
+    }
+
+    private async Task<ChatResolution> BuildDiscoveryResolutionAsync(string query, WatchFinderResult result)
+    {
+        var topIds = result.Watches.Take(4).Select(w => w.Id).Distinct().ToList();
+        var watches = await _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .Where(w => topIds.Contains(w.Id))
             .AsNoTracking()
             .ToListAsync();
 
-        foreach (var link in editorials)
-        {
-            var ed = link.EditorialContent!;
-            var editWatch = watches.FirstOrDefault(w => w.Id == link.WatchId);
-            var parts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(ed.WhyItMatters)) parts.Add(ed.WhyItMatters);
-            if (!string.IsNullOrWhiteSpace(ed.BestFor)) parts.Add($"Best for: {ed.BestFor}");
-            if (parts.Count > 0)
-                context.Add($"[Editorial for {editWatch?.Slug ?? link.WatchId.ToString()}] {string.Join(" ", parts)}");
-        }
-
-        return context;
-    }
-
-    private async Task<List<string>> FetchBrandContextAsync(int brandId)
-    {
-        var brand = await _context.Brands.AsNoTracking().FirstOrDefaultAsync(b => b.Id == brandId);
-        if (brand == null) return [];
+        var ordered = topIds
+            .Select(id => watches.FirstOrDefault(w => w.Id == id))
+            .Where(w => w != null)
+            .Cast<Watch>()
+            .ToList();
 
         var context = new List<string>
         {
-            $"Brand \"{brand.Name}\" (Slug: {brand.Slug}):\n{brand.Description}\n{brand.Summary}"
+            $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}."
         };
 
-        var collections = await _context.Collections
-            .Where(c => c.BrandId == brandId)
-            .AsNoTracking()
-            .ToListAsync();
+        foreach (var watch in ordered)
+            context.Add(BuildWatchContext(watch));
 
-        foreach (var col in collections)
+        foreach (var collection in ordered
+            .Where(w => w.Collection != null)
+            .Select(w => w.Collection!)
+            .GroupBy(c => c.Id)
+            .Select(g => g.First())
+            .Take(2))
         {
-            if (!string.IsNullOrWhiteSpace(col.Description))
+            context.Add(BuildCollectionContext(collection));
+        }
+
+        var actions = new List<ChatAction>
+        {
+            new()
             {
-                var style = !string.IsNullOrWhiteSpace(col.Style) ? $" [Style: {col.Style}]" : "";
-                context.Add($"Collection \"{col.Name}\" (Slug: {col.Slug}){style}: {col.Description}");
+                Type = "search",
+                Query = query,
+                Label = "Open Smart Search"
             }
-        }
+        };
 
-        // Sample editorial from this brand's watches for richer context
-        var brandEditorials = await _context.WatchEditorialLinks
-            .Include(l => l.EditorialContent)
-            .Include(l => l.Watch)
-            .Where(l => l.Watch.BrandId == brandId && l.EditorialContent != null)
-            .Take(3)
-            .AsNoTracking()
-            .ToListAsync();
-
-        foreach (var link in brandEditorials)
+        return new ChatResolution
         {
-            var ed = link.EditorialContent!;
-            if (!string.IsNullOrWhiteSpace(ed.WhyItMatters))
-                context.Add($"[Editorial — {link.Watch.Name}] {ed.WhyItMatters}");
-        }
-
-        return context;
+            UseAi = true,
+            Query = query,
+            Context = context,
+            WatchCards = ordered.Select(ToChatWatchCard).Take(4).ToList(),
+            Actions = actions
+        };
     }
 
-    private async Task<List<string>> FetchGeneralContextAsync(HttpClient httpClient, string query)
+    private ChatResolution BuildExactWatchResolution(Watch watch)
     {
-        // Embed query → cosine search against watch_finder feature embeddings
-        float[]? embedding = null;
-        try
+        var brandLink = watch.Brand != null && !string.IsNullOrWhiteSpace(watch.Brand.Slug)
+            ? $"[{watch.Brand.Name}](/brands/{watch.Brand.Slug})"
+            : "its brand";
+        var collectionLink = watch.Collection != null && !string.IsNullOrWhiteSpace(watch.Collection.Slug)
+            ? $"[{watch.Collection.Name}](/collections/{watch.Collection.Slug})"
+            : null;
+        var watchLink = $"[{BuildWatchTitle(watch)}](/watches/{watch.Slug})";
+        var place = collectionLink != null
+            ? $"It sits in {collectionLink} from {brandLink}"
+            : $"It comes from {brandLink}";
+
+        return new ChatResolution
         {
-            var embedResp = await httpClient.PostAsJsonAsync("/embed", new { texts = new[] { query } });
-            if (embedResp.IsSuccessStatusCode)
-            {
-                var json = await embedResp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
-                if (json.TryGetProperty("embeddings", out var embEl))
+            Message = $"{watchLink} is the closest exact match in Tourbillon's catalogue. {place} and is listed at {FormatPrice(watch.CurrentPrice)}."
+                .Replace("  ", " "),
+            WatchCards = [ToChatWatchCard(watch)]
+        };
+    }
+
+    private ChatResolution BuildCompareResolution(List<Watch> watches)
+    {
+        var links = watches.Select(w => $"[{BuildWatchTitle(w)}](/watches/{w.Slug})");
+        var response = $"I found a concrete Tourbillon comparison set: {string.Join(", ", links)}. Use the compare chip below to load the side-by-side view.";
+
+        return new ChatResolution
+        {
+            Message = response,
+            WatchCards = watches.Select(ToChatWatchCard).ToList(),
+            Actions =
+            [
+                new ChatAction
                 {
-                    var embeddings = JsonSerializer.Deserialize<List<float[]>>(embEl.GetRawText(), _jsonOptions);
-                    embedding = embeddings?.Count > 0 ? embeddings[0] : null;
+                    Type = "compare",
+                    Label = "Compare these watches",
+                    Slugs = watches.Select(w => w.Slug).ToList()
                 }
-            }
-        }
-        catch { /* embed unavailable — return empty context */ }
-
-        if (embedding == null) return [];
-
-        var queryVector = new Vector(embedding);
-
-        var rows = await _context.WatchEmbeddings
-            .Include(e => e.Watch).ThenInclude(w => w.Brand)
-            .Include(e => e.Watch).ThenInclude(w => w.Collection)
-            .Where(e => e.Feature == "watch_finder" && e.Embedding != null)
-            .OrderBy(e => e.Embedding!.CosineDistance(queryVector))
-            .Take(25)
-            .ToListAsync();
-
-        // Deduplicate per watch — keep best-scoring chunk
-        var seen    = new HashSet<int>();
-        var context = new List<string>();
-        var seenCols = new HashSet<int>();
-
-        foreach (var row in rows)
-        {
-            if (!seen.Add(row.WatchId)) continue;
-
-            var w     = row.Watch;
-            var brand = w.Brand?.Name ?? "";
-            var coll  = w.Collection?.Name ?? "";
-            var price = w.CurrentPrice == 0 ? "Price on Request" : $"${w.CurrentPrice:N0}";
-            context.Add($"[Watch Slug {w.Slug}] {brand} {coll} | {w.Name} | {price}\n{row.ChunkText}");
-
-            // Include collection description once per collection
-            if (w.CollectionId.HasValue && seenCols.Add(w.CollectionId.Value))
-            {
-                var colDesc = w.Collection?.Description;
-                if (!string.IsNullOrWhiteSpace(colDesc))
-                    context.Add($"Collection \"{coll}\": {colDesc}");
-            }
-
-            if (context.Count >= 12) break;
-        }
-
-        return context;
+            ]
+        };
     }
 
-    // ── Extract watch cards from markdown links in AI response ────────────────────
-
-    private async Task<List<ChatWatchCard>> ExtractWatchCardsAsync(string message)
+    private async Task<List<ChatWatchCard>> ExtractWatchCardsAsync(string message, List<ChatAction>? actions = null)
     {
-        // Match slug-based watch links: /watches/{slug} where slug is alphanumeric + hyphens
         var slugs = Regex.Matches(message, @"/watches/([\w-]+)")
             .Select(m => m.Groups[1].Value)
-            .Distinct()
+            .ToList();
+
+        if (actions != null)
+        {
+            slugs.AddRange(actions
+                .Where(a => string.Equals(a.Type, "compare", StringComparison.OrdinalIgnoreCase) && a.Slugs != null)
+                .SelectMany(a => a.Slugs!));
+        }
+
+        var distinctSlugs = slugs
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(5)
             .ToList();
 
-        if (slugs.Count == 0) return [];
+        if (distinctSlugs.Count == 0) return [];
 
         var watches = await _context.Watches
-            .Where(w => slugs.Contains(w.Slug))
+            .Where(w => distinctSlugs.Contains(w.Slug))
             .AsNoTracking()
             .ToListAsync();
 
-        return watches.Select(w => new ChatWatchCard
-        {
-            Id           = w.Id,
-            Name         = w.Name,
-            Slug         = w.Slug,
-            Description  = w.Description,
-            Image        = w.Image,
-            ImageUrl     = w.GetImageUrl("dcd9lcdoj"),
-            CurrentPrice = w.CurrentPrice,
-            BrandId      = w.BrandId,
-        }).ToList();
+        return watches.Select(ToChatWatchCard).ToList();
     }
+
+    private static List<ChatAction> MergeActions(List<ChatAction> preferred, List<ChatAction> secondary)
+    {
+        var merged = new List<ChatAction>();
+
+        foreach (var action in preferred.Concat(secondary))
+        {
+            if (string.IsNullOrWhiteSpace(action.Type))
+                continue;
+
+            if (string.Equals(action.Type, "compare", StringComparison.OrdinalIgnoreCase) && action.Slugs?.Count > 0)
+            {
+                var slugs = action.Slugs
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (slugs.Count == 0) continue;
+                if (merged.Any(a => string.Equals(a.Type, "compare", StringComparison.OrdinalIgnoreCase)
+                    && a.Slugs != null
+                    && a.Slugs.SequenceEqual(slugs, StringComparer.OrdinalIgnoreCase)))
+                    continue;
+
+                merged.Add(new ChatAction
+                {
+                    Type = "compare",
+                    Label = string.IsNullOrWhiteSpace(action.Label) ? "Compare these watches" : action.Label,
+                    Slugs = slugs
+                });
+                continue;
+            }
+
+            if (string.Equals(action.Type, "search", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(action.Query))
+            {
+                if (merged.Any(a => string.Equals(a.Type, "search", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(a.Query, action.Query, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                merged.Add(new ChatAction
+                {
+                    Type = "search",
+                    Label = string.IsNullOrWhiteSpace(action.Label) ? "Open Smart Search" : action.Label,
+                    Query = action.Query
+                });
+            }
+        }
+
+        return merged;
+    }
+
+    private static List<string> ExtractCompareParts(string query)
+    {
+        var working = query.Trim();
+        working = Regex.Replace(working, @"\b(?:compare|difference between|the difference between|which should i buy|should i buy|between)\b", " ", RegexOptions.IgnoreCase);
+        working = Regex.Replace(working, @"\b(?:versus|vs\.?|against)\b", "|", RegexOptions.IgnoreCase);
+        working = Regex.Replace(working, @"\bor\b", "|", RegexOptions.IgnoreCase);
+
+        if (working.Contains('|'))
+        {
+            return working
+                .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(CleanCompareSegment)
+                .Where(part => part.Length >= 3)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(4)
+                .ToList();
+        }
+
+        if (IsExplicitCompareQuery(query))
+        {
+            return working
+                .Split(" and ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(CleanCompareSegment)
+                .Where(part => part.Length >= 3)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(4)
+                .ToList();
+        }
+
+        return [];
+    }
+
+    private static string CleanCompareSegment(string value)
+    {
+        var cleaned = Regex.Replace(value, @"\b(?:the|a|an|for|me|please)\b", " ", RegexOptions.IgnoreCase);
+        return Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
+    }
+
+    private static bool LooksLikeEntityInfoRequest(string query, EntityMentions mentions)
+    {
+        if (!mentions.HasAny) return false;
+        if (LooksLikeDiscoveryRequest(query) || IsExplicitCompareQuery(query)) return false;
+
+        if (Regex.IsMatch(query, @"\b(?:history|heritage|about|tell me|what is|what makes|why|who makes|background|lineage)\b", RegexOptions.IgnoreCase))
+            return true;
+
+        return CountWords(query) <= 3;
+    }
+
+    private static bool LooksLikeDiscoveryRequest(string query) =>
+        Regex.IsMatch(query,
+            @"\b(?:find|show|search|looking for|look for|recommend|suggest|need|want|shopping|browse|under\s+\$?\d|between\s+\$?\d)\b",
+            RegexOptions.IgnoreCase);
+
+    private static bool IsExplicitCompareQuery(string query) =>
+        Regex.IsMatch(query,
+            @"\b(?:compare|versus|vs\.?|against|difference between|which should i buy|should i buy| or )\b",
+            RegexOptions.IgnoreCase);
+
+    private static bool IsAbusiveQuery(string query) =>
+        Regex.IsMatch(query,
+            @"\b(?:fuck|shit|bitch|slut|cunt|retard|idiot|moron|stupid|nigger|faggot|kill yourself|rape)\b",
+            RegexOptions.IgnoreCase);
+
+    private static int CountWords(string query) =>
+        Regex.Matches(query, @"\b[\w'-]+\b").Count;
+
+    private static string NormalizeEntityText(string value)
+    {
+        var compact = Regex.Replace(value.ToLowerInvariant(), @"[^\p{L}\p{Nd}]+", " ");
+        return Regex.Replace(compact, @"\s+", " ").Trim();
+    }
+
+    private static string BuildBrandContext(Brand brand)
+    {
+        var summary = string.IsNullOrWhiteSpace(brand.Summary) ? "" : $" Summary: {brand.Summary}";
+        return $"Brand \"{brand.Name}\" (Slug: {brand.Slug}): {brand.Description}{summary}";
+    }
+
+    private static string BuildCollectionContext(Collection collection)
+    {
+        var style = string.IsNullOrWhiteSpace(collection.Style) ? "" : $" [Style: {collection.Style}]";
+        return $"Collection \"{collection.Name}\" (Slug: {collection.Slug}){style}: {collection.Description}";
+    }
+
+    private static string BuildWatchContext(Watch watch)
+    {
+        var brandName = watch.Brand?.Name ?? "";
+        var collectionName = watch.Collection?.Name ?? "";
+        return $"Watch \"{BuildWatchTitle(watch)}\" (Slug: {watch.Slug}): Brand {brandName}; Collection {collectionName}; Price {FormatPrice(watch.CurrentPrice)}; Description {watch.Description}; Specs {watch.Specs}";
+    }
+
+    private static string BuildWatchTitle(Watch watch)
+    {
+        var prefix = !string.IsNullOrWhiteSpace(watch.Description)
+            ? watch.Description!.Trim()
+            : string.Join(" ", new[] { watch.Brand?.Name, watch.Collection?.Name }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        return string.IsNullOrWhiteSpace(prefix) ? watch.Name : $"{prefix} {watch.Name}".Trim();
+    }
+
+    private static string FormatPrice(decimal price) =>
+        price == 0 ? "Price on Request" : $"${price:N0}";
+
+    private static ChatWatchCard ToChatWatchCard(Watch watch) => new()
+    {
+        Id = watch.Id,
+        Name = watch.Name,
+        Slug = watch.Slug,
+        Description = watch.Description,
+        Image = watch.Image,
+        ImageUrl = watch.GetImageUrl(CloudName),
+        CurrentPrice = watch.CurrentPrice,
+        BrandId = watch.BrandId,
+    };
 }

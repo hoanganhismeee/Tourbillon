@@ -6,12 +6,12 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 export const SUGGESTIONS = [
-  'Vacheron Dress Watch 39 to 40mm Dial Above 200k',
-  'Tourbillon Watches',
-  'Perpetual Calendar',
-  'Sport Watches Under 100k',
-  'JLC Reverso, Rolex Daydate, Omega Seamaster under 50k with good water resistance',
-  'AP Royal Oak',
+  'Vacheron Dress Watch 39 to 40mm Dial below 200k',
+  'Omega and Rolex with good water resistance',
+  'AP Royal Oak steel',
+  'JLC Reverso under $50k',
+  'Perpetual calendar watch',
+  'Tourbillon watches',
 ];
 
 export default function WatchFinderSearch() {

@@ -26,7 +26,7 @@
 | Stripe Checkout (Test Mode) | Removed | — |
 | Contact Advisor/ Book an Appointment (PoR Inquiry) | Done | 4 |
 | Chat Concierge — floating widget + product comparison RAG | Done | 5 |
-| Chat Concierge — web search + brand knowledge answers | Done | 5 |
+| Chat Concierge — catalogue-grounded brand knowledge and discovery answers | Done | 5 |
 | Brand & Collection Embeddings | Removed | — |
 | Retrieval Quality Audit (chunk enrichment, vector ordering, index fix) | Done | 5 |
 | Favourites & Collections | Done | 6 |
@@ -317,30 +317,30 @@ Floating conversational assistant available on every page — handles both speci
 **What it does:**
 - Floating pill at bottom-right on all pages; panel slides up on click
 - Product comparison: "I like the Overseas and the Aquanaut, I go to the beach, which should I choose?" → specs analysis + recommendation + watch thumbnail cards
-- Brand knowledge: "Tell me about Vacheron's history" → web search + DB description blended → narrative with brand page link
+- Brand knowledge: "Tell me about Vacheron's history" → DB description + catalogue context → narrative with brand page link
 - Conversation-aware: follow-ups reference earlier turns in session; state survives in-app navigation (layout.tsx mount, never unmounted on soft nav)
 
 **Architecture — reuses Phase 3 infrastructure:**
 - `ParseQueryIntentAsync` (no LLM) pre-filters brand/collection/reference number signals for query type routing
 - PRODUCT query (collection/watch name in query): fetch watch records → ai-service `/chat`
-- BRAND query (brand name, no model match): fetch DB description → web search → ai-service `/chat`
-- GENERAL query (neither): vector search top-5 `watch_finder` embeddings as context → ai-service `/chat`
+- BRAND query (brand name, no model match): fetch DB description + catalogue context → ai-service `/chat`
+- GENERAL query (neither): reuse Smart Search results and compact catalogue context → ai-service `/chat`
 - `QueryCacheService` caches first-turn (history-free) responses at cosine ≥ 0.92 — not applied to multi-turn
 - Rate limit: 5/day deployed (`ChatSettings:DailyLimit`); `DisableLimitInDev: true` for local
 
 **Infrastructure:**
 - In-memory session store via `ConcurrentDictionary` (MVP; upgrade to Redis for horizontal scale)
-- `POST /chat` endpoint in ai-service — web search via `duckduckgo-search` (no API key)
+- `POST /chat` endpoint in ai-service — compact Tourbillon-only answer generation
 - Pill UI matches `CompareIndicator` design; chat pill `bottom-8`, compare pill moves to `bottom-24`
 - Brand/collection detection uses direct DB substring matching — no dedicated embeddings needed for a 13-brand catalogue
 
 **Full spec:** `docs/phase5-rag-chatbot.md`
 
 **Files involved:**
-- `ai-service/routes/chat.py`, `ai-service/prompts/chat.py` — `POST /chat` + `CHAT_SYSTEM_PROMPT` + web search tool
+- `ai-service/routes/chat.py`, `ai-service/prompts/chat.py` — `POST /chat` + `CHAT_SYSTEM_PROMPT` for Tourbillon-only responses
 - `ai-service/requirements.txt` — `duckduckgo-search`
 - `backend/Controllers/ChatController.cs` — `POST /api/chat/message`, `DELETE /api/chat/session/{id}`
-- `backend/Services/ChatService.cs` — orchestration pipeline (PRODUCT/BRAND/GENERAL routing)
+- `backend/Services/ChatService.cs` — orchestration pipeline (deterministic refusal/exact/compare routing + compact AI context)
 - `frontend/app/components/chat/ChatWidget.tsx`, `ChatPanel.tsx`
 - `frontend/app/layout.tsx` — mount ChatWidget
 - `frontend/lib/api.ts` — `sendChatMessage()`, `clearChatSession()`

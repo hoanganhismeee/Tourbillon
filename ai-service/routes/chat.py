@@ -43,11 +43,16 @@ def _truncate_chat_response(text: str, max_words: int = 130) -> str:
 
 
 def _inject_entity_links(text: str, context: list[str]) -> str:
-    """Inject markdown links for bare brand and collection mentions using provided slugs."""
+    """Inject markdown links for bare watch, brand, and collection mentions using provided slugs."""
+    watches: dict[str, str] = {}
     brands: dict[str, str] = {}
     collections: dict[str, str] = {}
 
     for item in context:
+        watch_match = re.search(r'Watch "([^"]+)" \(Slug: ([\w-]+)\)', item)
+        if watch_match:
+            watches[watch_match.group(1)] = watch_match.group(2)
+
         brand_match = re.search(r'Brand "([^"]+)" \(Slug: ([\w-]+)\)', item)
         if brand_match:
             brands[brand_match.group(1)] = brand_match.group(2)
@@ -56,10 +61,11 @@ def _inject_entity_links(text: str, context: list[str]) -> str:
         if collection_match:
             collections[collection_match.group(1)] = collection_match.group(2)
 
-    if not brands and not collections:
+    if not watches and not brands and not collections:
         return text
 
-    replacements = [(name, f"[{name}](/brands/{slug})") for name, slug in brands.items()]
+    replacements = [(name, f"[{name}](/watches/{slug})") for name, slug in watches.items()]
+    replacements += [(name, f"[{name}](/brands/{slug})") for name, slug in brands.items()]
     replacements += [(name, f"[{name}](/collections/{slug})") for name, slug in collections.items()]
     replacements.sort(key=lambda item: -len(item[0]))
 
@@ -99,21 +105,9 @@ def register_routes(app, runtime: Runtime) -> None:
         query = (data.get("query") or "").strip()
         context = data.get("context") or []
         history = data.get("history") or []
-        enable_web_search = data.get("enableWebSearch", False)
 
         if not query:
             return jsonify({"error": "query is required"}), 400
-
-        web_snippets = []
-        if enable_web_search:
-            try:
-                from duckduckgo_search import DDGS
-
-                with DDGS() as ddgs:
-                    results = list(ddgs.text(query, max_results=3))
-                web_snippets = [result["body"] for result in results if result.get("body")]
-            except Exception as exc:
-                print(f"Web search failed (proceeding without): {exc}")
 
         messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
 
@@ -121,11 +115,6 @@ def register_routes(app, runtime: Runtime) -> None:
         if context_block:
             messages.append({"role": "user", "content": f"Relevant product context:\n{context_block}"})
             messages.append({"role": "assistant", "content": "Understood, I have the context."})
-
-        if web_snippets:
-            web_block = "\n\n".join(web_snippets)
-            messages.append({"role": "user", "content": f"Web search results:\n{web_block}"})
-            messages.append({"role": "assistant", "content": "Noted the web context."})
 
         messages.extend(history)
         messages.append({"role": "user", "content": query})

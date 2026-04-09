@@ -158,6 +158,7 @@ builder.Services.AddHttpClient("ai-service", c =>
 });
 builder.Services.AddSingleton<WatchFilterMapper>();
 builder.Services.AddScoped<IDeterministicWatchSearchService, DeterministicWatchSearchService>();
+builder.Services.AddScoped<IWatchFinderService, WatchFinderService>();
 builder.Services.AddScoped<WatchFinderService>();
 builder.Services.AddScoped<WatchEmbeddingService>();
 builder.Services.AddScoped<QueryCacheService>();
