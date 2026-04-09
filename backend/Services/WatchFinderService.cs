@@ -112,7 +112,7 @@ public class WatchFinderResult
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
-public class WatchFinderService
+public class WatchFinderService : IWatchFinderService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IDeterministicWatchSearchService _deterministicSearch;

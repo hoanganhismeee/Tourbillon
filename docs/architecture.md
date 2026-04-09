@@ -68,7 +68,7 @@ Entry point: `backend/Program.cs`
 - `WatchFilterMapper` — Maps parsed intent to SQL predicates.
 - `WatchEmbeddingService` — Builds 4 text chunks per watch (full, brand_style, specs, use_case), calls ai-service `/embed` in true batches (50 watches / 200 texts per HTTP call), upserts into WatchEmbeddings. Category taxonomy is deterministic (`InferCategory`, `InferOccasions`).
 - `QueryCacheService` — Persistent semantic query cache. Cosine similarity threshold 0.92. Cache bypassed when hard SQL filters detected.
-- `ChatService` — Chat concierge orchestration. Routes queries: PRODUCT (direct DB fetch + editorial content), BRAND (DB description + editorial sample + web search), GENERAL (vector search top-5 watch_finder embeddings as context). Redis session store with 1-hour TTL. Rate-limited per user/day. System prompt hardened with scope, grounding, safety, and anti-hallucination guardrails.
+- `ChatService` — Chat concierge orchestration. Short-circuits abusive and unrelated prompts, resolves exact watches and compare requests deterministically, reuses `WatchFinderService` for discovery queries, and sends only compact Tourbillon catalogue context to ai-service when explanation helps. Redis session store with 1-hour TTL. Rate-limited per user/day. System prompt is scoped, grounded, and anti-hallucination by default.
 - `TasteProfileService` — Watch DNA. Two AI paths: `ParseAndSaveAsync` (manual text → `/parse-taste`) and `GenerateFromBehaviorAsync` (browsing events → `/generate-dna-from-behavior`). `ScoreWatch()` is a pure static method (brand +3, material +2, dial +2, size +1, price +1 = 9 max). Zero AI cost at browse time.
 - `BehaviorService` — Browsing event storage for Watch DNA. `FlushEventsAsync` bulk-inserts with time-window deduplication (single batch query). `MergeAnonymousAsync` reassigns anonymous events to authenticated user. `GetRecentEventsAsync` returns recent events for AI profile generation. Requires ≥ 3 events before generation is attempted.
 - `WatchEditorialService` — Editorial content per collection. Generated once, stored in DB, served at zero runtime cost. 339/339 coverage.
@@ -270,7 +270,7 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 | `POST /watch-finder/rerank` | Candidate pool -> scores-only array (LLM call) |
 | `POST /watch-finder/explain` | Single-watch on-demand explanation (cached) |
 | `POST /embed` | Batch text -> float[768] embeddings via nomic-embed-text (no LLM) |
-| `POST /chat` | Conversational response with web search tool (duckduckgo-search) |
+| `POST /chat` | Conversational response from compact Tourbillon-only context |
 | `POST /parse-taste` | Free-text -> structured taste preferences JSON (LLM call) |
 | `POST /generate-dna-from-behavior` | Browsing events array -> structured taste preferences + `summary` string (LLM call) |
 | `GET /ready` | 503 until model warmup completes, 200 after |
