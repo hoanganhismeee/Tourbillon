@@ -237,6 +237,11 @@ Email: `TestEmailDto`
 
 Entry point: `ai-service/app.py`
 
+Internal layout:
+- `ai-service/routes/` - endpoint registration by domain (`watch_finder`, `chat`, `taste`, `editorial`, `embeddings`, `collections`, `system`)
+- `ai-service/prompts/` - prompt strings grouped by domain
+- `ai-service/core/` - shared runtime, warmup, cache, and LLM helpers
+
 ```
 Frontend (Next.js)
     |
@@ -247,7 +252,7 @@ AI Service (Python / Flask)
 Claude Haiku API (production) / Ollama Qwen 2.5 7B (local)
 ```
 
-**Architecture rule:** All prompt construction and response parsing lives here. The .NET backend sends and receives structured data only — no prompt strings in C#. This isolates all AI concerns to one layer.
+**Architecture rule:** All prompt construction and response parsing lives in the `ai-service` Python package. The .NET backend sends and receives structured data only — no prompt strings in C#. This isolates all AI concerns to one layer.
 
 **Environment switching — single env var, no code change:**
 
@@ -431,3 +436,4 @@ Frontend runs locally (`npm run dev`) — intentionally excluded from Docker for
 | Analytics Dashboard | Planned |
 | S3 + CloudFront | Planned |
 | Kubernetes | Planned |
+

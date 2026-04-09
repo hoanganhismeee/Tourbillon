@@ -80,10 +80,10 @@ ai-service:
 The warmup in `app.py` auto-detects non-Ollama URLs and skips model pull. No other changes needed.
 
 **When switching to Haiku — one prompt cleanup:**
-`ai-service/app.py` lines 171–175 contain hardcoded dress/sport/diver/chronograph narrative guidance for the reranker. These become redundant once Haiku handles them natively — remove after confirming correct scores in staging. Keep all scoring thresholds (`score 80+`). Do NOT remove `PARSE_SYSTEM_PROMPT` category lists (occasion, material, strap, etc.) — they constrain structured JSON output format and are model-agnostic.
+`ai-service/prompts/watch_finder.py` contains the reranker's hardcoded dress/sport/diver/chronograph narrative guidance. These become redundant once Haiku handles them natively — remove after confirming correct scores in staging. Keep all scoring thresholds (`score 80+`). Do NOT remove `PARSE_SYSTEM_PROMPT` category lists (occasion, material, strap, etc.) — they constrain structured JSON output format and are model-agnostic.
 
 **Chat concierge prompt (`CHAT_SYSTEM_PROMPT`) — written for Haiku:**
-Style rules, word cap (130 words), and link format are expressed as plain instructions that Claude follows natively — no hardcoded narrative, no model-specific training. A server-side `_truncate_chat_response()` in `/chat` enforces the cap as a safety net for any model that overshoots. Do not add enumeration-heavy guidance; prose instructions are intentional and model-agnostic.
+Style rules, word cap (130 words), and link format are expressed as plain instructions that Claude follows natively — no hardcoded narrative, no model-specific training. The prompt now lives in `ai-service/prompts/chat.py`, and the server-side `_truncate_chat_response()` safety net lives in `ai-service/routes/chat.py`. Do not add enumeration-heavy guidance; prose instructions are intentional and model-agnostic.
 
 **`Collection.Style` DB column:** SQL pre-filter for query speed — not a knowledge proxy. Keep regardless of model.
 
@@ -337,7 +337,7 @@ Floating conversational assistant available on every page — handles both speci
 **Full spec:** `docs/phase5-rag-chatbot.md`
 
 **Files involved:**
-- `ai-service/app.py` — `POST /chat` + `CHAT_SYSTEM_PROMPT` + web search tool
+- `ai-service/routes/chat.py`, `ai-service/prompts/chat.py` — `POST /chat` + `CHAT_SYSTEM_PROMPT` + web search tool
 - `ai-service/requirements.txt` — `duckduckgo-search`
 - `backend/Controllers/ChatController.cs` — `POST /api/chat/message`, `DELETE /api/chat/session/{id}`
 - `backend/Services/ChatService.cs` — orchestration pipeline (PRODUCT/BRAND/GENERAL routing)
@@ -571,7 +571,7 @@ Hardens the chat concierge to be a specialist watch advisor — grounded in Tour
 6. **Consistency** — always "Tourbillon", spec-based reasoning over adjectives
 
 **Files involved:**
-- `ai-service/app.py` — `CHAT_SYSTEM_PROMPT` rewrite
+- `ai-service/prompts/chat.py` — `CHAT_SYSTEM_PROMPT` rewrite
 - `backend/Services/ChatService.cs` — editorial context injection, empty-context fallback, Collection.Style
 
 ### Slug-Based URLs + Cloudinary Public ID Sync (IN PROGRESS)
@@ -599,7 +599,7 @@ Replaces sequential database IDs in URLs (`/watches/42`) with human-readable slu
 - `backend/Services/ChatService.cs` — context strings with slugs
 - `frontend/lib/api.ts` — slug-based fetch functions
 - `frontend/app/watches/[slug]/`, `brands/[slug]/`, `collections/[slug]/` — renamed route folders
-- `ai-service/app.py` — CHAT_SYSTEM_PROMPT and `_inject_entity_links` use slugs
+- `ai-service/prompts/chat.py`, `ai-service/routes/chat.py` — CHAT_SYSTEM_PROMPT and `_inject_entity_links` use slugs
 
 ### Search & Recommendation Analytics Dashboard
 
@@ -624,3 +624,5 @@ Convert Docker Compose to K8s manifests: Deployment, Service, Ingress, ConfigMap
 ## Resume Keywords Covered
 
 AI/LLM integration, semantic search, vector embeddings (pgvector, HNSW indexing), recommendation systems, personalization engine, conversational commerce, retrieval-augmented generation (RAG), hybrid SQL + vector search, tiered retrieval routing, embedding quality auditing, programmatic content generation, full-stack implementation, rule-based scoring systems, NLP-to-SQL query pipeline, cost engineering (quota limits, semantic cache strategy, pre-generation), transactional email (dual-recipient notification), client-side state management (Zustand + localStorage persistence), SSR hydration strategies, responsive UI with motion design (Framer Motion), async event-driven architecture, durable background job processing (Hangfire, retry with exponential backoff), Redis (distributed caching, rate limiting, session storage), CI/CD pipeline (GitHub Actions, automated quality gates), structured logging (Serilog), health check probes, observability and operational metrics, CRM pipeline (status workflow, follow-up scheduling), search analytics (tier distribution, cache hit rate, click-through tracking), AWS S3 + CloudFront (storage abstraction, CDN), Kubernetes (container orchestration, HPA auto-scaling, rolling deployments), Docker Compose multi-service orchestration, LLM prompt hardening (grounding, scope guardrails, anti-hallucination, prompt injection resistance).
+
+

@@ -505,7 +505,7 @@ public class AdminController : ControllerBase
             // Get all watches for the brand that have external URLs (starting with http)
             var context = HttpContext.RequestServices.GetRequiredService<backend.Database.TourbillonContext>();
             var watchesToCache = await context.Watches
-                .Where(w => w.BrandId == brandId && w.Image.StartsWith("http"))
+                .Where(w => w.BrandId == brandId && w.Image != null && w.Image.StartsWith("http"))
                 .ToListAsync();
 
             _logger.LogInformation("Found {Count} watches with external URLs for brand {BrandId}", watchesToCache.Count.ToString(), brandId.ToString());
@@ -515,7 +515,13 @@ public class AdminController : ControllerBase
                 try
                 {
                     // Strip transformation parameters from URL (e.g., .transform.vacdetail.png -> .png)
-                    string imageUrl = watch.Image;
+                    var imageUrl = watch.Image;
+                    if (string.IsNullOrEmpty(imageUrl))
+                    {
+                        failureCount++;
+                        continue;
+                    }
+
                     if (imageUrl.Contains(".transform."))
                     {
                         imageUrl = System.Text.RegularExpressions.Regex.Replace(imageUrl, @"\.transform\.[^.]+(\.\w+)$", "$1");
@@ -724,7 +730,7 @@ public class AdminController : ControllerBase
             
             var missingSpecs = allWatches.Where(w => string.IsNullOrEmpty(w.Specs) || w.Specs == "{}").Select(w => w.Id).ToList();
             var zeroPrices = allWatches.Where(w => w.CurrentPrice == 0).Select(w => w.Id).ToList();
-            var externalImages = allWatches.Where(w => w.Image.StartsWith("http")).Select(w => w.Id).ToList();
+            var externalImages = allWatches.Where(w => w.Image != null && w.Image.StartsWith("http")).Select(w => w.Id).ToList();
             var missingCollections = allWatches.Where(w => w.CollectionId == null).Select(w => w.Id).ToList();
 
             return Ok(new

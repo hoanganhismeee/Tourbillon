@@ -750,13 +750,17 @@ public class WatchFinderService
         List<int> styleCollectionIds = [];
         if (ShouldApplyStyleSqlFilter(intent))
         {
-            styleCollectionIds = await _context.Collections
-                .Where(c => c.Style == intent.Style)
-                .Select(c => c.Id)
-                .ToListAsync();
-            if (styleCollectionIds.Count > 0)
-                q = q.Where(e => e.Watch.CollectionId != null
-                              && styleCollectionIds.Contains((int)e.Watch.CollectionId));
+            var style = intent?.Style;
+            if (style != null)
+            {
+                styleCollectionIds = await _context.Collections
+                    .Where(c => c.Style == style)
+                    .Select(c => c.Id)
+                    .ToListAsync();
+                if (styleCollectionIds.Count > 0)
+                    q = q.Where(e => e.Watch.CollectionId != null
+                                  && styleCollectionIds.Contains((int)e.Watch.CollectionId));
+            }
         }
 
         // Push distance order and LIMIT to DB — project WatchId + distance in one round-trip.
