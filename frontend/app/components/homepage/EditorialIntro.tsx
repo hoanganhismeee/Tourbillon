@@ -5,7 +5,6 @@
 // letter-spacing expand animation on the caption label.
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/button';
 import HeroHeading from './HeroHeading';

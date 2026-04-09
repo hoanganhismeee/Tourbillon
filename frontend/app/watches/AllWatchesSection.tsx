@@ -6,10 +6,11 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { fetchWatches, fetchCollections, getTasteProfile, Watch, Brand, TasteProfile } from '@/lib/api';
+import { fetchWatches, fetchCollections, getTasteProfile, Brand } from '@/lib/api';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { WatchCard } from '../components/cards/WatchCard';
+import { SortOrder, WatchOrderingService } from './WatchOrderingService';
 
 interface AllWatchesSectionProps {
   brands: Brand[];
@@ -17,184 +18,7 @@ interface AllWatchesSectionProps {
   collectionFilters?: number[];
 }
 
-interface WatchSpecsParsed {
-  case?: { material?: string; diameter?: string };
-  dial?: { color?: string };
-}
-
-type SortOrder = 'default' | 'personalized' | 'price-asc' | 'price-desc';
-
-type RankedWatch = {
-  watch: Watch;
-  baseIndex: number;
-  score: number;
-};
-
-const PERSONALIZED_WINDOW_SIZE = 48;
-const PERSONALIZED_MIN_SCORE = 1;
 const PERSONALIZED_EMPTY_COPY = 'Your Watch DNA is still taking shape. Continue exploring and a more personal edit will emerge.';
-
-function stableHash(input: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function brandCapForPosition(position: number): number {
-  if (position < 12) return 3;
-  if (position < 24) return 5;
-  return Number.POSITIVE_INFINITY;
-}
-
-function interleaveByBrand(watches: Watch[], seed = 'tourbillon-default-grid'): Watch[] {
-  const byBrand = new Map<number, Watch[]>();
-  for (const watch of watches) {
-    if (!byBrand.has(watch.brandId)) byBrand.set(watch.brandId, []);
-    byBrand.get(watch.brandId)!.push(watch);
-  }
-
-  const groups = [...byBrand.entries()]
-    .sort((a, b) => stableHash(`${seed}:brand:${a[0]}`) - stableHash(`${seed}:brand:${b[0]}`))
-    .map(([, group]) =>
-      [...group].sort((a, b) => stableHash(`${seed}:watch:${a.id}`) - stableHash(`${seed}:watch:${b.id}`))
-    );
-
-  const result: Watch[] = [];
-  const maxLength = Math.max(...groups.map(group => group.length));
-  for (let i = 0; i < maxLength; i++) {
-    for (const group of groups) {
-      if (i < group.length) result.push(group[i]);
-    }
-  }
-  return result;
-}
-
-function scoreTasteMatch(watch: Watch, profile: TasteProfile): number {
-  let score = 0;
-
-  if (profile.preferredBrandIds.includes(watch.brandId)) score += 3;
-
-  const specs: WatchSpecsParsed | null = (() => {
-    try { return watch.specs ? JSON.parse(watch.specs) : null; } catch { return null; }
-  })();
-
-  if (specs?.case?.material && profile.preferredMaterials.length > 0) {
-    const material = specs.case.material.toLowerCase();
-    if (profile.preferredMaterials.some(value => material.includes(value.toLowerCase()))) score += 2;
-  }
-
-  if (specs?.dial?.color && profile.preferredDialColors.length > 0) {
-    const color = specs.dial.color.toLowerCase();
-    if (profile.preferredDialColors.some(value => color.includes(value.toLowerCase()))) score += 2;
-  }
-
-  if (specs?.case?.diameter && profile.preferredCaseSize) {
-    const mmMatch = specs.case.diameter.match(/\d+\.?\d*/);
-    if (mmMatch) {
-      const mm = parseFloat(mmMatch[0]);
-      const matches =
-        profile.preferredCaseSize === 'small' ? mm < 37 :
-        profile.preferredCaseSize === 'medium' ? mm >= 37 && mm <= 41 :
-        mm > 41;
-      if (matches) score += 1;
-    }
-  }
-
-  if (profile.priceMin != null && profile.priceMax != null && watch.currentPrice > 0) {
-    if (watch.currentPrice >= profile.priceMin && watch.currentPrice <= profile.priceMax) score += 1;
-  }
-
-  return score;
-}
-
-function hasAnyPreference(profile: TasteProfile): boolean {
-  return (
-    profile.preferredBrandIds.length > 0 ||
-    profile.preferredMaterials.length > 0 ||
-    profile.preferredDialColors.length > 0 ||
-    profile.preferredCaseSize != null ||
-    profile.priceMin != null ||
-    profile.priceMax != null
-  );
-}
-
-function blendPersonalizedOrder(
-  baseWatches: Watch[],
-  tasteProfile: TasteProfile | undefined,
-  isPersonalizationAvailable: boolean
-): Watch[] {
-  if (!isPersonalizationAvailable) return baseWatches;
-
-  const ranked: RankedWatch[] = baseWatches.map((watch, baseIndex) => ({
-    watch,
-    baseIndex,
-    score: tasteProfile ? scoreTasteMatch(watch, tasteProfile) : 0,
-  }));
-
-  const head = ranked.slice(0, PERSONALIZED_WINDOW_SIZE);
-  const tail = ranked.slice(PERSONALIZED_WINDOW_SIZE);
-  const promoted = head
-    .filter(item => item.score >= PERSONALIZED_MIN_SCORE)
-    .sort((a, b) => b.score - a.score || a.baseIndex - b.baseIndex);
-
-  if (promoted.length === 0) return baseWatches;
-
-  const headByBaseOrder = [...head].sort((a, b) => a.baseIndex - b.baseIndex);
-  const result: RankedWatch[] = [];
-  const usedIds = new Set<number>();
-  const deferred: RankedWatch[] = [];
-  const brandCounts = new Map<number, number>();
-
-  for (const candidate of promoted) {
-    const count = brandCounts.get(candidate.watch.brandId) ?? 0;
-    if (count >= brandCapForPosition(result.length)) {
-      deferred.push(candidate);
-      continue;
-    }
-
-    result.push(candidate);
-    usedIds.add(candidate.watch.id);
-    brandCounts.set(candidate.watch.brandId, count + 1);
-  }
-
-  for (const candidate of headByBaseOrder) {
-    if (usedIds.has(candidate.watch.id)) continue;
-
-    const count = brandCounts.get(candidate.watch.brandId) ?? 0;
-    if (count >= brandCapForPosition(result.length)) {
-      deferred.push(candidate);
-      continue;
-    }
-
-    result.push(candidate);
-    usedIds.add(candidate.watch.id);
-    brandCounts.set(candidate.watch.brandId, count + 1);
-  }
-
-  for (const candidate of deferred.sort((a, b) => a.baseIndex - b.baseIndex)) {
-    if (!usedIds.has(candidate.watch.id)) {
-      result.push(candidate);
-      usedIds.add(candidate.watch.id);
-    }
-  }
-
-  return [...result, ...tail].map(item => item.watch);
-}
-
-function parseSortOrder(value: string | null): SortOrder {
-  switch (value) {
-    case 'personalized':
-    case 'price-asc':
-    case 'price-desc':
-      return value;
-    default:
-      return 'default';
-  }
-}
-
 function SortDropdown({ sortOrder, onSelect }: {
   sortOrder: SortOrder;
   onSelect: (value: SortOrder) => void;
@@ -275,7 +99,7 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
   const searchParams = useSearchParams();
   const router = useRouter();
   const currentPage = Number(searchParams.get('page') ?? '1');
-  const sortOrder = parseSortOrder(searchParams.get('sort'));
+  const sortOrder = WatchOrderingService.parseSortOrder(searchParams.get('sort'));
   const isUserPaging = useRef(false);
 
   const goToPage = (page: number) => {
@@ -310,7 +134,7 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
     retry: false,
   });
 
-  const hasPersonalizedTaste = isAuthenticated && !!tasteProfile && hasAnyPreference(tasteProfile);
+  const hasPersonalizedTaste = isAuthenticated && WatchOrderingService.hasTastePreferences(tasteProfile);
 
   const handleSortChange = (nextSortOrder: SortOrder) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -327,11 +151,11 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
 
   const featuredWatches = useMemo(() => {
     if (watches.length === 0) return [];
-    return interleaveByBrand(watches);
-  }, [watches]);
+    return WatchOrderingService.buildFeaturedOrder(watches, brands, collections);
+  }, [watches, brands, collections]);
 
   const personalizedWatches = useMemo(() => (
-    blendPersonalizedOrder(featuredWatches, tasteProfile, hasPersonalizedTaste)
+    WatchOrderingService.buildPersonalizedOrder(featuredWatches, tasteProfile, hasPersonalizedTaste)
   ), [featuredWatches, tasteProfile, hasPersonalizedTaste]);
 
   const activeOrder = useMemo(() => (
