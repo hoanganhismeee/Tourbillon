@@ -1,5 +1,7 @@
 // Unit tests for WatchFinderService query parsing helpers.
 // These cover deterministic fallback behavior used when AI intent parsing is unavailable.
+using System.Collections.Generic;
+using System.Linq;
 using backend.Services;
 using backend.Models;
 
@@ -7,6 +9,23 @@ namespace backend.Tests.Services;
 
 public class WatchFinderServiceTests
 {
+    public sealed record FilterCase(
+        string Query,
+        decimal? MinPrice,
+        decimal? MaxPrice,
+        double? MinDiameter,
+        double? MaxDiameter,
+        string? Style,
+        string? CaseMaterial,
+        string? WaterResistance,
+        string[] PriceBuckets,
+        string[] DiameterBuckets,
+        string[] WaterBuckets,
+        string[] Complications,
+        string[] PowerReserves);
+
+    public sealed record FilterComponent(string Text, Action<QueryIntent> Apply);
+
     public static IEnumerable<object[]> RegexQueryCases()
     {
         yield return
@@ -71,6 +90,108 @@ public class WatchFinderServiceTests
         ];
     }
 
+    public static IEnumerable<object[]> GeneratedFilterCaseMatrix()
+    {
+        var styles = new[]
+        {
+            new FilterComponent("sport watch", i => i.Style = "sport"),
+            new FilterComponent("dress watch", i => i.Style = "dress"),
+            new FilterComponent("diver watch", i => i.Style = "diver"),
+            new FilterComponent("luxury watch", _ => { }),
+        };
+
+        var prices = new[]
+        {
+            new FilterComponent("under 20k", i => i.MaxPrice = 20_000m),
+            new FilterComponent("under 50k", i => i.MaxPrice = 50_000m),
+            new FilterComponent("under 100k", i => i.MaxPrice = 100_000m),
+            new FilterComponent("between 50-100k", i => { i.MinPrice = 50_000m; i.MaxPrice = 100_000m; }),
+        };
+
+        var diameters = new[]
+        {
+            new FilterComponent("", _ => { }),
+            new FilterComponent("36mm", i => { i.MinDiameterMm = 36; i.MaxDiameterMm = 36; }),
+            new FilterComponent("39mm", i => { i.MinDiameterMm = 39; i.MaxDiameterMm = 39; }),
+            new FilterComponent("39 to 40mm", i => { i.MinDiameterMm = 39; i.MaxDiameterMm = 40; }),
+        };
+
+        var waters = new[]
+        {
+            new FilterComponent("", _ => { }),
+            new FilterComponent("good water resistance", i => i.WaterResistanceBuckets.AddRange(["50m – 120m", "150m – 300m", "600m+"])),
+            new FilterComponent("100m water resistance", i =>
+            {
+                i.WaterResistance = "100";
+                i.WaterResistanceBuckets.AddRange(["50m – 120m", "150m – 300m", "600m+"]);
+            }),
+            new FilterComponent("300m water resistance", i =>
+            {
+                i.WaterResistance = "300";
+                i.WaterResistanceBuckets.AddRange(["150m – 300m", "600m+"]);
+            }),
+        };
+
+        var materials = new[]
+        {
+            new FilterComponent("", _ => { }),
+            new FilterComponent("steel", i => i.CaseMaterial = "Steel"),
+        };
+
+        var complications = new[]
+        {
+            new FilterComponent("", _ => { }),
+            new FilterComponent("chronograph", i => i.Complications.Add("Chronograph")),
+        };
+
+        var powerReserves = new[]
+        {
+            new FilterComponent("", _ => { }),
+            new FilterComponent("72h power reserve", i => i.PowerReserves.Add("72h – 100h")),
+        };
+
+        foreach (var style in styles)
+        foreach (var price in prices)
+        foreach (var diameter in diameters)
+        foreach (var water in waters)
+        foreach (var material in materials)
+        foreach (var complication in complications)
+        foreach (var powerReserve in powerReserves)
+        {
+            var parts = new[] { style.Text, material.Text, diameter.Text, water.Text, complication.Text, powerReserve.Text, price.Text }
+                .Where(p => !string.IsNullOrWhiteSpace(p));
+            var query = string.Join(" ", parts);
+
+            var expected = new QueryIntent();
+            style.Apply(expected);
+            price.Apply(expected);
+            diameter.Apply(expected);
+            water.Apply(expected);
+            material.Apply(expected);
+            complication.Apply(expected);
+            powerReserve.Apply(expected);
+            var state = WatchFinderService.BuildFilterStateForDiagnostics(expected);
+
+            yield return
+            [
+                new FilterCase(
+                    query,
+                    expected.MinPrice,
+                    expected.MaxPrice,
+                    expected.MinDiameterMm,
+                    expected.MaxDiameterMm,
+                    expected.Style,
+                    expected.CaseMaterial,
+                    expected.WaterResistance,
+                    state.PriceBuckets.ToArray(),
+                    state.DiameterBuckets.ToArray(),
+                    state.WaterResistances.ToArray(),
+                    state.Complications.ToArray(),
+                    state.PowerReserves.ToArray())
+            ];
+        }
+    }
+
     [Theory]
     [MemberData(nameof(RegexQueryCases))]
     public void ApplyRegexFilters_ProducesExpectedFilterBarState(
@@ -97,6 +218,35 @@ public class WatchFinderServiceTests
         Assert.Equal(expectedPriceBuckets, state.PriceBuckets);
         Assert.Equal(expectedDiameterBuckets, state.DiameterBuckets);
         Assert.Equal(expectedWaterBuckets, state.WaterResistances);
+    }
+
+    [Theory]
+    [MemberData(nameof(GeneratedFilterCaseMatrix))]
+    public void ApplyRegexFilters_GeneratedQueryMatrixProducesExpectedState(FilterCase testCase)
+    {
+        var intent = new QueryIntent();
+
+        WatchFinderService.ApplyRegexFilters(testCase.Query, intent);
+        var state = WatchFinderService.BuildFilterStateForDiagnostics(intent);
+
+        Assert.Equal(testCase.MinPrice, intent.MinPrice);
+        Assert.Equal(testCase.MaxPrice, intent.MaxPrice);
+        Assert.Equal(testCase.MinDiameter, intent.MinDiameterMm);
+        Assert.Equal(testCase.MaxDiameter, intent.MaxDiameterMm);
+        Assert.Equal(testCase.Style, intent.Style);
+        Assert.Equal(testCase.CaseMaterial, intent.CaseMaterial);
+        Assert.Equal(testCase.WaterResistance, intent.WaterResistance);
+        Assert.Equal(testCase.PriceBuckets, state.PriceBuckets);
+        Assert.Equal(testCase.DiameterBuckets, state.DiameterBuckets);
+        Assert.Equal(testCase.WaterBuckets, state.WaterResistances);
+        Assert.Equal(testCase.Complications, state.Complications);
+        Assert.Equal(testCase.PowerReserves, state.PowerReserves);
+    }
+
+    [Fact]
+    public void GeneratedFilterCaseMatrix_SeedsAtLeastFiveHundredQueries()
+    {
+        Assert.True(GeneratedFilterCaseMatrix().Count() >= 500);
     }
 
     [Fact]
@@ -180,6 +330,25 @@ public class WatchFinderServiceTests
         Assert.True(WatchFinderService.IsLikelyReferenceQuery("M126710BLRO-0001"));
     }
 
+    [Theory]
+    [InlineData("710BL")]
+    [InlineData("BLRO")]
+    [InlineData("126710")]
+    public void IsLikelyReferenceFragment_MatchesShortReferenceFamilyTokens(string query)
+    {
+        Assert.True(WatchFinderService.IsLikelyReferenceFragment(query));
+        Assert.True(WatchFinderService.HasWatchDomainSignal(query));
+    }
+
+    [Theory]
+    [InlineData("breakfast")]
+    [InlineData("sandwich")]
+    [InlineData("wedding")]
+    public void IsLikelyReferenceFragment_RejectsPlainWords(string query)
+    {
+        Assert.False(WatchFinderService.IsLikelyReferenceFragment(query));
+    }
+
     [Fact]
     public void ApplyRegexFilters_DoesNotTreatDottedReferenceAsSpecs()
     {
@@ -221,6 +390,37 @@ public class WatchFinderServiceTests
     }
 
     [Fact]
+    public void HasStrictCollectionIntent_ReturnsFalseForStyleDerivedCollections()
+    {
+        var intent = new QueryIntent
+        {
+            BrandId = 2,
+            CollectionIds = [5, 7],
+            CollectionsDerivedFromStyle = true,
+            Style = "dress"
+        };
+
+        Assert.True(WatchFinderService.HasCollectionIntent(intent));
+        Assert.False(WatchFinderService.HasStrictCollectionIntent(intent));
+    }
+
+    [Fact]
+    public void ShouldApplyStyleSqlFilter_ReturnsTrueForGenericStyleQueries()
+    {
+        var intent = new QueryIntent { Style = "dress" };
+
+        Assert.True(WatchFinderService.ShouldApplyStyleSqlFilter(intent));
+    }
+
+    [Fact]
+    public void ShouldApplyStyleSqlFilter_ReturnsFalseWhenBrandIntentExists()
+    {
+        var intent = new QueryIntent { Style = "dress", BrandId = 2, MinPrice = 200_000m };
+
+        Assert.False(WatchFinderService.ShouldApplyStyleSqlFilter(intent));
+    }
+
+    [Fact]
     public void DirectSqlScore_PrioritisesExactReference()
     {
         var intent = new QueryIntent();
@@ -232,6 +432,19 @@ public class WatchFinderServiceTests
 
         Assert.True(exactScore > otherScore);
         Assert.True(exactScore >= 900);
+    }
+
+    [Fact]
+    public void DirectSqlScore_PrioritisesReferenceFragmentContainment()
+    {
+        var exactFamily = new Watch { Name = "M126710BLRO-0001", CurrentPrice = 20_100m, BrandId = 9 };
+        var other = new Watch { Name = "M126500LN-0001", CurrentPrice = 28_200m, BrandId = 9 };
+
+        var fragmentScore = WatchFinderService.DirectSqlScore("710BL", exactFamily, null, true);
+        var otherScore = WatchFinderService.DirectSqlScore("710BL", other, null, true);
+
+        Assert.True(fragmentScore > otherScore);
+        Assert.True(fragmentScore >= 900);
     }
 
     [Fact]

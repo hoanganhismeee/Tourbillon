@@ -201,6 +201,7 @@ export interface QueryIntent {
   brandIds?: number[];
   collectionId: number | null;
   collectionIds?: number[];
+  collectionsDerivedFromStyle?: boolean;
   maxPrice: number | null;
   minPrice: number | null;
   minDiameterMm: number | null;
@@ -220,11 +221,13 @@ export interface WatchFinderResult {
   matchDetails: Record<number, WatchMatchDetail>;
   parsedIntent: Record<string, unknown> | null;
   queryIntent: QueryIntent | null;
+  searchPath?: string | null;
 }
 
 export interface FilterOptions {
   caseMaterials: string[];
   movementTypes: string[];
+  diameters: string[];
   dialColors: string[];
   waterResistance: string[];
   powerReserve: string[];

@@ -6,7 +6,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavourites } from '@/stores/favouritesStore';
-import { getFavouriteWatches, fetchBrands, fetchCollections, Brand, Collection, FavouriteWatchesResponse } from '@/lib/api';
+import {
+  getFavouriteWatches,
+  fetchBrands,
+  fetchCollections,
+  fetchFilterOptions,
+  Brand,
+  Collection,
+  FavouriteWatchesResponse,
+} from '@/lib/api';
 import { CollectionCard, AddCollectionCard } from '@/app/components/favourites/CollectionCard';
 import WatchCard from '@/app/watches/[slug]/WatchCard';
 import {
@@ -63,6 +71,7 @@ export default function FavouritesClient() {
   const [wristFit, setWristFit] = useState('');
   const [brands, setBrands] = useState<Brand[]>([]);
   const [watchCollections, setWatchCollections] = useState<Collection[]>([]);
+  const [catalogDiameterOptions, setCatalogDiameterOptions] = useState<string[]>([]);
   const sortDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auth guard — redirect to login if not authenticated
@@ -83,6 +92,7 @@ export default function FavouritesClient() {
   useEffect(() => {
     fetchBrands().then(setBrands).catch(() => {});
     fetchCollections().then(setWatchCollections).catch(() => {});
+    fetchFilterOptions().then(options => setCatalogDiameterOptions(options.diameters ?? [])).catch(() => {});
   }, []);
 
   const hasWatchFilters =
@@ -166,17 +176,24 @@ export default function FavouritesClient() {
     return map;
   }, [watchCollections]);
 
-  // Derive diameter options from fetched watches — only sizes present are shown
+  // Keep diameter options aligned with Smart Search: start from full catalogue metadata,
+  // then merge in current result sizes so active buckets remain available.
   const diameterOptions = useMemo(() => {
-    const watches = watchData?.watches ?? [];
     const sizes = new Set<number>();
-    watches.forEach(w => {
+
+    catalogDiameterOptions.forEach(label => {
+      const mm = parseInt(label, 10);
+      if (!Number.isNaN(mm)) sizes.add(mm);
+    });
+
+    (watchData?.watches ?? []).forEach(w => {
       const specs = parseSpecs(w.specs);
       const mm = parseDiameterMm(specs?.case?.diameter as string | undefined);
       if (mm !== null) sizes.add(Math.floor(mm));
     });
+
     return Array.from(sizes).sort((a, b) => a - b).map(n => `${n}mm`);
-  }, [watchData]);
+  }, [catalogDiameterOptions, watchData]);
 
   // Client-side filter application on top of the server-fetched data
   const displayedWatches = useMemo(() => {

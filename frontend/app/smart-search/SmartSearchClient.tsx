@@ -11,6 +11,7 @@ import {
   watchFinderSearch,
   fetchBrands,
   fetchCollections,
+  fetchFilterOptions,
   WatchFinderResult,
   QueryIntent,
   Brand,
@@ -39,7 +40,7 @@ import {
 // Only explicit QueryIntent fields are pre-checked. Result-set facets remain available in
 // dropdown options, but they are not active filters because that over-narrows broad searches.
 function buildFiltersFromResults(
-  _result: WatchFinderResult,
+  result: WatchFinderResult,
   intent: QueryIntent | null | undefined,
   diameterOptions: string[] = []
 ): WatchFilters {
@@ -56,6 +57,14 @@ function buildFiltersFromResults(
     f.collectionIds = [...intent.collectionIds];
   } else if (intent?.collectionId) {
     f.collectionIds = [intent.collectionId];
+  }
+
+  if (intent?.collectionsDerivedFromStyle && f.collectionIds.length > 0) {
+    const returnedCollectionIds = new Set<number>();
+    for (const watch of [...result.watches, ...result.otherCandidates]) {
+      if (watch.collectionId !== null) returnedCollectionIds.add(watch.collectionId);
+    }
+    f.collectionIds = Array.from(new Set([...f.collectionIds, ...returnedCollectionIds])).sort((a, b) => a - b);
   }
 
   if (!intent) return f;
@@ -164,6 +173,7 @@ export default function SmartSearchClient() {
   const [result, setResult] = useState<WatchFinderResult | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [catalogDiameterOptions, setCatalogDiameterOptions] = useState<string[]>([]);
   const [filters, setFilters] = useState<WatchFilters>(EMPTY_WATCH_FILTERS);
   const [wristFit, setWristFit] = useState('');
   const [editQuery, setEditQuery] = useState(query);
@@ -212,18 +222,26 @@ export default function SmartSearchClient() {
       });
   }, [result, collections, brands]);
 
-  // Diameter options derived from actual result watches — only sizes present are shown.
-  // Sorted numerically so the dropdown reads 36mm, 37mm, 38mm, 39mm...
+  // Diameter options come from full catalogue metadata, with current-result sizes merged in.
+  // This keeps the dropdown broad even when the query itself constrains the returned watches.
   const diameterOptions = useMemo(() => {
-    if (!result) return [];
     const sizes = new Set<number>();
-    for (const w of [...result.watches, ...result.otherCandidates]) {
-      const specs = parseSpecs(w.specs);
-      const mm = parseDiameterMm(specs?.case?.diameter as string | undefined);
-      if (mm !== null) sizes.add(Math.floor(mm));
+
+    for (const label of catalogDiameterOptions) {
+      const mm = parseInt(label, 10);
+      if (!Number.isNaN(mm)) sizes.add(mm);
     }
+
+    if (result) {
+      for (const w of [...result.watches, ...result.otherCandidates]) {
+        const specs = parseSpecs(w.specs);
+        const mm = parseDiameterMm(specs?.case?.diameter as string | undefined);
+        if (mm !== null) sizes.add(Math.floor(mm));
+      }
+    }
+
     return Array.from(sizes).sort((a, b) => a - b).map(n => `${n}mm`);
-  }, [result]);
+  }, [catalogDiameterOptions, result]);
 
   // Apply explicit intent filters once per query.
   // intentAppliedRef guards against double-apply if one dependency fires twice.
@@ -246,10 +264,11 @@ export default function SmartSearchClient() {
   // Load filter metadata immediately (fast DB queries) so the filter bar renders during the AI call.
   // watchFinderSearch is slow (~4s) and runs separately — filter pills appear right away.
   useEffect(() => {
-    Promise.all([fetchBrands(), fetchCollections()])
-      .then(([br, cols]) => {
+    Promise.all([fetchBrands(), fetchCollections(), fetchFilterOptions()])
+      .then(([br, cols, filterOptions]) => {
         setBrands(br);
         setCollections(cols);
+        setCatalogDiameterOptions(filterOptions.diameters ?? []);
       })
       .catch(() => {});
   }, []);
@@ -282,7 +301,7 @@ export default function SmartSearchClient() {
     } catch { setWristFit(''); }
 
     const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
-    const cacheKey = `smartsearch:v5:${query}`;
+    const cacheKey = `smartsearch:v8:${query}`;
 
     try {
       const cached = sessionStorage.getItem(cacheKey);
