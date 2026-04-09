@@ -18,7 +18,6 @@ interface AllWatchesSectionProps {
   collectionFilters?: number[];
 }
 
-const PERSONALIZED_EMPTY_COPY = 'Your Watch DNA is still taking shape. Continue exploring and a more personal edit will emerge.';
 function SortDropdown({ sortOrder, onSelect }: {
   sortOrder: SortOrder;
   onSelect: (value: SortOrder) => void;
@@ -194,6 +193,9 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
   }, [brandFilters, collectionFilters, brands, collections]);
 
   const showPersonalizedHint = sortOrder === 'personalized' && !hasPersonalizedTaste;
+  const personalizedHintCopy = isAuthenticated
+    ? 'Tourbillon is learning your preferences as you browse. Keep exploring and your Watch DNA will begin shaping a more personal list.'
+    : 'Tourbillon is learning your preferences as you browse. Sign in to create your Watch DNA and unlock a list shaped around you.';
 
   const isReady = featuredWatches.length > 0 || (!watchesLoading && watches.length === 0);
   useScrollRestore(isReady);
@@ -228,9 +230,11 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
               onSelect={handleSortChange}
             />
             {showPersonalizedHint && (
-              <p className="mt-4 max-w-md ml-auto text-right text-[10px] uppercase tracking-[0.18em] text-white/32">
-                {PERSONALIZED_EMPTY_COPY}
-              </p>
+              <div className="mt-4 max-w-md ml-auto text-right">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-white/32">
+                  {personalizedHintCopy}
+                </p>
+              </div>
             )}
           </>
         )}

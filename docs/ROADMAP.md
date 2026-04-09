@@ -26,7 +26,7 @@
 | Stripe Checkout (Test Mode) | Removed | — |
 | Contact Advisor/ Book an Appointment (PoR Inquiry) | Done | 4 |
 | Chat Concierge — floating widget + product comparison RAG | Done | 5 |
-| Chat Concierge — catalogue-grounded brand knowledge and discovery answers | Done | 5 |
+| Chat Concierge — web search + brand knowledge answers | Done | 5 |
 | Brand & Collection Embeddings | Removed | — |
 | Retrieval Quality Audit (chunk enrichment, vector ordering, index fix) | Done | 5 |
 | Favourites & Collections | Done | 6 |
@@ -37,16 +37,17 @@
 | Advisor CRM + Inquiry Pipeline (user inquiry page, Hangfire status auto-advance) | Done | 8.5 |
 | Chat Concierge — grounding, safety & editorial enrichment | Done | 9 |
 | Slug-based URLs + Cloudinary public ID sync | In Progress | 9 |
-| Search & Recommendation Analytics Dashboard | Planned | 9.5 |
 | 10A Smooth Scroll (Lenis) | Done | 10 |
 | 10B shadcn/ui Integration | Done | 10 |
 | 10C Homepage Cinematic Scroll (GSAP) | Done | 10 |
 | 10D Watch Card Near-3D Tilt + Shimmer | Done | 10 |
 | 10E Watch Detail: Video Gallery + Spec Reveal | Planned | 10 |
 | 10F Nav Scroll-Response + Transitions + Grain | Done | 10 |
-| 10G React Three Fiber (deferred, awaiting 3D assets) | Planned | 10 |
-| Storage Abstraction + S3 + CloudFront Migration | Planned | 11 |
-| Kubernetes (container orchestration, HPA, rolling deployments) | Planned | 12 |
+| 11 Smart Search (AI Watch Finder) refinement | Done | 11 |
+| 11 User (Auth/Anonymous Taste Profile logic improvement) | Done | 11 |
+| 12 Trend Page Enhancements (product trends, staff pick, most viewed over 7/14/30 days, user DNA) | In-progress | 12 |
+| Storage Abstraction + S3 + CloudFront Migration | Planned | 13 |
+| Kubernetes (container orchestration, HPA, rolling deployments) | Planned | 14 |
 
 ## Model Strategy
 
@@ -80,10 +81,10 @@ ai-service:
 The warmup in `app.py` auto-detects non-Ollama URLs and skips model pull. No other changes needed.
 
 **When switching to Haiku — one prompt cleanup:**
-`ai-service/prompts/watch_finder.py` contains the reranker's hardcoded dress/sport/diver/chronograph narrative guidance. These become redundant once Haiku handles them natively — remove after confirming correct scores in staging. Keep all scoring thresholds (`score 80+`). Do NOT remove `PARSE_SYSTEM_PROMPT` category lists (occasion, material, strap, etc.) — they constrain structured JSON output format and are model-agnostic.
+`ai-service/app.py` lines 171–175 contain hardcoded dress/sport/diver/chronograph narrative guidance for the reranker. These become redundant once Haiku handles them natively — remove after confirming correct scores in staging. Keep all scoring thresholds (`score 80+`). Do NOT remove `PARSE_SYSTEM_PROMPT` category lists (occasion, material, strap, etc.) — they constrain structured JSON output format and are model-agnostic.
 
 **Chat concierge prompt (`CHAT_SYSTEM_PROMPT`) — written for Haiku:**
-Style rules, word cap (130 words), and link format are expressed as plain instructions that Claude follows natively — no hardcoded narrative, no model-specific training. The prompt now lives in `ai-service/prompts/chat.py`, and the server-side `_truncate_chat_response()` safety net lives in `ai-service/routes/chat.py`. Do not add enumeration-heavy guidance; prose instructions are intentional and model-agnostic.
+Style rules, word cap (130 words), and link format are expressed as plain instructions that Claude follows natively — no hardcoded narrative, no model-specific training. A server-side `_truncate_chat_response()` in `/chat` enforces the cap as a safety net for any model that overshoots. Do not add enumeration-heavy guidance; prose instructions are intentional and model-agnostic.
 
 **`Collection.Style` DB column:** SQL pre-filter for query speed — not a knowledge proxy. Keep regardless of model.
 
@@ -190,7 +191,7 @@ Semantic result cache stored in `QueryCaches` table. Every search embeds the que
 
 **Pre-deploy workflow:** run `POST /api/admin/query-cache/seed` in dev → `pg_dump` both `WatchEmbeddings` and `QueryCaches` → import to production. First user on prod hits a fully warm cache.
 
-**Phase 3B (COMPLETE):** Vector similarity search remains active, but Smart Search is now deterministic-first for catalogue queries. `WatchFinderService` parses structured intent first, rejects non-watch queries early, then routes exact references, reference fragments, explicit brand / collection queries, and structured spec queries through `DeterministicWatchSearchService` before falling back to vector retrieval and rerank. `QueryIntent` is still returned to the frontend to pre-populate the filter bar. Style-derived collection suggestions can populate the filter bar when brand scope is explicit, but they are UI intent only and not hard SQL collection filters. Diameter dropdown options now come from full-catalogue filter metadata instead of only the current result set. Cache is still skipped when hard structured filters are present. Result filter bar includes: Brand, Collection, Case Material, Diameter, Movement, Water Resistance, Power Reserve, Complications (12 types: chronograph, perpetual/annual calendar, moonphase, tourbillon, repeater, GMT, flyback, power reserve, alarm, retrograde, equation of time), Price, and Wrist Fit. Wrist fit value persists across back navigation via sessionStorage.
+**Phase 3B (COMPLETE):** Vector similarity search active. `WatchFinderService` uses hybrid filtering — `ParseQueryIntentAsync` extracts brand/collection/price/diameter/material/movement/WR as hard SQL pre-filters and frontend filter pre-selections (no LLM), cosine similarity ranks within the filtered pool. `QueryIntent` returned to frontend to pre-populate the filter bar. 208 seed queries covering natural-language, spec-based, and complication queries. Category-aware embeddings: `InferCategory` classifies each watch as dress/chronograph/sport/diver from collection name + specs; `InferOccasions` uses category to gate occasion labels (gold chronograph no longer tagged "formal"). Vector results preserve cosine-distance relevance ordering (BrandSpread removed from vector path — retained only for Phase 2 SQL fallback). Chunk text enriched with watch-specific differentiators: `brand_style` includes dial finish, indices, hands, caliber, case back, production status; `use_case` includes diameter, material, WR, movement type, and non-trivial complications. Unique index expanded to `(WatchId, ChunkType, Feature)` for multi-feature support. Rerank prompt enhanced with category-matching guidance and collection name. Cache skipped when QueryIntent has hard SQL filters to prevent stale cross-category hits. Result filter bar includes: Brand, Collection, Case Material, Diameter, Movement, Water Resistance, Power Reserve, Complications (12 types: chronograph, perpetual/annual calendar, moonphase, tourbillon, repeater, GMT, flyback, power reserve, alarm, retrograde, equation of time), Price, and Wrist Fit. Wrist fit value persists across back navigation via sessionStorage.
 
 ---
 
@@ -317,32 +318,31 @@ Floating conversational assistant available on every page — handles both speci
 **What it does:**
 - Floating pill at bottom-right on all pages; panel slides up on click
 - Product comparison: "I like the Overseas and the Aquanaut, I go to the beach, which should I choose?" → specs analysis + recommendation + watch thumbnail cards
-- Brand knowledge: "Tell me about Vacheron's history" → DB description + catalogue context → narrative with brand page link
-- Conversation-aware: follow-ups reference earlier turns in session; visible chat history survives in-app navigation and hard refresh within the same tab via `sessionStorage`
+- Brand knowledge: "Tell me about Vacheron's history" → web search + DB description blended → narrative with brand page link
+- Conversation-aware: follow-ups reference earlier turns in session; state survives in-app navigation (layout.tsx mount, never unmounted on soft nav)
 
 **Architecture — reuses Phase 3 infrastructure:**
 - `ParseQueryIntentAsync` (no LLM) pre-filters brand/collection/reference number signals for query type routing
 - PRODUCT query (collection/watch name in query): fetch watch records → ai-service `/chat`
-- BRAND query (brand name, no model match): fetch DB description + catalogue context → ai-service `/chat`
-- GENERAL query (neither): reuse Smart Search results and compact catalogue context → ai-service `/chat`
+- BRAND query (brand name, no model match): fetch DB description → web search → ai-service `/chat`
+- GENERAL query (neither): vector search top-5 `watch_finder` embeddings as context → ai-service `/chat`
 - `QueryCacheService` caches first-turn (history-free) responses at cosine ≥ 0.92 — not applied to multi-turn
 - Rate limit: 5/day deployed (`ChatSettings:DailyLimit`); `DisableLimitInDev: true` for local
 
 **Infrastructure:**
-- Redis-backed session store with 1-hour TTL on the backend; frontend persists session ID, visible history, and usage counters in `sessionStorage`
-- `POST /chat` endpoint in ai-service — compact Tourbillon-only answer generation
+- In-memory session store via `ConcurrentDictionary` (MVP; upgrade to Redis for horizontal scale)
+- `POST /chat` endpoint in ai-service — web search via `duckduckgo-search` (no API key)
 - Pill UI matches `CompareIndicator` design; chat pill `bottom-8`, compare pill moves to `bottom-24`
 - Brand/collection detection uses direct DB substring matching — no dedicated embeddings needed for a 13-brand catalogue
-- Signed-in requests can include a compact Watch DNA summary so concierge replies reflect the user's inferred taste
 
 **Full spec:** `docs/phase5-rag-chatbot.md`
 
 **Files involved:**
-- `ai-service/routes/chat.py`, `ai-service/prompts/chat.py` — `POST /chat` + `CHAT_SYSTEM_PROMPT` for Tourbillon-only responses
+- `ai-service/app.py` — `POST /chat` + `CHAT_SYSTEM_PROMPT` + web search tool
+- `ai-service/requirements.txt` — `duckduckgo-search`
 - `backend/Controllers/ChatController.cs` — `POST /api/chat/message`, `DELETE /api/chat/session/{id}`
-- `backend/Services/ChatService.cs` — orchestration pipeline (deterministic refusal/exact/compare routing + compact AI context)
+- `backend/Services/ChatService.cs` — orchestration pipeline (PRODUCT/BRAND/GENERAL routing)
 - `frontend/app/components/chat/ChatWidget.tsx`, `ChatPanel.tsx`
-- `frontend/contexts/ChatContext.tsx` — sessionStorage-backed visible history + Watch DNA summary injection
 - `frontend/app/layout.tsx` — mount ChatWidget
 - `frontend/lib/api.ts` — `sendChatMessage()`, `clearChatSession()`
 
@@ -572,7 +572,7 @@ Hardens the chat concierge to be a specialist watch advisor — grounded in Tour
 6. **Consistency** — always "Tourbillon", spec-based reasoning over adjectives
 
 **Files involved:**
-- `ai-service/prompts/chat.py` — `CHAT_SYSTEM_PROMPT` rewrite
+- `ai-service/app.py` — `CHAT_SYSTEM_PROMPT` rewrite
 - `backend/Services/ChatService.cs` — editorial context injection, empty-context fallback, Collection.Style
 
 ### Slug-Based URLs + Cloudinary Public ID Sync (IN PROGRESS)
@@ -600,23 +600,31 @@ Replaces sequential database IDs in URLs (`/watches/42`) with human-readable slu
 - `backend/Services/ChatService.cs` — context strings with slugs
 - `frontend/lib/api.ts` — slug-based fetch functions
 - `frontend/app/watches/[slug]/`, `brands/[slug]/`, `collections/[slug]/` — renamed route folders
-- `ai-service/prompts/chat.py`, `ai-service/routes/chat.py` — CHAT_SYSTEM_PROMPT and `_inject_entity_links` use slugs
+- `ai-service/app.py` — CHAT_SYSTEM_PROMPT and `_inject_entity_links` use slugs
 
-### Search & Recommendation Analytics Dashboard
+### Phase 11: Smart Search Analytics Dashboard
 
-Event tracking for Smart Search and Chat Concierge:
-- Search queries with tier, result count, click-through
-- Cache hit rate over time
-- Popular watches (viewed, favourited, compared)
-- Chat query type distribution (PRODUCT/BRAND/GENERAL)
+Phase 11 is already owned by Smart Search work. The next implementation pass around search should focus on measurement and recommendation visibility rather than infrastructure.
 
-Admin dashboard at `/admin/analytics` with Recharts visualizations.
+- Search queries with routing path, tier, result count, zero-result rate, and click-through
+- Cache hit rate over time and deterministic-vs-semantic routing split
+- Popular watches driven by search, favourites, and compare interactions
+- Admin dashboard at `/admin/analytics` with Recharts visualizations
 
-### Storage Abstraction + S3 + CloudFront
+### Phase 12: Trend Page Enhancements
+
+Extend `/trend` beyond Watch DNA into a live product-signals surface using the browsing and engagement data the platform already collects.
+
+- Show most viewed watches for the last 7, 14, and 30 days
+- Add product trend modules that surface rising watches and recent interest shifts
+- Reuse `UserBrowsingEvent` and related engagement data instead of introducing a parallel tracking system
+- Keep Watch DNA as the anchor, then layer product-trend sections around it
+
+### Phase 13: Storage Abstraction + S3 + CloudFront
 
 Generic `IStorageService` interface with `CloudinaryStorageService` and `S3StorageService` implementations. Swappable via configuration. S3 bucket for image storage, CloudFront CDN for global delivery with 30-day edge caching.
 
-### Kubernetes (Optional)
+### Phase 14: Kubernetes (Optional)
 
 Convert Docker Compose to K8s manifests: Deployment, Service, Ingress, ConfigMap, Secret, HPA. StatefulSet for PostgreSQL. Rolling deployments with zero downtime. Honest note: overkill for single-instance deployment — value is resume/learning, not operational necessity.
 
@@ -625,5 +633,3 @@ Convert Docker Compose to K8s manifests: Deployment, Service, Ingress, ConfigMap
 ## Resume Keywords Covered
 
 AI/LLM integration, semantic search, vector embeddings (pgvector, HNSW indexing), recommendation systems, personalization engine, conversational commerce, retrieval-augmented generation (RAG), hybrid SQL + vector search, tiered retrieval routing, embedding quality auditing, programmatic content generation, full-stack implementation, rule-based scoring systems, NLP-to-SQL query pipeline, cost engineering (quota limits, semantic cache strategy, pre-generation), transactional email (dual-recipient notification), client-side state management (Zustand + localStorage persistence), SSR hydration strategies, responsive UI with motion design (Framer Motion), async event-driven architecture, durable background job processing (Hangfire, retry with exponential backoff), Redis (distributed caching, rate limiting, session storage), CI/CD pipeline (GitHub Actions, automated quality gates), structured logging (Serilog), health check probes, observability and operational metrics, CRM pipeline (status workflow, follow-up scheduling), search analytics (tier distribution, cache hit rate, click-through tracking), AWS S3 + CloudFront (storage abstraction, CDN), Kubernetes (container orchestration, HPA auto-scaling, rolling deployments), Docker Compose multi-service orchestration, LLM prompt hardening (grounding, scope guardrails, anti-hallucination, prompt injection resistance).
-
-
