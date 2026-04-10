@@ -514,6 +514,88 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_OrdinalFollowUpWithoutCompare_UsesPreviousChatCards()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "F.P.Journe", Slug = "fp-journe" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "lineSport", Slug = "fp-journe-linesport" };
+
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "elegante 40 mm Tititalyt",
+            Slug = "fp-journe-linesport-elegante-40mm-titalyt",
+            Description = "F.P.Journe lineSport",
+            CurrentPrice = 0m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "Chronometre Souverain",
+            Slug = "fp-journe-linesport-chronometre-souverain",
+            Description = "F.P.Journe Souverain",
+            CurrentPrice = 0m
+        };
+        var third = new Watch
+        {
+            Id = 102,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "131.30.41.21.99.001 Meteorite Dial",
+            Slug = "fp-journe-linesport-131-30-41-21-99-001-meteorite-dial",
+            Description = "F.P.Journe lineSport",
+            CurrentPrice = 17225m
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second, third);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("show me some journe options"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(first), ToDto(second), ToDto(third)],
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"The first card is [F.P.Journe lineSport elegante 40 mm Tititalyt](/watches/fp-journe-linesport-elegante-40mm-titalyt), and the third is [F.P.Journe lineSport 131.30.41.21.99.001 Meteorite Dial](/watches/fp-journe-linesport-131-30-41-21-99-001-meteorite-dial).\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+
+        var discovery = await service.HandleMessageAsync("session-1", "show me some journe options", null, "127.0.0.1");
+        Assert.Equal(3, discovery.WatchCards.Count);
+
+        var followUp = await service.HandleMessageAsync("session-1", "what is the first and third one", null, "127.0.0.1");
+
+        Assert.Empty(followUp.Actions);
+        Assert.Equal(2, followUp.WatchCards.Count);
+        Assert.Equal(
+            ["fp-journe-linesport-elegante-40mm-titalyt", "fp-journe-linesport-131-30-41-21-99-001-meteorite-dial"],
+            followUp.WatchCards.Select(card => card.Slug).ToList());
+        Assert.Contains("first card", followUp.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, handler.CallCount);
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_CollectionCompare_ReturnsStableRepresentativeCompareSet()
     {
         using var context = CreateContext();

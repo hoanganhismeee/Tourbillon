@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { useEffect, useRef, useState, KeyboardEvent, useCallback, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useChat } from '@/contexts/ChatContext';
-import { useCursor } from '@/contexts/CursorContext';
 import { imageTransformations } from '@/lib/cloudinary';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { ChatWatchCard, ChatAction } from '@/lib/api';
@@ -19,15 +18,10 @@ const EXAMPLE_PROMPTS = [
   'As a girl, should I wear round or square dial',
 ];
 
-interface MarkdownCursorHandlers {
-  onEnter: () => void;
-  onLeave: () => void;
-}
 
 // Simple markdown renderer — handles bold, italic, links, and line breaks across the whole message
 function renderInlineMarkdown(
   text: string,
-  cursorHandlers: MarkdownCursorHandlers,
   keyPrefix: string,
 ): ReactNode[] {
   const result: ReactNode[] = [];
@@ -56,8 +50,6 @@ function renderInlineMarkdown(
           <Link
             key={`${keyPrefix}-chip-${match.index}`}
             href={href}
-            onMouseEnter={cursorHandlers.onEnter}
-            onMouseLeave={cursorHandlers.onLeave}
             className="inline-flex items-center rounded-full border border-[#bfa68a]/35 text-[#bfa68a] text-[11px] px-2.5 py-0.5 mx-0.5 hover:border-[#bfa68a]/70 hover:text-[#ecddc8] hover:bg-[#bfa68a]/10 transition-colors"
             style={{ verticalAlign: 'middle' }}
           >
@@ -69,8 +61,6 @@ function renderInlineMarkdown(
             href={href}
             target={isInternal ? undefined : '_blank'}
             rel={isInternal ? undefined : 'noopener noreferrer'}
-            onMouseEnter={cursorHandlers.onEnter}
-            onMouseLeave={cursorHandlers.onLeave}
             className="text-[#bfa68a] underline underline-offset-2 hover:text-[#ecddc8] transition-colors"
           >
             {label}
@@ -89,7 +79,7 @@ function renderInlineMarkdown(
   return result;
 }
 
-function renderMarkdown(text: string, cursorHandlers: MarkdownCursorHandlers): ReactNode[] {
+function renderMarkdown(text: string): ReactNode[] {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   const nodes: ReactNode[] = [];
   let listItems: string[] = [];
@@ -102,7 +92,7 @@ function renderMarkdown(text: string, cursorHandlers: MarkdownCursorHandlers): R
         {listItems.map((item, idx) => (
           <li key={`item-${idx}`} className="flex gap-2">
             <span className="text-[#bfa68a]/80">-</span>
-            <span>{renderInlineMarkdown(item, cursorHandlers, `list-${listIndex}-${idx}`)}</span>
+            <span>{renderInlineMarkdown(item, `list-${listIndex}-${idx}`)}</span>
           </li>
         ))}
       </ul>
@@ -126,7 +116,7 @@ function renderMarkdown(text: string, cursorHandlers: MarkdownCursorHandlers): R
     flushList();
     nodes.push(
       <p key={`p-${idx}`} className={nodes.length > 0 ? 'mt-3' : ''}>
-        {renderInlineMarkdown(trimmed, cursorHandlers, `p-${idx}`)}
+        {renderInlineMarkdown(trimmed, `p-${idx}`)}
       </p>
     );
   });
@@ -137,7 +127,6 @@ function renderMarkdown(text: string, cursorHandlers: MarkdownCursorHandlers): R
 
 // Compact watch card shown below assistant messages — switches cursor to tourbillon on hover
 function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
-  const { setCursor } = useCursor();
   return (
     <div className="flex gap-3 mt-3 overflow-x-auto pb-1">
       {cards.map(card => (
@@ -146,8 +135,6 @@ function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
           href={`/watches/${card.slug || card.id}`}
           className="flex-shrink-0 flex flex-col items-center gap-1.5 rounded-xl border border-white/10 p-2.5 hover:border-[#bfa68a]/40 transition-colors"
           style={{ background: 'rgba(255,255,255,0.04)', width: 100 }}
-          onMouseEnter={() => setCursor('tourbillon')}
-          onMouseLeave={() => setCursor('default')}
         >
           <div className="w-16 h-16 relative overflow-hidden rounded-lg bg-white/5">
             {card.imageUrl || card.image ? (
@@ -249,7 +236,6 @@ function ActionChips({ actions, autoExecute = false }: { actions: ChatAction[]; 
 
 export default function ChatPanel() {
   const { messages, isLoading, dailyUsed, dailyLimit, sendMessage, clearSession } = useChat();
-  const { setCursor } = useCursor();
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -352,10 +338,7 @@ export default function ChatPanel() {
               }`}
               style={msg.role === 'assistant' ? { background: 'rgba(255,255,255,0.05)' } : undefined}
             >
-              <div>{renderMarkdown(msg.content, {
-                onEnter: () => setCursor('tourbillon'),
-                onLeave: () => setCursor('default'),
-              })}</div>
+              <div>{renderMarkdown(msg.content)}</div>
               {msg.watchCards && msg.watchCards.length > 0 && (
                 <WatchCardRow cards={msg.watchCards} />
               )}

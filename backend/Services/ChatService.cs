@@ -286,7 +286,10 @@ public class ChatService
             };
 
         var mentions = await ResolveEntityMentionsAsync(message);
-        var hasWatchScope = mentions.HasAny || WatchFinderService.HasWatchDomainSignal(message);
+        var referencedWatches = await TryResolveReferencedWatchesAsync(message, lastWatchCards);
+        var hasWatchScope = mentions.HasAny
+            || referencedWatches.Count > 0
+            || WatchFinderService.HasWatchDomainSignal(message);
 
         if (IsExplicitCompareQuery(message))
         {
@@ -294,6 +297,9 @@ public class ChatService
             if (compareWatches.Count >= 2)
                 return BuildCompareResolution(message, compareWatches);
         }
+
+        if (referencedWatches.Count > 0)
+            return BuildReferencedWatchResolution(message, referencedWatches);
 
         if (!hasWatchScope)
             return new ChatResolution
@@ -504,13 +510,13 @@ public class ChatService
         return await TryResolveCollectionCompareWatchesAsync(query, mentions, compareScope);
     }
 
-    private async Task<List<Watch>> TryResolveOrdinalCompareWatchesAsync(string query, List<ChatWatchCard> lastWatchCards)
+    private async Task<List<Watch>> TryResolveReferencedWatchesAsync(string query, List<ChatWatchCard> lastWatchCards)
     {
-        if (lastWatchCards.Count < 2)
+        if (lastWatchCards.Count == 0)
             return [];
 
         var indexes = ExtractReferencedCardIndexes(query, lastWatchCards.Count);
-        if (indexes.Count < 2)
+        if (indexes.Count == 0)
             return [];
 
         var slugsInOrder = indexes
@@ -519,7 +525,7 @@ public class ChatService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        if (slugsInOrder.Count < 2)
+        if (slugsInOrder.Count == 0)
             return [];
 
         var watches = await _context.Watches
@@ -534,6 +540,12 @@ public class ChatService
             .Where(w => w != null)
             .Cast<Watch>()
             .ToList();
+    }
+
+    private async Task<List<Watch>> TryResolveOrdinalCompareWatchesAsync(string query, List<ChatWatchCard> lastWatchCards)
+    {
+        var referenced = await TryResolveReferencedWatchesAsync(query, lastWatchCards);
+        return referenced.Count >= 2 ? referenced : [];
     }
 
     private async Task<List<Watch>> TryResolveCollectionCompareWatchesAsync(
@@ -873,6 +885,27 @@ public class ChatService
         };
     }
 
+    private ChatResolution BuildReferencedWatchResolution(string query, List<Watch> watches)
+    {
+        var watchCards = watches.Select(ToChatWatchCard).ToList();
+        var context = new List<string>
+        {
+            "Tourbillon card follow-up request: the user is referring to watches from the immediately previous card row. Answer only about these resolved watches, identify each one clearly, and answer the exact question directly."
+        };
+
+        foreach (var watch in watches)
+            context.Add(BuildWatchContext(watch));
+
+        return new ChatResolution
+        {
+            UseAi = true,
+            Message = BuildReferencedWatchFallbackMessage(watches),
+            Query = query,
+            Context = context,
+            WatchCards = watchCards,
+        };
+    }
+
     private async Task<List<ChatWatchCard>> ExtractWatchCardsAsync(string message, List<ChatAction>? actions = null)
     {
         var slugs = Regex.Matches(message, @"/watches/([\w-]+)")
@@ -1174,6 +1207,29 @@ public class ChatService
         var pattern = $@"\b{Regex.Escape(term)}{suffix}\b";
         return Regex.Replace(input, pattern, " ", RegexOptions.IgnoreCase);
     }
+
+    private static string BuildReferencedWatchFallbackMessage(List<Watch> watches)
+    {
+        if (watches.Count == 1)
+        {
+            var watch = watches[0];
+            return $"That card is [{BuildWatchTitle(watch)}](/watches/{watch.Slug}).";
+        }
+
+        var labels = watches
+            .Select((watch, index) => $"{OrdinalLabel(index + 1)}: [{BuildWatchTitle(watch)}](/watches/{watch.Slug})")
+            .ToList();
+        return string.Join(" ", labels);
+    }
+
+    private static string OrdinalLabel(int index) => index switch
+    {
+        1 => "First",
+        2 => "Second",
+        3 => "Third",
+        4 => "Fourth",
+        _ => $"Item {index}"
+    };
 
     private static int CollectionQueryPosition(string query, string collectionName)
     {
