@@ -364,8 +364,69 @@ public class ChatServiceTests
         var service = CreateService(context, watchFinder, handler);
         var result = await service.HandleMessageAsync("session-1", "Find me a slim steel dress watch under 15k", null, "127.0.0.1");
 
-        Assert.Contains(result.Actions, a => a.Type == "search" && a.Query == "slim steel dress watch under 15k Rolex Datejust");
+        Assert.Contains(result.Actions, a => a.Type == "search" && a.Query == "Rolex Datejust slim steel dress watch under 15k");
         Assert.NotEmpty(result.WatchCards);
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_DiscoveryQueryPrefersAiDesignedSearchAction()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Jaeger-LeCoultre", Slug = "jaeger-lecoultre" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Reverso", Slug = "reverso" };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "Q397846J",
+            Slug = "jaeger-lecoultre-reverso-q397846j",
+            Description = "Jaeger-LeCoultre Reverso",
+            CurrentPrice = 0m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "Q389257J",
+            Slug = "jaeger-lecoultre-reverso-q389257j",
+            Description = "Jaeger-LeCoultre Reverso",
+            CurrentPrice = 0m
+        };
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("yo, suggest me some reversos"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(first), ToDto(second)],
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"[Jaeger-LeCoultre Reverso Q397846J](/watches/jaeger-lecoultre-reverso-q397846j) is a strong match.\",\"actions\":[{\"type\":\"search\",\"query\":\"Jaeger-LeCoultre Reverso pink gold\",\"label\":\"Open Smart Search\"}]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "yo, suggest me some reversos", null, "127.0.0.1");
+
+        var searchActions = result.Actions.Where(a => a.Type == "search").ToList();
+        Assert.Single(searchActions);
+        Assert.Equal("Jaeger-LeCoultre Reverso pink gold", searchActions[0].Query);
         Assert.Equal(1, handler.CallCount);
     }
 }

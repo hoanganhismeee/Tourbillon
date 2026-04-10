@@ -205,7 +205,7 @@ public class ChatService
 
             var aiResult = await CallAiServiceAsync(history, resolution.Query, resolution.Context);
             aiMessage = aiResult.Message;
-            actions = MergeActions(resolution.Actions, aiResult.Actions);
+            actions = MergeActions(aiResult.Actions, resolution.Actions);
             if (watchCards.Count == 0)
                 watchCards = await ExtractWatchCardsAsync(aiMessage, actions);
         }
@@ -541,7 +541,8 @@ public class ChatService
 
         var context = new List<string>
         {
-            $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Search guidance request: answer like a sales concierge, highlight the strongest matches, tell the user the Smart Search chip can broaden discovery, and end with a short follow-up question about size, material, budget, occasion, or a specific model."
+            $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Search guidance request: answer like a sales concierge, highlight the strongest matches, tell the user the Smart Search chip can broaden discovery, emit one Smart Search action with a concise catalogue-style query built from the resolved matches rather than the user's raw wording, and end with a short follow-up question about size, material, budget, occasion, or a specific model.",
+            "Smart Search action guidance: rewrite discovery queries into compact catalogue terms. Prefer canonical brand and collection names from the supplied context. Good example: 'Jaeger-LeCoultre Reverso'. Bad example: 'yo, suggest me some reversos'."
         };
 
         foreach (var watch in ordered)
@@ -680,8 +681,7 @@ public class ChatService
 
             if (string.Equals(action.Type, "search", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(action.Query))
             {
-                if (merged.Any(a => string.Equals(a.Type, "search", StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(a.Query, action.Query, StringComparison.OrdinalIgnoreCase)))
+                if (merged.Any(a => string.Equals(a.Type, "search", StringComparison.OrdinalIgnoreCase)))
                     continue;
 
                 merged.Add(new ChatAction
@@ -798,16 +798,38 @@ public class ChatService
 
     private static string BuildSmartSearchQuery(string originalQuery, List<Watch> ordered)
     {
-        var cleaned = Regex.Replace(
-            originalQuery,
-            @"^\s*(?:can you\s+|could you\s+|please\s+)?(?:recommend|suggest|find|show|help me find|help me discover|i want|i'm looking for|i am looking for|looking for|need)\s+(?:me\s+)?",
-            "",
-            RegexOptions.IgnoreCase).Trim();
+        var cleaned = originalQuery.Trim();
 
         if (string.IsNullOrWhiteSpace(cleaned))
             cleaned = originalQuery.Trim();
 
+        var preamblePatterns = new[]
+        {
+            @"^\s*(?:yo|hey|hi|hello)\b[\s,!.]*",
+            @"^\s*(?:please|pls)\b[\s,!.]*",
+            @"^\s*(?:can you|could you|would you)\s+",
+            @"^\s*(?:recommend|suggest|find|show|give|bring)\s+(?:me\s+)?",
+            @"^\s*(?:help me find|help me discover)\s+",
+            @"^\s*(?:i want|i need|i(?:'m| am)\s+looking for|looking for)\s+",
+            @"^\s*(?:some|any)\s+"
+        };
+
+        foreach (var pattern in preamblePatterns)
+        {
+            string next;
+            do
+            {
+                next = Regex.Replace(cleaned, pattern, "", RegexOptions.IgnoreCase).Trim();
+                if (next == cleaned)
+                    break;
+                cleaned = next;
+            }
+            while (!string.IsNullOrWhiteSpace(cleaned));
+        }
+
         cleaned = Regex.Replace(cleaned, @"^(?:the|a|an)\s+", "", RegexOptions.IgnoreCase).Trim();
+        cleaned = Regex.Replace(cleaned, @"\b(?:please|pls|some|any)\b", " ", RegexOptions.IgnoreCase);
+        cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
 
         if (ordered.Count == 0)
             return cleaned;
@@ -824,13 +846,44 @@ public class ChatService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        if (distinctBrands.Count == 1 && !cleaned.Contains(distinctBrands[0], StringComparison.OrdinalIgnoreCase))
-            cleaned = $"{cleaned} {distinctBrands[0]}".Trim();
+        var descriptor = cleaned;
 
-        if (distinctCollections.Count == 1 && !cleaned.Contains(distinctCollections[0], StringComparison.OrdinalIgnoreCase))
-            cleaned = $"{cleaned} {distinctCollections[0]}".Trim();
+        foreach (var brand in distinctBrands)
+            descriptor = RemoveSearchTerm(descriptor, brand);
+
+        foreach (var collection in distinctCollections)
+            descriptor = RemoveSearchTerm(descriptor, collection, allowPlural: true);
+
+        descriptor = Regex.Replace(
+            descriptor,
+            @"\b(?:recommend|suggest|find|show|give|bring|help|discover|looking|look|want|need|please|pls|me|some|any|options?|pieces?|models?)\b",
+            " ",
+            RegexOptions.IgnoreCase);
+        descriptor = Regex.Replace(descriptor, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
+
+        var terms = new List<string>();
+        if (distinctBrands.Count == 1)
+            terms.Add(distinctBrands[0]);
+        if (distinctCollections.Count == 1)
+            terms.Add(distinctCollections[0]);
+        if (!string.IsNullOrWhiteSpace(descriptor))
+            terms.Add(descriptor);
+
+        var fallback = string.Join(" ", terms.Where(t => !string.IsNullOrWhiteSpace(t)));
+        if (!string.IsNullOrWhiteSpace(fallback))
+            return Regex.Replace(fallback, @"\s+", " ").Trim();
 
         return Regex.Replace(cleaned, @"\s+", " ").Trim();
+    }
+
+    private static string RemoveSearchTerm(string input, string term, bool allowPlural = false)
+    {
+        if (string.IsNullOrWhiteSpace(input) || string.IsNullOrWhiteSpace(term))
+            return input;
+
+        var suffix = allowPlural && !term.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? "s?" : "";
+        var pattern = $@"\b{Regex.Escape(term)}{suffix}\b";
+        return Regex.Replace(input, pattern, " ", RegexOptions.IgnoreCase);
     }
 
     private static string FormatPrice(decimal price) =>
