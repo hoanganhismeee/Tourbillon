@@ -31,6 +31,7 @@ function RankedItem({ watch, rank, visible }: { watch: Watch; rank: number; visi
     watch.currentPrice === 0
       ? 'Price on Request'
       : `$${watch.currentPrice.toLocaleString()}`;
+  const thumbnailSrc = watch.imageUrl || imageTransformations.thumbnail(watch.image);
 
   return (
     <motion.li
@@ -50,7 +51,7 @@ function RankedItem({ watch, rank, visible }: { watch: Watch; rank: number; visi
         {/* Thumbnail */}
         <div className="w-14 h-14 flex-shrink-0 bg-black/30 relative overflow-hidden">
           <Image
-            src={imageTransformations.thumbnail(watch.image)}
+            src={thumbnailSrc}
             alt={watch.name}
             fill
             sizes="56px"

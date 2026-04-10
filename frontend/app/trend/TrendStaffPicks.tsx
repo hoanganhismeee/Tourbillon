@@ -28,12 +28,13 @@ function FeaturedWatchCard({ watch }: { watch: Watch }) {
     watch.currentPrice === 0
       ? 'Price on Request'
       : `$${watch.currentPrice.toLocaleString()}`;
+  const imageSrc = watch.imageUrl || imageTransformations.card(watch.image);
 
   return (
     <Link href={`/watches/${watch.slug}`} className="group flex flex-col h-full">
       <div className="relative flex-1 min-h-[260px] bg-black/30 overflow-hidden">
         <Image
-          src={imageTransformations.card(watch.image)}
+          src={imageSrc}
           alt={watch.name}
           fill
           sizes="(max-width: 1024px) 100vw, 50vw"
@@ -69,13 +70,28 @@ function StaffPickPair({
   watch: Watch | undefined;
   isLoading: boolean;
 }) {
+  const featuredVisualSrc = watch?.imageUrl || (watch?.image ? imageTransformations.detail(watch.image) : null);
+
   return (
     <div className="flex flex-col lg:flex-row min-h-[420px] lg:min-h-[520px]">
       {/* Video — always left */}
       <div className="w-full lg:w-3/5 min-h-[280px] lg:min-h-0 relative overflow-hidden">
-        <video autoPlay muted loop playsInline className="absolute inset-0 w-full h-full object-cover">
-          <source src={pick.video} type="video/mp4" />
-        </video>
+        {pick.video ? (
+          <video autoPlay muted loop playsInline className="absolute inset-0 w-full h-full object-cover">
+            <source src={pick.video} type="video/mp4" />
+          </video>
+        ) : featuredVisualSrc ? (
+          <Image
+            src={featuredVisualSrc}
+            alt={watch?.name ?? 'Featured watch'}
+            fill
+            sizes="(max-width: 1024px) 100vw, 60vw"
+            className="object-cover"
+            priority
+          />
+        ) : (
+          <div className="absolute inset-0 bg-black/30" />
+        )}
         <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-b from-transparent to-[#1e1512]" />
       </div>
 

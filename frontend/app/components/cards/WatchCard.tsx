@@ -3,7 +3,7 @@
 // Phase 10D: near-3D tilt on mousemove (useTilt) + gold shimmer stripe on hover.
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -26,12 +26,18 @@ interface WatchCardProps {
 export const WatchCard = ({ watch, brands, collections, isPriority = false, currentPage }: WatchCardProps) => {
   const { saveNavigationState } = useNavigation();
   const { rotateX, rotateY, handleMouseMove, handleMouseLeave } = useTilt();
+  const baseImageSrc = watch.imageUrl || imageTransformations.card(watch.image);
 
-  const [src, setSrc] = useState<string>(watch.imageUrl || imageTransformations.card(watch.image));
+  const [src, setSrc] = useState<string>(baseImageSrc);
   const [retryCount, setRetryCount] = useState(0);
   const [shimmer, setShimmer] = useState(false);
 
   const router = useRouter();
+
+  useEffect(() => {
+    setSrc(baseImageSrc);
+    setRetryCount(0);
+  }, [baseImageSrc]);
 
   const handleWatchClick = () => {
     saveNavigationState({

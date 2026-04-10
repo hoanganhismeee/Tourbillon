@@ -25,17 +25,25 @@ interface WatchCardProps {
 }
 
 const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain', collectionLabels, brandName, collectionName: collectionNameProp }: WatchCardProps) => {
+  const baseImageSrc = watch.imageUrl || imageTransformations.showcase(watch.image);
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   // Only used when collectionNameProp is not provided (i.e., outside the favourites page)
   const [collection, setCollection] = useState<Collection | null>(null);
-  const [imgSrc, setImgSrc] = useState<string>(watch.imageUrl || imageTransformations.showcase(watch.image));
+  const [imgSrc, setImgSrc] = useState<string>(baseImageSrc);
   const [retryCount, setRetryCount] = useState<number>(0);
   const router = useRouter();
 
   const { saveNavigationState } = useNavigation();
   const searchParams = useSearchParams();
   const currentPage = Number(searchParams.get('page') ?? '1');
+
+  useEffect(() => {
+    setImgSrc(baseImageSrc);
+    setRetryCount(0);
+    setImageError(false);
+    setImageLoading(true);
+  }, [baseImageSrc]);
 
   const handleImageError = () => {
     // Retry strategy: try 2 times with different approaches
