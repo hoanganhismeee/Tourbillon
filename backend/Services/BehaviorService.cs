@@ -73,6 +73,19 @@ public class BehaviorService : IBehaviorService
     // Reassigns all anonymous events to the authenticated user after login.
     public async Task MergeAnonymousAsync(int userId, string anonymousId)
     {
+        if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            var matchingEvents = await _context.UserBrowsingEvents
+                .Where(e => e.AnonymousId == anonymousId && e.UserId == null)
+                .ToListAsync();
+
+            foreach (var browsingEvent in matchingEvents)
+                browsingEvent.UserId = userId;
+
+            await _context.SaveChangesAsync();
+            return;
+        }
+
         await _context.UserBrowsingEvents
             .Where(e => e.AnonymousId == anonymousId && e.UserId == null)
             .ExecuteUpdateAsync(s => s.SetProperty(e => e.UserId, userId));
