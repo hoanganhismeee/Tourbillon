@@ -89,8 +89,6 @@ const ARCHETYPES: Archetype[] = [
     phrase: 'Where the dial becomes a world.',
     collectionSlugs: [
       'vacheron-constantin-metiers-d-art',
-      'breguet-reine-de-naples',
-      'greubel-forsey-collection',
     ],
     gradient: 'linear-gradient(180deg, #2d1805 0%, #2b1300 50%, #2b1300 100%)',
     accentColor: '#d4924a',
@@ -120,8 +118,7 @@ function useArchetypeWatches(slugs: string[], perCollection = 6): Watch[] {
     })),
   });
   return results
-    .flatMap(r => (r.data ?? []).slice(0, perCollection))
-    .filter((w): w is Watch => w !== null && !EXCLUDED_WATCH_IDS.has(w.id));
+    .flatMap(r => (r.data ?? []).filter((w): w is Watch => w !== null && !EXCLUDED_WATCH_IDS.has(w.id)).slice(0, perCollection));
 }
 
 // Horizontal arc of watches — flat by default, 3D fan on hover.

@@ -7,6 +7,8 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { ReactNode, useState } from 'react';
 
+const CACHE_PERSIST_KEY = 'tourbillon-query-cache-v2';
+
 const STALE_TIME = 5 * 60 * 1000;   // 5 minutes — data considered fresh
 const GC_TIME = 10 * 60 * 1000;     // 10 minutes — inactive cache garbage collected
 const CACHE_MAX_AGE = 60 * 60 * 1000; // 1 hour — localStorage persistence window
@@ -29,7 +31,7 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   // Sync persister writes cache to localStorage on every mutation
   const persister = createSyncStoragePersister({
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-    key: 'tourbillon-query-cache',
+    key: CACHE_PERSIST_KEY,
   });
 
   return (

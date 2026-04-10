@@ -81,6 +81,23 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
         load();
     }, [watch.id]);
 
+    const invalidatePublicWatchQueries = async () => {
+        const currentSlug = fullWatch?.slug ?? watch.slug;
+        const currentBrandId = fullWatch?.brandId ?? watch.brandId;
+        const currentCollectionSlug = fullWatch?.collectionSlug ?? watch.collectionSlug;
+
+        await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['watches'] }),
+            queryClient.invalidateQueries({ queryKey: ['watch', watch.id] }),
+            currentSlug ? queryClient.invalidateQueries({ queryKey: ['watch', currentSlug] }) : Promise.resolve(),
+            currentSlug ? queryClient.invalidateQueries({ queryKey: ['watch', 'slug', currentSlug] }) : Promise.resolve(),
+            queryClient.invalidateQueries({ queryKey: ['watches', 'brand', currentBrandId] }),
+            currentCollectionSlug
+                ? queryClient.invalidateQueries({ queryKey: ['watches', 'collection-slug', currentCollectionSlug] })
+                : Promise.resolve(),
+        ]);
+    };
+
     // Stage file for preview (choose: use as-is or crop)
     const stageFile = (file: File) => {
         setUploadError('');
@@ -105,7 +122,7 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
                 setImagePublicId(result.publicId);
                 setImageVersion(result.version ?? null);
                 setLocalBlobUrl(blobUrl);
-                queryClient.invalidateQueries({ queryKey: ['watch', watch.id] });
+                await invalidatePublicWatchQueries();
             } else {
                 URL.revokeObjectURL(blobUrl);
             }
@@ -153,7 +170,7 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
                 setImagePublicId(result.publicId);
                 setImageVersion(result.version ?? null);
                 setLocalBlobUrl(blobUrl);
-                queryClient.invalidateQueries({ queryKey: ['watch', watch.id] });
+                await invalidatePublicWatchQueries();
             } else {
                 URL.revokeObjectURL(blobUrl);
             }
@@ -185,6 +202,7 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
                 specs: mergedSpecs
             };
             await adminUpdateWatch(watch.id, data);
+            await invalidatePublicWatchQueries();
             onSave();
         } catch (err: unknown) {
             setSaveError(err instanceof Error ? err.message : 'Failed to save watch');
