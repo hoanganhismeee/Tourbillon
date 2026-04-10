@@ -116,6 +116,12 @@ public class ChatService
         public bool HasAny => Brands.Count > 0 || Collections.Count > 0;
     }
 
+    private sealed class ChatCompareScope
+    {
+        public List<int> CollectionIds { get; set; } = [];
+        public List<string> CompareSlugs { get; set; } = [];
+    }
+
     public ChatService(
         IHttpClientFactory httpClientFactory,
         TourbillonContext context,
@@ -158,6 +164,22 @@ public class ChatService
         await _redis.SetHashFieldAsync($"chat:session:{sessionId}", "cards", json, SessionTtl);
     }
 
+    private async Task<ChatCompareScope?> GetCompareScopeAsync(string sessionId)
+    {
+        var json = await _redis.GetHashFieldAsync($"chat:session:{sessionId}", "compare_scope");
+        if (json == null) return null;
+        return JsonSerializer.Deserialize<ChatCompareScope>(json, _jsonOptions);
+    }
+
+    private async Task SaveCompareScopeAsync(string sessionId, ChatCompareScope? scope)
+    {
+        if (scope == null || (scope.CollectionIds.Count == 0 && scope.CompareSlugs.Count == 0))
+            return;
+
+        var json = JsonSerializer.Serialize(scope, _jsonOptions);
+        await _redis.SetHashFieldAsync($"chat:session:{sessionId}", "compare_scope", json, SessionTtl);
+    }
+
     public async Task<ChatApiResponse> HandleMessageAsync(
         string sessionId, string message, string? userId, string? ipAddress, string? behaviorSummary = null)
     {
@@ -185,6 +207,7 @@ public class ChatService
 
         var sessionHistory = await GetSessionHistoryAsync(sessionId);
         var lastWatchCards = await GetLastWatchCardsAsync(sessionId);
+        var compareScope = await GetCompareScopeAsync(sessionId);
         var history = sessionHistory
             .TakeLast(10)
             .Select(m => new ChatHistoryEntry { Role = m.Role, Content = m.Content })
@@ -193,7 +216,7 @@ public class ChatService
         ChatResolution resolution;
         try
         {
-            resolution = await ResolveMessageAsync(message.Trim(), lastWatchCards);
+            resolution = await ResolveMessageAsync(message.Trim(), lastWatchCards, compareScope);
         }
         catch (Exception ex)
         {
@@ -228,6 +251,7 @@ public class ChatService
         sessionHistory.Add(new ChatMessage { Role = "assistant", Content = aiMessage });
         await SaveSessionHistoryAsync(sessionId, sessionHistory);
         await SaveLastWatchCardsAsync(sessionId, watchCards);
+        await SaveCompareScopeAsync(sessionId, await BuildCompareScopeAsync(actions));
 
         var newUsed = 1;
         if (!disableLimit)
@@ -250,7 +274,10 @@ public class ChatService
     public async Task ClearSessionAsync(string sessionId) =>
         await _redis.RemoveHashAsync($"chat:session:{sessionId}");
 
-    private async Task<ChatResolution> ResolveMessageAsync(string message, List<ChatWatchCard> lastWatchCards)
+    private async Task<ChatResolution> ResolveMessageAsync(
+        string message,
+        List<ChatWatchCard> lastWatchCards,
+        ChatCompareScope? compareScope)
     {
         if (IsAbusiveQuery(message))
             return new ChatResolution
@@ -263,9 +290,9 @@ public class ChatService
 
         if (IsExplicitCompareQuery(message))
         {
-            var compareWatches = await TryResolveCompareWatchesAsync(message, lastWatchCards);
+            var compareWatches = await TryResolveCompareWatchesAsync(message, lastWatchCards, mentions, compareScope);
             if (compareWatches.Count >= 2)
-                return BuildCompareResolution(compareWatches);
+                return BuildCompareResolution(message, compareWatches);
         }
 
         if (!hasWatchScope)
@@ -305,16 +332,16 @@ public class ChatService
     private async Task<(string Message, List<ChatAction> Actions)> CallAiServiceAsync(
         List<ChatHistoryEntry> history, string query, List<string> context)
     {
-        var httpClient = _httpClientFactory.CreateClient("ai-service");
-        var chatSw = System.Diagnostics.Stopwatch.StartNew();
-        var safeContext = new List<string>
-        {
-            "Catalogue safety: use the supplied Tourbillon catalogue context as the source of truth. Do not recommend, compare, or link to anything outside this context. Never expose database IDs, addresses, table names, API routes, or internal implementation details."
-        };
-        safeContext.AddRange(context);
-
         try
         {
+            var httpClient = _httpClientFactory.CreateClient("ai-service");
+            var chatSw = System.Diagnostics.Stopwatch.StartNew();
+            var safeContext = new List<string>
+            {
+                "Catalogue safety: use the supplied Tourbillon catalogue context as the source of truth. Do not recommend, compare, or link to anything outside this context. Never expose database IDs, addresses, table names, API routes, or internal implementation details."
+            };
+            safeContext.AddRange(context);
+
             var payload = new { query, context = safeContext, history };
             var resp = await httpClient.PostAsJsonAsync("/chat", payload);
             chatSw.Stop();
@@ -349,8 +376,7 @@ public class ChatService
         }
         catch (Exception ex)
         {
-            chatSw.Stop();
-            _logger.LogWarning(ex, "Chat ai-service call threw after {ElapsedMs}ms", chatSw.ElapsedMilliseconds);
+            _logger.LogWarning(ex, "Chat ai-service call threw before producing a response");
             return ("I am having trouble connecting right now. Please try again in a moment.", []);
         }
     }
@@ -402,28 +428,80 @@ public class ChatService
         return mentions;
     }
 
-    private async Task<List<Watch>> TryResolveCompareWatchesAsync(string query, List<ChatWatchCard> lastWatchCards)
+    private async Task<ChatCompareScope?> BuildCompareScopeAsync(List<ChatAction> actions)
+    {
+        var compareAction = actions.FirstOrDefault(a =>
+            string.Equals(a.Type, "compare", StringComparison.OrdinalIgnoreCase)
+            && a.Slugs?.Count >= 2);
+        if (compareAction?.Slugs == null)
+            return null;
+
+        var compareSlugs = compareAction.Slugs
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(4)
+            .ToList();
+        if (compareSlugs.Count < 2)
+            return null;
+
+        var scopedWatches = await _context.Watches
+            .AsNoTracking()
+            .Where(w => compareSlugs.Contains(w.Slug))
+            .ToListAsync();
+        var collectionIds = compareSlugs
+            .Select(slug => scopedWatches.FirstOrDefault(w => string.Equals(w.Slug, slug, StringComparison.OrdinalIgnoreCase))?.CollectionId)
+            .Where(id => id != null)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        return new ChatCompareScope
+        {
+            CollectionIds = collectionIds,
+            CompareSlugs = compareSlugs,
+        };
+    }
+
+    private async Task<List<Watch>> TryResolveCompareWatchesAsync(
+        string query,
+        List<ChatWatchCard> lastWatchCards,
+        EntityMentions mentions,
+        ChatCompareScope? compareScope)
     {
         var ordinalCompare = await TryResolveOrdinalCompareWatchesAsync(query, lastWatchCards);
         if (ordinalCompare.Count >= 2)
             return ordinalCompare;
 
         var parts = ExtractCompareParts(query);
-        if (parts.Count < 2) return [];
-
-        var resolved = new List<Watch>();
-        foreach (var part in parts.Take(4))
+        if (ShouldPreferCollectionCompare(parts, mentions, compareScope, query))
         {
-            var result = await _watchFinderService.FindWatchesAsync(part);
-            var watch = await TryResolveExactWatchAsync(part, result);
-            if (watch == null)
-                return [];
-
-            if (resolved.All(w => w.Id != watch.Id))
-                resolved.Add(watch);
+            var collectionFirstCompare = await TryResolveCollectionCompareWatchesAsync(query, mentions, compareScope);
+            if (collectionFirstCompare.Count >= 2)
+                return collectionFirstCompare;
         }
 
-        return resolved.Count >= 2 ? resolved : [];
+        if (parts.Count >= 2)
+        {
+            var resolved = new List<Watch>();
+            foreach (var part in parts.Take(4))
+            {
+                var result = await _watchFinderService.FindWatchesAsync(part);
+                var watch = await TryResolveExactWatchAsync(part, result);
+                if (watch == null)
+                {
+                    resolved.Clear();
+                    break;
+                }
+
+                if (resolved.All(w => w.Id != watch.Id))
+                    resolved.Add(watch);
+            }
+
+            if (resolved.Count >= 2)
+                return resolved;
+        }
+
+        return await TryResolveCollectionCompareWatchesAsync(query, mentions, compareScope);
     }
 
     private async Task<List<Watch>> TryResolveOrdinalCompareWatchesAsync(string query, List<ChatWatchCard> lastWatchCards)
@@ -455,6 +533,118 @@ public class ChatService
             .Select(slug => watches.FirstOrDefault(w => string.Equals(w.Slug, slug, StringComparison.OrdinalIgnoreCase)))
             .Where(w => w != null)
             .Cast<Watch>()
+            .ToList();
+    }
+
+    private async Task<List<Watch>> TryResolveCollectionCompareWatchesAsync(
+        string query,
+        EntityMentions mentions,
+        ChatCompareScope? compareScope)
+    {
+        var collections = await ResolveCollectionCompareTargetsAsync(query, mentions, compareScope);
+        if (collections.Count < 2)
+            return [];
+
+        var requestedPerCollection = ParseCollectionCompareCount(query);
+        var useRandomSelection = WantsRandomCompareSelection(query);
+        var selected = new List<Watch>();
+
+        foreach (var collection in collections)
+        {
+            var picks = useRandomSelection
+                ? await SelectRandomCollectionWatchesAsync(collection.Id, requestedPerCollection)
+                : await SelectRepresentativeCollectionWatchesAsync(collection.Id, requestedPerCollection);
+
+            foreach (var watch in picks)
+            {
+                if (selected.All(existing => existing.Id != watch.Id))
+                    selected.Add(watch);
+
+                if (selected.Count >= 4)
+                    return selected;
+            }
+        }
+
+        return selected.Count >= 2 ? selected : [];
+    }
+
+    private async Task<List<Collection>> ResolveCollectionCompareTargetsAsync(
+        string query,
+        EntityMentions mentions,
+        ChatCompareScope? compareScope)
+    {
+        if (mentions.Collections.Count >= 2)
+        {
+            var orderedIds = mentions.Collections
+                .OrderBy(c => CollectionQueryPosition(query, c.Name))
+                .Select(c => c.Id)
+                .Distinct()
+                .Take(4)
+                .ToList();
+
+            var collections = await _context.Collections
+                .Include(c => c.Brand)
+                .AsNoTracking()
+                .Where(c => orderedIds.Contains(c.Id))
+                .ToListAsync();
+
+            return orderedIds
+                .Select(id => collections.FirstOrDefault(c => c.Id == id))
+                .Where(c => c != null)
+                .Cast<Collection>()
+                .ToList();
+        }
+
+        if (compareScope?.CollectionIds.Count >= 2 && UsesStoredCollectionScope(query))
+        {
+            var collections = await _context.Collections
+                .Include(c => c.Brand)
+                .AsNoTracking()
+                .Where(c => compareScope.CollectionIds.Contains(c.Id))
+                .ToListAsync();
+
+            return compareScope.CollectionIds
+                .Select(id => collections.FirstOrDefault(c => c.Id == id))
+                .Where(c => c != null)
+                .Cast<Collection>()
+                .ToList();
+        }
+
+        return [];
+    }
+
+    private async Task<List<Watch>> SelectRepresentativeCollectionWatchesAsync(int collectionId, int requestedCount)
+    {
+        var watches = await _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .AsNoTracking()
+            .Where(w => w.CollectionId == collectionId)
+            .ToListAsync();
+
+        return watches
+            .OrderByDescending(w => !string.IsNullOrWhiteSpace(w.Image))
+            .ThenByDescending(w => GetProductionPriority(w))
+            .ThenByDescending(w => w.CurrentPrice > 0)
+            .ThenByDescending(w => w.ImageVersion ?? 0)
+            .ThenByDescending(w => w.Id)
+            .Take(requestedCount)
+            .ToList();
+    }
+
+    private async Task<List<Watch>> SelectRandomCollectionWatchesAsync(int collectionId, int requestedCount)
+    {
+        var watches = await _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .AsNoTracking()
+            .Where(w => w.CollectionId == collectionId)
+            .ToListAsync();
+
+        return watches
+            .OrderBy(_ => Random.Shared.Next())
+            .ThenByDescending(w => w.Id)
+            .Take(requestedCount)
             .ToList();
     }
 
@@ -652,22 +842,32 @@ public class ChatService
         };
     }
 
-    private ChatResolution BuildCompareResolution(List<Watch> watches)
+    private ChatResolution BuildCompareResolution(string query, List<Watch> watches)
     {
+        var watchCards = watches.Select(ToChatWatchCard).ToList();
         var links = watches.Select(w => $"[{BuildWatchTitle(w)}](/watches/{w.Slug})");
-        var response = $"I found a concrete Tourbillon comparison set: {string.Join(", ", links)}. Use the compare chip below to load the side-by-side view. If you want, Tourbillon can also help narrow the choice by style, wrist presence, or use case.";
+        var context = new List<string>
+        {
+            "Tourbillon resolved a concrete comparison set. Compare guidance request: explain the main split in practical buying terms, stay concise, end with a complete sentence, and assume the compare view will open immediately with these exact watches preloaded."
+        };
+
+        foreach (var watch in watches)
+            context.Add(BuildWatchContext(watch));
 
         return new ChatResolution
         {
-            Message = response,
-            WatchCards = watches.Select(ToChatWatchCard).ToList(),
+            UseAi = true,
+            Message = $"Tourbillon resolved this comparison set: {string.Join(", ", links)}. The compare view will open with these watches preloaded.",
+            Query = query,
+            Context = context,
+            WatchCards = watchCards,
             Actions =
             [
                 new ChatAction
                 {
                     Type = "compare",
                     Label = "Compare these watches",
-                    Slugs = watches.Select(w => w.Slug).ToList()
+                    Slugs = watchCards.Select(w => w.Slug).ToList()
                 }
             ]
         };
@@ -973,6 +1173,71 @@ public class ChatService
         var suffix = allowPlural && !term.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? "s?" : "";
         var pattern = $@"\b{Regex.Escape(term)}{suffix}\b";
         return Regex.Replace(input, pattern, " ", RegexOptions.IgnoreCase);
+    }
+
+    private static int CollectionQueryPosition(string query, string collectionName)
+    {
+        var index = query.IndexOf(collectionName, StringComparison.OrdinalIgnoreCase);
+        return index >= 0 ? index : int.MaxValue;
+    }
+
+    private static bool UsesStoredCollectionScope(string query) =>
+        Regex.IsMatch(query, @"\b(?:each|those|these|both)\s+collections?\b", RegexOptions.IgnoreCase)
+        || Regex.IsMatch(query, @"\bfrom\s+each\b", RegexOptions.IgnoreCase);
+
+    private static bool ShouldPreferCollectionCompare(
+        List<string> parts,
+        EntityMentions mentions,
+        ChatCompareScope? compareScope,
+        string query)
+    {
+        if (UsesStoredCollectionScope(query) && compareScope?.CollectionIds.Count >= 2)
+            return true;
+
+        if (mentions.Collections.Count < 2)
+            return false;
+
+        if (parts.Count == 0)
+            return true;
+
+        return parts.All(part =>
+            !WatchFinderService.IsLikelyReferenceQuery(part)
+            && !WatchFinderService.IsLikelyReferenceFragment(part)
+            && !Regex.IsMatch(part, @"\d"));
+    }
+
+    private static bool WantsRandomCompareSelection(string query) =>
+        Regex.IsMatch(query, @"\brandom\b", RegexOptions.IgnoreCase);
+
+    private static int ParseCollectionCompareCount(string query)
+    {
+        var numberMatch = Regex.Match(query, @"\b([1-4])\s+(?:randoms?|watches?|models?|references?)\b", RegexOptions.IgnoreCase);
+        if (numberMatch.Success && int.TryParse(numberMatch.Groups[1].Value, out var numericCount))
+            return Math.Clamp(numericCount, 1, 2);
+
+        var wordMatch = Regex.Match(query, @"\b(one|two)\s+(?:randoms?|watches?|models?|references?)\b", RegexOptions.IgnoreCase);
+        if (!wordMatch.Success)
+            return 1;
+
+        return string.Equals(wordMatch.Groups[1].Value, "two", StringComparison.OrdinalIgnoreCase) ? 2 : 1;
+    }
+
+    private static int GetProductionPriority(Watch watch)
+    {
+        var status = ExtractProductionStatus(watch.Specs);
+        if (string.Equals(status, "current", StringComparison.OrdinalIgnoreCase)) return 3;
+        if (string.Equals(status, "limited edition", StringComparison.OrdinalIgnoreCase)) return 2;
+        if (string.Equals(status, "discontinued", StringComparison.OrdinalIgnoreCase)) return 0;
+        return 1;
+    }
+
+    private static string? ExtractProductionStatus(string? specs)
+    {
+        if (string.IsNullOrWhiteSpace(specs))
+            return null;
+
+        var match = Regex.Match(specs, "\"productionStatus\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[1].Value.Trim() : null;
     }
 
     private static string FormatPrice(decimal price) =>

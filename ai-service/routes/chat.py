@@ -30,16 +30,34 @@ def _extract_actions(raw: str) -> tuple[str, list]:
 
 
 def _truncate_chat_response(text: str, max_words: int = 130) -> str:
-    """Safety-net word cap — cuts at the last complete sentence within max_words."""
+    """Safety-net word cap that keeps whole sentences and avoids cut-off fragments."""
     words = text.split()
     if len(words) <= max_words:
-        return text
+        stripped = text.strip()
+        if stripped and stripped[-1] not in ".!?":
+            return stripped + "."
+        return stripped
 
-    truncated = " ".join(words[:max_words])
-    last_end = max(truncated.rfind("."), truncated.rfind("!"), truncated.rfind("?"))
-    if last_end > len(truncated) // 2:
-        return truncated[: last_end + 1]
-    return truncated
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    kept: list[str] = []
+    total_words = 0
+
+    for sentence in sentences:
+        sentence_words = sentence.split()
+        if not sentence_words:
+            continue
+        if total_words + len(sentence_words) > max_words:
+            break
+        kept.append(sentence.strip())
+        total_words += len(sentence_words)
+
+    if kept:
+        return " ".join(kept).strip()
+
+    fallback = " ".join(words[:max_words]).rstrip(",;:- ")
+    if fallback and fallback[-1] not in ".!?":
+        fallback += "."
+    return fallback
 
 
 def _allowed_catalogue_paths(context: list[str]) -> set[str]:

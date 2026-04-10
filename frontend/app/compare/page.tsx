@@ -63,6 +63,10 @@ const ComparePage = () => {
   const { saveNavigationState } = useNavigation();
   useScrollRestore(true);
 
+  useEffect(() => {
+    useCompare.persist.rehydrate();
+  }, []);
+
   // Re-fetch each watch by slug so stale localStorage snapshots get fresh brand/collection data
   useEffect(() => {
     if (compareWatches.length === 0) { setEnrichedWatches([]); return; }
