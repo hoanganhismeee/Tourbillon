@@ -265,7 +265,7 @@ export function FilterDropdown({
 
       {open && (
         <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-52 overflow-hidden">
-          <div className="max-h-64 overflow-y-auto p-2">
+          <div data-lenis-prevent="true" className="max-h-64 overflow-y-auto overscroll-contain p-2">
             {options.map(opt => {
               const active = selected.includes(opt);
               return (
@@ -329,7 +329,7 @@ export function BrandDropdown({
 
       {open && (
         <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-52 overflow-hidden">
-          <div className="max-h-64 overflow-y-auto p-2">
+          <div data-lenis-prevent="true" className="max-h-64 overflow-y-auto overscroll-contain p-2">
             {brands.map(b => {
               const active = selected.includes(b.id);
               return (
@@ -393,7 +393,7 @@ export function CollectionDropdown({
 
       {open && (
         <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-52 overflow-hidden">
-          <div className="max-h-64 overflow-y-auto p-2">
+          <div data-lenis-prevent="true" className="max-h-64 overflow-y-auto overscroll-contain p-2">
             {collections.map(c => {
               const active = selected.includes(c.id);
               return (

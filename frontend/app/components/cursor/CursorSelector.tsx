@@ -141,9 +141,11 @@ const CursorSelector = () => {
 
               {/* Scrollable options list — shows 5, scroll for more */}
               <div
+                data-lenis-prevent="true"
                 className="py-2 overflow-y-auto"
                 style={{
                   maxHeight: '258px',
+                  overscrollBehavior: 'contain',
                   scrollbarWidth: 'thin',
                   scrollbarColor: 'rgba(191,166,138,0.25) transparent',
                 }}

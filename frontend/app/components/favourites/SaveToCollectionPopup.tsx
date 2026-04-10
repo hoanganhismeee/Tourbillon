@@ -248,7 +248,7 @@ const SaveToCollectionPopup = ({ watchId, anchorRect, autoSave, onClose }: SaveT
       <div className="h-px mx-3 bg-white/8" />
 
       {/* List */}
-      <div className="max-h-52 overflow-y-auto">
+      <div data-lenis-prevent="true" className="max-h-52 overflow-y-auto overscroll-contain">
         {/* "Saved in" section header */}
         {hasSaved && !search && (
           <div className="px-4 pt-2.5 pb-1">
