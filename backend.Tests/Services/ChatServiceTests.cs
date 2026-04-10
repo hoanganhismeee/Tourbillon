@@ -510,6 +510,146 @@ public class ChatServiceTests
             ["vacheron-constantin-overseas-4200h-222a-b934", "vacheron-constantin-historiques-1100s-000r-b430"],
             compare.Actions[0].Slugs);
         Assert.Equal(2, compare.WatchCards.Count);
+        Assert.Equal(2, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_CollectionCompare_ReturnsStableRepresentativeCompareSet()
+    {
+        using var context = CreateContext();
+        var patek = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var vacheron = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var aquanaut = new Collection { Id = 10, BrandId = 1, Brand = patek, Name = "Aquanaut", Slug = "patek-philippe-aquanaut" };
+        var overseas = new Collection { Id = 20, BrandId = 2, Brand = vacheron, Name = "Overseas", Slug = "vacheron-constantin-overseas" };
+
+        var aquanautHero = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = patek,
+            CollectionId = 10,
+            Collection = aquanaut,
+            Name = "5167A-001",
+            Slug = "patek-philippe-aquanaut-5167a-001",
+            Description = "Patek Philippe Aquanaut",
+            CurrentPrice = 42000m,
+            Image = "aquanaut.png",
+            Specs = "{\"productionStatus\":\"Current\"}"
+        };
+        var aquanautSecondary = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = patek,
+            CollectionId = 10,
+            Collection = aquanaut,
+            Name = "5968A-001",
+            Slug = "patek-philippe-aquanaut-5968a-001",
+            Description = "Patek Philippe Aquanaut",
+            CurrentPrice = 0m,
+            Specs = "{\"productionStatus\":\"Discontinued\"}"
+        };
+        var overseasHero = new Watch
+        {
+            Id = 200,
+            BrandId = 2,
+            Brand = vacheron,
+            CollectionId = 20,
+            Collection = overseas,
+            Name = "4520V/210A-B128",
+            Slug = "vacheron-constantin-overseas-4520v-210a-b128",
+            Description = "Vacheron Constantin Overseas",
+            CurrentPrice = 38000m,
+            Image = "overseas.png",
+            Specs = "{\"productionStatus\":\"Current\"}"
+        };
+        var overseasSecondary = new Watch
+        {
+            Id = 201,
+            BrandId = 2,
+            Brand = vacheron,
+            CollectionId = 20,
+            Collection = overseas,
+            Name = "5500V/110A-B148",
+            Slug = "vacheron-constantin-overseas-5500v-110a-b148",
+            Description = "Vacheron Constantin Overseas",
+            CurrentPrice = 0m,
+            Specs = "{\"productionStatus\":\"Discontinued\"}"
+        };
+
+        context.Brands.AddRange(patek, vacheron);
+        context.Collections.AddRange(aquanaut, overseas);
+        context.Watches.AddRange(aquanautHero, aquanautSecondary, overseasHero, overseasSecondary);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"[Aquanaut](/collections/patek-philippe-aquanaut) feels more relaxed, while [Overseas](/collections/vacheron-constantin-overseas) leans more versatile in daily wear.\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "Compare the Aquanaut and the Overseas", null, "127.0.0.1");
+
+        Assert.Single(result.Actions);
+        Assert.Equal("compare", result.Actions[0].Type);
+        Assert.Equal(
+            ["patek-philippe-aquanaut-5167a-001", "vacheron-constantin-overseas-4520v-210a-b128"],
+            result.Actions[0].Slugs);
+        Assert.Equal(result.Actions[0].Slugs, result.WatchCards.Select(card => card.Slug).ToList());
         Assert.Equal(1, handler.CallCount);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_CollectionCompareFollowUp_UsesStoredScopeForRandomPerCollection()
+    {
+        using var context = CreateContext();
+        var patek = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var vacheron = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var aquanaut = new Collection { Id = 10, BrandId = 1, Brand = patek, Name = "Aquanaut", Slug = "patek-philippe-aquanaut" };
+        var overseas = new Collection { Id = 20, BrandId = 2, Brand = vacheron, Name = "Overseas", Slug = "vacheron-constantin-overseas" };
+
+        var watches = new[]
+        {
+            new Watch { Id = 100, BrandId = 1, Brand = patek, CollectionId = 10, Collection = aquanaut, Name = "5167A-001", Slug = "patek-philippe-aquanaut-5167a-001", Description = "Patek Philippe Aquanaut", CurrentPrice = 42000m, Image = "a1.png", Specs = "{\"productionStatus\":\"Current\"}" },
+            new Watch { Id = 101, BrandId = 1, Brand = patek, CollectionId = 10, Collection = aquanaut, Name = "5968A-001", Slug = "patek-philippe-aquanaut-5968a-001", Description = "Patek Philippe Aquanaut", CurrentPrice = 50000m, Image = "a2.png", Specs = "{\"productionStatus\":\"Current\"}" },
+            new Watch { Id = 102, BrandId = 1, Brand = patek, CollectionId = 10, Collection = aquanaut, Name = "5268/200R-001", Slug = "patek-philippe-aquanaut-5268-200r-001", Description = "Patek Philippe Aquanaut", CurrentPrice = 68000m, Image = "a3.png", Specs = "{\"productionStatus\":\"Current\"}" },
+            new Watch { Id = 200, BrandId = 2, Brand = vacheron, CollectionId = 20, Collection = overseas, Name = "4520V/210A-B128", Slug = "vacheron-constantin-overseas-4520v-210a-b128", Description = "Vacheron Constantin Overseas", CurrentPrice = 38000m, Image = "o1.png", Specs = "{\"productionStatus\":\"Current\"}" },
+            new Watch { Id = 201, BrandId = 2, Brand = vacheron, CollectionId = 20, Collection = overseas, Name = "5500V/110A-B148", Slug = "vacheron-constantin-overseas-5500v-110a-b148", Description = "Vacheron Constantin Overseas", CurrentPrice = 47000m, Image = "o2.png", Specs = "{\"productionStatus\":\"Current\"}" },
+            new Watch { Id = 202, BrandId = 2, Brand = vacheron, CollectionId = 20, Collection = overseas, Name = "5520V/210A-B148", Slug = "vacheron-constantin-overseas-5520v-210a-b148", Description = "Vacheron Constantin Overseas", CurrentPrice = 52000m, Image = "o3.png", Specs = "{\"productionStatus\":\"Current\"}" },
+        };
+
+        context.Brands.AddRange(patek, vacheron);
+        context.Collections.AddRange(aquanaut, overseas);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"Tourbillon has the comparison ready.\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+
+        var initial = await service.HandleMessageAsync("session-1", "Compare the Aquanaut and the Overseas", null, "127.0.0.1");
+        Assert.Equal(2, initial.Actions[0].Slugs?.Count);
+
+        var followUp = await service.HandleMessageAsync("session-1", "compare 2 randoms from each collection", null, "127.0.0.1");
+
+        Assert.Single(followUp.Actions);
+        Assert.Equal(4, followUp.Actions[0].Slugs?.Count);
+        Assert.Equal(4, followUp.WatchCards.Count);
+        Assert.All(followUp.WatchCards, card =>
+            Assert.Contains(card.Slug, watches.Where(w => w.CollectionId is 10 or 20).Select(w => w.Slug)));
+        var collectionIds = await context.Watches
+            .Where(w => followUp.Actions[0].Slugs!.Contains(w.Slug))
+            .Select(w => w.CollectionId)
+            .Distinct()
+            .ToListAsync();
+        Assert.Equal(2, collectionIds.Count);
+        Assert.Equal(2, handler.CallCount);
+        watchFinder.VerifyNoOtherCalls();
     }
 }

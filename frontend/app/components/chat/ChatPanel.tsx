@@ -2,7 +2,8 @@
 // Renders message bubbles, markdown, watch thumbnail cards, action chips, and example prompts.
 'use client';
 
-import { useEffect, useRef, useState, KeyboardEvent, useCallback } from 'react';
+import Link from 'next/link';
+import { useEffect, useRef, useState, KeyboardEvent, useCallback, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useChat } from '@/contexts/ChatContext';
 import { useCursor } from '@/contexts/CursorContext';
@@ -24,8 +25,12 @@ interface MarkdownCursorHandlers {
 }
 
 // Simple markdown renderer — handles bold, italic, links, and line breaks across the whole message
-function renderMarkdown(text: string, cursorHandlers: MarkdownCursorHandlers): React.ReactNode[] {
-  const result: React.ReactNode[] = [];
+function renderInlineMarkdown(
+  text: string,
+  cursorHandlers: MarkdownCursorHandlers,
+  keyPrefix: string,
+): ReactNode[] {
+  const result: ReactNode[] = [];
   const pattern = /(\*\*([^*]+)\*\*|\*([^*]+)\*|\[([\s\S]*?)\]\(([^)]+)\)|\n)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -36,11 +41,11 @@ function renderMarkdown(text: string, cursorHandlers: MarkdownCursorHandlers): R
     }
 
     if (match[0] === '\n') {
-      result.push(<br key={`br-${match.index}`} />);
+      result.push(<br key={`${keyPrefix}-br-${match.index}`} />);
     } else if (match[0].startsWith('**')) {
-      result.push(<strong key={`strong-${match.index}`}>{match[2]}</strong>);
+      result.push(<strong key={`${keyPrefix}-strong-${match.index}`}>{match[2]}</strong>);
     } else if (match[0].startsWith('*')) {
-      result.push(<em key={`em-${match.index}`}>{match[3]}</em>);
+      result.push(<em key={`${keyPrefix}-em-${match.index}`}>{match[3]}</em>);
     } else {
       const href = match[5];
       const label = match[4];
@@ -48,8 +53,8 @@ function renderMarkdown(text: string, cursorHandlers: MarkdownCursorHandlers): R
       const isChipLink = /^\/(collections|brands)\//.test(href);
       result.push(
         isChipLink ? (
-          <a
-            key={`chip-${match.index}`}
+          <Link
+            key={`${keyPrefix}-chip-${match.index}`}
             href={href}
             onMouseEnter={cursorHandlers.onEnter}
             onMouseLeave={cursorHandlers.onLeave}
@@ -57,10 +62,10 @@ function renderMarkdown(text: string, cursorHandlers: MarkdownCursorHandlers): R
             style={{ verticalAlign: 'middle' }}
           >
             {label}
-          </a>
+          </Link>
         ) : (
           <a
-            key={`link-${match.index}`}
+            key={`${keyPrefix}-link-${match.index}`}
             href={href}
             target={isInternal ? undefined : '_blank'}
             rel={isInternal ? undefined : 'noopener noreferrer'}
@@ -82,6 +87,52 @@ function renderMarkdown(text: string, cursorHandlers: MarkdownCursorHandlers): R
   }
 
   return result;
+}
+
+function renderMarkdown(text: string, cursorHandlers: MarkdownCursorHandlers): ReactNode[] {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const nodes: ReactNode[] = [];
+  let listItems: string[] = [];
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    const listIndex = nodes.length;
+    nodes.push(
+      <ul key={`list-${listIndex}`} className="my-3 space-y-2">
+        {listItems.map((item, idx) => (
+          <li key={`item-${idx}`} className="flex gap-2">
+            <span className="text-[#bfa68a]/80">-</span>
+            <span>{renderInlineMarkdown(item, cursorHandlers, `list-${listIndex}-${idx}`)}</span>
+          </li>
+        ))}
+      </ul>
+    );
+    listItems = [];
+  };
+
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      flushList();
+      return;
+    }
+
+    if (trimmed.startsWith('- ')) {
+      listItems.push(trimmed.slice(2));
+      return;
+    }
+
+    flushList();
+    nodes.push(
+      <p key={`p-${idx}`} className={nodes.length > 0 ? 'mt-3' : ''}>
+        {renderInlineMarkdown(trimmed, cursorHandlers, `p-${idx}`)}
+      </p>
+    );
+  });
+
+  flushList();
+  return nodes;
 }
 
 // Compact watch card shown below assistant messages — switches cursor to tourbillon on hover
@@ -125,7 +176,7 @@ function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
 }
 
 // Action chips rendered below assistant messages — compare and smart-search actions
-function ActionChips({ actions }: { actions: ChatAction[] }) {
+function ActionChips({ actions, autoExecute = false }: { actions: ChatAction[]; autoExecute?: boolean }) {
   const router = useRouter();
   const { addToCompare, clearCompare } = useCompare();
   const [compareStatus, setCompareStatus] = useState<Record<number, 'idle' | 'adding' | 'done'>>({});
@@ -143,6 +194,15 @@ function ActionChips({ actions }: { actions: ChatAction[] }) {
       setCompareStatus(prev => ({ ...prev, [idx]: 'idle' }));
     }
   }, [addToCompare, clearCompare, compareStatus, router]);
+
+  useEffect(() => {
+    if (!autoExecute) return;
+
+    const firstCompareIdx = actions.findIndex(action => action.type === 'compare' && !!action.slugs?.length);
+    if (firstCompareIdx === -1) return;
+
+    void handleCompare(actions[firstCompareIdx], firstCompareIdx);
+  }, [actions, autoExecute, handleCompare]);
 
   if (!actions.length) return null;
 
@@ -193,6 +253,11 @@ export default function ChatPanel() {
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const initialMessageCountRef = useRef(messages.length);
+
+  useEffect(() => {
+    useCompare.persist.rehydrate();
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -295,7 +360,10 @@ export default function ChatPanel() {
                 <WatchCardRow cards={msg.watchCards} />
               )}
               {msg.actions && msg.actions.length > 0 && (
-                <ActionChips actions={msg.actions} />
+                <ActionChips
+                  actions={msg.actions}
+                  autoExecute={msg.role === 'assistant' && i === messages.length - 1 && i >= initialMessageCountRef.current}
+                />
               )}
             </div>
           </div>
