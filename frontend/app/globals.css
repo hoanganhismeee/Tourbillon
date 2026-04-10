@@ -101,6 +101,21 @@ body {
   color: var(--white);
   margin-top: 3rem;
   overflow-x: hidden;
+  position: relative;
+  isolation: isolate;
+}
+
+/* Fixed background plane so page length does not change the perceived gradient tone.
+   This keeps long and short pages visually consistent, especially around the footer. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(191, 166, 138, 0.08) 0%, transparent 34%),
+    linear-gradient(135deg, #1e1512 0%, #241b17 42%, #31251f 100%);
+  pointer-events: none;
+  z-index: -1;
 }
 
 /* Ensure scroll animations work properly */

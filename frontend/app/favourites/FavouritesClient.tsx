@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavourites } from '@/stores/favouritesStore';
+import { ROUTES } from '@/app/constants/routes';
 import {
   getFavouriteWatches,
   fetchBrands,
@@ -49,6 +50,43 @@ const SkeletonCard = () => (
   </div>
 );
 
+const GuestFavouritesFallback = () => (
+  <main className="min-h-screen pt-32 pb-24 px-8 lg:px-16">
+    <section className="max-w-5xl border-t border-[#bfa68a]/12 pt-12">
+      <div className="max-w-3xl border-l border-[#bfa68a]/35 pl-7 md:pl-10">
+        <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/80">
+          Favourites
+        </p>
+        <h1
+          className="mt-5 font-playfair font-light leading-tight text-[#f0e6d2]"
+          style={{ fontSize: 'clamp(2rem, 4.5vw, 4rem)' }}
+        >
+          Sign in to save your favourite timepieces.
+        </h1>
+        <p className="mt-6 max-w-2xl text-[14px] leading-relaxed text-white/48">
+          Keep the watches that caught your eye in one place, build personal collections, and return
+          to them whenever your shortlist sharpens.
+        </p>
+      </div>
+
+      <div className="mt-10 flex flex-wrap items-center gap-4">
+        <Link
+          href={`${ROUTES.LOGIN}?redirect=/favourites`}
+          className="inline-flex items-center justify-center border border-[#bfa68a]/25 px-10 py-4 text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] transition-all duration-500 hover:border-[#bfa68a]/40 hover:bg-[#bfa68a]/8"
+        >
+          Sign in
+        </Link>
+        <Link
+          href={ROUTES.WATCHES}
+          className="text-[10px] uppercase tracking-[0.3em] text-white/35 transition-colors duration-300 hover:text-[#f0e6d2]"
+        >
+          Browse the catalogue first
+        </Link>
+      </div>
+    </section>
+  </main>
+);
+
 export default function FavouritesClient() {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -74,13 +112,6 @@ export default function FavouritesClient() {
   const [catalogDiameterOptions, setCatalogDiameterOptions] = useState<string[]>([]);
   const sortDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auth guard — redirect to login if not authenticated
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.replace('/login?redirect=/favourites');
-    }
-  }, [authLoading, isAuthenticated, router]);
-
   // Load favourites store state on mount
   useEffect(() => {
     if (isAuthenticated && !isLoaded) {
@@ -90,10 +121,11 @@ export default function FavouritesClient() {
 
   // Fetch brand list and watch collections once for the filter bar
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchBrands().then(setBrands).catch(() => {});
     fetchCollections().then(setWatchCollections).catch(() => {});
     fetchFilterOptions().then(options => setCatalogDiameterOptions(options.diameters ?? [])).catch(() => {});
-  }, []);
+  }, [isAuthenticated]);
 
   const hasWatchFilters =
     Object.values(watchFilters).some((v: string[] | number[]) => v.length > 0) || wristFit !== '';
@@ -214,7 +246,11 @@ export default function FavouritesClient() {
 
   const totalPages = !hasWatchFilters && watchData ? Math.ceil(watchData.totalCount / PAGE_SIZE) : 0;
 
-  if (authLoading || (!isAuthenticated && !authLoading)) return null;
+  if (authLoading) return null;
+
+  if (!isAuthenticated) {
+    return <GuestFavouritesFallback />;
+  }
 
   const headingText =
     selectedCollectionIds.length === 1

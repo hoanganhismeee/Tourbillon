@@ -43,7 +43,10 @@ export default function Home() {
       <BrandShowcaseSection />
 
       {/* Smart search — natural language watch finder */}
-      <section className="relative py-28 px-8 md:px-16 border-y border-white/[0.06] overflow-hidden">
+      <section
+        id="smart-search"
+        className="relative scroll-mt-40 py-28 px-8 md:px-16 border-y border-white/[0.06] overflow-hidden"
+      >
         {/* Ambient glow behind the input */}
         <div
           className="absolute inset-0 pointer-events-none mix-blend-screen"
@@ -81,8 +84,8 @@ export default function Home() {
           >
             Begin your collection.
           </h2>
-          <p className="text-sm text-white/35 font-inter mb-10 max-w-xs mx-auto">
-            Private viewings available in London. By appointment only.
+          <p className="text-s text-white/35 font-inter mb-10 max-w-m mx-auto">
+            Private viewings available in Sydney. By appointment only.
           </p>
           <Link
             href="/contact"
