@@ -145,6 +145,19 @@ public class ChatService
         await _redis.SetHashFieldAsync($"chat:session:{sessionId}", "history", json, SessionTtl);
     }
 
+    private async Task<List<ChatWatchCard>> GetLastWatchCardsAsync(string sessionId)
+    {
+        var json = await _redis.GetHashFieldAsync($"chat:session:{sessionId}", "cards");
+        if (json == null) return [];
+        return JsonSerializer.Deserialize<List<ChatWatchCard>>(json, _jsonOptions) ?? [];
+    }
+
+    private async Task SaveLastWatchCardsAsync(string sessionId, List<ChatWatchCard> cards)
+    {
+        var json = JsonSerializer.Serialize(cards.Take(DiscoveryCardLimit).ToList(), _jsonOptions);
+        await _redis.SetHashFieldAsync($"chat:session:{sessionId}", "cards", json, SessionTtl);
+    }
+
     public async Task<ChatApiResponse> HandleMessageAsync(
         string sessionId, string message, string? userId, string? ipAddress, string? behaviorSummary = null)
     {
@@ -171,6 +184,7 @@ public class ChatService
         }
 
         var sessionHistory = await GetSessionHistoryAsync(sessionId);
+        var lastWatchCards = await GetLastWatchCardsAsync(sessionId);
         var history = sessionHistory
             .TakeLast(10)
             .Select(m => new ChatHistoryEntry { Role = m.Role, Content = m.Content })
@@ -179,7 +193,7 @@ public class ChatService
         ChatResolution resolution;
         try
         {
-            resolution = await ResolveMessageAsync(message.Trim());
+            resolution = await ResolveMessageAsync(message.Trim(), lastWatchCards);
         }
         catch (Exception ex)
         {
@@ -213,6 +227,7 @@ public class ChatService
         sessionHistory.Add(new ChatMessage { Role = "user", Content = message });
         sessionHistory.Add(new ChatMessage { Role = "assistant", Content = aiMessage });
         await SaveSessionHistoryAsync(sessionId, sessionHistory);
+        await SaveLastWatchCardsAsync(sessionId, watchCards);
 
         var newUsed = 1;
         if (!disableLimit)
@@ -235,7 +250,7 @@ public class ChatService
     public async Task ClearSessionAsync(string sessionId) =>
         await _redis.RemoveHashAsync($"chat:session:{sessionId}");
 
-    private async Task<ChatResolution> ResolveMessageAsync(string message)
+    private async Task<ChatResolution> ResolveMessageAsync(string message, List<ChatWatchCard> lastWatchCards)
     {
         if (IsAbusiveQuery(message))
             return new ChatResolution
@@ -248,7 +263,7 @@ public class ChatService
 
         if (IsExplicitCompareQuery(message))
         {
-            var compareWatches = await TryResolveCompareWatchesAsync(message);
+            var compareWatches = await TryResolveCompareWatchesAsync(message, lastWatchCards);
             if (compareWatches.Count >= 2)
                 return BuildCompareResolution(compareWatches);
         }
@@ -387,8 +402,12 @@ public class ChatService
         return mentions;
     }
 
-    private async Task<List<Watch>> TryResolveCompareWatchesAsync(string query)
+    private async Task<List<Watch>> TryResolveCompareWatchesAsync(string query, List<ChatWatchCard> lastWatchCards)
     {
+        var ordinalCompare = await TryResolveOrdinalCompareWatchesAsync(query, lastWatchCards);
+        if (ordinalCompare.Count >= 2)
+            return ordinalCompare;
+
         var parts = ExtractCompareParts(query);
         if (parts.Count < 2) return [];
 
@@ -405,6 +424,38 @@ public class ChatService
         }
 
         return resolved.Count >= 2 ? resolved : [];
+    }
+
+    private async Task<List<Watch>> TryResolveOrdinalCompareWatchesAsync(string query, List<ChatWatchCard> lastWatchCards)
+    {
+        if (lastWatchCards.Count < 2)
+            return [];
+
+        var indexes = ExtractReferencedCardIndexes(query, lastWatchCards.Count);
+        if (indexes.Count < 2)
+            return [];
+
+        var slugsInOrder = indexes
+            .Select(index => lastWatchCards[index].Slug)
+            .Where(slug => !string.IsNullOrWhiteSpace(slug))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (slugsInOrder.Count < 2)
+            return [];
+
+        var watches = await _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .AsNoTracking()
+            .Where(w => slugsInOrder.Contains(w.Slug))
+            .ToListAsync();
+
+        return slugsInOrder
+            .Select(slug => watches.FirstOrDefault(w => string.Equals(w.Slug, slug, StringComparison.OrdinalIgnoreCase)))
+            .Where(w => w != null)
+            .Cast<Watch>()
+            .ToList();
     }
 
     private async Task<Watch?> TryResolveExactWatchAsync(string query, WatchFinderResult result)
@@ -558,15 +609,17 @@ public class ChatService
             context.Add(BuildCollectionContext(collection));
         }
 
-        var actions = new List<ChatAction>
-        {
-            new()
+        var actions = IsExplicitCompareQuery(query)
+            ? new List<ChatAction>()
+            : new List<ChatAction>
             {
-                Type = "search",
-                Query = BuildSmartSearchQuery(query, ordered),
-                Label = "Open Smart Search"
-            }
-        };
+                new()
+                {
+                    Type = "search",
+                    Query = BuildSmartSearchQuery(query, ordered),
+                    Label = "Open Smart Search"
+                }
+            };
 
         return new ChatResolution
         {
@@ -732,6 +785,42 @@ public class ChatService
     {
         var cleaned = Regex.Replace(value, @"\b(?:the|a|an|for|me|please)\b", " ", RegexOptions.IgnoreCase);
         return Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
+    }
+
+    private static List<int> ExtractReferencedCardIndexes(string query, int totalCards)
+    {
+        if (totalCards < 2)
+            return [];
+
+        var matches = new List<(int Position, int Index)>();
+        var patterns = new (string Pattern, Func<Match, int?> Resolve)[]
+        {
+            (@"\bfirst\b", _ => 0),
+            (@"\bsecond\b", _ => 1),
+            (@"\bthird\b", _ => 2),
+            (@"\bfourth\b", _ => 3),
+            (@"\blast\b", _ => totalCards - 1),
+            (@"\b(\d+)(?:st|nd|rd|th)\b", match => int.TryParse(match.Groups[1].Value, out var ordinal) ? ordinal - 1 : null),
+            (@"\bnumber\s+(\d+)\b", match => int.TryParse(match.Groups[1].Value, out var ordinal) ? ordinal - 1 : null),
+        };
+
+        foreach (var (pattern, resolve) in patterns)
+        {
+            foreach (Match match in Regex.Matches(query, pattern, RegexOptions.IgnoreCase))
+            {
+                var index = resolve(match);
+                if (index is null || index < 0 || index >= totalCards)
+                    continue;
+
+                matches.Add((match.Index, index.Value));
+            }
+        }
+
+        return matches
+            .OrderBy(m => m.Position)
+            .Select(m => m.Index)
+            .Distinct()
+            .ToList();
     }
 
     private static bool LooksLikeEntityInfoRequest(string query, EntityMentions mentions)

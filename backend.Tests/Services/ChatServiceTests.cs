@@ -429,4 +429,87 @@ public class ChatServiceTests
         Assert.Equal("Jaeger-LeCoultre Reverso pink gold", searchActions[0].Query);
         Assert.Equal(1, handler.CallCount);
     }
+
+    [Fact]
+    public async Task HandleMessageAsync_CompareByRelativeCardOrder_UsesPreviousChatCards()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var overseas = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Overseas", Slug = "overseas" };
+        var historiques = new Collection { Id = 20, BrandId = 1, Brand = brand, Name = "Historiques", Slug = "historiques" };
+
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = overseas,
+            Name = "4200H/222A-B934",
+            Slug = "vacheron-constantin-overseas-4200h-222a-b934",
+            Description = "Vacheron Constantin 222",
+            CurrentPrice = 55500m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 20,
+            Collection = historiques,
+            Name = "4200H/222J-B935",
+            Slug = "vacheron-constantin-historiques-4200h-222j-b935",
+            Description = "Vacheron Constantin Historiques",
+            CurrentPrice = 131000m
+        };
+        var third = new Watch
+        {
+            Id = 102,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 20,
+            Collection = historiques,
+            Name = "1100S/000R-B430",
+            Slug = "vacheron-constantin-historiques-1100s-000r-b430",
+            Description = "Vacheron Constantin Historiques",
+            CurrentPrice = 60000m
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.AddRange(overseas, historiques);
+        context.Watches.AddRange(first, second, third);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("show me some vacheron options"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(first), ToDto(second), ToDto(third)],
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"[Vacheron Constantin](/brands/vacheron-constantin) has a few strong matches here.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+
+        var discovery = await service.HandleMessageAsync("session-1", "show me some vacheron options", null, "127.0.0.1");
+        Assert.Equal(3, discovery.WatchCards.Count);
+
+        var compare = await service.HandleMessageAsync("session-1", "compare the first one and third one", null, "127.0.0.1");
+
+        Assert.Single(compare.Actions);
+        Assert.Equal("compare", compare.Actions[0].Type);
+        Assert.Equal(
+            ["vacheron-constantin-overseas-4200h-222a-b934", "vacheron-constantin-historiques-1100s-000r-b430"],
+            compare.Actions[0].Slugs);
+        Assert.Equal(2, compare.WatchCards.Count);
+        Assert.Equal(1, handler.CallCount);
+    }
 }
