@@ -250,8 +250,8 @@ export default function AuthStartPage() {
               type="button"
               onClick={() => {
                 if (redirect) sessionStorage.setItem('authRedirect', redirect);
-                openGoogleAuthPopup(getGoogleAuthUrl(), () => {
-                  login().then(() => {
+                openGoogleAuthPopup(getGoogleAuthUrl(), ({ isNewAccount }) => {
+                  login(isNewAccount ? 'new-account' : 'existing-account').then(() => {
                     const dest = sessionStorage.getItem('authRedirect') || redirect || '/';
                     sessionStorage.removeItem('authRedirect');
                     router.replace(dest);

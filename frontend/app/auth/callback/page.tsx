@@ -1,16 +1,19 @@
-// OAuth callback landing page — reached after Google (or magic login) sets the session cookie.
-// Refreshes auth state then redirects home. No UI needed; spinner keeps it from feeling broken.
+// OAuth callback landing page reached after the backend sets the session cookie.
+// Refreshes auth state with the correct anonymous-tracking policy, then redirects.
 'use client';
+
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AuthCallbackPage() {
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const authMode = searchParams.get('newAccount') === '1' ? 'new-account' : 'existing-account';
 
   useEffect(() => {
-    login().then(() => {
+    login(authMode).then(() => {
       const dest = sessionStorage.getItem('authRedirect') || '/';
       sessionStorage.removeItem('authRedirect');
       router.replace(dest);

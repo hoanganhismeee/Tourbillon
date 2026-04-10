@@ -61,3 +61,18 @@ export function clearBuffer(): void {
     // Silently ignore
   }
 }
+
+// Removes the stored anonymous identity so the next event creates a fresh browser-scoped visitor.
+export function clearAnonId(): void {
+  try {
+    localStorage.removeItem(ANON_ID_KEY);
+  } catch {
+    // Silently ignore
+  }
+}
+
+// Resets all anonymous Watch DNA state in the current browser.
+export function resetAnonymousTracking(): void {
+  clearBuffer();
+  clearAnonId();
+}

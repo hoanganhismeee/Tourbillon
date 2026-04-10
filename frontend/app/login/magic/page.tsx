@@ -139,8 +139,8 @@ export default function MagicLoginPage() {
     setError('');
     setLoading(true);
     try {
-      await verifyMagicLogin({ email: email.trim(), code });
-      await login();
+      const result = await verifyMagicLogin({ email: email.trim(), code });
+      await login(result.isNewAccount ? 'new-account' : 'existing-account');
       router.replace(redirect || '/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid or expired code.');

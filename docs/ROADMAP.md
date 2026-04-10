@@ -203,7 +203,7 @@ A long-term taste fingerprint built silently from browsing behaviour. Distinct f
 
 **What it does:**
 - Tracks watch views, brand/collection page visits, and smart searches — anonymously from the very first page view
-- On sign-in, anonymous events merge into the authenticated account (`POST /api/behavior/merge`)
+- Existing-account sign-ins merge the current anonymous browser history into that same account; newly created accounts start with a clean Watch DNA
 - AI synthesises ≥ 3 events into structured preferences + a plain-English summary sentence
 - Edit Details page shows the AI-generated summary + preference chips (brands, materials, dial colours, price range, case size)
 - "Regenerate" button triggers fresh AI generation; "Edit manually" falls back to the original textarea override

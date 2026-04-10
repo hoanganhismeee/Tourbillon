@@ -165,7 +165,7 @@ export default function RegisterPage() {
         firstName: formData.firstName, lastName: formData.lastName,
         phoneNumber: formData.phoneNumber,
       });
-      await login();
+      await login('new-account');
       router.push(redirect || '/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
@@ -274,8 +274,8 @@ export default function RegisterPage() {
                   type="button"
                   onClick={() => {
                     if (redirect) sessionStorage.setItem('authRedirect', redirect);
-                    openGoogleAuthPopup(getGoogleAuthUrl(), () => {
-                      login().then(() => {
+                    openGoogleAuthPopup(getGoogleAuthUrl(), ({ isNewAccount }) => {
+                      login(isNewAccount ? 'new-account' : 'existing-account').then(() => {
                         const dest = sessionStorage.getItem('authRedirect') || redirect || '/';
                         sessionStorage.removeItem('authRedirect');
                         router.replace(dest);

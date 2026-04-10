@@ -291,6 +291,7 @@ public class AuthenticationController : ControllerBase
 
         // Find existing account by email — avoid duplicate users for same address
         var user = await _userManager.FindByEmailAsync(email);
+        var isNewAccount = false;
         if (user == null)
         {
             // Auto-create a passwordless account (user can add a password later via Edit Details)
@@ -304,6 +305,7 @@ public class AuthenticationController : ControllerBase
                     email, string.Join(", ", createResult.Errors.Select(e => e.Description)));
                 return Redirect($"{frontendBase}/login?error=create-failed");
             }
+            isNewAccount = true;
         }
 
         // Sign in and set the application cookie
@@ -315,7 +317,7 @@ public class AuthenticationController : ControllerBase
         var isPopup = info.AuthenticationProperties?.Items.TryGetValue("popup", out var popupVal) == true
                       && popupVal == "1";
         var callbackPath = isPopup ? "/auth/popup-close" : "/auth/callback";
-        return Redirect($"{frontendBase}{callbackPath}");
+        return Redirect($"{frontendBase}{callbackPath}?newAccount={(isNewAccount ? "1" : "0")}");
     }
 
     // POST: api/authentication/magic-login/request
@@ -340,13 +342,13 @@ public class AuthenticationController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Code))
             return BadRequest(new { Message = "Email and code are required." });
 
-        var user = await _magicLoginService.VerifyAsync(dto.Email.Trim(), dto.Code.Trim());
+        var (user, isNewAccount) = await _magicLoginService.VerifyAsync(dto.Email.Trim(), dto.Code.Trim());
         if (user == null)
             return Unauthorized(new { Message = "Invalid or expired code." });
 
         await _signInManager.SignInAsync(user, isPersistent: false);
         _logger.LogInformation("Magic login sign-in: {Email}", user.Email);
-        return Ok(new { Message = "Sign-in successful." });
+        return Ok(new { Message = "Sign-in successful.", IsNewAccount = isNewAccount });
     }
 
     // POST: api/authentication/test-email

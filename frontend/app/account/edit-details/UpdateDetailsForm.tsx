@@ -110,7 +110,7 @@ export default function UpdateDetailsForm({ user }: UpdateDetailsFormProps) {
       });
       
       setSuccess("Profile updated successfully!");
-      await login(); // Refresh user data
+      await login('refresh'); // Refresh user data
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
