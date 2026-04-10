@@ -45,7 +45,7 @@
 | 10F Nav Scroll-Response + Transitions + Grain | Done | 10 |
 | 11 Smart Search (AI Watch Finder) refinement | Done | 11 |
 | 11 User (Auth/Anonymous Taste Profile logic improvement) | Done | 11 |
-| 12 Trend Page Enhancements (product trends, staff pick, most viewed over 7/14/30 days, user DNA) | In-progress | 12 |
+| 12 Trend Page Enhancements (product trends, staff pick, most viewed over 7/14/30 days, user DNA) | Done | 12 |
 | Storage Abstraction + S3 + CloudFront Migration | Planned | 13 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | 14 |
 

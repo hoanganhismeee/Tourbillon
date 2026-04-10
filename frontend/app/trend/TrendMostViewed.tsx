@@ -1,126 +1,191 @@
 // Most Viewed section for the Trend page.
-// Displays a ranked list of watches ordered by view count (hardcoded for now).
-// Watch data is fetched by slug; silently omits any slug that fails to resolve.
+// Local-dev version: seeded random catalogue cards across three time windows.
 'use client';
 
-import Image from 'next/image';
-import Link from 'next/link';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useQueries } from '@tanstack/react-query';
-import { useInView } from 'react-intersection-observer';
-import { fetchWatchBySlug, Watch } from '@/lib/api';
-import { imageTransformations } from '@/lib/cloudinary';
-import { EASE_ENTER, DUR } from '@/lib/motion';
-import { MOST_VIEWED_SLUGS } from './trendData';
+import { useQuery } from '@tanstack/react-query';
+import { fetchBrands, fetchCollections, fetchWatches, Watch } from '@/lib/api';
+import { WatchCard } from '@/app/components/cards/WatchCard';
+import ScrollFade from '@/app/scrollMotion/ScrollFade';
+import { DUR, EASE_ENTER } from '@/lib/motion';
 
-function RankedItemSkeleton() {
+type TimeRange = 'today' | '7d' | '30d';
+
+const RANGE_LABELS: Record<TimeRange, string> = {
+  today: 'Today',
+  '7d': 'Last 7 Days',
+  '30d': 'Last 30 Days',
+};
+
+const CARD_COUNT = 20;
+
+function shuffleWatches<T>(items: T[]): T[] {
+  const shuffled = [...items];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+
+  return shuffled;
+}
+
+function pickWatchesForRange(watches: Watch[]): Watch[] {
+  return shuffleWatches(watches).slice(0, Math.min(CARD_COUNT, watches.length));
+}
+
+function RangeButton({
+  label,
+  isActive,
+  onClick,
+}: {
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+}) {
   return (
-    <li className="flex items-center gap-5 py-4 border-b border-[#bfa68a]/8 animate-pulse">
-      <div className="w-8 h-3 bg-white/6 rounded flex-shrink-0" />
-      <div className="w-14 h-14 bg-white/5 flex-shrink-0" />
-      <div className="flex-1 space-y-1.5">
-        <div className="h-3 w-2/3 bg-white/6 rounded" />
-        <div className="h-2 w-1/3 bg-white/4 rounded" />
-      </div>
-    </li>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative px-4 py-3 text-[10px] uppercase tracking-[0.28em] transition-all duration-300 ${
+        isActive
+          ? 'text-[#1e1512]'
+          : 'text-[#bfa68a]/72 hover:bg-[#bfa68a]/8 hover:text-[#f0e6d2]'
+      }`}
+    >
+      {isActive && (
+        <span aria-hidden="true" className="absolute inset-0 rounded-full bg-[#bfa68a]" />
+      )}
+      <span className="relative z-10">{label}</span>
+    </button>
   );
 }
 
-function RankedItem({ watch, rank, visible }: { watch: Watch; rank: number; visible: boolean }) {
-  const priceLabel =
-    watch.currentPrice === 0
-      ? 'Price on Request'
-      : `$${watch.currentPrice.toLocaleString()}`;
-  const thumbnailSrc = watch.imageUrl || imageTransformations.thumbnail(watch.image);
-
+function CardSkeleton() {
   return (
-    <motion.li
-      initial={{ opacity: 0, x: -8 }}
-      animate={visible ? { opacity: 1, x: 0 } : { opacity: 0, x: -8 }}
-      transition={{ duration: DUR.mid, ease: EASE_ENTER, delay: rank * 0.04 }}
-    >
-      <Link
-        href={`/watches/${watch.slug}`}
-        className="group flex items-center gap-5 py-4 border-b border-[#bfa68a]/8 hover:border-[#bfa68a]/22 transition-colors duration-300"
-      >
-        {/* Rank number */}
-        <span className="w-8 flex-shrink-0 text-[11px] font-playfair text-[#bfa68a]/35 group-hover:text-[#bfa68a]/65 transition-colors tabular-nums">
-          {String(rank).padStart(2, '0')}
-        </span>
-
-        {/* Thumbnail */}
-        <div className="w-14 h-14 flex-shrink-0 bg-black/30 relative overflow-hidden">
-          <Image
-            src={thumbnailSrc}
-            alt={watch.name}
-            fill
-            sizes="56px"
-            className="object-contain p-1"
-          />
-        </div>
-
-        {/* Text */}
-        <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-playfair text-[#f0e6d2] leading-snug truncate group-hover:text-white transition-colors">
-            {watch.name}
-          </p>
-          <p className="mt-0.5 text-[10px] text-white/38 tracking-[0.1em]">{priceLabel}</p>
-        </div>
-
-        {/* Arrow hint */}
-        <span className="text-[#bfa68a]/0 group-hover:text-[#bfa68a]/50 transition-colors duration-300 text-xs pr-2 flex-shrink-0">
-          →
-        </span>
-      </Link>
-    </motion.li>
+    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/4 to-white/8 p-4 animate-pulse">
+      <div className="aspect-square rounded-xl bg-white/6" />
+      <div className="mt-4 h-3 w-1/3 rounded bg-white/8" />
+      <div className="mt-3 h-4 w-3/4 rounded bg-white/10" />
+      <div className="mt-3 h-4 w-2/5 rounded bg-white/8" />
+    </div>
   );
 }
 
 export default function TrendMostViewed() {
-  const { ref, inView } = useInView({ triggerOnce: true, threshold: 0.1 });
+  const [activeRange, setActiveRange] = useState<TimeRange>('30d');
 
-  const results = useQueries({
-    queries: MOST_VIEWED_SLUGS.map((slug) => ({
-      queryKey: ['watch', 'slug', slug] as const,
-      queryFn: () => fetchWatchBySlug(slug),
-      staleTime: 10 * 60 * 1000,
-      retry: false,
-    })),
+  const { data: watches = [], isLoading: watchesLoading } = useQuery({
+    queryKey: ['watches'],
+    queryFn: fetchWatches,
+    staleTime: 10 * 60 * 1000,
   });
 
-  const isLoading = results.some((r) => r.isLoading);
-  const watches: Watch[] = results.flatMap((r) => (r.data ? [r.data] : []));
+  const { data: brands = [], isLoading: brandsLoading } = useQuery({
+    queryKey: ['brands'],
+    queryFn: fetchBrands,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const { data: collections = [], isLoading: collectionsLoading } = useQuery({
+    queryKey: ['collections'],
+    queryFn: fetchCollections,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const rangeSelections = useMemo<Record<TimeRange, Watch[]>>(() => {
+    return {
+      today: pickWatchesForRange(watches),
+      '7d': pickWatchesForRange(watches),
+      '30d': pickWatchesForRange(watches),
+    };
+  }, [watches]);
+
+  const activeWatches = rangeSelections[activeRange];
+  const isLoading = watchesLoading || brandsLoading || collectionsLoading;
 
   return (
     <section className="border-t border-[#bfa68a]/12 pt-12">
-      {/* Header row */}
-      <div className="flex items-end justify-between">
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.45em] text-[#bfa68a]/80">
-            Most Viewed
+      <ScrollFade>
+        <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.45em] text-[#bfa68a]/80">
+              Most Viewed
+            </p>
+            <h2
+              className="mt-4 font-playfair font-light leading-tight text-[#f0e6d2]"
+              style={{ fontSize: 'clamp(1.8rem, 3.5vw, 3rem)' }}
+            >
+              What the room is watching.
+            </h2>
+          </div>
+
+          <p className="max-w-xl text-[13px] leading-relaxed text-white/45 text-balance lg:text-right">
+            Three rolling windows across the catalogue, presented as a calmer product edit with the
+            same visual rhythm as the watches grid.
           </p>
-          <h2
-            className="mt-4 font-playfair font-light leading-tight text-[#f0e6d2]"
-            style={{ fontSize: 'clamp(1.8rem, 3.5vw, 3rem)' }}
-          >
-            What the room is watching.
-          </h2>
         </div>
-        <span className="text-[9px] uppercase tracking-[0.35em] text-white/28 pb-1 flex-shrink-0 ml-4">
-          Last 30 days
-        </span>
+      </ScrollFade>
+
+      <div className="mt-12 inline-flex flex-wrap items-center gap-3 rounded-full border border-[#bfa68a]/15 bg-black/20 p-2">
+        {(Object.entries(RANGE_LABELS) as Array<[TimeRange, string]>).map(([range, label]) => (
+          <RangeButton
+            key={range}
+            label={label}
+            isActive={activeRange === range}
+            onClick={() => setActiveRange(range)}
+          />
+        ))}
       </div>
 
-      {/* Ranked list */}
-      <div className="mt-10 overflow-x-auto lg:overflow-x-visible" ref={ref}>
-        <ol className="min-w-[320px] lg:min-w-0">
-          {isLoading
-            ? Array.from({ length: 6 }).map((_, i) => <RankedItemSkeleton key={i} />)
-            : watches.map((watch, idx) => (
-                <RankedItem key={watch.id} watch={watch} rank={idx + 1} visible={inView} />
-              ))}
-        </ol>
+      <div className="mt-7 flex items-center justify-between border-b border-[#bfa68a]/10 pb-5">
+        <p className="text-[10px] uppercase tracking-[0.3em] text-white/30">
+          Selected Window
+        </p>
+        <p className="text-[10px] uppercase tracking-[0.32em] text-[#bfa68a]/72">
+          {RANGE_LABELS[activeRange]}
+        </p>
       </div>
+
+      <motion.div
+        key={activeRange}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: DUR.mid, ease: EASE_ENTER }}
+        className="mt-12"
+      >
+        {isLoading ? (
+          <div className="grid grid-cols-1 gap-x-8 gap-y-12 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {Array.from({ length: CARD_COUNT }).map((_, index) => (
+              <CardSkeleton key={index} />
+            ))}
+          </div>
+        ) : activeWatches.length > 0 ? (
+          <div className="grid grid-cols-1 gap-x-8 gap-y-12 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {activeWatches.map((watch, index) => (
+              <WatchCard
+                key={`${activeRange}-${watch.id}`}
+                watch={watch}
+                brands={brands}
+                collections={collections}
+                currentPage={1}
+                isPriority={index < 5}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-3xl border border-[#bfa68a]/12 bg-white/[0.02] px-6 py-12 text-center">
+            <p className="font-playfair text-[1.35rem] text-[#f0e6d2]">
+              No watches available for this edit yet.
+            </p>
+            <p className="mt-3 text-[12px] leading-relaxed text-white/40">
+              Once the catalogue is populated, this section will rotate through a seeded set of
+              product cards for each time window.
+            </p>
+          </div>
+        )}
+      </motion.div>
     </section>
   );
 }
