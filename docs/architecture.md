@@ -70,7 +70,7 @@ Entry point: `backend/Program.cs`
 - `QueryCacheService` — Persistent semantic query cache. Cosine similarity threshold 0.92. Cache bypassed when hard SQL filters detected.
 - `ChatService` — Chat concierge orchestration. Short-circuits abusive and unrelated prompts, resolves exact watches and compare requests deterministically, reuses `WatchFinderService` for discovery queries, and sends only compact Tourbillon catalogue context to ai-service when explanation helps. Signed-in users also send a compact Watch DNA + behavior summary so responses can adapt to their inferred taste without exposing raw profile internals. Redis session store with 1-hour TTL. Rate-limited per user/day. System prompt is scoped, grounded, anti-hallucination, and catalogue-bound by default.
 - `TasteProfileService` — Watch DNA. Two AI paths: `ParseAndSaveAsync` (manual text → `/parse-taste`) and `GenerateFromBehaviorAsync` (browsing events → `/generate-dna-from-behavior`). Manual taste remains the durable source of truth; behavior analysis is stored separately and only fills gaps in the effective profile. `ScoreWatch()` is a pure static method (brand +3, material +2, dial +2, size +1, price +1 = 9 max). Zero AI cost at browse time.
-- `BehaviorService` — Browsing event storage for Watch DNA. `FlushEventsAsync` bulk-inserts with time-window deduplication (single batch query). `MergeAnonymousAsync` reassigns anonymous events to authenticated user. `GetRecentEventsAsync` returns recent events for AI profile generation. Requires ≥ 3 events before generation is attempted.
+- `BehaviorService` — Browsing event storage for Watch DNA. `FlushEventsAsync` bulk-inserts with time-window deduplication (single batch query). `MergeAnonymousAsync` reassigns anonymous events to an existing signed-in user when that browser history is intentionally attached to the account. `GetRecentEventsAsync` returns recent events for AI profile generation. Requires ≥ 3 events before generation is attempted.
 - `WatchEditorialService` — Editorial content per collection. Generated once, stored in DB, served at zero runtime cost. 339/339 coverage.
 
 **Scraping pipeline (temporary):**
@@ -197,7 +197,7 @@ Email: `TestEmailDto`
 - `stores/favouritesStore.ts` — Favourites + collections. Server-side state (no localStorage), auth-gated, reset on logout. Optimistic UI with snapshot-based rollback.
 
 **React Contexts (5):**
-- `AuthContext` — User auth state, login/logout, profile
+- `AuthContext` — User auth state, login/logout, profile. Existing-account sign-ins flush and merge the current anonymous Watch DNA buffer; new-account completions and logout reset the anonymous browser state instead.
 - `WatchesPageContext` — Watch listing, filter, pagination state
 - `NavigationContext` — Navigation state
 - `ChatContext` — Chat concierge state. Persists session ID, visible message history, and usage counters in `sessionStorage` so chat survives soft navigation and hard refresh in the same tab. When authenticated, it also fetches the user's Watch DNA profile and folds a compact taste summary into chat requests.
@@ -209,7 +209,7 @@ Email: `TestEmailDto`
 |---|---|
 | `lib/api.ts` | Centralized API client, 100+ exported functions. All backend calls go through here. |
 | `lib/cloudinary.ts` | Image URL builder. Card (400x400), detail (1200x1200), thumbnail (200x200). AVIF/WebP with auto DPR. |
-| `lib/behaviorTracker.ts` | Client-side event tracker for Watch DNA. Generates `tourbillon-anon-id` UUID; stores up to 100 events in `tourbillon-behavior` localStorage buffer. All access is SSR-safe (try/catch). Flushed + merged on login via `AuthContext`. |
+| `lib/behaviorTracker.ts` | Client-side event tracker for Watch DNA. Generates `tourbillon-anon-id` UUID; stores up to 100 events in `tourbillon-behavior` localStorage buffer. All access is SSR-safe (try/catch). Existing-account sign-ins flush + merge via `AuthContext`; new-account completions and logout reset the anonymous browser state. |
 | `lib/states.ts` | Global state management |
 
 ### Key Components
@@ -432,7 +432,7 @@ Frontend runs locally (`npm run dev`) — intentionally excluded from Docker for
 | Redis | Done — `redis:7-alpine` in Docker, auth codes / rate limits / chat sessions |
 | Observability (Serilog + health checks) | Done |
 | Advisor CRM | Done — inquiry page, Hangfire status auto-advance |
-| Behavioural Watch DNA | Done — anonymous tracking, flush/merge on login, AI profile generation |
+| Behavioural Watch DNA | Done — browser-scoped anonymous tracking, existing-account merge, clean new-account boundary, AI profile generation |
 | Analytics Dashboard | Planned |
 | S3 + CloudFront | Planned |
 | Kubernetes | Planned |

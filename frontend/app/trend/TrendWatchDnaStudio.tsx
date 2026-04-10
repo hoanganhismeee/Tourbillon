@@ -60,7 +60,7 @@ export default function TrendWatchDnaStudio() {
   return (
     <section className="border-t border-[#bfa68a]/12 pt-12">
       <div className="max-w-4xl">
-        <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]">Watch DNA</p>
+        <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]">Your Watch DNA</p>
         <h2 className="mt-5 font-playfair font-light text-[#f0e6d2] leading-tight" style={{ fontSize: 'clamp(2rem, 4vw, 3.5rem)' }}>
           A profile shaped by what keeps catching your eye.
         </h2>

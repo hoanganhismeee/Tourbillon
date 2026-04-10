@@ -17,7 +17,7 @@
 | Category-Aware Embeddings + Spec-Level Filter Pre-Selection | Done | 3B |
 | Story-first Product Pages (editorial seeded 174/174, admin inline editor) | Done | 2 |
 | Watch DNA / Taste Profile (manual text input) | Done | 3C |
-| Watch DNA — Behavioural Tracking (anonymous + authenticated, AI generation, login merge) | Done | 3C |
+| Watch DNA — Behavioural Tracking (anonymous + authenticated, AI generation, account-boundary merge rules) | Done | 3C |
 | Google OAuth + Email Magic Login (passwordless OTP) | Done | 3C |
 | Post-login redirect — magic link and Google OAuth paths | Done | 3C |
 | Role-Based Access Control (admin seeding, scrape page guard, nav link) | Done | 3.5 |
@@ -212,11 +212,12 @@ A long-term taste fingerprint built silently from browsing behaviour. Distinct f
 - Zero AI cost at browse time — LLM called only on generate/save
 
 **Tech approach:**
-- Client: `frontend/lib/behaviorTracker.ts` — rolling 100-event buffer in `tourbillon-behavior` localStorage, persistent `tourbillon-anon-id` UUID, SSR-safe (all access in try/catch). `AuthContext` flushes + merges on login.
+- Client: `frontend/lib/behaviorTracker.ts` — rolling 100-event buffer in `tourbillon-behavior` localStorage, persistent `tourbillon-anon-id` UUID, SSR-safe (all access in try/catch). Existing-account sign-ins flush + merge through `AuthContext`; new-account completions and logout reset anonymous tracking instead.
 - Backend: `UserBrowsingEvent` model + `BehaviorService` (flush with time-window dedup, merge, query). `BehaviorController`: `POST /api/behavior/events` (no auth), `POST /api/behavior/merge` ([Authorize]).
 - AI: `POST /generate-dna-from-behavior` in ai-service — infers taste from event frequency (most-viewed brand = stronger signal). Returns same structure as `/parse-taste` plus `summary` field.
 - `TasteProfileService.GenerateFromBehaviorAsync` — requires ≥ 3 events, returns existing profile if insufficient.
 - `TasteProfileService.ScoreWatch()` pure static method — unit-testable, no DB.
+- Automated coverage validates thresholds, cooldowns, payload shape, auth-boundary rules, and persistence. It does not certify that the final AI-written summary is semantically correct for every real browsing pattern.
 - TanStack Query cache invalidated on generate/save → AllWatchesSection re-sorts immediately.
 - Full original spec: `docs/phase3c-watch-dna.md`
 

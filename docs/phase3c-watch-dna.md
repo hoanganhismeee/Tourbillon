@@ -25,10 +25,49 @@ Browse-time ranking stays zero-AI. The catalogue keeps a deterministic base orde
 
 1. Anonymous visitor browses watches, brands, or collections
 2. `behaviorTracker.ts` writes events into localStorage under `tourbillon-behavior` and keeps a persistent `tourbillon-anon-id`
-3. On login or session restore, `AuthContext` flushes that local buffer to `POST /api/behavior/events`
-4. `POST /api/behavior/merge` reassigns those anonymous `UserBrowsingEvents` rows to the authenticated user
-5. No taste profile row is written during anonymous browsing itself
-6. `UserTasteProfiles` updates only when manual save runs or when `/api/taste/generate` runs for the signed-in user
+3. Existing-account sign-in or session restore flushes that local buffer to `POST /api/behavior/events`
+4. `POST /api/behavior/merge` reassigns those anonymous `UserBrowsingEvents` rows to that same authenticated user
+5. Newly created accounts do not inherit pre-signup anonymous browsing; `AuthContext` resets the anonymous browser state instead
+6. Logout also resets the anonymous browser state so later signed-out browsing does not bleed into another account
+7. No taste profile row is written during anonymous browsing itself
+8. `UserTasteProfiles` updates only when manual save runs or when `/api/taste/generate` runs for the signed-in user
+
+### Test coverage and limits
+
+Automated tests currently verify the deterministic parts of Watch DNA:
+
+- event deduplication and anonymous-to-user merge behavior
+- the `>= 3` event threshold before AI generation runs
+- cooldown and refresh rules
+- the payload shape sent to `/generate-dna-from-behavior`
+- mapping the AI response into persisted behavior fields
+
+Automated tests do not guarantee the semantic quality of the AI summary itself.
+
+- They do not prove the wording is the best wording.
+- They do not prove the inferred taste is directionally right for every real browsing pattern.
+- They do not score whether the model over-indexed on a short burst of browsing.
+
+That part still needs prompt evaluation and manual QA with realistic browsing scenarios.
+
+There is now a dedicated AI-service evaluation harness for this boundary:
+
+- `ai-service/tests/test_taste_behavior_eval.py` contains fixed browsing scenarios and acceptance rules
+- the default contract test is deterministic and runs with a mocked LLM response
+- the live evaluation class is opt-in and runs against the configured model only when `RUN_LIVE_TASTE_EVAL=1`
+
+Example command from `ai-service/`:
+
+```bash
+venv/Scripts/python.exe -m unittest tests.test_taste_behavior_eval
+```
+
+Live model evaluation:
+
+```bash
+$env:RUN_LIVE_TASTE_EVAL="1"
+venv/Scripts/python.exe -m unittest tests.test_taste_behavior_eval
+```
 
 ---
 
@@ -110,7 +149,9 @@ Migrations: `20260322010000_AddUserTasteProfile.cs`, `20260409051736_AddBehavior
 | `frontend/app/trend/TrendWatchDnaStudio.tsx` | Auto analysis surface + manual note editor |
 | `frontend/app/watches/AllWatchesSection.tsx` | `scoreTasteMatch()` + capped trend-led sort |
 | `frontend/app/components/TasteCTA.tsx` | Anonymous visitor CTA |
-| `backend.Tests/Services/TasteProfileServiceTests.cs` | 12 ScoreWatch unit tests |
+| `backend.Tests/Services/TasteProfileServiceTests.cs` | Pure scoring + cooldown unit tests |
+| `backend.Tests/Services/TasteProfileGenerationTests.cs` | Generation threshold, cooldown, payload, and persistence contract tests |
+| `backend.Tests/Services/BehaviorServiceTests.cs` | Event deduplication and anonymous merge tests |
 
 ---
 
