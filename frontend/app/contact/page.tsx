@@ -2,7 +2,10 @@
 // Publicly accessible, no authentication required
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { useRouter, useSearchParams } from 'next/navigation';
+import AppointmentPanel from '@/app/components/appointment/AppointmentPanel';
 import ScrollFade from '@/app/scrollMotion/ScrollFade';
 
 const contactItems = [
@@ -29,8 +32,26 @@ const contactItems = [
 ];
 
 export default function ContactPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [appointmentOpen, setAppointmentOpen] = useState(false);
+  const panelOpenedRef = useRef(false);
+
+  useEffect(() => {
+    const panel = searchParams.get('panel');
+    if (panel !== 'appointment' || panelOpenedRef.current) return;
+    panelOpenedRef.current = true;
+    setAppointmentOpen(true);
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('panel');
+    const newSearch = params.toString();
+    router.replace(`/contact${newSearch ? `?${newSearch}` : ''}`, { scroll: false });
+  }, [router, searchParams]);
+
   return (
     <ScrollFade>
+      <>
       <div className="min-h-screen text-white">
 
         {/* Hero */}
@@ -120,6 +141,19 @@ export default function ContactPage() {
                 Reach out for personalised assistance with bespoke acquisitions, watch valuations, or Price on Request timepieces. Our specialists respond within 24 to 48 hours.
               </p>
 
+              <button
+                type="button"
+                onClick={() => setAppointmentOpen(true)}
+                className="relative inline-flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] border border-[#bfa68a]/25 px-12 py-4 hover:bg-[#bfa68a]/8 hover:border-[#bfa68a]/40 transition-all duration-500 group overflow-hidden mb-4"
+              >
+                <span className="transform transition-transform duration-500 group-hover:-translate-x-3">
+                  Book an Appointment
+                </span>
+                <span className="absolute right-8 opacity-0 -translate-x-4 transition-all duration-500 group-hover:opacity-100 group-hover:translate-x-0 text-[14px]">
+                  →
+                </span>
+              </button>
+
               <a
                 href="mailto:hoanganh31012005@gmail.com"
                 className="relative inline-flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] border border-[#bfa68a]/25 px-12 py-4 hover:bg-[#bfa68a]/8 hover:border-[#bfa68a]/40 transition-all duration-500 group overflow-hidden"
@@ -137,6 +171,13 @@ export default function ContactPage() {
 
         </div>
       </div>
+      <AppointmentPanel
+        isOpen={appointmentOpen}
+        onClose={() => setAppointmentOpen(false)}
+        brandName="Tourbillon"
+        redirectPath="/contact?panel=appointment"
+      />
+      </>
     </ScrollFade>
   );
 }

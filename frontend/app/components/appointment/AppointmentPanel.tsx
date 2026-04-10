@@ -14,6 +14,7 @@ interface AppointmentPanelProps {
   watchId?: number;
   watchSlug?: string;
   brandName?: string;
+  redirectPath?: string;
 }
 
 const TIME_SLOTS = [
@@ -122,8 +123,16 @@ function buildCalendarGrid(year: number, month: number): (Date | null)[][] {
   return rows;
 }
 
-export default function AppointmentPanel({ isOpen, onClose, watchId, watchSlug, brandName }: AppointmentPanelProps) {
+export default function AppointmentPanel({
+  isOpen,
+  onClose,
+  watchId,
+  watchSlug,
+  brandName,
+  redirectPath,
+}: AppointmentPanelProps) {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const loginRedirectPath = redirectPath || `/watches/${watchSlug || watchId}?panel=appointment`;
 
   const today = new Date();
   const [activeSection, setActiveSection] = useState(1);
@@ -460,7 +469,7 @@ export default function AppointmentPanel({ isOpen, onClose, watchId, watchSlug, 
               {!authLoading && !isAuthenticated && (
                 <div className="flex items-center gap-2 mb-5 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
                   <span className="text-white/50 text-sm">Already joined Tourbillon?</span>
-                  <Link href={`/login?redirect=${encodeURIComponent(`/watches/${watchSlug || watchId}?panel=appointment`)}`}
+                  <Link href={`/login?redirect=${encodeURIComponent(loginRedirectPath)}`}
                     className="text-[#bfa68a] hover:text-[#d4c4a8] text-sm font-medium transition-colors">
                     Sign in
                   </Link>

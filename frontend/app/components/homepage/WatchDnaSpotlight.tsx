@@ -64,7 +64,7 @@ export default function WatchDnaSpotlight() {
   if (authLoading) return null;
 
   return (
-    <section className="relative w-full overflow-hidden">
+    <section id="watch-dna" className="relative w-full overflow-hidden scroll-mt-40">
       {/* Ambient glow - matches WatchFinderSearch blending */}
       <div
         className="absolute inset-0 pointer-events-none mix-blend-screen"
