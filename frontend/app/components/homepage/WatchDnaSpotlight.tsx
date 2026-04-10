@@ -120,10 +120,10 @@ export default function WatchDnaSpotlight() {
               ) : isAuthenticated ? (
                 <>
                   <h2 className="text-4xl md:text-5xl font-playfair font-light text-[#f0e6d2] mb-6 leading-snug">
-                    Your eye is forming.
+                    Your Watch DNA is taking shape.
                   </h2>
                   <p className="text-[15px] text-white/45 font-inter leading-relaxed mb-8 max-w-sm">
-                    Browse a few watches to sharpen your curation. Your Watch DNA naturally adapts to your evolving tastes.
+                    Keep browsing to form your Watch DNA.
                   </p>
                   <Link
                     href={ROUTES.TREND}

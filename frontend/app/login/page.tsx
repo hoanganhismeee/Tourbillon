@@ -117,7 +117,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await loginUser({ email, password });
-      await login();
+      await login('existing-account');
       router.push(redirect || '/');
     } catch {
       setError('Invalid email or password.');
@@ -228,8 +228,8 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => {
                     if (redirect) sessionStorage.setItem('authRedirect', redirect);
-                    openGoogleAuthPopup(getGoogleAuthUrl(), () => {
-                      login().then(() => {
+                    openGoogleAuthPopup(getGoogleAuthUrl(), ({ isNewAccount }) => {
+                      login(isNewAccount ? 'new-account' : 'existing-account').then(() => {
                         const dest = sessionStorage.getItem('authRedirect') || redirect || '/';
                         sessionStorage.removeItem('authRedirect');
                         router.replace(dest);

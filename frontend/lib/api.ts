@@ -599,7 +599,12 @@ export const requestMagicLogin = async (email: string): Promise<void> => {
   }
 };
 
-export const verifyMagicLogin = async (data: { email: string; code: string }): Promise<void> => {
+export interface MagicLoginVerifyResult {
+  message: string;
+  isNewAccount: boolean;
+}
+
+export const verifyMagicLogin = async (data: { email: string; code: string }): Promise<MagicLoginVerifyResult> => {
   const response = await fetchWithTimeout(`${API_BASE_URL}/authentication/magic-login/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -610,6 +615,7 @@ export const verifyMagicLogin = async (data: { email: string; code: string }): P
     const err = await response.json();
     throw new Error(err.message || 'Invalid or expired code');
   }
+  return response.json();
 };
 
 // ── Taste Profile ────────────────────────────────────────────────────────────

@@ -194,8 +194,8 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
 
   const showPersonalizedHint = sortOrder === 'personalized' && !hasPersonalizedTaste;
   const personalizedHintCopy = isAuthenticated
-    ? 'Tourbillon is learning your preferences as you browse. Keep exploring and your Watch DNA will begin shaping a more personal list.'
-    : 'Tourbillon is learning your preferences as you browse. Sign in to create your Watch DNA and unlock a list shaped around you.';
+    ? 'Keep browsing to form your Watch DNA.'
+    : 'Sign in to save your browsing and form your Watch DNA.';
 
   const isReady = featuredWatches.length > 0 || (!watchesLoading && watches.length === 0);
   useScrollRestore(isReady);

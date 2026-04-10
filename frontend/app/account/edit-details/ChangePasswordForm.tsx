@@ -114,7 +114,7 @@ export default function ChangePasswordForm({ user }: ChangePasswordFormProps) {
       
       // Show success message
       setSuccess("Password changed successfully!");
-      await login(); // Refresh user data
+      await login('refresh'); // Refresh user data
       
       // Clear password fields after successful update
       setFormData({

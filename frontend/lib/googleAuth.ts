@@ -15,7 +15,11 @@ export function getGoogleAuthUrl(): string {
   return `${directApiBase.replace(/\/$/, '')}/authentication/google`;
 }
 
-export function openGoogleAuthPopup(authUrl: string, onSuccess: () => void): void {
+export interface GoogleAuthSuccessPayload {
+  isNewAccount: boolean;
+}
+
+export function openGoogleAuthPopup(authUrl: string, onSuccess: (payload: GoogleAuthSuccessPayload) => void): void {
   // Center the popup relative to the current window
   const left = window.screenX + Math.round((window.outerWidth  - POPUP_WIDTH)  / 2);
   const top  = window.screenY + Math.round((window.outerHeight - POPUP_HEIGHT) / 2);
@@ -39,7 +43,7 @@ export function openGoogleAuthPopup(authUrl: string, onSuccess: () => void): voi
     if (event.origin !== origin) return;
     if (event.data?.type === 'google-auth-success') {
       cleanup();
-      onSuccess();
+      onSuccess({ isNewAccount: event.data?.isNewAccount === true });
     }
   };
 

@@ -10,7 +10,7 @@ namespace backend.Services;
 public interface IMagicLoginService
 {
     Task RequestAsync(string email);
-    Task<User?> VerifyAsync(string email, string code);
+    Task<(User? user, bool isNewAccount)> VerifyAsync(string email, string code);
 }
 
 public class MagicLoginService : IMagicLoginService
@@ -85,7 +85,7 @@ public class MagicLoginService : IMagicLoginService
     }
 
     // Validates the OTP. Returns the User (creating one if the email is new) or null on mismatch/expiry.
-    public async Task<User?> VerifyAsync(string email, string code)
+    public async Task<(User? user, bool isNewAccount)> VerifyAsync(string email, string code)
     {
         var cacheKey = $"magic:{email.ToLowerInvariant()}";
 
@@ -93,13 +93,14 @@ public class MagicLoginService : IMagicLoginService
         if (storedCode == null || storedCode != code.ToUpperInvariant())
         {
             _logger.LogWarning("Magic login: invalid or expired code for {Email}", email);
-            return null;
+            return (null, false);
         }
 
         // Consume the code — one-time use only
         await _redis.RemoveAsync(cacheKey);
 
         var user = await _userManager.FindByEmailAsync(email);
+        var isNewAccount = false;
         if (user == null)
         {
             // Auto-create a minimal passwordless account; user can add a password later
@@ -109,13 +110,14 @@ public class MagicLoginService : IMagicLoginService
             {
                 _logger.LogError("Magic login: failed to create user {Email}: {Errors}",
                     email, string.Join(", ", result.Errors.Select(e => e.Description)));
-                return null;
+                return (null, false);
             }
+            isNewAccount = true;
             _logger.LogInformation("Magic login: auto-created account for {Email}", email);
         }
 
         await _roleManagement.AssignAdminIfConfiguredAsync(user);
-        return user;
+        return (user, isNewAccount);
     }
 
     private static string GenerateCode()

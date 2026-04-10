@@ -38,9 +38,14 @@ const TrendSignInCta = () => {
         </Link>
         <Link
           href={ROUTES.WATCHES}
-          className="text-[10px] uppercase tracking-[0.3em] text-white/35 transition-colors duration-300 hover:text-[#f0e6d2]"
+          className="relative inline-flex items-center justify-center overflow-hidden border border-[#bfa68a]/25 px-12 py-4 text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] transition-all duration-500 group hover:border-[#bfa68a]/40 hover:bg-[#bfa68a]/8"
         >
-          Browse the catalogue first
+          <span className="transform transition-transform duration-500 group-hover:-translate-x-3">
+            Browse the catalogue first
+          </span>
+          <span className="absolute right-6 opacity-0 -translate-x-4 text-[14px] transition-all duration-500 group-hover:translate-x-0 group-hover:opacity-100">
+            →
+          </span>
         </Link>
       </div>
     </section>

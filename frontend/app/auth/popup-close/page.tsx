@@ -1,22 +1,23 @@
-// Popup terminator page — reached after Google OAuth completes in a popup window.
-// Sends a postMessage to the opener (main window) then closes itself.
+// Popup terminator page reached after Google OAuth completes in a popup window.
+// Posts the auth result back to the opener so it can finish the correct Watch DNA sync flow.
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function PopupClosePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isNewAccount = searchParams.get('newAccount') === '1';
 
   useEffect(() => {
     if (window.opener) {
-      window.opener.postMessage({ type: 'google-auth-success' }, window.location.origin);
+      window.opener.postMessage({ type: 'google-auth-success', isNewAccount }, window.location.origin);
       window.close();
     } else {
-      // Direct navigation (not in a popup) — just go home
       router.replace('/');
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isNewAccount, router]);
 
   return (
     <div className="flex items-center justify-center min-h-screen">
