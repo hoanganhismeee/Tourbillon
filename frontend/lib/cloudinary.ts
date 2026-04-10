@@ -8,6 +8,7 @@ const CLOUDINARY_UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESE
 // Bump this whenever images are replaced in Cloudinary to force CDN cache invalidation.
 // The version is appended as a query param (?v=N), which creates a new CDN cache key.
 const IMAGE_CACHE_VERSION = 2;
+const VIDEO_CACHE_VERSION = 2;
 
 // Test function to verify Cloudinary connection
 export const testCloudinaryConnection = () => {
@@ -162,7 +163,7 @@ export const imageTransformations = {
 // Returns the Cloudinary URL for a video uploaded to the tourbillon/videos folder.
 // Usage: videoUrl('JLC') → https://res.cloudinary.com/.../tourbillon/videos/JLC.mp4
 export const videoUrl = (name: string) =>
-  `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/tourbillon/videos/${name}.mp4`;
+  `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/tourbillon/videos/${name}.mp4?v=${VIDEO_CACHE_VERSION}`;
 
 // Upload function with unique_filename: false to allow overwriting
 export const uploadImage = async (
