@@ -18,64 +18,68 @@ const EXAMPLE_PROMPTS = [
   'As a girl, should I wear round or square dial',
 ];
 
-// Simple markdown renderer — handles bold, italic, links, and line breaks
-function renderMarkdown(text: string): React.ReactNode[] {
-  const lines = text.split('\n');
+interface MarkdownCursorHandlers {
+  onEnter: () => void;
+  onLeave: () => void;
+}
+
+// Simple markdown renderer — handles bold, italic, links, and line breaks across the whole message
+function renderMarkdown(text: string, cursorHandlers: MarkdownCursorHandlers): React.ReactNode[] {
   const result: React.ReactNode[] = [];
+  const pattern = /(\*\*([^*]+)\*\*|\*([^*]+)\*|\[([\s\S]*?)\]\(([^)]+)\)|\n)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
 
-  lines.forEach((line, lineIdx) => {
-    if (lineIdx > 0) result.push(<br key={`br-${lineIdx}`} />);
-
-    const parts: React.ReactNode[] = [];
-    const pattern = /(\*\*([^*]+)\*\*|\*([^*]+)\*|\[([^\]]+)\]\(([^)]+)\))/g;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = pattern.exec(line)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(line.slice(lastIndex, match.index));
-      }
-
-      if (match[0].startsWith('**')) {
-        parts.push(<strong key={`${lineIdx}-${match.index}`}>{match[2]}</strong>);
-      } else if (match[0].startsWith('*')) {
-        parts.push(<em key={`${lineIdx}-${match.index}`}>{match[3]}</em>);
-      } else {
-        const href = match[5];
-        const isInternal = href.startsWith('/');
-        const isNavLink = /^\/(collections|brands|watches)\//.test(href);
-        parts.push(
-          isNavLink ? (
-            <a
-              key={`${lineIdx}-${match.index}`}
-              href={href}
-              className="inline-flex items-center rounded-full border border-[#bfa68a]/35 text-[#bfa68a] text-[11px] px-2.5 py-0.5 mx-0.5 hover:border-[#bfa68a]/70 hover:text-[#ecddc8] hover:bg-[#bfa68a]/10 transition-colors"
-              style={{ verticalAlign: 'middle' }}
-            >
-              {match[4]}
-            </a>
-          ) : (
-            <a
-              key={`${lineIdx}-${match.index}`}
-              href={href}
-              target={isInternal ? undefined : '_blank'}
-              rel={isInternal ? undefined : 'noopener noreferrer'}
-              className="text-[#bfa68a] underline underline-offset-2 hover:text-[#ecddc8] transition-colors"
-            >
-              {match[4]}
-            </a>
-          )
-        );
-      }
-      lastIndex = match.index + match[0].length;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      result.push(text.slice(lastIndex, match.index));
     }
 
-    if (lastIndex < line.length) {
-      parts.push(line.slice(lastIndex));
+    if (match[0] === '\n') {
+      result.push(<br key={`br-${match.index}`} />);
+    } else if (match[0].startsWith('**')) {
+      result.push(<strong key={`strong-${match.index}`}>{match[2]}</strong>);
+    } else if (match[0].startsWith('*')) {
+      result.push(<em key={`em-${match.index}`}>{match[3]}</em>);
+    } else {
+      const href = match[5];
+      const label = match[4];
+      const isInternal = href.startsWith('/');
+      const isChipLink = /^\/(collections|brands)\//.test(href);
+      result.push(
+        isChipLink ? (
+          <a
+            key={`chip-${match.index}`}
+            href={href}
+            onMouseEnter={cursorHandlers.onEnter}
+            onMouseLeave={cursorHandlers.onLeave}
+            className="inline-flex items-center rounded-full border border-[#bfa68a]/35 text-[#bfa68a] text-[11px] px-2.5 py-0.5 mx-0.5 hover:border-[#bfa68a]/70 hover:text-[#ecddc8] hover:bg-[#bfa68a]/10 transition-colors"
+            style={{ verticalAlign: 'middle' }}
+          >
+            {label}
+          </a>
+        ) : (
+          <a
+            key={`link-${match.index}`}
+            href={href}
+            target={isInternal ? undefined : '_blank'}
+            rel={isInternal ? undefined : 'noopener noreferrer'}
+            onMouseEnter={cursorHandlers.onEnter}
+            onMouseLeave={cursorHandlers.onLeave}
+            className="text-[#bfa68a] underline underline-offset-2 hover:text-[#ecddc8] transition-colors"
+          >
+            {label}
+          </a>
+        )
+      );
     }
 
-    result.push(...parts);
-  });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    result.push(text.slice(lastIndex));
+  }
 
   return result;
 }
@@ -109,7 +113,7 @@ function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
             )}
           </div>
           <p className="text-[#ecddc8]/80 text-[10px] text-center leading-tight line-clamp-2 w-full">
-            {card.description || card.name}
+            {card.name}
           </p>
           <p className="text-[#bfa68a] text-[10px]">
             {card.currentPrice === 0 ? 'PoR' : `$${card.currentPrice.toLocaleString()}`}
@@ -123,7 +127,7 @@ function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
 // Action chips rendered below assistant messages — compare and smart-search actions
 function ActionChips({ actions }: { actions: ChatAction[] }) {
   const router = useRouter();
-  const { addToCompare } = useCompare();
+  const { addToCompare, clearCompare } = useCompare();
   const [compareStatus, setCompareStatus] = useState<Record<number, 'idle' | 'adding' | 'done'>>({});
 
   const handleCompare = useCallback(async (action: ChatAction, idx: number) => {
@@ -131,12 +135,14 @@ function ActionChips({ actions }: { actions: ChatAction[] }) {
     setCompareStatus(prev => ({ ...prev, [idx]: 'adding' }));
     try {
       const watches = await Promise.all(action.slugs.map(slug => fetchWatchBySlug(slug)));
+      clearCompare();
       watches.forEach(w => addToCompare(w));
       setCompareStatus(prev => ({ ...prev, [idx]: 'done' }));
+      router.push('/compare');
     } catch {
       setCompareStatus(prev => ({ ...prev, [idx]: 'idle' }));
     }
-  }, [addToCompare, compareStatus]);
+  }, [addToCompare, clearCompare, compareStatus, router]);
 
   if (!actions.length) return null;
 
@@ -170,7 +176,7 @@ function ActionChips({ actions }: { actions: ChatAction[] }) {
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="3" width="7" height="18" rx="1" /><rect x="14" y="3" width="7" height="18" rx="1" />
               </svg>
-              {status === 'adding' ? 'Adding…' : status === 'done' ? 'Added to compare' : action.label}
+              {status === 'adding' ? 'Opening compare…' : status === 'done' ? 'Compare ready' : action.label}
             </button>
           );
         }
@@ -183,6 +189,7 @@ function ActionChips({ actions }: { actions: ChatAction[] }) {
 
 export default function ChatPanel() {
   const { messages, isLoading, dailyUsed, dailyLimit, sendMessage, clearSession } = useChat();
+  const { setCursor } = useCursor();
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -220,7 +227,7 @@ export default function ChatPanel() {
   const showUsage = dailyLimit !== null && dailyUsed !== null;
 
   return (
-    <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 88px)' }}>
+    <div className="flex h-[calc(100vh-88px)] flex-col overflow-hidden">
 
       {/* Subtitle + clear button row */}
       <div className="flex items-center justify-between px-8 pb-4">
@@ -236,7 +243,7 @@ export default function ChatPanel() {
       </div>
 
       {/* Message area */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
       <div className="px-6 py-2 space-y-4">
 
         {/* Empty state */}
@@ -280,7 +287,10 @@ export default function ChatPanel() {
               }`}
               style={msg.role === 'assistant' ? { background: 'rgba(255,255,255,0.05)' } : undefined}
             >
-              <div>{renderMarkdown(msg.content)}</div>
+              <div>{renderMarkdown(msg.content, {
+                onEnter: () => setCursor('tourbillon'),
+                onLeave: () => setCursor('default'),
+              })}</div>
               {msg.watchCards && msg.watchCards.length > 0 && (
                 <WatchCardRow cards={msg.watchCards} />
               )}

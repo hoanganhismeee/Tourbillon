@@ -47,6 +47,7 @@ export default function ChatWidget() {
         isOpen={isOpen}
         onClose={closeChat}
         title="Chat Concierge"
+        maxWidth={624}
       >
         <ChatPanel />
       </SlidingPanel>

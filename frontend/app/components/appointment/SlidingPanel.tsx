@@ -17,13 +17,14 @@ interface SlidingPanelProps {
   onClose: () => void;
   title: string;
   ariaLabel?: string;
+  maxWidth?: number | string;
   onPanelScroll?: () => void;
   overlays?: React.ReactNode;
   children: React.ReactNode;
 }
 
 export default function SlidingPanel({
-  isOpen, onClose, title, ariaLabel, onPanelScroll, overlays, children,
+  isOpen, onClose, title, ariaLabel, maxWidth = 520, onPanelScroll, overlays, children,
 }: SlidingPanelProps) {
   // SSR guard — createPortal requires document.body
   const [isMounted, setIsMounted] = useState(false);
@@ -76,7 +77,7 @@ export default function SlidingPanel({
             transition={{ duration: DUR.mid, ease: EASE_ENTER }}
             style={{
               position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201,
-              width: '100%', maxWidth: 520,
+              width: '100%', maxWidth,
               background: '#1a1613',
               borderLeft: '1px solid rgba(255,255,255,0.08)',
               overflowY: 'auto',
