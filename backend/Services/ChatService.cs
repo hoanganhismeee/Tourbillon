@@ -386,7 +386,7 @@ public class ChatService
         if (directEntityResolution != null)
             return directEntityResolution;
 
-        var searchResult = await _watchFinderService.FindWatchesAsync(message);
+        var searchResult = await _watchFinderService.FindWatchesAsync(message) ?? new WatchFinderResult();
         if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
         {
             return new ChatResolution
@@ -581,7 +581,7 @@ public class ChatService
         if (string.IsNullOrWhiteSpace(directEntityQuery))
             return null;
 
-        var result = await _watchFinderService.FindWatchesAsync(directEntityQuery);
+        var result = await _watchFinderService.FindWatchesAsync(directEntityQuery) ?? new WatchFinderResult();
         if (string.Equals(result.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase) || result.Watches.Count == 0)
             return null;
 
@@ -705,7 +705,7 @@ public class ChatService
         if (!string.Equals(strippedLead, trimmed, StringComparison.OrdinalIgnoreCase)
             && (WatchFinderService.IsLikelyReferenceQuery(strippedLead)
                 || WatchFinderService.IsLikelyReferenceFragment(strippedLead)
-                || Regex.IsMatch(strippedLead, @"\d")))
+                || IsLikelyDirectNamedWatchLookup(strippedLead)))
         {
             return strippedLead;
         }
@@ -761,6 +761,28 @@ public class ChatService
             return sessionState.CanonicalQuery;
 
         return null;
+    }
+
+    private static bool IsLikelyDirectNamedWatchLookup(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return false;
+
+        if (!Regex.IsMatch(query, @"\d"))
+            return false;
+
+        if (LooksLikeDiscoveryRequest(query))
+            return false;
+
+        if (Regex.IsMatch(
+                query,
+                @"\b(?:under|below|over|above|between|budget|price|compare|versus|vs\.?|against|recommend|suggest|find|looking for|look for|need|want|shopping|browse)\b",
+                RegexOptions.IgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static ChatSessionState BuildSessionStateFromWatches(
@@ -1227,10 +1249,34 @@ public class ChatService
     {
         var watchCards = watches.Select(ToChatWatchCard).ToList();
         var links = watches.Select(w => $"[{BuildWatchTitle(w)}](/watches/{w.Slug})");
+        var collections = watches
+            .Where(w => w.Collection != null)
+            .Select(w => w.Collection!)
+            .GroupBy(c => c.Id)
+            .Select(g => g.First())
+            .ToList();
+        var brands = watches
+            .Where(w => w.Brand != null)
+            .Select(w => w.Brand!)
+            .GroupBy(b => b.Id)
+            .Select(g => g.First())
+            .ToList();
+        var isCollectionLevelCompare = IsCollectionLevelCompare(query, collections);
         var context = new List<string>
         {
-            "Tourbillon resolved a concrete comparison set. Compare guidance request: explain the main split in practical buying terms, stay concise, end with a complete sentence, and assume the compare view will open immediately with these exact watches preloaded."
+            isCollectionLevelCompare
+                ? "Tourbillon resolved a collection-level comparison. Compare guidance request: explain the identity and use-case split between the collections first, use the resolved watches only as representative examples, mention one practical buying distinction, stay concise, and end with a complete sentence. Assume the compare view will open immediately with these representative watches preloaded."
+                : "Tourbillon resolved a concrete comparison set. Compare guidance request: explain the main split in practical buying terms, stay concise, end with a complete sentence, and assume the compare view will open immediately with these exact watches preloaded."
         };
+
+        if (isCollectionLevelCompare)
+        {
+            foreach (var collection in collections)
+                context.Add(BuildCollectionContext(collection));
+
+            foreach (var brand in brands.Take(2))
+                context.Add(BuildBrandContext(brand));
+        }
 
         foreach (var watch in watches)
             context.Add(BuildWatchContext(watch));
@@ -1238,7 +1284,9 @@ public class ChatService
         return new ChatResolution
         {
             UseAi = true,
-            Message = $"Tourbillon resolved this comparison set: {string.Join(", ", links)}. The compare view will open with these watches preloaded.",
+            Message = isCollectionLevelCompare
+                ? $"Tourbillon resolved this collection comparison using representative watches from {string.Join(" and ", collections.Select(collection => $"[{collection.Name}](/collections/{collection.Slug})"))}. The compare view will open with those representatives preloaded."
+                : $"Tourbillon resolved this comparison set: {string.Join(", ", links)}. The compare view will open with these watches preloaded.",
             Query = query,
             Context = context,
             WatchCards = watchCards,
@@ -1253,6 +1301,20 @@ public class ChatService
             ],
             SessionState = BuildSessionStateFromWatches(watches, "compare", BuildCanonicalEntityQuery(watches, query))
         };
+    }
+
+    private static bool IsCollectionLevelCompare(string query, List<Collection> collections)
+    {
+        if (collections.Count < 2)
+            return false;
+
+        if (UsesStoredCollectionScope(query) || Regex.IsMatch(query, @"\bcollections?\b", RegexOptions.IgnoreCase))
+            return true;
+
+        var mentionedCollections = collections.Count(collection =>
+            query.Contains(collection.Name, StringComparison.OrdinalIgnoreCase));
+
+        return mentionedCollections >= 2;
     }
 
     private ChatResolution BuildReferencedWatchResolution(string query, List<Watch> watches)

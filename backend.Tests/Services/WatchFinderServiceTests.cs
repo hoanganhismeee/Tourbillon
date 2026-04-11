@@ -330,6 +330,12 @@ public class WatchFinderServiceTests
         Assert.True(WatchFinderService.IsLikelyReferenceQuery("M126710BLRO-0001"));
     }
 
+    [Fact]
+    public void IsLikelyReferenceQuery_RejectsDiscoveryQueriesThatOnlyContainBudgetDigits()
+    {
+        Assert.False(WatchFinderService.IsLikelyReferenceQuery("a ceramic moonphase reverso under 2k"));
+    }
+
     [Theory]
     [InlineData("710BL")]
     [InlineData("BLRO")]
