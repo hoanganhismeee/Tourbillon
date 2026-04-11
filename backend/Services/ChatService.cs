@@ -81,6 +81,7 @@ public class ChatService
     private const string NoCloseMatchMessage = "I don't quite get the request from the current Tourbillon catalogue context. Please rephrase it with a watch, brand, collection, reference, size, material, or price range.";
     private const string ProcessingFallbackMessage = "I don't quite get that request right now. Please rephrase it, or try again in a moment with a watch, brand, collection, comparison, size, material, or price range.";
     private const string DailyQuotaMessage = "You have reached your daily concierge quota of 5 messages. Please come back tomorrow.";
+    private const string GreetingMessage = "Hello. Tourbillon can help compare watches, explain brands or collections, and narrow a brief into real catalogue options. Try something like \"compare the Aquanaut and the Overseas\", \"tell me about Vacheron Constantin\", or \"JLC Reverso under 50k\".";
 
     // Brand name aliases shared with WatchFinderService.
     private static readonly Dictionary<string, string> _brandAliases = new(StringComparer.OrdinalIgnoreCase)
@@ -302,7 +303,7 @@ public class ChatService
 
             var aiResult = await CallAiServiceAsync(history, resolution.Query, resolution.Context);
             aiMessage = aiResult.Message;
-            actions = MergeActions(aiResult.Actions, resolution.Actions);
+            actions = MergeActions(resolution.Actions, aiResult.Actions);
             if (watchCards.Count == 0)
                 watchCards = await ExtractWatchCardsAsync(aiMessage, actions);
         }
@@ -345,6 +346,12 @@ public class ChatService
             return new ChatResolution
             {
                 Message = "I am here to help with Tourbillon watches and horology only. If you want, ask about a watch, brand, comparison, or product search."
+            };
+
+        if (IsGreetingQuery(message))
+            return new ChatResolution
+            {
+                Message = GreetingMessage
             };
 
         var cursorResolution = TryResolveCursorCommand(message);
@@ -559,7 +566,7 @@ public class ChatService
         if (IsAffirmativeFollowUp(query))
         {
             if (lastWatchCards.Count > 0)
-                return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: true);
+                return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: true, sessionState?.FollowUpMode);
 
             var storedMentions = await ResolveMentionsFromSessionStateAsync(sessionState);
             if (storedMentions.HasAny)
@@ -569,7 +576,7 @@ public class ChatService
         if (!LooksLikeContextualFollowUp(query) || lastWatchCards.Count == 0)
             return null;
 
-        return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false);
+        return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false, sessionState?.FollowUpMode);
     }
 
     private async Task<ChatResolution?> TryResolveDirectEntityResolutionAsync(
@@ -595,7 +602,8 @@ public class ChatService
     private async Task<ChatResolution> BuildCardContinuationResolutionAsync(
         string query,
         List<ChatWatchCard> lastWatchCards,
-        bool affirmative)
+        bool affirmative,
+        string? followUpMode)
     {
         var slugsInOrder = lastWatchCards
             .Select(card => card.Slug)
@@ -624,11 +632,16 @@ public class ChatService
             };
         }
 
+        var isCompareFollowUp = string.Equals(followUpMode, "compare", StringComparison.OrdinalIgnoreCase) && ordered.Count >= 2;
         var context = new List<string>
         {
-            affirmative
-                ? "The user just affirmed the previous suggestion. Continue from these exact surfaced Tourbillon cards, identify the strongest next step clearly, and do not broaden into unrelated catalogue results."
-                : "The user is referring back to the immediately previous Tourbillon card row. Stay anchored to these exact watches, answer directly, and do not broaden into unrelated catalogue results."
+            isCompareFollowUp
+                ? affirmative
+                    ? "The user just affirmed the previous comparison prompt. Continue comparing these exact Tourbillon watches, stay practical, and focus on the clearest buying split rather than isolated watch descriptions."
+                    : "The user is following up on an existing comparison. Stay anchored to these exact Tourbillon watches, answer in compare terms, and do not broaden into unrelated catalogue results."
+                : affirmative
+                    ? "The user just affirmed the previous suggestion. Continue from these exact surfaced Tourbillon cards, identify the strongest next step clearly, and do not broaden into unrelated catalogue results."
+                    : "The user is referring back to the immediately previous Tourbillon card row. Stay anchored to these exact watches, answer directly, and do not broaden into unrelated catalogue results."
         };
 
         foreach (var watch in ordered)
@@ -657,10 +670,27 @@ public class ChatService
         return new ChatResolution
         {
             UseAi = true,
-            Query = affirmative ? "Tell me more about these exact watches and guide me to the strongest next step." : query,
+            Query = isCompareFollowUp
+                ? affirmative
+                    ? "Continue comparing these exact watches and explain the clearest practical split."
+                    : query
+                : affirmative
+                    ? "Tell me more about these exact watches and guide me to the strongest next step."
+                    : query,
             Context = context,
             WatchCards = ordered.Select(ToChatWatchCard).ToList(),
-            SessionState = BuildSessionStateFromWatches(ordered, "watch_cards", ordered.Count == 1 ? ordered[0].Name : null),
+            Actions = isCompareFollowUp
+                ? [new ChatAction
+                    {
+                        Type = "compare",
+                        Label = "Compare these watches",
+                        Slugs = ordered.Select(w => w.Slug).ToList()
+                    }]
+                : [],
+            SessionState = BuildSessionStateFromWatches(
+                ordered,
+                isCompareFollowUp ? "compare" : "watch_cards",
+                ordered.Count == 1 ? ordered[0].Name : BuildCanonicalEntityQuery(ordered, query)),
         };
     }
 
@@ -1281,12 +1311,29 @@ public class ChatService
         foreach (var watch in watches)
             context.Add(BuildWatchContext(watch));
 
+        if (isCollectionLevelCompare)
+        {
+            return new ChatResolution
+            {
+                Message = BuildCollectionCompareMessage(collections, brands, watches),
+                WatchCards = watchCards,
+                Actions =
+                [
+                    new ChatAction
+                    {
+                        Type = "compare",
+                        Label = "Compare these watches",
+                        Slugs = watchCards.Select(w => w.Slug).ToList()
+                    }
+                ],
+                SessionState = BuildSessionStateFromWatches(watches, "compare", BuildCanonicalEntityQuery(watches, query))
+            };
+        }
+
         return new ChatResolution
         {
             UseAi = true,
-            Message = isCollectionLevelCompare
-                ? $"Tourbillon resolved this collection comparison using representative watches from {string.Join(" and ", collections.Select(collection => $"[{collection.Name}](/collections/{collection.Slug})"))}. The compare view will open with those representatives preloaded."
-                : $"Tourbillon resolved this comparison set: {string.Join(", ", links)}. The compare view will open with these watches preloaded.",
+            Message = $"Tourbillon resolved this comparison set: {string.Join(", ", links)}. The compare view will open with these watches preloaded.",
             Query = query,
             Context = context,
             WatchCards = watchCards,
@@ -1315,6 +1362,54 @@ public class ChatService
             query.Contains(collection.Name, StringComparison.OrdinalIgnoreCase));
 
         return mentionedCollections >= 2;
+    }
+
+    private static string BuildCollectionCompareMessage(
+        List<Collection> collections,
+        List<Brand> brands,
+        List<Watch> watches)
+    {
+        if (collections.Count < 2 || watches.Count < 2)
+            return "Tourbillon has the representative watches loaded into compare.";
+
+        var leftCollection = collections[0];
+        var rightCollection = collections[1];
+        var leftBrand = brands.FirstOrDefault(brand => brand.Id == leftCollection.BrandId);
+        var rightBrand = brands.FirstOrDefault(brand => brand.Id == rightCollection.BrandId);
+        var leftWatch = watches.FirstOrDefault(watch => watch.CollectionId == leftCollection.Id) ?? watches[0];
+        var rightWatch = watches.FirstOrDefault(watch => watch.CollectionId == rightCollection.Id) ?? watches[1];
+
+        var leftCollectionLink = $"[{leftCollection.Name}](/collections/{leftCollection.Slug})";
+        var rightCollectionLink = $"[{rightCollection.Name}](/collections/{rightCollection.Slug})";
+        var leftBrandLink = leftBrand != null && !string.IsNullOrWhiteSpace(leftBrand.Slug)
+            ? $"[{leftBrand.Name}](/brands/{leftBrand.Slug})"
+            : (leftBrand?.Name ?? "its brand");
+        var rightBrandLink = rightBrand != null && !string.IsNullOrWhiteSpace(rightBrand.Slug)
+            ? $"[{rightBrand.Name}](/brands/{rightBrand.Slug})"
+            : (rightBrand?.Name ?? "its brand");
+        var leftWatchLink = $"[{BuildWatchTitle(leftWatch)}](/watches/{leftWatch.Slug})";
+        var rightWatchLink = $"[{BuildWatchTitle(rightWatch)}](/watches/{rightWatch.Slug})";
+
+        return $"{leftCollectionLink} from {leftBrandLink} reads as {DescribeCollectionCharacter(leftCollection, leftWatch)}, while {rightCollectionLink} from {rightBrandLink} feels {DescribeCollectionCharacter(rightCollection, rightWatch)}. Tourbillon loaded representative references {leftWatchLink} and {rightWatchLink} into compare so you can inspect the details side by side. If you want, ask about daily wear, travel, bracelet versus strap, or which one skews dressier.";
+    }
+
+    private static string DescribeCollectionCharacter(Collection collection, Watch representativeWatch)
+    {
+        var descriptor = $"{collection.Style} {collection.Description} {representativeWatch.Description} {representativeWatch.Specs}".ToLowerInvariant();
+
+        if (descriptor.Contains("casual") || descriptor.Contains("youthful") || descriptor.Contains("rubber")
+            || descriptor.Contains("active") || descriptor.Contains("modern"))
+            return "the more casual and modern option";
+
+        if (descriptor.Contains("bracelet") || descriptor.Contains("integrated") || descriptor.Contains("versatile")
+            || descriptor.Contains("travel") || descriptor.Contains("sport"))
+            return "the more polished and versatile sport-luxury option";
+
+        if (descriptor.Contains("dress") || descriptor.Contains("refined") || descriptor.Contains("classic")
+            || descriptor.Contains("heritage") || descriptor.Contains("elegant"))
+            return "the more refined and classical option";
+
+        return "the collection with the more distinct luxury-sports character";
     }
 
     private ChatResolution BuildReferencedWatchResolution(string query, List<Watch> watches)
@@ -1473,6 +1568,14 @@ public class ChatService
         if (totalCards < 2)
             return [];
 
+        var firstBatch = Regex.Match(query, @"\bfirst\s+(?<count>[2-4]|two|three|four)\b", RegexOptions.IgnoreCase);
+        if (firstBatch.Success)
+        {
+            var count = ParseCompactOrdinalCount(firstBatch.Groups["count"].Value);
+            if (count >= 2)
+                return Enumerable.Range(0, Math.Min(count, totalCards)).ToList();
+        }
+
         var matches = new List<(int Position, int Index)>();
         var patterns = new (string Pattern, Func<Match, int?> Resolve)[]
         {
@@ -1507,9 +1610,12 @@ public class ChatService
     private static bool IsAffirmativeFollowUp(string query) =>
         Regex.IsMatch(query.Trim(), @"^(?:yes|yeah|yep|sure|ok|okay|please do|go ahead|sounds good|do it)[!.]*$", RegexOptions.IgnoreCase);
 
+    private static bool IsGreetingQuery(string query) =>
+        Regex.IsMatch(query.Trim(), @"^(?:hi|hello|hey|yo|hiya|sup|what'?s up|good morning|good afternoon|good evening)[!.]*$", RegexOptions.IgnoreCase);
+
     private static bool LooksLikeContextualFollowUp(string query) =>
         IsAffirmativeFollowUp(query)
-        || Regex.IsMatch(query, @"\b(?:that one|those|these|them|this one)\b", RegexOptions.IgnoreCase);
+        || Regex.IsMatch(query, @"\b(?:that one|those|these|them|this one|first one|second one|third one|fourth one|first two|first 2)\b", RegexOptions.IgnoreCase);
 
     private static bool LooksLikeEntityInfoRequest(string query, EntityMentions mentions)
     {
@@ -1616,7 +1722,7 @@ public class ChatService
             @"^\s*(?:recommend|suggest|find|show|give|bring)\s+(?:me\s+)?",
             @"^\s*(?:help me find|help me discover)\s+",
             @"^\s*(?:i want|i need|i(?:'m| am)\s+looking for|looking for)\s+",
-            @"^\s*(?:some|any)\s+"
+            @"^\s*(?:some|any|a few|few|a couple(?:\s+of)?)\s+"
         };
 
         foreach (var pattern in preamblePatterns)
@@ -1633,7 +1739,9 @@ public class ChatService
         }
 
         cleaned = Regex.Replace(cleaned, @"^(?:the|a|an)\s+", "", RegexOptions.IgnoreCase).Trim();
-        cleaned = Regex.Replace(cleaned, @"\b(?:please|pls|some|any)\b", " ", RegexOptions.IgnoreCase);
+        cleaned = Regex.Replace(cleaned, @"\b(?:please|pls|some|any|maybe|few|couple)\b", " ", RegexOptions.IgnoreCase);
+        cleaned = Regex.Replace(cleaned, @"\bfor me\b", " ", RegexOptions.IgnoreCase);
+        cleaned = Regex.Replace(cleaned, @"\bsomething like\b", " ", RegexOptions.IgnoreCase);
         cleaned = Regex.Replace(cleaned, @"\b(?:should i wear|would i wear|should i buy|would i buy|change the cursor to|set the cursor to|switch the cursor to)\b", " ", RegexOptions.IgnoreCase);
         cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
 
@@ -1660,9 +1768,15 @@ public class ChatService
         foreach (var collection in distinctCollections)
             descriptor = RemoveSearchTerm(descriptor, collection, allowPlural: true);
 
+        foreach (var alias in _brandAliases.Where(alias =>
+            distinctBrands.Contains(alias.Value, StringComparer.OrdinalIgnoreCase)))
+        {
+            descriptor = RemoveSearchTerm(descriptor, alias.Key, allowPlural: true);
+        }
+
         descriptor = Regex.Replace(
             descriptor,
-            @"\b(?:recommend|suggest|find|show|give|bring|help|discover|looking|look|want|need|please|pls|me|some|any|options?|pieces?|models?|should|wear|buy|cursor|change|switch|set)\b",
+            @"\b(?:recommend|suggest|find|show|give|bring|help|discover|looking|look|want|need|please|pls|me|some|any|maybe|few|couple|options?|pieces?|models?|watches?|should|wear|buy|cursor|change|switch|set|jlc|ap|pp|vc)\b",
             " ",
             RegexOptions.IgnoreCase);
         descriptor = Regex.Replace(descriptor, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
@@ -1681,6 +1795,14 @@ public class ChatService
 
         return Regex.Replace(cleaned, @"\s+", " ").Trim();
     }
+
+    private static int ParseCompactOrdinalCount(string value) => value.ToLowerInvariant() switch
+    {
+        "2" or "two" => 2,
+        "3" or "three" => 3,
+        "4" or "four" => 4,
+        _ => 0
+    };
 
     private static string RemoveSearchTerm(string input, string term, bool allowPlural = false)
     {

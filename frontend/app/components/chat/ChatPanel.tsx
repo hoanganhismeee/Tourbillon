@@ -339,7 +339,8 @@ export default function ChatPanel() {
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const initialMessageCountRef = useRef(messages.length);
+  const mountTimeRef = useRef(Date.now());
+  const submitLockRef = useRef(false);
 
   useEffect(() => {
     useCompare.persist.rehydrate();
@@ -358,9 +359,14 @@ export default function ChatPanel() {
 
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || isLoading) return;
+    if (!text || isLoading || submitLockRef.current) return;
+    submitLockRef.current = true;
     setInput('');
-    await sendMessage(text);
+    try {
+      await sendMessage(text);
+    } finally {
+      submitLockRef.current = false;
+    }
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -371,8 +377,14 @@ export default function ChatPanel() {
   };
 
   const handlePromptClick = async (prompt: string) => {
+    if (isLoading || submitLockRef.current) return;
+    submitLockRef.current = true;
     setInput('');
-    await sendMessage(prompt);
+    try {
+      await sendMessage(prompt);
+    } finally {
+      submitLockRef.current = false;
+    }
   };
 
   const showUsage = dailyLimit !== null && dailyUsed !== null;
@@ -421,7 +433,7 @@ export default function ChatPanel() {
 
           {messages.map((message, index) => (
             <div
-              key={index}
+              key={message.id ?? index}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
@@ -439,8 +451,12 @@ export default function ChatPanel() {
                 {message.actions && message.actions.length > 0 && (
                   <ActionChips
                     actions={message.actions}
-                    messageKey={`message-${index}`}
-                    autoExecute={message.role === 'assistant' && index === messages.length - 1 && index >= initialMessageCountRef.current}
+                    messageKey={message.id ?? `message-${index}`}
+                    autoExecute={
+                      message.role === 'assistant'
+                      && index === messages.length - 1
+                      && (message.createdAt ?? 0) >= mountTimeRef.current
+                    }
                   />
                 )}
               </div>

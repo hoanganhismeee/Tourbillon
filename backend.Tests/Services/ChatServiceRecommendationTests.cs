@@ -191,4 +191,69 @@ public class ChatServiceRecommendationTests
         Assert.Contains(result.Actions, a => a.Type == "search" && a.Query == "Omega Seamaster versatile");
         Assert.Equal(1, handler.CallCount);
     }
+
+    [Fact]
+    public async Task HandleMessageAsync_MessyRecommendation_RewritesSearchActionIntoCanonicalTerms()
+    {
+        using var context = CreateContext();
+
+        var brand = new Brand { Id = 1, Name = "Jaeger-LeCoultre", Slug = "jaeger-lecoultre" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Reverso", Slug = "reverso" };
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+
+        var watches = new[]
+        {
+            new Watch
+            {
+                Id = 1,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 10,
+                Collection = collection,
+                Name = "Q397846J",
+                Slug = "jaeger-lecoultre-reverso-q397846j",
+                Description = "Jaeger-LeCoultre Reverso",
+                CurrentPrice = 11400m
+            },
+            new Watch
+            {
+                Id = 2,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 10,
+                Collection = collection,
+                Name = "Q2458422",
+                Slug = "jaeger-lecoultre-reverso-q2458422",
+                Description = "Jaeger-LeCoultre Reverso",
+                CurrentPrice = 15600m
+            }
+        };
+
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("yo, suggest me a couple of reversos for me under 50k"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = watches.Select(ToDto).ToList(),
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"[Jaeger-LeCoultre Reverso Q397846J](/watches/jaeger-lecoultre-reverso-q397846j) is a refined starting point.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "yo, suggest me a couple of reversos for me under 50k", null, "127.0.0.1");
+
+        Assert.Contains(result.Actions, action => action.Type == "search" && action.Query == "Jaeger-LeCoultre Reverso under 50k");
+        Assert.Equal(1, handler.CallCount);
+    }
 }

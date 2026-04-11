@@ -178,6 +178,21 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_Greeting_ReturnsConciergeIntro_WithoutCallingSearchOrAi()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var service = CreateService(context, watchFinder);
+
+        var result = await service.HandleMessageAsync("session-1", "yo", null, "127.0.0.1");
+
+        Assert.Contains("Tourbillon can help compare watches", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(result.Actions);
+        Assert.Empty(result.WatchCards);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_CursorCommand_ReturnsSetCursorAction_WithoutSearch()
     {
         using var context = CreateContext();
@@ -686,7 +701,7 @@ public class ChatServiceTests
 
         var searchActions = result.Actions.Where(a => a.Type == "search").ToList();
         Assert.Single(searchActions);
-        Assert.Equal("Jaeger-LeCoultre Reverso pink gold", searchActions[0].Query);
+        Assert.Equal("Jaeger-LeCoultre Reverso", searchActions[0].Query);
         Assert.Equal(1, handler.CallCount);
     }
 
@@ -817,6 +832,87 @@ public class ChatServiceTests
             compare.Actions[0].Slugs);
         Assert.Equal(2, compare.WatchCards.Count);
         Assert.Equal(2, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_CompareFirstTwoForMe_UsesPreviousChatCards()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Jaeger-LeCoultre", Slug = "jaeger-lecoultre" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Reverso", Slug = "reverso" };
+
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "Q397846J",
+            Slug = "jaeger-lecoultre-reverso-q397846j",
+            Description = "Jaeger-LeCoultre Reverso",
+            CurrentPrice = 11400m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "Q2458422",
+            Slug = "jaeger-lecoultre-reverso-q2458422",
+            Description = "Jaeger-LeCoultre Reverso",
+            CurrentPrice = 15600m
+        };
+        var third = new Watch
+        {
+            Id = 102,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "Q3988482",
+            Slug = "jaeger-lecoultre-reverso-q3988482",
+            Description = "Jaeger-LeCoultre Reverso",
+            CurrentPrice = 18900m
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second, third);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("show me some reversos"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(first), ToDto(second), ToDto(third)],
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"These Reversos cover a classic small seconds option and a fuller second timezone take.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+
+        var discovery = await service.HandleMessageAsync("session-1", "show me some reversos", null, "127.0.0.1");
+        Assert.Equal(3, discovery.WatchCards.Count);
+
+        var compare = await service.HandleMessageAsync("session-1", "compare the first 2 for me", null, "127.0.0.1");
+
+        Assert.Single(compare.Actions);
+        Assert.Equal("compare", compare.Actions[0].Type);
+        Assert.Equal(
+            ["jaeger-lecoultre-reverso-q397846j", "jaeger-lecoultre-reverso-q2458422"],
+            compare.Actions[0].Slugs);
+        Assert.Equal(2, compare.WatchCards.Count);
     }
 
     [Fact]
@@ -970,6 +1066,85 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_BareAffirmativeFollowUp_AfterCompare_KeepsCompareAction()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var otherBrand = new Brand { Id = 2, Name = "Audemars Piguet", Slug = "audemars-piguet" };
+        var nautilus = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Nautilus", Slug = "nautilus" };
+        var royalOak = new Collection { Id = 20, BrandId = 2, Brand = otherBrand, Name = "Royal Oak", Slug = "royal-oak" };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = nautilus,
+            Name = "5711/1A-010",
+            Slug = "patek-philippe-nautilus-5711-1a-010",
+            Description = "Patek Philippe Nautilus",
+            CurrentPrice = 35000m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 2,
+            Brand = otherBrand,
+            CollectionId = 20,
+            Collection = royalOak,
+            Name = "16202ST",
+            Slug = "audemars-piguet-royal-oak-16202st",
+            Description = "Audemars Piguet Royal Oak",
+            CurrentPrice = 42000m
+        };
+
+        context.Brands.AddRange(brand, otherBrand);
+        context.Collections.AddRange(nautilus, royalOak);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("5711/1A-010"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(first)],
+                OtherCandidates = [],
+                SearchPath = "direct_sql_merged"
+            });
+        watchFinder.Setup(f => f.FindWatchesAsync("16202ST"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(second)],
+                OtherCandidates = [],
+                SearchPath = "direct_sql_merged"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"The Nautilus stays calmer and more discreet, while the Royal Oak feels more assertive on wrist.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+
+        var initial = await service.HandleMessageAsync("session-1", "Compare 5711/1A-010 vs 16202ST", null, "127.0.0.1");
+        Assert.Single(initial.Actions);
+
+        var followUp = await service.HandleMessageAsync("session-1", "yes", null, "127.0.0.1");
+
+        Assert.Single(followUp.Actions);
+        Assert.Equal("compare", followUp.Actions[0].Type);
+        Assert.Equal(
+            ["patek-philippe-nautilus-5711-1a-010", "audemars-piguet-royal-oak-16202st"],
+            followUp.Actions[0].Slugs);
+        Assert.Equal(2, followUp.WatchCards.Count);
+        Assert.DoesNotContain("specialise", followUp.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, handler.CallCount);
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_CollectionCompare_ReturnsStableRepresentativeCompareSet()
     {
         using var context = CreateContext();
@@ -1053,17 +1228,9 @@ public class ChatServiceTests
             ["patek-philippe-aquanaut-5167a-001", "vacheron-constantin-overseas-4520v-210a-b128"],
             result.Actions[0].Slugs);
         Assert.Equal(result.Actions[0].Slugs, result.WatchCards.Select(card => card.Slug).ToList());
-        Assert.Equal(1, handler.CallCount);
-        using var payload = JsonDocument.Parse(handler.RequestBodies[0]);
-        var contextEntries = payload.RootElement
-            .GetProperty("context")
-            .EnumerateArray()
-            .Select(entry => entry.GetString() ?? string.Empty)
-            .ToList();
-
-        Assert.Contains(contextEntries, entry => entry.Contains("collection-level comparison", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(contextEntries, entry => entry.Contains("Collection \"Aquanaut\"", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(contextEntries, entry => entry.Contains("Collection \"Overseas\"", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(0, handler.CallCount);
+        Assert.Contains("Aquanaut", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Overseas", result.Message, StringComparison.OrdinalIgnoreCase);
         watchFinder.VerifyNoOtherCalls();
     }
 
@@ -1115,7 +1282,7 @@ public class ChatServiceTests
             .Distinct()
             .ToListAsync();
         Assert.Equal(2, collectionIds.Count);
-        Assert.Equal(2, handler.CallCount);
+        Assert.Equal(0, handler.CallCount);
         watchFinder.VerifyNoOtherCalls();
     }
 }

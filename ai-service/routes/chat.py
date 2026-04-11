@@ -20,23 +20,23 @@ ALLOWED_CURSOR_STYLES = {
 
 
 def _extract_actions(raw: str) -> tuple[str, list]:
-    """Extract and strip the ACTIONS: [...] line from the end of the LLM response."""
+    """Extract and strip any ACTIONS: [...] lines from the LLM response."""
     lines = raw.rstrip().splitlines()
     actions = []
-    text_lines = lines[:]
+    text_lines: list[str] = []
 
-    for i in range(len(lines) - 1, max(len(lines) - 4, -1), -1):
-        stripped = lines[i].strip()
+    for line in lines:
+        stripped = line.strip()
         if stripped.startswith("ACTIONS:"):
             payload = stripped[len("ACTIONS:") :].strip()
             try:
                 parsed = json.loads(payload)
                 if isinstance(parsed, list):
-                    actions = parsed
+                    actions.extend(item for item in parsed if isinstance(item, dict))
             except Exception:
                 pass
-            text_lines = lines[:i]
-            break
+            continue
+        text_lines.append(line)
 
     return "\n".join(text_lines).strip(), actions
 
@@ -47,7 +47,12 @@ def _truncate_chat_response(text: str, max_words: int = 130) -> str:
     if len(words) <= max_words:
         stripped = text.strip()
         if stripped and stripped[-1] not in ".!?":
-            return stripped + "."
+            sentences = re.split(r"(?<=[.!?])\s+", stripped)
+            if len(sentences) > 1:
+                candidate = " ".join(sentences[:-1]).strip()
+                if candidate:
+                    return candidate
+            return stripped.rstrip(",;:- ") + "."
         return stripped
 
     sentences = re.split(r"(?<=[.!?])\s+", text.strip())
@@ -70,6 +75,28 @@ def _truncate_chat_response(text: str, max_words: int = 130) -> str:
     if fallback and fallback[-1] not in ".!?":
         fallback += "."
     return fallback
+
+
+def _cleanup_markdown_artifacts(text: str) -> str:
+    """Remove truncated markdown fragments so pills and links degrade into plain text."""
+    cleaned = text.strip()
+    if not cleaned:
+        return cleaned
+
+    cleaned = re.sub(r"(?m)^\s{0,3}#{1,6}\s+", "", cleaned)
+    cleaned = re.sub(r"\[([^\]]+)\]\([^)]*$", r"\1", cleaned)
+    cleaned = re.sub(r"\[([^\]]+)$", r"\1", cleaned)
+    cleaned = re.sub(r"\((/[^)]*)$", "", cleaned)
+
+    if cleaned.count("**") % 2 == 1:
+        cleaned = cleaned.replace("**", "")
+    if cleaned.count("*") % 2 == 1:
+        cleaned = cleaned.replace("*", "")
+
+    cleaned = cleaned.rstrip(",;:- ")
+    if cleaned and cleaned[-1] not in ".!?":
+        cleaned += "."
+    return cleaned
 
 
 def _allowed_catalogue_paths(context: list[str]) -> set[str]:
@@ -241,9 +268,9 @@ def register_routes(app, runtime: Runtime) -> None:
             )
             raw = (response.choices[0].message.content or "").strip()
             text_only, actions = _extract_actions(raw)
-            trimmed = _truncate_chat_response(text_only)
+            trimmed = _cleanup_markdown_artifacts(_truncate_chat_response(text_only))
             linked = _inject_entity_links(trimmed, context)
-            safe_text = _filter_internal_links(linked, context)
+            safe_text = _cleanup_markdown_artifacts(_filter_internal_links(linked, context))
             safe_actions = _filter_actions(actions, context)
             return jsonify({"message": safe_text, "actions": safe_actions})
         except Exception as exc:
