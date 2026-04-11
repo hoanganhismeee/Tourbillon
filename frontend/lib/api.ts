@@ -934,10 +934,11 @@ export interface ChatWatchCard {
 }
 
 export interface ChatAction {
-  type: 'compare' | 'search';
+  type: 'compare' | 'search' | 'set_cursor';
   label: string;
   slugs?: string[];
   query?: string;
+  cursor?: 'default' | 'tourbillon' | 'crosshair' | 'lumed' | 'hand' | 'bezel' | 'compass' | 'sapphire' | 'rotor';
 }
 
 export interface ChatApiResponse {

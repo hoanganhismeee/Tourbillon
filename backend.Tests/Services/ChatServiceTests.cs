@@ -175,6 +175,23 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_CursorCommand_ReturnsSetCursorAction_WithoutSearch()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var service = CreateService(context, watchFinder);
+
+        var result = await service.HandleMessageAsync("session-1", "change the cursor to tourbillon", null, "127.0.0.1");
+
+        Assert.Contains("cursor", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(result.Actions);
+        Assert.Equal("set_cursor", result.Actions[0].Type);
+        Assert.Equal("tourbillon", result.Actions[0].Cursor);
+        Assert.Empty(result.WatchCards);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_ReturnsDirectWatchLink_ForHighConfidenceExactMatch()
     {
         using var context = CreateContext();
@@ -215,6 +232,86 @@ public class ChatServiceTests
         Assert.Equal("patek-philippe-nautilus-5711-1a-010", result.WatchCards[0].Slug);
         Assert.Empty(result.Actions);
         watchFinder.Verify(f => f.FindWatchesAsync("5711/1A-010"), Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_DirectEntityLikeRequest_UsesCanonicalEntitySearchInsteadOfRefusal()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var historiques = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Historiques", Slug = "historiques" };
+        var duometre = new Collection { Id = 20, BrandId = 1, Brand = brand, Name = "Duometre", Slug = "duometre" };
+
+        var watches = new[]
+        {
+            new Watch
+            {
+                Id = 100,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 10,
+                Collection = historiques,
+                Name = "4200H/222A-B934 222",
+                Slug = "vacheron-constantin-historiques-4200h-222a-b934-222",
+                Description = "Vacheron Constantin Historiques",
+                CurrentPrice = 0m
+            },
+            new Watch
+            {
+                Id = 101,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 10,
+                Collection = historiques,
+                Name = "4200H/222J-B935 222",
+                Slug = "vacheron-constantin-historiques-4200h-222j-b935-222",
+                Description = "Vacheron Constantin Historiques",
+                CurrentPrice = 0m
+            },
+            new Watch
+            {
+                Id = 102,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 20,
+                Collection = duometre,
+                Name = "Q622252J 222",
+                Slug = "jaeger-lecoultre-duometre-q622252j-222",
+                Description = "Jaeger-LeCoultre Duometre",
+                CurrentPrice = 0m
+            }
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.AddRange(historiques, duometre);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("222"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = watches.Select(ToDto).ToList(),
+                OtherCandidates = [],
+                SearchPath = "direct_sql_merged"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"Tourbillon found three catalogue matches built around 222.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "introduce me the 222", null, "127.0.0.1");
+
+        Assert.DoesNotContain("specialise", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(3, result.WatchCards.Count);
+        Assert.All(result.WatchCards, card => Assert.Contains("222", card.Name, StringComparison.OrdinalIgnoreCase));
+        watchFinder.Verify(f => f.FindWatchesAsync("222"), Times.Once);
+        Assert.Equal(1, handler.CallCount);
     }
 
     [Fact]
@@ -592,6 +689,74 @@ public class ChatServiceTests
             ["fp-journe-linesport-elegante-40mm-titalyt", "fp-journe-linesport-131-30-41-21-99-001-meteorite-dial"],
             followUp.WatchCards.Select(card => card.Slug).ToList());
         Assert.Contains("first card", followUp.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_BareAffirmativeFollowUp_ReusesPreviousWatchCards()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Calatrava", Slug = "calatrava" };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "6119G-001",
+            Slug = "patek-philippe-calatrava-6119g-001",
+            Description = "Patek Philippe Calatrava",
+            CurrentPrice = 47000m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "5227G-010",
+            Slug = "patek-philippe-calatrava-5227g-010",
+            Description = "Patek Philippe Calatrava",
+            CurrentPrice = 52000m
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("show me some calatravas"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(first), ToDto(second)],
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"These two Calatravas cover a more classic silver option and a fuller officer-style case.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+
+        var discovery = await service.HandleMessageAsync("session-1", "show me some calatravas", null, "127.0.0.1");
+        Assert.Equal(2, discovery.WatchCards.Count);
+
+        var followUp = await service.HandleMessageAsync("session-1", "yes", null, "127.0.0.1");
+
+        Assert.Equal(2, followUp.WatchCards.Count);
+        Assert.Equal(
+            ["patek-philippe-calatrava-6119g-001", "patek-philippe-calatrava-5227g-010"],
+            followUp.WatchCards.Select(card => card.Slug).ToList());
+        Assert.DoesNotContain("specialise", followUp.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(2, handler.CallCount);
     }
 
