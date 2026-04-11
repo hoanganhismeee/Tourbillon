@@ -1217,7 +1217,7 @@ public class WatchFinderService : IWatchFinderService
 
     internal static bool IsLikelyReferenceQuery(string query) =>
         Regex.IsMatch(query.Trim(), @"\b[A-Z0-9]+(?:[./-][A-Z0-9]+)+\b", RegexOptions.IgnoreCase)
-        || Regex.IsMatch(query.Trim(), @"\b(?=[A-Z0-9]{8,}\b)(?=.*[A-Z])(?=.*\d)[A-Z0-9]+\b", RegexOptions.IgnoreCase);
+        || Regex.IsMatch(query.Trim(), @"\b(?=[A-Z0-9]{8,}\b)(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]+\b", RegexOptions.IgnoreCase);
 
     internal static bool IsLikelyReferenceFragment(string query)
     {

@@ -2,6 +2,7 @@
 // These cover the deterministic routing paths that should avoid unnecessary ai-service calls.
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using backend.Database;
 using backend.Models;
 using backend.Services;
@@ -361,7 +362,7 @@ public class ChatServiceTests
         Assert.Equal(2, followUp.WatchCards.Count);
         Assert.All(followUp.WatchCards, card => Assert.Contains("222", card.Name, StringComparison.OrdinalIgnoreCase));
         Assert.True(handler.CallCount >= 1);
-        watchFinder.Verify(f => f.FindWatchesAsync("222"), Times.Exactly(2));
+        watchFinder.Verify(f => f.FindWatchesAsync("222"), Times.Once);
     }
 
     [Fact]
@@ -715,7 +716,7 @@ public class ChatServiceTests
     public async Task HandleMessageAsync_NoCloseCatalogueMatch_AsksUserToRephrase()
     {
         using var context = CreateContext();
-        var watchFinder = new Mock<IWatchFinderService>();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
         watchFinder.Setup(f => f.FindWatchesAsync("show me a ceramic moonphase reverso under 2k"))
             .ReturnsAsync(new WatchFinderResult
             {
@@ -732,6 +733,7 @@ public class ChatServiceTests
         Assert.Empty(result.Actions);
         Assert.Empty(result.WatchCards);
         watchFinder.Verify(f => f.FindWatchesAsync("show me a ceramic moonphase reverso under 2k"), Times.Once);
+        watchFinder.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -1052,6 +1054,16 @@ public class ChatServiceTests
             result.Actions[0].Slugs);
         Assert.Equal(result.Actions[0].Slugs, result.WatchCards.Select(card => card.Slug).ToList());
         Assert.Equal(1, handler.CallCount);
+        using var payload = JsonDocument.Parse(handler.RequestBodies[0]);
+        var contextEntries = payload.RootElement
+            .GetProperty("context")
+            .EnumerateArray()
+            .Select(entry => entry.GetString() ?? string.Empty)
+            .ToList();
+
+        Assert.Contains(contextEntries, entry => entry.Contains("collection-level comparison", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(contextEntries, entry => entry.Contains("Collection \"Aquanaut\"", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(contextEntries, entry => entry.Contains("Collection \"Overseas\"", StringComparison.OrdinalIgnoreCase));
         watchFinder.VerifyNoOtherCalls();
     }
 
