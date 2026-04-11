@@ -6,6 +6,18 @@ from flask import jsonify, request
 from core.runtime import Runtime
 from prompts.chat import CHAT_SYSTEM_PROMPT
 
+ALLOWED_CURSOR_STYLES = {
+    "default",
+    "tourbillon",
+    "crosshair",
+    "lumed",
+    "hand",
+    "bezel",
+    "compass",
+    "sapphire",
+    "rotor",
+}
+
 
 def _extract_actions(raw: str) -> tuple[str, list]:
     """Extract and strip the ACTIONS: [...] line from the end of the LLM response."""
@@ -176,11 +188,23 @@ def _filter_actions(actions: list, context: list[str]) -> list:
                 })
         elif action_type == "search":
             query = str(action.get("query") or "").strip()
-            if query:
+            if query and not re.search(
+                r"\b(?:change the cursor|set the cursor|switch the cursor|cursor|watch named|introduce me|should i wear)\b",
+                query,
+                re.IGNORECASE,
+            ):
                 filtered.append({
                     "type": "search",
                     "query": query,
                     "label": label or "Open Smart Search",
+                })
+        elif action_type == "set_cursor":
+            cursor = str(action.get("cursor") or "").strip().lower()
+            if cursor in ALLOWED_CURSOR_STYLES:
+                filtered.append({
+                    "type": "set_cursor",
+                    "cursor": cursor,
+                    "label": label or "Update cursor",
                 })
 
     return filtered

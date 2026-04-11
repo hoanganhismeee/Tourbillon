@@ -47,10 +47,11 @@ public class ChatWatchCard
 // Concierge action returned alongside the text response and executed client-side.
 public class ChatAction
 {
-    public string Type { get; set; } = "";   // "compare" | "search"
+    public string Type { get; set; } = "";   // "compare" | "search" | "set_cursor"
     public string Label { get; set; } = "";
     public List<string>? Slugs { get; set; } // watch slugs for "compare"
     public string? Query { get; set; }       // search query for "search"
+    public string? Cursor { get; set; }      // cursor id for "set_cursor"
 }
 
 public class ChatApiResponse
@@ -99,6 +100,22 @@ public class ChatService
         ["Journe"] = "F.P.Journe",
     };
 
+    private static readonly Dictionary<string, string> _cursorAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["default"] = "default",
+        ["system"] = "default",
+        ["tourbillon"] = "tourbillon",
+        ["crosshair"] = "crosshair",
+        ["lumed"] = "lumed",
+        ["lume"] = "lumed",
+        ["hand"] = "hand",
+        ["watch hand"] = "hand",
+        ["bezel"] = "bezel",
+        ["compass"] = "compass",
+        ["sapphire"] = "sapphire",
+        ["rotor"] = "rotor",
+    };
+
     private sealed class ChatResolution
     {
         public bool UseAi { get; set; }
@@ -107,6 +124,7 @@ public class ChatService
         public List<string> Context { get; set; } = [];
         public List<ChatWatchCard> WatchCards { get; set; } = [];
         public List<ChatAction> Actions { get; set; } = [];
+        public ChatSessionState? SessionState { get; set; }
     }
 
     private sealed class EntityMentions
@@ -120,6 +138,15 @@ public class ChatService
     {
         public List<int> CollectionIds { get; set; } = [];
         public List<string> CompareSlugs { get; set; } = [];
+    }
+
+    private sealed class ChatSessionState
+    {
+        public List<int> BrandIds { get; set; } = [];
+        public List<int> CollectionIds { get; set; } = [];
+        public List<string> WatchSlugs { get; set; } = [];
+        public string FollowUpMode { get; set; } = "";
+        public string? CanonicalQuery { get; set; }
     }
 
     public ChatService(
@@ -180,6 +207,34 @@ public class ChatService
         await _redis.SetHashFieldAsync($"chat:session:{sessionId}", "compare_scope", json, SessionTtl);
     }
 
+    private async Task<ChatSessionState?> GetSessionStateAsync(string sessionId)
+    {
+        var json = await _redis.GetHashFieldAsync($"chat:session:{sessionId}", "state");
+        if (json == null) return null;
+        return JsonSerializer.Deserialize<ChatSessionState>(json, _jsonOptions);
+    }
+
+    private async Task SaveSessionStateAsync(string sessionId, ChatSessionState? state)
+    {
+        if (state == null) return;
+
+        var normalized = new ChatSessionState
+        {
+            BrandIds = state.BrandIds.Distinct().Take(8).ToList(),
+            CollectionIds = state.CollectionIds.Distinct().Take(8).ToList(),
+            WatchSlugs = state.WatchSlugs
+                .Where(slug => !string.IsNullOrWhiteSpace(slug))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(DiscoveryCardLimit)
+                .ToList(),
+            FollowUpMode = state.FollowUpMode,
+            CanonicalQuery = string.IsNullOrWhiteSpace(state.CanonicalQuery) ? null : state.CanonicalQuery.Trim(),
+        };
+
+        var json = JsonSerializer.Serialize(normalized, _jsonOptions);
+        await _redis.SetHashFieldAsync($"chat:session:{sessionId}", "state", json, SessionTtl);
+    }
+
     public async Task<ChatApiResponse> HandleMessageAsync(
         string sessionId, string message, string? userId, string? ipAddress, string? behaviorSummary = null)
     {
@@ -208,6 +263,7 @@ public class ChatService
         var sessionHistory = await GetSessionHistoryAsync(sessionId);
         var lastWatchCards = await GetLastWatchCardsAsync(sessionId);
         var compareScope = await GetCompareScopeAsync(sessionId);
+        var sessionState = await GetSessionStateAsync(sessionId);
         var history = sessionHistory
             .TakeLast(10)
             .Select(m => new ChatHistoryEntry { Role = m.Role, Content = m.Content })
@@ -216,7 +272,7 @@ public class ChatService
         ChatResolution resolution;
         try
         {
-            resolution = await ResolveMessageAsync(message.Trim(), lastWatchCards, compareScope);
+            resolution = await ResolveMessageAsync(message.Trim(), lastWatchCards, compareScope, sessionState);
         }
         catch (Exception ex)
         {
@@ -252,6 +308,7 @@ public class ChatService
         await SaveSessionHistoryAsync(sessionId, sessionHistory);
         await SaveLastWatchCardsAsync(sessionId, watchCards);
         await SaveCompareScopeAsync(sessionId, await BuildCompareScopeAsync(actions));
+        await SaveSessionStateAsync(sessionId, resolution.SessionState ?? BuildFallbackSessionState(watchCards));
 
         var newUsed = 1;
         if (!disableLimit)
@@ -277,7 +334,8 @@ public class ChatService
     private async Task<ChatResolution> ResolveMessageAsync(
         string message,
         List<ChatWatchCard> lastWatchCards,
-        ChatCompareScope? compareScope)
+        ChatCompareScope? compareScope,
+        ChatSessionState? sessionState)
     {
         if (IsAbusiveQuery(message))
             return new ChatResolution
@@ -285,11 +343,12 @@ public class ChatService
                 Message = "I am here to help with Tourbillon watches and horology only. If you want, ask about a watch, brand, comparison, or product search."
             };
 
+        var cursorResolution = TryResolveCursorCommand(message);
+        if (cursorResolution != null)
+            return cursorResolution;
+
         var mentions = await ResolveEntityMentionsAsync(message);
         var referencedWatches = await TryResolveReferencedWatchesAsync(message, lastWatchCards);
-        var hasWatchScope = mentions.HasAny
-            || referencedWatches.Count > 0
-            || WatchFinderService.HasWatchDomainSignal(message);
 
         if (IsExplicitCompareQuery(message))
         {
@@ -300,6 +359,19 @@ public class ChatService
 
         if (referencedWatches.Count > 0)
             return BuildReferencedWatchResolution(message, referencedWatches);
+
+        var contextualFollowUp = await TryResolveContextualFollowUpAsync(message, lastWatchCards, sessionState);
+        if (contextualFollowUp != null)
+            return contextualFollowUp;
+
+        var directEntityResolution = await TryResolveDirectEntityResolutionAsync(message, mentions, sessionState);
+        if (directEntityResolution != null)
+            return directEntityResolution;
+
+        var hasWatchScope = mentions.HasAny
+            || referencedWatches.Count > 0
+            || WatchFinderService.HasWatchDomainSignal(message)
+            || (sessionState?.WatchSlugs.Count > 0 && LooksLikeContextualFollowUp(message));
 
         if (!hasWatchScope)
             return new ChatResolution
@@ -321,7 +393,7 @@ public class ChatService
 
         var exactWatch = await TryResolveExactWatchAsync(message, searchResult);
         if (exactWatch != null)
-            return BuildExactWatchResolution(exactWatch);
+            return BuildExactWatchResolution(exactWatch, message);
 
         if (searchResult.Watches.Count > 0)
             return await BuildDiscoveryResolutionAsync(message, searchResult);
@@ -432,6 +504,270 @@ public class ChatService
         }
 
         return mentions;
+    }
+
+    private ChatResolution? TryResolveCursorCommand(string query)
+    {
+        if (!Regex.IsMatch(query, @"\b(?:cursor|pointer)\b", RegexOptions.IgnoreCase))
+            return null;
+
+        if (!Regex.IsMatch(query, @"\b(?:change|set|switch|use|make)\b", RegexOptions.IgnoreCase)
+            && !Regex.IsMatch(query, @"\bcursor\s+to\b", RegexOptions.IgnoreCase))
+            return null;
+
+        var normalized = NormalizeEntityText(query);
+        var resolvedCursor = _cursorAliases
+            .OrderByDescending(alias => alias.Key.Length)
+            .FirstOrDefault(alias => normalized.Contains(NormalizeEntityText(alias.Key), StringComparison.OrdinalIgnoreCase));
+
+        if (string.IsNullOrWhiteSpace(resolvedCursor.Value))
+            return null;
+
+        var cursorLabel = string.Equals(resolvedCursor.Value, "default", StringComparison.OrdinalIgnoreCase)
+            ? "Default"
+            : char.ToUpperInvariant(resolvedCursor.Value[0]) + resolvedCursor.Value[1..];
+
+        return new ChatResolution
+        {
+            Message = $"Tourbillon switched the cursor to {cursorLabel}.",
+            Actions =
+            [
+                new ChatAction
+                {
+                    Type = "set_cursor",
+                    Cursor = resolvedCursor.Value,
+                    Label = $"Switch cursor to {cursorLabel}"
+                }
+            ],
+            SessionState = new ChatSessionState
+            {
+                FollowUpMode = "cursor",
+                CanonicalQuery = resolvedCursor.Value
+            }
+        };
+    }
+
+    private async Task<ChatResolution?> TryResolveContextualFollowUpAsync(
+        string query,
+        List<ChatWatchCard> lastWatchCards,
+        ChatSessionState? sessionState)
+    {
+        if (IsAffirmativeFollowUp(query))
+        {
+            if (lastWatchCards.Count > 0)
+                return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: true);
+
+            var storedMentions = await ResolveMentionsFromSessionStateAsync(sessionState);
+            if (storedMentions.HasAny)
+                return await BuildEntityInfoResolutionAsync(sessionState?.CanonicalQuery ?? query, storedMentions);
+        }
+
+        if (!LooksLikeContextualFollowUp(query) || lastWatchCards.Count == 0)
+            return null;
+
+        return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false);
+    }
+
+    private async Task<ChatResolution?> TryResolveDirectEntityResolutionAsync(
+        string query,
+        EntityMentions mentions,
+        ChatSessionState? sessionState)
+    {
+        var directEntityQuery = ExtractDirectEntityQuery(query, mentions, sessionState);
+        if (string.IsNullOrWhiteSpace(directEntityQuery))
+            return null;
+
+        var result = await _watchFinderService.FindWatchesAsync(directEntityQuery);
+        if (string.Equals(result.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase) || result.Watches.Count == 0)
+            return null;
+
+        var exactWatch = await TryResolveExactWatchAsync(directEntityQuery, result);
+        if (exactWatch != null)
+            return BuildExactWatchResolution(exactWatch, directEntityQuery);
+
+        return await BuildDiscoveryResolutionAsync(directEntityQuery, result, includeSearchAction: false);
+    }
+
+    private async Task<ChatResolution> BuildCardContinuationResolutionAsync(
+        string query,
+        List<ChatWatchCard> lastWatchCards,
+        bool affirmative)
+    {
+        var slugsInOrder = lastWatchCards
+            .Select(card => card.Slug)
+            .Where(slug => !string.IsNullOrWhiteSpace(slug))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var watches = await _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .AsNoTracking()
+            .Where(w => slugsInOrder.Contains(w.Slug))
+            .ToListAsync();
+
+        var ordered = slugsInOrder
+            .Select(slug => watches.FirstOrDefault(w => string.Equals(w.Slug, slug, StringComparison.OrdinalIgnoreCase)))
+            .Where(w => w != null)
+            .Cast<Watch>()
+            .ToList();
+
+        if (ordered.Count == 0)
+        {
+            return new ChatResolution
+            {
+                Message = "I need one more specific watch, brand, or collection detail to continue from the previous results."
+            };
+        }
+
+        var context = new List<string>
+        {
+            affirmative
+                ? "The user just affirmed the previous suggestion. Continue from these exact surfaced Tourbillon cards, identify the strongest next step clearly, and do not broaden into unrelated catalogue results."
+                : "The user is referring back to the immediately previous Tourbillon card row. Stay anchored to these exact watches, answer directly, and do not broaden into unrelated catalogue results."
+        };
+
+        foreach (var watch in ordered)
+            context.Add(BuildWatchContext(watch));
+
+        foreach (var collection in ordered
+            .Where(w => w.Collection != null)
+            .Select(w => w.Collection!)
+            .GroupBy(c => c.Id)
+            .Select(g => g.First())
+            .Take(2))
+        {
+            context.Add(BuildCollectionContext(collection));
+        }
+
+        foreach (var brand in ordered
+            .Where(w => w.Brand != null)
+            .Select(w => w.Brand)
+            .GroupBy(b => b.Id)
+            .Select(g => g.First())
+            .Take(2))
+        {
+            context.Add(BuildBrandContext(brand));
+        }
+
+        return new ChatResolution
+        {
+            UseAi = true,
+            Query = affirmative ? "Tell me more about these exact watches and guide me to the strongest next step." : query,
+            Context = context,
+            WatchCards = ordered.Select(ToChatWatchCard).ToList(),
+            SessionState = BuildSessionStateFromWatches(ordered, "watch_cards", ordered.Count == 1 ? ordered[0].Name : null),
+        };
+    }
+
+    private async Task<EntityMentions> ResolveMentionsFromSessionStateAsync(ChatSessionState? sessionState)
+    {
+        if (sessionState == null)
+            return new EntityMentions();
+
+        var mentions = new EntityMentions();
+
+        if (sessionState.BrandIds.Count > 0)
+        {
+            mentions.Brands = await _context.Brands
+                .AsNoTracking()
+                .Where(brand => sessionState.BrandIds.Contains(brand.Id))
+                .ToListAsync();
+        }
+
+        if (sessionState.CollectionIds.Count > 0)
+        {
+            mentions.Collections = await _context.Collections
+                .AsNoTracking()
+                .Where(collection => sessionState.CollectionIds.Contains(collection.Id))
+                .ToListAsync();
+        }
+
+        return mentions;
+    }
+
+    private static string? ExtractDirectEntityQuery(string query, EntityMentions mentions, ChatSessionState? sessionState)
+    {
+        var trimmed = query.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return null;
+
+        if (WatchFinderService.IsLikelyReferenceQuery(trimmed) || WatchFinderService.IsLikelyReferenceFragment(trimmed))
+            return trimmed;
+
+        if (Regex.IsMatch(trimmed, @"^\d{2,12}$"))
+            return trimmed;
+
+        var patterns = new[]
+        {
+            @"^\s*introduce\s+me(?:\s+to)?\s+(?:the\s+)?(.+?)\s*$",
+            @"^\s*(?:the\s+)?watch\s+named\s+(.+?)\s*$",
+            @"^\s*(?:the\s+)?model\s+named\s+(.+?)\s*$",
+            @"^\s*tell\s+me\s+about\s+the\s+watch\s+named\s+(.+?)\s*$",
+            @"^\s*show\s+me\s+the\s+watch\s+named\s+(.+?)\s*$",
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var match = Regex.Match(trimmed, pattern, RegexOptions.IgnoreCase);
+            if (!match.Success)
+                continue;
+
+            var candidate = Regex.Replace(match.Groups[1].Value, @"\b(?:please|pls)\b", " ", RegexOptions.IgnoreCase).Trim(' ', '.', '?', '!');
+            if (candidate.Length == 0)
+                continue;
+
+            if (WatchFinderService.IsLikelyReferenceQuery(candidate)
+                || WatchFinderService.IsLikelyReferenceFragment(candidate)
+                || Regex.IsMatch(candidate, @"\d"))
+                return candidate;
+        }
+
+        if (CountWords(trimmed) <= 4 && Regex.IsMatch(trimmed, @"\d"))
+            return trimmed;
+
+        if (mentions.Collections.Count == 1
+            && CountWords(trimmed) <= 5
+            && !LooksLikeDiscoveryRequest(trimmed)
+            && !IsExplicitCompareQuery(trimmed))
+        {
+            var collection = mentions.Collections[0];
+            var brandName = mentions.Brands.FirstOrDefault(brand => brand.Id == collection.BrandId)?.Name;
+            return string.IsNullOrWhiteSpace(brandName)
+                ? collection.Name
+                : $"{brandName} {collection.Name}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(sessionState?.CanonicalQuery)
+            && Regex.IsMatch(trimmed, @"^\s*(?:that|those|these)\b", RegexOptions.IgnoreCase))
+            return sessionState.CanonicalQuery;
+
+        return null;
+    }
+
+    private static ChatSessionState BuildSessionStateFromWatches(
+        List<Watch> watches,
+        string followUpMode,
+        string? canonicalQuery = null)
+    {
+        return new ChatSessionState
+        {
+            BrandIds = watches.Select(w => w.BrandId).Distinct().ToList(),
+            CollectionIds = watches.Where(w => w.CollectionId != null).Select(w => w.CollectionId!.Value).Distinct().ToList(),
+            WatchSlugs = watches.Select(w => w.Slug).ToList(),
+            FollowUpMode = followUpMode,
+            CanonicalQuery = canonicalQuery,
+        };
+    }
+
+    private static ChatSessionState BuildFallbackSessionState(List<ChatWatchCard> cards)
+    {
+        return new ChatSessionState
+        {
+            BrandIds = cards.Select(card => card.BrandId).Distinct().ToList(),
+            WatchSlugs = cards.Select(card => card.Slug).Where(slug => !string.IsNullOrWhiteSpace(slug)).ToList(),
+            FollowUpMode = cards.Count > 0 ? "watch_cards" : "",
+        };
     }
 
     private async Task<ChatCompareScope?> BuildCompareScopeAsync(List<ChatAction> actions)
@@ -670,10 +1006,8 @@ public class ChatService
         var isDirectExactPath = result.SearchPath?.StartsWith("direct_sql", StringComparison.OrdinalIgnoreCase) == true
             && result.Watches.Count == 1
             && result.OtherCandidates.Count == 0;
-        var isReferenceLike = WatchFinderService.IsLikelyReferenceQuery(query)
-            || WatchFinderService.IsLikelyReferenceFragment(query);
 
-        if (!hasSingleUniqueCandidate && !isDirectExactPath && !isReferenceLike)
+        if (!hasSingleUniqueCandidate && !isDirectExactPath)
             return null;
 
         var watchId = result.Watches[0].Id;
@@ -773,10 +1107,18 @@ public class ChatService
                 .Select(g => g.First())
                 .Take(4)
                 .ToList(),
+            SessionState = new ChatSessionState
+            {
+                BrandIds = mentions.Brands.Select(brand => brand.Id).Distinct().ToList(),
+                CollectionIds = mentions.Collections.Select(collection => collection.Id).Distinct().ToList(),
+                WatchSlugs = cards.Select(card => card.Slug).Where(slug => !string.IsNullOrWhiteSpace(slug)).Distinct(StringComparer.OrdinalIgnoreCase).Take(DiscoveryCardLimit).ToList(),
+                FollowUpMode = cards.Count > 0 ? "watch_cards" : "entity_info",
+                CanonicalQuery = mentions.Collections.FirstOrDefault()?.Name ?? mentions.Brands.FirstOrDefault()?.Name ?? query,
+            }
         };
     }
 
-    private async Task<ChatResolution> BuildDiscoveryResolutionAsync(string query, WatchFinderResult result)
+    private async Task<ChatResolution> BuildDiscoveryResolutionAsync(string query, WatchFinderResult result, bool includeSearchAction = true)
     {
         var topIds = result.Watches.Take(DiscoveryCardLimit).Select(w => w.Id).Distinct().ToList();
         var watches = await _context.Watches
@@ -794,8 +1136,12 @@ public class ChatService
 
         var context = new List<string>
         {
-            $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Search guidance request: answer like a sales concierge, highlight the strongest matches, tell the user the Smart Search chip can broaden discovery, emit one Smart Search action with a concise catalogue-style query built from the resolved matches rather than the user's raw wording, and end with a short follow-up question about size, material, budget, occasion, or a specific model.",
-            "Smart Search action guidance: rewrite discovery queries into compact catalogue terms. Prefer canonical brand and collection names from the supplied context. Good example: 'Jaeger-LeCoultre Reverso'. Bad example: 'yo, suggest me some reversos'."
+            includeSearchAction
+                ? $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Search guidance request: answer like a sales concierge, highlight the strongest matches, tell the user the Smart Search chip can broaden discovery, emit one Smart Search action with a concise catalogue-style query built from the resolved matches rather than the user's raw wording, and end with a short follow-up question about size, material, budget, occasion, or a specific model."
+                : $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Answer like a sales concierge, stay anchored to these exact catalogue matches, do not emit a Smart Search action, and end with a short follow-up question about size, material, budget, occasion, or a specific model.",
+            includeSearchAction
+                ? "Smart Search action guidance: rewrite discovery queries into compact catalogue terms. Prefer canonical brand and collection names from the supplied context. Good example: 'Jaeger-LeCoultre Reverso'. Bad example: 'yo, suggest me some reversos'."
+                : "Action guidance: no Smart Search action is needed for this reply."
         };
 
         foreach (var watch in ordered)
@@ -811,7 +1157,7 @@ public class ChatService
             context.Add(BuildCollectionContext(collection));
         }
 
-        var actions = IsExplicitCompareQuery(query)
+        var actions = !includeSearchAction || IsExplicitCompareQuery(query)
             ? new List<ChatAction>()
             : new List<ChatAction>
             {
@@ -829,11 +1175,15 @@ public class ChatService
             Query = query,
             Context = context,
             WatchCards = ordered.Select(ToChatWatchCard).Take(DiscoveryCardLimit).ToList(),
-            Actions = actions
+            Actions = actions,
+            SessionState = BuildSessionStateFromWatches(
+                ordered,
+                "watch_cards",
+                BuildCanonicalEntityQuery(ordered, query))
         };
     }
 
-    private ChatResolution BuildExactWatchResolution(Watch watch)
+    private ChatResolution BuildExactWatchResolution(Watch watch, string? canonicalQuery = null)
     {
         var brandLink = watch.Brand != null && !string.IsNullOrWhiteSpace(watch.Brand.Slug)
             ? $"[{watch.Brand.Name}](/brands/{watch.Brand.Slug})"
@@ -850,7 +1200,8 @@ public class ChatService
         {
             Message = $"{watchLink} is the closest exact match in Tourbillon's catalogue. {place} and is listed at {FormatPrice(watch.CurrentPrice)}. If you want, Tourbillon can also compare it with another watch or help you explore adjacent models."
                 .Replace("  ", " "),
-            WatchCards = [ToChatWatchCard(watch)]
+            WatchCards = [ToChatWatchCard(watch)],
+            SessionState = BuildSessionStateFromWatches([watch], "watch_cards", canonicalQuery ?? watch.Name)
         };
     }
 
@@ -881,7 +1232,8 @@ public class ChatService
                     Label = "Compare these watches",
                     Slugs = watchCards.Select(w => w.Slug).ToList()
                 }
-            ]
+            ],
+            SessionState = BuildSessionStateFromWatches(watches, "compare", BuildCanonicalEntityQuery(watches, query))
         };
     }
 
@@ -903,6 +1255,7 @@ public class ChatService
             Query = query,
             Context = context,
             WatchCards = watchCards,
+            SessionState = BuildSessionStateFromWatches(watches, "watch_cards", BuildCanonicalEntityQuery(watches, query)),
         };
     }
 
@@ -975,6 +1328,21 @@ public class ChatService
                     Type = "search",
                     Label = string.IsNullOrWhiteSpace(action.Label) ? "Open Smart Search" : action.Label,
                     Query = action.Query
+                });
+                continue;
+            }
+
+            if (string.Equals(action.Type, "set_cursor", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(action.Cursor))
+            {
+                if (merged.Any(a => string.Equals(a.Type, "set_cursor", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(a.Cursor, action.Cursor, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                merged.Add(new ChatAction
+                {
+                    Type = "set_cursor",
+                    Label = string.IsNullOrWhiteSpace(action.Label) ? "Update cursor" : action.Label,
+                    Cursor = action.Cursor
                 });
             }
         }
@@ -1056,12 +1424,19 @@ public class ChatService
             .ToList();
     }
 
+    private static bool IsAffirmativeFollowUp(string query) =>
+        Regex.IsMatch(query.Trim(), @"^(?:yes|yeah|yep|sure|ok|okay|please do|go ahead|sounds good|do it)[!.]*$", RegexOptions.IgnoreCase);
+
+    private static bool LooksLikeContextualFollowUp(string query) =>
+        IsAffirmativeFollowUp(query)
+        || Regex.IsMatch(query, @"\b(?:that one|those|these|them|this one)\b", RegexOptions.IgnoreCase);
+
     private static bool LooksLikeEntityInfoRequest(string query, EntityMentions mentions)
     {
         if (!mentions.HasAny) return false;
         if (LooksLikeDiscoveryRequest(query) || IsExplicitCompareQuery(query)) return false;
 
-        if (Regex.IsMatch(query, @"\b(?:history|heritage|about|tell me|what is|what makes|why|who makes|background|lineage)\b", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(query, @"\b(?:history|heritage|about|tell me|what is|what makes|why|who makes|background|lineage|should i wear)\b", RegexOptions.IgnoreCase))
             return true;
 
         return CountWords(query) <= 3;
@@ -1118,6 +1493,32 @@ public class ChatService
         return string.IsNullOrWhiteSpace(prefix) ? watch.Name : $"{prefix} {watch.Name}".Trim();
     }
 
+    private static string BuildCanonicalEntityQuery(List<Watch> watches, string fallbackQuery)
+    {
+        if (watches.Count == 0)
+            return fallbackQuery;
+
+        var brandNames = watches
+            .Where(watch => !string.IsNullOrWhiteSpace(watch.Brand?.Name))
+            .Select(watch => watch.Brand!.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToList();
+
+        var collectionNames = watches
+            .Where(watch => !string.IsNullOrWhiteSpace(watch.Collection?.Name))
+            .Select(watch => watch.Collection!.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToList();
+
+        var parts = new List<string>();
+        parts.AddRange(brandNames);
+        parts.AddRange(collectionNames.Where(collection => !parts.Contains(collection, StringComparer.OrdinalIgnoreCase)));
+
+        return parts.Count > 0 ? string.Join(" ", parts) : fallbackQuery;
+    }
+
     private static string BuildSmartSearchQuery(string originalQuery, List<Watch> ordered)
     {
         var cleaned = originalQuery.Trim();
@@ -1130,6 +1531,8 @@ public class ChatService
             @"^\s*(?:yo|hey|hi|hello)\b[\s,!.]*",
             @"^\s*(?:please|pls)\b[\s,!.]*",
             @"^\s*(?:can you|could you|would you)\s+",
+            @"^\s*(?:should i wear|would i wear|should i buy|would i buy)\s+",
+            @"^\s*(?:introduce me(?:\s+to)?|tell me about|show me)\s+(?:the\s+watch\s+named\s+|the\s+)?",
             @"^\s*(?:recommend|suggest|find|show|give|bring)\s+(?:me\s+)?",
             @"^\s*(?:help me find|help me discover)\s+",
             @"^\s*(?:i want|i need|i(?:'m| am)\s+looking for|looking for)\s+",
@@ -1151,6 +1554,7 @@ public class ChatService
 
         cleaned = Regex.Replace(cleaned, @"^(?:the|a|an)\s+", "", RegexOptions.IgnoreCase).Trim();
         cleaned = Regex.Replace(cleaned, @"\b(?:please|pls|some|any)\b", " ", RegexOptions.IgnoreCase);
+        cleaned = Regex.Replace(cleaned, @"\b(?:should i wear|would i wear|should i buy|would i buy|change the cursor to|set the cursor to|switch the cursor to)\b", " ", RegexOptions.IgnoreCase);
         cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
 
         if (ordered.Count == 0)
@@ -1178,7 +1582,7 @@ public class ChatService
 
         descriptor = Regex.Replace(
             descriptor,
-            @"\b(?:recommend|suggest|find|show|give|bring|help|discover|looking|look|want|need|please|pls|me|some|any|options?|pieces?|models?)\b",
+            @"\b(?:recommend|suggest|find|show|give|bring|help|discover|looking|look|want|need|please|pls|me|some|any|options?|pieces?|models?|should|wear|buy|cursor|change|switch|set)\b",
             " ",
             RegexOptions.IgnoreCase);
         descriptor = Regex.Replace(descriptor, @"\s+", " ").Trim(' ', ',', '.', '?', '!');

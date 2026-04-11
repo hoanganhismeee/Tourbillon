@@ -46,7 +46,7 @@
 | 11 Smart Search (AI Watch Finder) refinement | Done | 11 |
 | 11 User (Auth/Anonymous Taste Profile logic improvement) | Done | 11 |
 | 12 Trend Page Enhancements (product trends, staff pick, most viewed over 7/14/30 days, user DNA) | Done | 12 |
-| 13 Chat Concierge integration with core product features (Compare, Cursor) | Planned | 13 |
+| 13 Chat Concierge integration with core product features (Compare, Cursor) | In-progress | 13 |
 | Storage Abstraction + S3 + CloudFront Migration | Planned | 14 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | ? |
 
@@ -554,7 +554,7 @@ Extends Contact Advisor, Register Interest, and Appointment from one-shot submis
 - Follow-up reminders via Hangfire scheduled jobs
 - Unified admin view at `/admin/crm` across all inquiry types
 
-### Chat Concierge Hardening (IN PROGRESS)
+### Chat Concierge Hardening (COMPLETE)
 
 Hardens the chat concierge to be a specialist watch advisor — grounded in Tourbillon's catalogue, resistant to misuse, and enriched with editorial knowledge.
 
@@ -564,6 +564,8 @@ Hardens the chat concierge to be a specialist watch advisor — grounded in Tour
 - Editorial content (WhyItMatters, BestFor) now injected into chat context — AI has access to rich horological knowledge already in the DB
 - Empty-context fallback: when vector search returns no matches, AI is told explicitly (prevents hallucination)
 - Collection.Style labels included in context for deterministic category awareness
+- Redis-backed session state keeps the last surfaced cards, compare scope, and follow-up mode so replies like `yes`, ordinal references, and short entity repeats continue from the prior turn
+- Chat actions now execute compare and cursor changes directly, and Smart Search actions are rewritten into canonical catalogue terms instead of echoing raw conversational phrasing
 
 **Hardening layers:**
 1. **Scope** — watches, horology, and Tourbillon topics only; polite redirect for off-topic
