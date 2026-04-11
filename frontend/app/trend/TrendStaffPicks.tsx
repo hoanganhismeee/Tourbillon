@@ -44,7 +44,7 @@ function FeaturedWatchCard({ watch }: { watch: Watch }) {
       <div className="p-6 border-t border-[#bfa68a]/10 flex items-end justify-between gap-4">
         <div>
           {brandLabel && (
-            <p className="text-[9px] uppercase tracking-[0.42em] text-[#bfa68a]/70 capitalize">
+            <p className="text-[9px] uppercase tracking-[0.42em] text-[#bfa68a]/70">
               {brandLabel}
             </p>
           )}
