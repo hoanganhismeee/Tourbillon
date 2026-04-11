@@ -1944,30 +1944,55 @@ public class ChatService
             });
         }
 
-        // Suggest navigating to the primary brand
-        var firstWithBrand = watchCards.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.BrandSlug));
-        if (firstWithBrand != null && suggestions.Count < 2)
-        {
-            suggestions.Add(new ChatAction
-            {
-                Type = "navigate",
-                Label = $"About {firstWithBrand.BrandName}",
-                Href = $"/brands/{firstWithBrand.BrandSlug}"
-            });
-        }
+        // For compare responses with cards from two different brands: suggest one chip per brand.
+        // For everything else: suggest the primary brand + primary collection.
+        var distinctBrands = watchCards
+            .Where(c => !string.IsNullOrWhiteSpace(c.BrandSlug))
+            .GroupBy(c => c.BrandSlug)
+            .Select(g => g.First())
+            .Take(2)
+            .ToList();
 
-        // If still room, suggest the primary collection (only when it adds new information over the brand chip)
-        if (suggestions.Count < 2)
+        if (hasCompareAction && distinctBrands.Count >= 2)
         {
-            var firstWithCollection = watchCards.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.CollectionSlug));
-            if (firstWithCollection != null)
+            // Two different brands in a compare: suggest "About Brand1" and "About Brand2"
+            foreach (var card in distinctBrands)
+            {
+                if (suggestions.Count >= 2) break;
+                suggestions.Add(new ChatAction
+                {
+                    Type = "navigate",
+                    Label = $"About {card.BrandName}",
+                    Href = $"/brands/{card.BrandSlug}"
+                });
+            }
+        }
+        else
+        {
+            // Single brand or discovery: suggest the primary brand then primary collection
+            var firstWithBrand = distinctBrands.FirstOrDefault();
+            if (firstWithBrand != null && suggestions.Count < 2)
             {
                 suggestions.Add(new ChatAction
                 {
                     Type = "navigate",
-                    Label = $"Explore {firstWithCollection.CollectionName}",
-                    Href = $"/collections/{firstWithCollection.CollectionSlug}"
+                    Label = $"About {firstWithBrand.BrandName}",
+                    Href = $"/brands/{firstWithBrand.BrandSlug}"
                 });
+            }
+
+            if (suggestions.Count < 2)
+            {
+                var firstWithCollection = watchCards.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.CollectionSlug));
+                if (firstWithCollection != null)
+                {
+                    suggestions.Add(new ChatAction
+                    {
+                        Type = "navigate",
+                        Label = $"Explore {firstWithCollection.CollectionName}",
+                        Href = $"/collections/{firstWithCollection.CollectionSlug}"
+                    });
+                }
             }
         }
 
