@@ -80,31 +80,17 @@ public class WatchEditorialService
                     continue;
                 }
 
-                // Transaction: content row and its links must be committed together.
-                // If the link inserts fail, the content row is rolled back — no orphaned content.
-                await using var tx = await _context.Database.BeginTransactionAsync();
-                try
+                _context.WatchEditorialContents.Add(content);
+                await _context.SaveChangesAsync();
+
+                // Insert links; ON CONFLICT DO NOTHING makes this safe to re-run after a partial failure
+                foreach (var w in watches.Where(w => !alreadyLinked.Contains(w.Id)))
                 {
-                    _context.WatchEditorialContents.Add(content);
-                    await _context.SaveChangesAsync(); // assigns content.Id
-
-                    foreach (var w in watches.Where(w => !alreadyLinked.Contains(w.Id)))
-                    {
-                        await _context.Database.ExecuteSqlRawAsync(
-                            @"INSERT INTO ""WatchEditorialLinks"" (""WatchId"", ""EditorialContentId"")
-                              VALUES ({0}, {1}) ON CONFLICT DO NOTHING",
-                            w.Id, content.Id);
-                    }
-
-                    await tx.CommitAsync();
+                    await _context.Database.ExecuteSqlRawAsync(
+                        @"INSERT INTO ""WatchEditorialLinks"" (""WatchId"", ""EditorialContentId"")
+                          VALUES ({0}, {1}) ON CONFLICT DO NOTHING",
+                        w.Id, content.Id);
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Transaction failed for collection {CollId} — rolled back", group.Key);
-                    skipped++;
-                    continue;
-                }
-
                 seeded++;
                 linked += unwatched.Count;
                 _logger.LogInformation("Seeded editorial for collection {CollId} ({Count} watches linked)",
@@ -123,25 +109,13 @@ public class WatchEditorialService
                         continue;
                     }
 
-                    await using var tx = await _context.Database.BeginTransactionAsync();
-                    try
-                    {
-                        _context.WatchEditorialContents.Add(content);
-                        await _context.SaveChangesAsync();
+                    _context.WatchEditorialContents.Add(content);
+                    await _context.SaveChangesAsync();
 
-                        await _context.Database.ExecuteSqlRawAsync(
-                            @"INSERT INTO ""WatchEditorialLinks"" (""WatchId"", ""EditorialContentId"")
-                              VALUES ({0}, {1}) ON CONFLICT DO NOTHING",
-                            w.Id, content.Id);
-
-                        await tx.CommitAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Transaction failed for orphan watch {WatchId} — rolled back", w.Id);
-                        skipped++;
-                        continue;
-                    }
+                    await _context.Database.ExecuteSqlRawAsync(
+                        @"INSERT INTO ""WatchEditorialLinks"" (""WatchId"", ""EditorialContentId"")
+                          VALUES ({0}, {1}) ON CONFLICT DO NOTHING",
+                        w.Id, content.Id);
 
                     seeded++;
                     linked++;

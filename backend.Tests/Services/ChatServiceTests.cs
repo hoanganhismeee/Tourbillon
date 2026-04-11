@@ -270,7 +270,7 @@ public class ChatServiceTests
         Assert.Contains("/watches/patek-philippe-nautilus-5711-1a-010", result.Message);
         Assert.Single(result.WatchCards);
         Assert.Equal("patek-philippe-nautilus-5711-1a-010", result.WatchCards[0].Slug);
-        Assert.Empty(result.Actions);
+        Assert.DoesNotContain(result.Actions, a => a.Type is "search" or "compare");
         watchFinder.Verify(f => f.FindWatchesAsync("5711/1A-010"), Times.Once);
     }
 
@@ -436,11 +436,10 @@ public class ChatServiceTests
         var service = CreateService(context, watchFinder);
         var result = await service.HandleMessageAsync("session-1", "Compare 5711/1A-010 vs 16202ST", null, "127.0.0.1");
 
-        Assert.Single(result.Actions);
-        Assert.Equal("compare", result.Actions[0].Type);
+        var compareAction = Assert.Single(result.Actions.Where(a => a.Type == "compare").ToList());
         Assert.Equal(
             ["patek-philippe-nautilus-5711-1a-010", "audemars-piguet-royal-oak-16202st"],
-            result.Actions[0].Slugs);
+            compareAction.Slugs);
         Assert.Equal(2, result.WatchCards.Count);
     }
 
@@ -525,7 +524,7 @@ public class ChatServiceTests
         var service = CreateService(context, watchFinder, handler);
         var result = await service.HandleMessageAsync("session-1", "Tell me about Reverso", null, "127.0.0.1");
 
-        Assert.Empty(result.Actions);
+        Assert.DoesNotContain(result.Actions, a => a.Type == "search");
         Assert.Contains("/collections/reverso", result.Message);
         Assert.Equal(1, handler.CallCount);
         watchFinder.VerifyNoOtherCalls();
@@ -581,7 +580,7 @@ public class ChatServiceTests
         var service = CreateService(context, watchFinder, handler);
         var result = await service.HandleMessageAsync("session-1", "should i wear reverso?", null, "127.0.0.1");
 
-        Assert.Empty(result.Actions);
+        Assert.DoesNotContain(result.Actions, a => a.Type == "search");
         Assert.Contains("/collections/reverso", result.Message);
         Assert.Equal(1, handler.CallCount);
         watchFinder.VerifyNoOtherCalls();
@@ -825,11 +824,10 @@ public class ChatServiceTests
 
         var compare = await service.HandleMessageAsync("session-1", "compare the first one and third one", null, "127.0.0.1");
 
-        Assert.Single(compare.Actions);
-        Assert.Equal("compare", compare.Actions[0].Type);
+        var compareAction1 = Assert.Single(compare.Actions.Where(a => a.Type == "compare").ToList());
         Assert.Equal(
             ["vacheron-constantin-overseas-4200h-222a-b934", "vacheron-constantin-historiques-1100s-000r-b430"],
-            compare.Actions[0].Slugs);
+            compareAction1.Slugs);
         Assert.Equal(2, compare.WatchCards.Count);
         Assert.Equal(2, handler.CallCount);
     }
@@ -907,11 +905,10 @@ public class ChatServiceTests
 
         var compare = await service.HandleMessageAsync("session-1", "compare the first 2 for me", null, "127.0.0.1");
 
-        Assert.Single(compare.Actions);
-        Assert.Equal("compare", compare.Actions[0].Type);
+        var compareAction2 = Assert.Single(compare.Actions.Where(a => a.Type == "compare").ToList());
         Assert.Equal(
             ["jaeger-lecoultre-reverso-q397846j", "jaeger-lecoultre-reverso-q2458422"],
-            compare.Actions[0].Slugs);
+            compareAction2.Slugs);
         Assert.Equal(2, compare.WatchCards.Count);
     }
 
@@ -988,7 +985,8 @@ public class ChatServiceTests
 
         var followUp = await service.HandleMessageAsync("session-1", "what is the first and third one", null, "127.0.0.1");
 
-        Assert.Empty(followUp.Actions);
+        // Ordinal follow-up: no search action emitted, correct cards selected
+        Assert.DoesNotContain(followUp.Actions, a => a.Type == "search");
         Assert.Equal(2, followUp.WatchCards.Count);
         Assert.Equal(
             ["fp-journe-linesport-elegante-40mm-titalyt", "fp-journe-linesport-131-30-41-21-99-001-meteorite-dial"],
@@ -1130,15 +1128,14 @@ public class ChatServiceTests
         var service = CreateService(context, watchFinder, handler);
 
         var initial = await service.HandleMessageAsync("session-1", "Compare 5711/1A-010 vs 16202ST", null, "127.0.0.1");
-        Assert.Single(initial.Actions);
+        Assert.Single(initial.Actions.Where(a => a.Type == "compare").ToList());
 
         var followUp = await service.HandleMessageAsync("session-1", "yes", null, "127.0.0.1");
 
-        Assert.Single(followUp.Actions);
-        Assert.Equal("compare", followUp.Actions[0].Type);
+        var followUpCompare = Assert.Single(followUp.Actions.Where(a => a.Type == "compare").ToList());
         Assert.Equal(
             ["patek-philippe-nautilus-5711-1a-010", "audemars-piguet-royal-oak-16202st"],
-            followUp.Actions[0].Slugs);
+            followUpCompare.Slugs);
         Assert.Equal(2, followUp.WatchCards.Count);
         Assert.DoesNotContain("specialise", followUp.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(2, handler.CallCount);
@@ -1222,12 +1219,11 @@ public class ChatServiceTests
         var service = CreateService(context, watchFinder, handler);
         var result = await service.HandleMessageAsync("session-1", "Compare the Aquanaut and the Overseas", null, "127.0.0.1");
 
-        Assert.Single(result.Actions);
-        Assert.Equal("compare", result.Actions[0].Type);
+        var resultCompare = Assert.Single(result.Actions.Where(a => a.Type == "compare").ToList());
         Assert.Equal(
             ["patek-philippe-aquanaut-5167a-001", "vacheron-constantin-overseas-4520v-210a-b128"],
-            result.Actions[0].Slugs);
-        Assert.Equal(result.Actions[0].Slugs, result.WatchCards.Select(card => card.Slug).ToList());
+            resultCompare.Slugs);
+        Assert.Equal(resultCompare.Slugs, result.WatchCards.Select(card => card.Slug).ToList());
         Assert.Equal(0, handler.CallCount);
         Assert.Contains("Aquanaut", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Overseas", result.Message, StringComparison.OrdinalIgnoreCase);
@@ -1271,13 +1267,13 @@ public class ChatServiceTests
 
         var followUp = await service.HandleMessageAsync("session-1", "compare 2 randoms from each collection", null, "127.0.0.1");
 
-        Assert.Single(followUp.Actions);
-        Assert.Equal(4, followUp.Actions[0].Slugs?.Count);
+        var followUpCompare = Assert.Single(followUp.Actions.Where(a => a.Type == "compare").ToList());
+        Assert.Equal(4, followUpCompare.Slugs?.Count);
         Assert.Equal(4, followUp.WatchCards.Count);
         Assert.All(followUp.WatchCards, card =>
             Assert.Contains(card.Slug, watches.Where(w => w.CollectionId is 10 or 20).Select(w => w.Slug)));
         var collectionIds = await context.Watches
-            .Where(w => followUp.Actions[0].Slugs!.Contains(w.Slug))
+            .Where(w => followUpCompare.Slugs!.Contains(w.Slug))
             .Select(w => w.CollectionId)
             .Distinct()
             .ToListAsync();
