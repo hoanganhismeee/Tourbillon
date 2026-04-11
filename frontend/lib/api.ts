@@ -964,14 +964,19 @@ export const sendChatMessage = async (
   });
   if (response.status === 429) {
     const data = await response.json().catch(() => ({}));
-    return { message: 'Daily message limit reached.', watchCards: [], ...data, rateLimited: true };
+    return {
+      message: 'You have reached your daily concierge quota of 5 messages. Please come back tomorrow.',
+      watchCards: [],
+      ...data,
+      rateLimited: true
+    };
   }
   if (!response.ok) {
     // Return a graceful error response rather than throwing — avoids Next.js error overlay
     const errText = await response.text().catch(() => '');
     const backendMsg = (() => { try { return JSON.parse(errText)?.message || JSON.parse(errText)?.error || ''; } catch { return ''; } })();
     return {
-      message: backendMsg || `I'm having trouble processing your request right now (${response.status}). Please try again.`,
+      message: backendMsg || `I don't quite get that request right now (${response.status}). Please rephrase it with a watch, brand, collection, comparison, size, material, or price range.`,
       watchCards: [],
     };
   }

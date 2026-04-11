@@ -35,12 +35,12 @@ public class ChatServiceTests
         return new TestTourbillonContext(options);
     }
 
-    private static IConfiguration CreateConfig() =>
+    private static IConfiguration CreateConfig(bool disableLimit = true, int dailyLimit = 5) =>
         new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ChatSettings:DisableLimitInDev"] = "true",
-                ["ChatSettings:DailyLimit"] = "5",
+                ["ChatSettings:DisableLimitInDev"] = disableLimit ? "true" : "false",
+                ["ChatSettings:DailyLimit"] = dailyLimit.ToString(),
             })
             .Build();
 
@@ -126,7 +126,9 @@ public class ChatServiceTests
     private static ChatService CreateService(
         TourbillonContext context,
         Mock<IWatchFinderService> watchFinderMock,
-        RecordingHandler? handler = null)
+        RecordingHandler? handler = null,
+        IRedisService? redis = null,
+        IConfiguration? config = null)
     {
         var httpFactory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
         if (handler != null)
@@ -138,8 +140,8 @@ public class ChatServiceTests
         return new ChatService(
             httpFactory.Object,
             context,
-            new FakeRedis(),
-            CreateConfig(),
+            redis ?? new FakeRedis(),
+            config ?? CreateConfig(),
             watchFinderMock.Object,
             NullLogger<ChatService>.Instance);
     }
@@ -153,7 +155,7 @@ public class ChatServiceTests
 
         var result = await service.HandleMessageAsync("session-1", "Write me a sales CV", null, "127.0.0.1");
 
-        Assert.Contains("specialise", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("rephrase", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(result.Actions);
         Assert.Empty(result.WatchCards);
         watchFinder.VerifyNoOtherCalls();
@@ -188,6 +190,28 @@ public class ChatServiceTests
         Assert.Equal("set_cursor", result.Actions[0].Type);
         Assert.Equal("tourbillon", result.Actions[0].Cursor);
         Assert.Empty(result.WatchCards);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_RateLimitedProductionRequest_ReturnsQuotaMessage()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var redis = new FakeRedis();
+        await redis.SetStringAsync("chat_rl:127.0.0.1", "5");
+        var service = CreateService(
+            context,
+            watchFinder,
+            redis: redis,
+            config: CreateConfig(disableLimit: false, dailyLimit: 5));
+
+        var result = await service.HandleMessageAsync("session-1", "tell me about reverso", null, "127.0.0.1");
+
+        Assert.True(result.RateLimited);
+        Assert.Equal(5, result.DailyUsed);
+        Assert.Equal(5, result.DailyLimit);
+        Assert.Contains("daily concierge quota of 5 messages", result.Message, StringComparison.OrdinalIgnoreCase);
         watchFinder.VerifyNoOtherCalls();
     }
 
@@ -235,63 +259,88 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public async Task HandleMessageAsync_DirectEntityLikeRequest_UsesCanonicalEntitySearchInsteadOfRefusal()
+    public async Task HandleMessageAsync_WrappedExactWatchRequest_StillResolvesTheWatch()
     {
         using var context = CreateContext();
-        var brand = new Brand { Id = 1, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
-        var historiques = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Historiques", Slug = "historiques" };
-        var duometre = new Collection { Id = 20, BrandId = 1, Brand = brand, Name = "Duometre", Slug = "duometre" };
-
-        var watches = new[]
+        var brand = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Nautilus", Slug = "nautilus" };
+        var watch = new Watch
         {
-            new Watch
-            {
-                Id = 100,
-                BrandId = 1,
-                Brand = brand,
-                CollectionId = 10,
-                Collection = historiques,
-                Name = "4200H/222A-B934 222",
-                Slug = "vacheron-constantin-historiques-4200h-222a-b934-222",
-                Description = "Vacheron Constantin Historiques",
-                CurrentPrice = 0m
-            },
-            new Watch
-            {
-                Id = 101,
-                BrandId = 1,
-                Brand = brand,
-                CollectionId = 10,
-                Collection = historiques,
-                Name = "4200H/222J-B935 222",
-                Slug = "vacheron-constantin-historiques-4200h-222j-b935-222",
-                Description = "Vacheron Constantin Historiques",
-                CurrentPrice = 0m
-            },
-            new Watch
-            {
-                Id = 102,
-                BrandId = 1,
-                Brand = brand,
-                CollectionId = 20,
-                Collection = duometre,
-                Name = "Q622252J 222",
-                Slug = "jaeger-lecoultre-duometre-q622252j-222",
-                Description = "Jaeger-LeCoultre Duometre",
-                CurrentPrice = 0m
-            }
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "5711/1A-010",
+            Slug = "patek-philippe-nautilus-5711-1a-010",
+            Description = "Patek Philippe Nautilus",
+            CurrentPrice = 35000m
         };
 
         context.Brands.Add(brand);
-        context.Collections.AddRange(historiques, duometre);
-        context.Watches.AddRange(watches);
+        context.Collections.Add(collection);
+        context.Watches.Add(watch);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("5711/1A-010"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(watch)],
+                OtherCandidates = [],
+                SearchPath = "direct_sql_merged"
+            });
+
+        var service = CreateService(context, watchFinder);
+        var result = await service.HandleMessageAsync("session-1", "the watch named 5711/1A-010", null, "127.0.0.1");
+
+        Assert.Contains("/watches/patek-philippe-nautilus-5711-1a-010", result.Message);
+        Assert.Single(result.WatchCards);
+        Assert.Equal("patek-philippe-nautilus-5711-1a-010", result.WatchCards[0].Slug);
+        watchFinder.Verify(f => f.FindWatchesAsync("5711/1A-010"), Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_WatchNamedFollowUp_UsesStoredCanonicalEntityContext()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Historiques", Slug = "historiques" };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "4200H/222A-B934 222",
+            Slug = "vacheron-constantin-historiques-4200h-222a-b934-222",
+            Description = "Vacheron Constantin Historiques",
+            CurrentPrice = 0m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "4200H/222J-B935 222",
+            Slug = "vacheron-constantin-historiques-4200h-222j-b935-222",
+            Description = "Vacheron Constantin Historiques",
+            CurrentPrice = 0m
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second);
         await context.SaveChangesAsync();
 
         var watchFinder = new Mock<IWatchFinderService>();
         watchFinder.Setup(f => f.FindWatchesAsync("222"))
             .ReturnsAsync(new WatchFinderResult
             {
-                Watches = watches.Select(ToDto).ToList(),
+                Watches = [ToDto(first), ToDto(second)],
                 OtherCandidates = [],
                 SearchPath = "direct_sql_merged"
             });
@@ -299,19 +348,20 @@ public class ChatServiceTests
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(
-                "{\"message\":\"Tourbillon found three catalogue matches built around 222.\",\"actions\":[]}",
+                "{\"message\":\"Tourbillon stayed anchored to the 222 results.\",\"actions\":[]}",
                 Encoding.UTF8,
                 "application/json")
         });
 
         var service = CreateService(context, watchFinder, handler);
-        var result = await service.HandleMessageAsync("session-1", "introduce me the 222", null, "127.0.0.1");
 
-        Assert.DoesNotContain("specialise", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(3, result.WatchCards.Count);
-        Assert.All(result.WatchCards, card => Assert.Contains("222", card.Name, StringComparison.OrdinalIgnoreCase));
-        watchFinder.Verify(f => f.FindWatchesAsync("222"), Times.Once);
-        Assert.Equal(1, handler.CallCount);
+        await service.HandleMessageAsync("session-1", "introduce me the 222", null, "127.0.0.1");
+        var followUp = await service.HandleMessageAsync("session-1", "the watch named 222", null, "127.0.0.1");
+
+        Assert.Equal(2, followUp.WatchCards.Count);
+        Assert.All(followUp.WatchCards, card => Assert.Contains("222", card.Name, StringComparison.OrdinalIgnoreCase));
+        Assert.True(handler.CallCount >= 1);
+        watchFinder.Verify(f => f.FindWatchesAsync("222"), Times.Exactly(2));
     }
 
     [Fact]
@@ -406,6 +456,118 @@ public class ChatServiceTests
         Assert.Contains("Vacheron Constantin", handler.RequestBodies[0]);
         Assert.DoesNotContain("enableWebSearch", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
         Assert.Contains("/brands/vacheron-constantin", result.Message);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_CollectionGuidanceQuery_DoesNotEmitSearchAction()
+    {
+        using var context = CreateContext();
+        var brand = new Brand
+        {
+            Id = 1,
+            Name = "Jaeger-LeCoultre",
+            Slug = "jaeger-lecoultre",
+            Description = "Known for elegant mechanical watchmaking."
+        };
+        var collection = new Collection
+        {
+            Id = 10,
+            BrandId = 1,
+            Brand = brand,
+            Name = "Reverso",
+            Slug = "reverso",
+            Description = "Art Deco icon with a reversible case."
+        };
+        var watch = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "Q397846J",
+            Slug = "jaeger-lecoultre-reverso-q397846j",
+            Description = "Jaeger-LeCoultre Reverso",
+            CurrentPrice = 11400m
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.Add(watch);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"[Reverso](/collections/reverso) is a timeless Jaeger-LeCoultre line.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "Tell me about Reverso", null, "127.0.0.1");
+
+        Assert.Empty(result.Actions);
+        Assert.Contains("/collections/reverso", result.Message);
+        Assert.Equal(1, handler.CallCount);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_CollectionStyleQuestion_UsesEntityInfoWithoutSearchAction()
+    {
+        using var context = CreateContext();
+        var brand = new Brand
+        {
+            Id = 1,
+            Name = "Jaeger-LeCoultre",
+            Slug = "jaeger-lecoultre",
+            Description = "Known for elegant mechanical watchmaking."
+        };
+        var collection = new Collection
+        {
+            Id = 10,
+            BrandId = 1,
+            Brand = brand,
+            Name = "Reverso",
+            Slug = "reverso",
+            Description = "Art Deco icon with a reversible case."
+        };
+        var watch = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "Q397846J",
+            Slug = "jaeger-lecoultre-reverso-q397846j",
+            Description = "Jaeger-LeCoultre Reverso",
+            CurrentPrice = 11400m
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.Add(watch);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"[Reverso](/collections/reverso) is a strong everyday line from Jaeger-LeCoultre.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "should i wear reverso?", null, "127.0.0.1");
+
+        Assert.Empty(result.Actions);
+        Assert.Contains("/collections/reverso", result.Message);
+        Assert.Equal(1, handler.CallCount);
         watchFinder.VerifyNoOtherCalls();
     }
 
@@ -525,6 +687,51 @@ public class ChatServiceTests
         Assert.Single(searchActions);
         Assert.Equal("Jaeger-LeCoultre Reverso pink gold", searchActions[0].Query);
         Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_NonWatchSearchPath_ReturnsSpecialistRefusal()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("watch podcast recommendations"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [],
+                OtherCandidates = [],
+                SearchPath = "non_watch"
+            });
+
+        var service = CreateService(context, watchFinder);
+        var result = await service.HandleMessageAsync("session-1", "watch podcast recommendations", null, "127.0.0.1");
+
+        Assert.Contains("rephrase", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(result.Actions);
+        Assert.Empty(result.WatchCards);
+        watchFinder.Verify(f => f.FindWatchesAsync("watch podcast recommendations"), Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_NoCloseCatalogueMatch_AsksUserToRephrase()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("show me a ceramic moonphase reverso under 2k"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [],
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var service = CreateService(context, watchFinder);
+        var result = await service.HandleMessageAsync("session-1", "show me a ceramic moonphase reverso under 2k", null, "127.0.0.1");
+
+        Assert.Contains("rephrase", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reference", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(result.Actions);
+        Assert.Empty(result.WatchCards);
+        watchFinder.Verify(f => f.FindWatchesAsync("show me a ceramic moonphase reverso under 2k"), Times.Once);
     }
 
     [Fact]

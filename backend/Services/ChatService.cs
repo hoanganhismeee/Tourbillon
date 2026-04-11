@@ -77,6 +77,10 @@ public class ChatService
     private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(1);
     private const string CloudName = "dcd9lcdoj";
     private const int DiscoveryCardLimit = 5;
+    private const string UnsupportedQueryMessage = "I specialise in Tourbillon watches and horology. I don't quite get that request yet. Please rephrase it with a watch, brand, collection, comparison, size, material, or price range.";
+    private const string NoCloseMatchMessage = "I don't quite get the request from the current Tourbillon catalogue context. Please rephrase it with a watch, brand, collection, reference, size, material, or price range.";
+    private const string ProcessingFallbackMessage = "I don't quite get that request right now. Please rephrase it, or try again in a moment with a watch, brand, collection, comparison, size, material, or price range.";
+    private const string DailyQuotaMessage = "You have reached your daily concierge quota of 5 messages. Please come back tomorrow.";
 
     // Brand name aliases shared with WatchFinderService.
     private static readonly Dictionary<string, string> _brandAliases = new(StringComparer.OrdinalIgnoreCase)
@@ -255,7 +259,7 @@ public class ChatService
                     RateLimited = true,
                     DailyUsed = used,
                     DailyLimit = dailyLimit,
-                    Message = "You have reached your daily message limit. Please try again tomorrow."
+                    Message = DailyQuotaMessage.Replace("5", dailyLimit.ToString())
                 };
             }
         }
@@ -280,7 +284,7 @@ public class ChatService
                 message.Length > 80 ? message[..80] + "..." : message);
             resolution = new ChatResolution
             {
-                Message = "I am having trouble processing that request right now. Please try again in a moment."
+                Message = ProcessingFallbackMessage
             };
         }
 
@@ -364,10 +368,6 @@ public class ChatService
         if (contextualFollowUp != null)
             return contextualFollowUp;
 
-        var directEntityResolution = await TryResolveDirectEntityResolutionAsync(message, mentions, sessionState);
-        if (directEntityResolution != null)
-            return directEntityResolution;
-
         var hasWatchScope = mentions.HasAny
             || referencedWatches.Count > 0
             || WatchFinderService.HasWatchDomainSignal(message)
@@ -376,18 +376,22 @@ public class ChatService
         if (!hasWatchScope)
             return new ChatResolution
             {
-                Message = "I specialise in Tourbillon watches and horology. Ask about a watch, brand, comparison, or something you want to find in the catalogue."
+                Message = UnsupportedQueryMessage
             };
 
         if (LooksLikeEntityInfoRequest(message, mentions))
             return await BuildEntityInfoResolutionAsync(message, mentions);
+
+        var directEntityResolution = await TryResolveDirectEntityResolutionAsync(message, mentions, sessionState);
+        if (directEntityResolution != null)
+            return directEntityResolution;
 
         var searchResult = await _watchFinderService.FindWatchesAsync(message);
         if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
         {
             return new ChatResolution
             {
-                Message = "I specialise in Tourbillon watches and horology. Ask about a watch, brand, comparison, or something you want to find in the catalogue."
+                Message = UnsupportedQueryMessage
             };
         }
 
@@ -403,7 +407,7 @@ public class ChatService
 
         return new ChatResolution
         {
-            Message = "I could not find a close Tourbillon catalogue match for that request. Try asking with a brand, collection, reference, size, material, or price range."
+            Message = NoCloseMatchMessage
         };
     }
 
@@ -428,7 +432,7 @@ public class ChatService
             {
                 _logger.LogWarning("Chat ai-service /chat returned {Status} after {ElapsedMs}ms",
                     (int)resp.StatusCode, chatSw.ElapsedMilliseconds);
-                return ("I am having trouble connecting to the concierge service right now. Please try again in a moment.", []);
+                return (ProcessingFallbackMessage, []);
             }
 
             _logger.LogInformation("Chat ai-service /chat {ElapsedMs}ms", chatSw.ElapsedMilliseconds);
@@ -449,13 +453,13 @@ public class ChatService
             }
 
             return (string.IsNullOrWhiteSpace(message)
-                ? "I could not produce a useful answer from the catalogue context."
+                ? NoCloseMatchMessage
                 : message, actions);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Chat ai-service call threw before producing a response");
-            return ("I am having trouble connecting right now. Please try again in a moment.", []);
+            return (ProcessingFallbackMessage, []);
         }
     }
 
@@ -691,6 +695,20 @@ public class ChatService
         var trimmed = query.Trim();
         if (string.IsNullOrWhiteSpace(trimmed))
             return null;
+
+        var strippedLead = Regex.Replace(
+            trimmed,
+            @"^\s*(?:introduce\s+me(?:\s+to)?(?:\s+the)?|tell\s+me\s+about(?:\s+the)?(?:\s+watch\s+named)?|show\s+me(?:\s+the)?(?:\s+watch\s+named)?|the\s+watch\s+named|the\s+model\s+named|model\s+named)\s+",
+            "",
+            RegexOptions.IgnoreCase).Trim(' ', '.', '?', '!');
+
+        if (!string.Equals(strippedLead, trimmed, StringComparison.OrdinalIgnoreCase)
+            && (WatchFinderService.IsLikelyReferenceQuery(strippedLead)
+                || WatchFinderService.IsLikelyReferenceFragment(strippedLead)
+                || Regex.IsMatch(strippedLead, @"\d")))
+        {
+            return strippedLead;
+        }
 
         if (WatchFinderService.IsLikelyReferenceQuery(trimmed) || WatchFinderService.IsLikelyReferenceFragment(trimmed))
             return trimmed;
