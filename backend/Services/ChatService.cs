@@ -42,16 +42,21 @@ public class ChatWatchCard
     public string? ImageUrl { get; set; }
     public decimal CurrentPrice { get; set; }
     public int BrandId { get; set; }
+    public string? BrandName { get; set; }
+    public string? BrandSlug { get; set; }
+    public string? CollectionName { get; set; }
+    public string? CollectionSlug { get; set; }
 }
 
 // Concierge action returned alongside the text response and executed client-side.
 public class ChatAction
 {
-    public string Type { get; set; } = "";   // "compare" | "search" | "set_cursor"
+    public string Type { get; set; } = "";   // "compare" | "search" | "set_cursor" | "navigate"
     public string Label { get; set; } = "";
     public List<string>? Slugs { get; set; } // watch slugs for "compare"
     public string? Query { get; set; }       // search query for "search"
     public string? Cursor { get; set; }      // cursor id for "set_cursor"
+    public string? Href { get; set; }        // route path for "navigate"
 }
 
 public class ChatApiResponse
@@ -307,6 +312,12 @@ public class ChatService
             if (watchCards.Count == 0)
                 watchCards = await ExtractWatchCardsAsync(aiMessage, actions);
         }
+
+        // Append 1–2 contextual follow-up suggestion chips grounded in the resolved watch cards.
+        // Skipped for greetings, refusals, and cursor commands where no cards are present.
+        var suggestions = BuildSuggestionActions(watchCards, actions);
+        if (suggestions.Count > 0)
+            actions = [..actions, ..suggestions];
 
         sessionHistory.Add(new ChatMessage { Role = "user", Content = message });
         sessionHistory.Add(new ChatMessage { Role = "assistant", Content = aiMessage });
@@ -1568,6 +1579,12 @@ public class ChatService
         if (totalCards < 2)
             return [];
 
+        // "both" / "either" = first two cards; "all of them/those/these" = every card up to limit
+        if (Regex.IsMatch(query, @"\bboth\b|\beither\b", RegexOptions.IgnoreCase))
+            return [0, 1];
+        if (Regex.IsMatch(query, @"\ball\b(?:\s+(?:of\s+)?(?:them|those|these))?", RegexOptions.IgnoreCase))
+            return Enumerable.Range(0, Math.Min(totalCards, 4)).ToList();
+
         var firstBatch = Regex.Match(query, @"\bfirst\s+(?<count>[2-4]|two|three|four)\b", RegexOptions.IgnoreCase);
         if (firstBatch.Success)
         {
@@ -1902,6 +1919,69 @@ public class ChatService
         return match.Success ? match.Groups[1].Value.Trim() : null;
     }
 
+    // Generates 0–2 contextual follow-up suggestion chips grounded in the resolved watch cards.
+    // Appended after primary actions so they appear as secondary prompts, not main CTAs.
+    private static List<ChatAction> BuildSuggestionActions(
+        List<ChatWatchCard> watchCards,
+        List<ChatAction> primaryActions)
+    {
+        if (watchCards.Count == 0) return [];
+
+        var suggestions = new List<ChatAction>();
+        var hasCompareAction = primaryActions.Any(a =>
+            string.Equals(a.Type, "compare", StringComparison.OrdinalIgnoreCase));
+
+        // Suggest comparing first two when no compare action was already generated
+        if (!hasCompareAction && watchCards.Count >= 2)
+        {
+            var label1 = CardShortLabel(watchCards[0]);
+            var label2 = CardShortLabel(watchCards[1]);
+            suggestions.Add(new ChatAction
+            {
+                Type = "compare",
+                Label = $"Compare {label1} vs {label2}",
+                Slugs = [watchCards[0].Slug, watchCards[1].Slug]
+            });
+        }
+
+        // Suggest navigating to the primary brand
+        var firstWithBrand = watchCards.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.BrandSlug));
+        if (firstWithBrand != null && suggestions.Count < 2)
+        {
+            suggestions.Add(new ChatAction
+            {
+                Type = "navigate",
+                Label = $"About {firstWithBrand.BrandName}",
+                Href = $"/brands/{firstWithBrand.BrandSlug}"
+            });
+        }
+
+        // If still room, suggest the primary collection (only when it adds new information over the brand chip)
+        if (suggestions.Count < 2)
+        {
+            var firstWithCollection = watchCards.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.CollectionSlug));
+            if (firstWithCollection != null)
+            {
+                suggestions.Add(new ChatAction
+                {
+                    Type = "navigate",
+                    Label = $"Explore {firstWithCollection.CollectionName}",
+                    Href = $"/collections/{firstWithCollection.CollectionSlug}"
+                });
+            }
+        }
+
+        return suggestions;
+    }
+
+    // Returns a short human-readable label from a watch card (2 words of Description, or Name fallback).
+    private static string CardShortLabel(ChatWatchCard card)
+    {
+        var text = !string.IsNullOrWhiteSpace(card.Description) ? card.Description : card.Name;
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return string.Join(" ", words.Take(2));
+    }
+
     private static string FormatPrice(decimal price) =>
         price == 0 ? "Price on Request" : $"${price:N0}";
 
@@ -1915,5 +1995,9 @@ public class ChatService
         ImageUrl = watch.GetImageUrl(CloudName),
         CurrentPrice = watch.CurrentPrice,
         BrandId = watch.BrandId,
+        BrandName = watch.Brand?.Name,
+        BrandSlug = watch.Brand?.Slug,
+        CollectionName = watch.Collection?.Name,
+        CollectionSlug = watch.Collection?.Slug,
     };
 }

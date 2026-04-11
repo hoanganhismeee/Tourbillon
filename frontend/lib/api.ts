@@ -931,14 +931,19 @@ export interface ChatWatchCard {
   imageUrl: string | null;
   currentPrice: number;
   brandId: number;
+  brandName?: string | null;
+  brandSlug?: string | null;
+  collectionName?: string | null;
+  collectionSlug?: string | null;
 }
 
 export interface ChatAction {
-  type: 'compare' | 'search' | 'set_cursor';
+  type: 'compare' | 'search' | 'set_cursor' | 'navigate';
   label: string;
   slugs?: string[];
   query?: string;
   cursor?: 'default' | 'tourbillon' | 'crosshair' | 'lumed' | 'hand' | 'bezel' | 'compass' | 'sapphire' | 'rotor';
+  href?: string;
 }
 
 export interface ChatApiResponse {
