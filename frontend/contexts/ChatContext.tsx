@@ -8,6 +8,8 @@ import { getBufferedEvents } from '@/lib/behaviorTracker';
 import { useAuth } from '@/contexts/AuthContext';
 
 export interface ChatMessage {
+  id?: string;
+  createdAt?: number;
   role: 'user' | 'assistant';
   content: string;
   watchCards?: ChatWatchCard[];
@@ -207,7 +209,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
 
-    const userMessage: ChatMessage = { role: 'user', content: text };
+    const now = Date.now();
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      createdAt: now,
+      role: 'user',
+      content: text,
+    };
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
 
@@ -218,6 +226,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setDailyLimit(result.dailyLimit ?? null);
 
       const assistantMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        createdAt: Date.now(),
         role: 'assistant',
         content: result.message,
         watchCards: result.watchCards?.length ? result.watchCards : undefined,
