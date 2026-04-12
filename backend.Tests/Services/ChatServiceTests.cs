@@ -1694,6 +1694,79 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_DiscoveryQuery_ExpandsBrandAcronyms_BeforeSearchAndAi()
+    {
+        using var context = CreateContext();
+        var lange = new Brand { Id = 1, Name = "A. Lange & Söhne", Slug = "a-lange-sohne" };
+        var vacheron = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var zeitwerk = new Collection { Id = 10, BrandId = 1, Brand = lange, Name = "Zeitwerk", Slug = "a-lange-sohne-zeitwerk" };
+        var overseas = new Collection { Id = 20, BrandId = 2, Brand = vacheron, Name = "Overseas", Slug = "vacheron-constantin-overseas" };
+
+        var langeWatch = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = lange,
+            CollectionId = 10,
+            Collection = zeitwerk,
+            Name = "142.031",
+            Slug = "a-lange-sohne-zeitwerk-142-031",
+            Description = "A. Lange & Söhne Zeitwerk",
+            CurrentPrice = 95000m,
+            Image = "l1.png",
+            Specs = "{\"productionStatus\":\"Current\"}"
+        };
+        var vcWatch = new Watch
+        {
+            Id = 200,
+            BrandId = 2,
+            Brand = vacheron,
+            CollectionId = 20,
+            Collection = overseas,
+            Name = "4520V/210A-B128",
+            Slug = "vacheron-constantin-overseas-4520v-210a-b128",
+            Description = "Vacheron Constantin Overseas",
+            CurrentPrice = 38000m,
+            Image = "o1.png",
+            Specs = "{\"productionStatus\":\"Current\"}"
+        };
+
+        context.Brands.AddRange(lange, vacheron);
+        context.Collections.AddRange(zeitwerk, overseas);
+        context.Watches.AddRange(langeWatch, vcWatch);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync(It.Is<string>(q =>
+                q.Contains("A. Lange & Söhne", StringComparison.OrdinalIgnoreCase)
+                && q.Contains("Vacheron Constantin", StringComparison.OrdinalIgnoreCase)
+                && q.Contains("sport watch", StringComparison.OrdinalIgnoreCase))))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                SearchPath = "vector",
+                Watches = [ToDto(langeWatch), ToDto(vcWatch)]
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"Here are the strongest sport-led directions from the resolved catalogue matches.\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "i want some sportwatch from als and vc", null, "127.0.0.1");
+        var payload = JsonDocument.Parse(handler.RequestBodies[0]).RootElement;
+        var aiQuery = payload.GetProperty("query").GetString();
+
+        Assert.Equal(2, result.WatchCards.Count);
+        Assert.Equal("i want some sport watch from A. Lange & Söhne and Vacheron Constantin", aiQuery);
+        var searchAction = Assert.Single(result.Actions.Where(a => a.Type == "search"));
+        Assert.Contains("A. Lange", searchAction.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Vacheron Constantin", searchAction.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("sport watch", searchAction.Query, StringComparison.OrdinalIgnoreCase);
+        watchFinder.VerifyAll();
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_RefusalResponse_HasFallbackDiscoveryChip()
     {
         using var context = CreateContext();

@@ -4,7 +4,9 @@
 // Fallback (embed unavailable): LLM parse → SQL filter → LLM rerank
 
 using Hangfire;
+using System.Globalization;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -154,21 +156,22 @@ public class WatchFinderService : IWatchFinderService
 
     public async Task<WatchFinderResult> FindWatchesAsync(string query)
     {
-        var deterministicIntent = await ParseQueryIntentAsync(query);
-        if (deterministicIntent == null && !HasWatchDomainSignal(query))
+        var normalizedQuery = NormalizeQueryPhrases(query);
+        var deterministicIntent = await ParseQueryIntentAsync(normalizedQuery);
+        if (deterministicIntent == null && !HasWatchDomainSignal(normalizedQuery))
         {
             _logger.LogInformation("WatchFinder ignored non-watch query={QueryPreview}",
                 query.Length > 60 ? query[..60] + "..." : query);
             return EmptyResult(searchPath: "non_watch");
         }
 
-        var directResult = await _deterministicSearch.TryDirectSqlSearchAsync(query, deterministicIntent, "direct_sql_deterministic");
+        var directResult = await _deterministicSearch.TryDirectSqlSearchAsync(normalizedQuery, deterministicIntent, "direct_sql_deterministic");
         if (directResult != null)
             return directResult;
-        if (deterministicIntent != null && ShouldUseDeterministicCataloguePath(query, deterministicIntent))
+        if (deterministicIntent != null && ShouldUseDeterministicCataloguePath(normalizedQuery, deterministicIntent))
         {
             var deterministicFallbackResult = await _deterministicSearch.TryDeterministicCatalogueFallbackAsync(
-                query,
+                normalizedQuery,
                 deterministicIntent,
                 "direct_sql_deterministic_fallback");
             if (deterministicFallbackResult != null)
@@ -191,14 +194,14 @@ public class WatchFinderService : IWatchFinderService
         // Steps 0a + 0b run in parallel — LLM parse and embedding have similar latency (~200ms each).
         // LLM parse replaces the old regex approach: the model understands nuanced phrasing,
         // multi-brand queries, and all filter dimensions without hardcoded patterns.
-        var parseTask = ParseIntentFromLlmAsync(httpClient, query, deterministicIntent);
-        var embedTask = EmbedQueryAsync(httpClient, query);
+        var parseTask = ParseIntentFromLlmAsync(httpClient, normalizedQuery, deterministicIntent);
+        var embedTask = EmbedQueryAsync(httpClient, normalizedQuery);
         await Task.WhenAll(parseTask, embedTask);
 
         var queryIntent   = await parseTask;
         var queryEmbedding = await embedTask;
 
-        var mergedDirectResult = await _deterministicSearch.TryDirectSqlSearchAsync(query, queryIntent, "direct_sql_merged");
+        var mergedDirectResult = await _deterministicSearch.TryDirectSqlSearchAsync(normalizedQuery, queryIntent, "direct_sql_merged");
         if (mergedDirectResult != null)
             return mergedDirectResult;
 
@@ -321,7 +324,7 @@ public class WatchFinderService : IWatchFinderService
         if (bestDistance >= SkipLlmDistance && (HasBrandIntent(queryIntent) || HasCollectionIntent(queryIntent)))
         {
             var structuredOrdered = candidates
-                .Select(w => new { Watch = w, Score = DirectSqlScore(query, w, queryIntent, false) })
+                .Select(w => new { Watch = w, Score = DirectSqlScore(normalizedQuery, w, queryIntent, false) })
                 .OrderByDescending(x => x.Score)
                 .ThenBy(x => x.Watch.CurrentPrice == 0 ? 1 : 0)
                 .ThenBy(x => x.Watch.CurrentPrice == 0 ? decimal.MaxValue : x.Watch.CurrentPrice)
@@ -904,6 +907,7 @@ public class WatchFinderService : IWatchFinderService
     private static QueryIntent? MapParsedIntentToQueryIntent(
         ParsedIntent parsed, List<Brand> brands, List<Collection> collections, string query)
     {
+        query = NormalizeQueryPhrases(query);
         var intent = new QueryIntent();
 
         // ── Price (always hard) ───────────────────────────────────────────────────
@@ -977,9 +981,9 @@ public class WatchFinderService : IWatchFinderService
         if (intent.Style == null)
         {
             var qLow = query.ToLowerInvariant();
-            if (Regex.IsMatch(qLow, @"\bsport\s+watch"))      intent.Style = "sport";
-            else if (Regex.IsMatch(qLow, @"\bdress\s+watch")) intent.Style = "dress";
-            else if (Regex.IsMatch(qLow, @"\bdiv(?:er|e\s+watch|ing\s+watch)")) intent.Style = "diver";
+            if (Regex.IsMatch(qLow, @"\bsport\s*watch"))      intent.Style = "sport";
+            else if (Regex.IsMatch(qLow, @"\bdress\s*watch")) intent.Style = "dress";
+            else if (Regex.IsMatch(qLow, @"\bdiv(?:er|e\s*watch|ing\s*watch)")) intent.Style = "diver";
         }
         intent.CaseMaterial  = NormaliseMaterial((parsed.Material ?? []).FirstOrDefault());
         intent.MinDiameterMm = parsed.MinDiameterMm;
@@ -1203,14 +1207,32 @@ public class WatchFinderService : IWatchFinderService
             .Distinct()
             .ToList();
 
-    private static string NormaliseEntityText(string text) =>
-        Regex.Replace(text.ToLowerInvariant(), @"[^a-z0-9]+", "");
+    private static string NormaliseEntityText(string text)
+    {
+        var decomposed = text.Normalize(NormalizationForm.FormD);
+        var stripped = new string(decomposed
+            .Where(ch => CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
+            .ToArray())
+            .Normalize(NormalizationForm.FormC);
+        return Regex.Replace(stripped.ToLowerInvariant(), @"[^a-z0-9]+", "");
+    }
+
+    private static string NormalizeQueryPhrases(string query)
+    {
+        var normalized = Regex.Replace(query, @"\bsportwatch(es)?\b", "sport watch$1", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"\bdresswatch(es)?\b", "dress watch$1", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"\bdivewatch(es)?\b", "dive watch$1", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"\bdiverwatch(es)?\b", "diver watch$1", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"\btoolwatch(es)?\b", "tool watch$1", RegexOptions.IgnoreCase);
+        return Regex.Replace(normalized, @"\s+", " ").Trim();
+    }
 
     private static readonly HashSet<string> CollectionTokenStopWords = new(StringComparer.OrdinalIgnoreCase)
     {
         "watch", "watches", "timepiece", "timepieces", "collection",
         "sport", "sporty", "dress", "formal", "elegant", "elegance",
         "dive", "diver", "diving", "water", "resistance", "resistant", "waterproof",
+        "from", "brand",
         "under", "below", "less", "than", "over", "above", "more", "between",
         "with", "good", "decent", "solid", "high",
     };
@@ -1238,7 +1260,7 @@ public class WatchFinderService : IWatchFinderService
         IsLikelyReferenceQuery(query)
         || IsLikelyReferenceFragment(query)
         || Regex.IsMatch(query,
-            @"\b(?:watch|watches|timepiece|timepieces|horology|luxury|wrist|diameter|dial|case|bracelet|strap|movement|automatic|manual|quartz|dress|sport|sporty|diver|diving|water[\s-]?resist(?:ant|ance)?|waterproof|gmt|chronograph|perpetual|annual|calendar|moonphase|tourbillon|repeater|steel|gold|titanium|ceramic|platinum)\b",
+            @"\b(?:watch|watches|timepiece|timepieces|horology|luxury|wrist|diameter|dial|case|bracelet|strap|movement|automatic|manual|quartz|dress|dresswatch|sport|sportwatch|sporty|diver|diverwatch|diving|water[\s-]?resist(?:ant|ance)?|waterproof|gmt|chronograph|perpetual|annual|calendar|moonphase|tourbillon|repeater|steel|gold|titanium|ceramic|platinum)\b",
             RegexOptions.IgnoreCase)
         || Regex.IsMatch(query, @"\b(?:under|below|over|above|between)\s*\$?\s*\d[\d,]*\s*k?\b", RegexOptions.IgnoreCase)
         || Regex.IsMatch(query, @"\b\d+(?:\.\d+)?\s*mm\b", RegexOptions.IgnoreCase);
@@ -1358,6 +1380,7 @@ public class WatchFinderService : IWatchFinderService
     // explicit terms. Kept conservative so it only recovers obvious brand/spec constraints.
     private async Task<QueryIntent?> ParseQueryIntentAsync(string query)
     {
+        query = NormalizeQueryPhrases(query);
         var intent = new QueryIntent();
 
         // ── Brand matching ────────────────────────────────────────────────────────
@@ -1383,8 +1406,10 @@ public class WatchFinderService : IWatchFinderService
         // Fall back to full brand name substring match for brands not caught by aliases
         foreach (var brand in brands.OrderByDescending(b => b.Name.Length))
         {
-            if (query.Contains(brand.Name, StringComparison.OrdinalIgnoreCase)
-                && resolvedCanonicals.Add(brand.Name))
+            var matchesBrandName =
+                query.Contains(brand.Name, StringComparison.OrdinalIgnoreCase)
+                || NormaliseEntityText(query).Contains(NormaliseEntityText(brand.Name), StringComparison.OrdinalIgnoreCase);
+            if (matchesBrandName && resolvedCanonicals.Add(brand.Name))
             {
                 matchedBrands.Add(brand);
             }
@@ -1450,6 +1475,7 @@ public class WatchFinderService : IWatchFinderService
     // water resistance, style, complications, power reserve). Extracted for unit testing.
     internal static void ApplyRegexFilters(string query, QueryIntent intent)
     {
+        query = NormalizeQueryPhrases(query);
         var q = query;
 
         // ── Price matching ──────────────────────────────────────────────────────────
@@ -1557,11 +1583,11 @@ public class WatchFinderService : IWatchFinderService
         }
 
         // ── Style matching ──────────────────────────────────────────────────────────
-        if (Regex.IsMatch(q, @"\b(?:sport|sports|sporty)\b", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(q, @"\b(?:sport|sports|sporty|sport\s*watch)\b", RegexOptions.IgnoreCase))
             intent.Style = "sport";
-        else if (Regex.IsMatch(q, @"\b(?:dress|formal|elegant|elegance)\b", RegexOptions.IgnoreCase))
+        else if (Regex.IsMatch(q, @"\b(?:dress|formal|elegant|elegance|dress\s*watch)\b", RegexOptions.IgnoreCase))
             intent.Style = "dress";
-        else if (Regex.IsMatch(q, @"\b(?:dive|diver|diving|waterproof)\b", RegexOptions.IgnoreCase))
+        else if (Regex.IsMatch(q, @"\b(?:dive|diver|diver\s*watch|diving|waterproof)\b", RegexOptions.IgnoreCase))
             intent.Style = "diver";
 
         // ── Complication matching ───────────────────────────────────────────────────

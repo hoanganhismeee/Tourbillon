@@ -2,13 +2,50 @@
 // These cover deterministic fallback behavior used when AI intent parsing is unavailable.
 using System.Collections.Generic;
 using System.Linq;
+using backend.Database;
 using backend.Services;
 using backend.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 
 namespace backend.Tests.Services;
 
 public class WatchFinderServiceTests
 {
+    private sealed class TestTourbillonContext : TourbillonContext
+    {
+        public TestTourbillonContext(DbContextOptions<TourbillonContext> options) : base(options) { }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            modelBuilder.Ignore<WatchEmbedding>();
+            modelBuilder.Ignore<QueryCache>();
+        }
+    }
+
+    private static TourbillonContext CreateContext()
+    {
+        var options = new DbContextOptionsBuilder<TourbillonContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        return new TestTourbillonContext(options);
+    }
+
+    private static WatchFinderService CreateService(TourbillonContext context)
+    {
+        var httpFactory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        return new WatchFinderService(
+            httpFactory.Object,
+            new DeterministicWatchSearchService(context, NullLogger<DeterministicWatchSearchService>.Instance),
+            context,
+            new WatchFilterMapper(),
+            new QueryCacheService(context, NullLogger<QueryCacheService>.Instance),
+            NullLogger<WatchFinderService>.Instance);
+    }
+
     public sealed record FilterCase(
         string Query,
         decimal? MinPrice,
@@ -247,6 +284,39 @@ public class WatchFinderServiceTests
     public void GeneratedFilterCaseMatrix_SeedsAtLeastFiveHundredQueries()
     {
         Assert.True(GeneratedFilterCaseMatrix().Count() >= 500);
+    }
+
+    [Fact]
+    public void ApplyRegexFilters_RecognisesCompoundSportwatch()
+    {
+        var intent = new QueryIntent();
+
+        WatchFinderService.ApplyRegexFilters("sportwatch from vc", intent);
+
+        Assert.Equal("sport", intent.Style);
+    }
+
+    [Fact]
+    public async Task ParseQueryIntentForTestsAsync_SportwatchFromVc_DerivesStyleCollections()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var sport = new Collection { Id = 10, BrandId = 2, Brand = brand, Name = "Overseas", Slug = "vacheron-constantin-overseas", Style = "sport" };
+        var dress = new Collection { Id = 20, BrandId = 2, Brand = brand, Name = "Patrimony", Slug = "vacheron-constantin-patrimony", Style = "dress" };
+
+        context.Brands.Add(brand);
+        context.Collections.AddRange(sport, dress);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        var intent = await service.ParseQueryIntentForTestsAsync("sportwatch from vc");
+
+        Assert.NotNull(intent);
+        Assert.Equal(2, intent!.BrandId);
+        Assert.Equal("sport", intent.Style);
+        Assert.True(intent.CollectionsDerivedFromStyle);
+        Assert.Equal(10, intent.CollectionId);
     }
 
     [Fact]
