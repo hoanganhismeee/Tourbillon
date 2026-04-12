@@ -135,6 +135,7 @@ public class ChatService
         public List<ChatWatchCard> WatchCards { get; set; } = [];
         public List<ChatAction> Actions { get; set; } = [];
         public ChatSessionState? SessionState { get; set; }
+        public bool SuppressCompareSuggestion { get; set; }
     }
 
     private sealed class EntityMentions
@@ -315,7 +316,7 @@ public class ChatService
 
         // Append 1–2 contextual follow-up suggestion chips grounded in the resolved watch cards.
         // Skipped for greetings, refusals, and cursor commands where no cards are present.
-        var suggestions = BuildSuggestionActions(watchCards, actions);
+        var suggestions = BuildSuggestionActions(watchCards, actions, resolution.SuppressCompareSuggestion);
         if (suggestions.Count > 0)
             actions = [..actions, ..suggestions];
 
@@ -392,10 +393,25 @@ public class ChatService
             || (sessionState?.WatchSlugs.Count > 0 && LooksLikeContextualFollowUp(message));
 
         if (!hasWatchScope)
+        {
+            if (message.Any(c => c > 127))
+            {
+                return new ChatResolution
+                {
+                    UseAi = true,
+                    Query = message,
+                    Context =
+                    [
+                        "The user appears to be writing in a non-English language. If the question relates to Tourbillon's watches, brands, or collections, answer helpfully in their language. If it is outside Tourbillon's scope, politely decline in their language."
+                    ]
+                };
+            }
+
             return new ChatResolution
             {
                 Message = UnsupportedQueryMessage
             };
+        }
 
         if (LooksLikeEntityInfoRequest(message, mentions))
             return await BuildEntityInfoResolutionAsync(message, mentions);
@@ -1114,7 +1130,7 @@ public class ChatService
         if (mentions.Collections.Count > 0)
         {
             context.Add(
-                "Collection guidance request: lead with the linked collection name, explain the collection's identity and where it sits within the brand, mention one or two interesting watch-relevant points from the supplied context, point the user toward linked models in that collection, and close with a warm sales-style follow-up question such as whether they want to explore a specific reference or compare options.");
+                "Collection guidance request: lead with the linked collection name, explain the collection's identity and where it sits within the brand, mention one or two interesting watch-relevant points from the supplied context, point the user toward linked models in that collection, and close with a warm sales-style follow-up question such as whether they want to explore a specific reference or discover adjacent models.");
         }
 
         foreach (var collection in mentions.Collections.Take(2))
@@ -1188,6 +1204,7 @@ public class ChatService
                 .Select(g => g.First())
                 .Take(4)
                 .ToList(),
+            SuppressCompareSuggestion = true,
             SessionState = new ChatSessionState
             {
                 BrandIds = mentions.Brands.Select(brand => brand.Id).Distinct().ToList(),
@@ -1923,23 +1940,31 @@ public class ChatService
     // Appended after primary actions so they appear as secondary prompts, not main CTAs.
     private static List<ChatAction> BuildSuggestionActions(
         List<ChatWatchCard> watchCards,
-        List<ChatAction> primaryActions)
+        List<ChatAction> primaryActions,
+        bool suppressCompareSuggestion = false)
     {
-        if (watchCards.Count == 0) return [];
+        if (watchCards.Count == 0)
+        {
+            // Greetings, refusals, and cursor-only responses have no cards — give the user
+            // a single discovery chip so there is always something to click.
+            if (!primaryActions.Any())
+                return [new ChatAction { Type = "search", Query = "luxury watches", Label = "Browse the catalogue" }];
+            return [];
+        }
 
         var suggestions = new List<ChatAction>();
         var hasCompareAction = primaryActions.Any(a =>
             string.Equals(a.Type, "compare", StringComparison.OrdinalIgnoreCase));
 
         // Suggest comparing first two when no compare action was already generated
-        if (!hasCompareAction && watchCards.Count >= 2)
+        if (!suppressCompareSuggestion && !hasCompareAction && watchCards.Count >= 2)
         {
             var label1 = CardShortLabel(watchCards[0]);
             var label2 = CardShortLabel(watchCards[1]);
             suggestions.Add(new ChatAction
             {
                 Type = "compare",
-                Label = $"Compare {label1} vs {label2}",
+                Label = $"Compare {label1} and {label2} side by side",
                 Slugs = [watchCards[0].Slug, watchCards[1].Slug]
             });
         }
@@ -1955,14 +1980,14 @@ public class ChatService
 
         if (hasCompareAction && distinctBrands.Count >= 2)
         {
-            // Two different brands in a compare: suggest "About Brand1" and "About Brand2"
+            // Two different brands in a compare: suggest one brand chip per brand
             foreach (var card in distinctBrands)
             {
                 if (suggestions.Count >= 2) break;
                 suggestions.Add(new ChatAction
                 {
                     Type = "navigate",
-                    Label = $"About {card.BrandName}",
+                    Label = $"Tell me more about {card.BrandName}",
                     Href = $"/brands/{card.BrandSlug}"
                 });
             }
@@ -1976,7 +2001,7 @@ public class ChatService
                 suggestions.Add(new ChatAction
                 {
                     Type = "navigate",
-                    Label = $"About {firstWithBrand.BrandName}",
+                    Label = $"Tell me more about {firstWithBrand.BrandName}",
                     Href = $"/brands/{firstWithBrand.BrandSlug}"
                 });
             }
@@ -1989,7 +2014,7 @@ public class ChatService
                     suggestions.Add(new ChatAction
                     {
                         Type = "navigate",
-                        Label = $"Explore {firstWithCollection.CollectionName}",
+                        Label = $"Explore the {firstWithCollection.CollectionName} collection",
                         Href = $"/collections/{firstWithCollection.CollectionSlug}"
                     });
                 }

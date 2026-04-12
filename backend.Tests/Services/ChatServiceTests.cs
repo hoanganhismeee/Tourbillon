@@ -147,6 +147,14 @@ public class ChatServiceTests
             NullLogger<ChatService>.Instance);
     }
 
+    private static void AssertBrowseCatalogueAction(ChatApiResponse result)
+    {
+        var action = Assert.Single(result.Actions);
+        Assert.Equal("search", action.Type);
+        Assert.Equal("luxury watches", action.Query);
+        Assert.Equal("Browse the catalogue", action.Label);
+    }
+
     [Fact]
     public async Task HandleMessageAsync_RefusesUnrelatedRequest_WithoutCallingSearchOrAi()
     {
@@ -157,7 +165,7 @@ public class ChatServiceTests
         var result = await service.HandleMessageAsync("session-1", "Write me a sales CV", null, "127.0.0.1");
 
         Assert.Contains("rephrase", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(result.Actions);
+        AssertBrowseCatalogueAction(result);
         Assert.Empty(result.WatchCards);
         watchFinder.VerifyNoOtherCalls();
     }
@@ -172,7 +180,7 @@ public class ChatServiceTests
         var result = await service.HandleMessageAsync("session-1", "fuck you", null, "127.0.0.1");
 
         Assert.Contains("Tourbillon watches", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(result.Actions);
+        AssertBrowseCatalogueAction(result);
         Assert.Empty(result.WatchCards);
         watchFinder.VerifyNoOtherCalls();
     }
@@ -187,7 +195,7 @@ public class ChatServiceTests
         var result = await service.HandleMessageAsync("session-1", "yo", null, "127.0.0.1");
 
         Assert.Contains("Tourbillon can help compare watches", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(result.Actions);
+        AssertBrowseCatalogueAction(result);
         Assert.Empty(result.WatchCards);
         watchFinder.VerifyNoOtherCalls();
     }
@@ -721,7 +729,7 @@ public class ChatServiceTests
         var result = await service.HandleMessageAsync("session-1", "watch podcast recommendations", null, "127.0.0.1");
 
         Assert.Contains("rephrase", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(result.Actions);
+        AssertBrowseCatalogueAction(result);
         Assert.Empty(result.WatchCards);
         watchFinder.Verify(f => f.FindWatchesAsync("watch podcast recommendations"), Times.Once);
     }
@@ -744,9 +752,245 @@ public class ChatServiceTests
 
         Assert.Contains("rephrase", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("reference", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(result.Actions);
+        AssertBrowseCatalogueAction(result);
         Assert.Empty(result.WatchCards);
         watchFinder.Verify(f => f.FindWatchesAsync("show me a ceramic moonphase reverso under 2k"), Times.Once);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_NonAsciiOutOfScope_RoutesToAiWithLanguageHint()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"Xin chao. Tourbillon chi ho tro dong ho va bo suu tap.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "máy uế hiểu nói gì không", null, "127.0.0.1");
+
+        Assert.Equal(1, handler.CallCount);
+        Assert.Contains("non-English language", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Xin chao", result.Message, StringComparison.OrdinalIgnoreCase);
+        AssertBrowseCatalogueAction(result);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task DiscoveryResponse_HasCompareChip_AndBrandNavigateChip()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Rolex", Slug = "rolex" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Datejust", Slug = "datejust" };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "126234",
+            Slug = "rolex-datejust-126234",
+            Description = "Rolex Datejust",
+            CurrentPrice = 12000m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "126200",
+            Slug = "rolex-datejust-126200",
+            Description = "Rolex Datejust",
+            CurrentPrice = 9000m
+        };
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("Find me a slim steel dress watch under 15k"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(first), ToDto(second)],
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"[Rolex Datejust 126234](/watches/rolex-datejust-126234) is a strong Tourbillon match.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "Find me a slim steel dress watch under 15k", null, "127.0.0.1");
+
+        Assert.Contains(result.Actions, a => a.Type == "compare"
+            && a.Slugs != null
+            && a.Slugs.SequenceEqual(["rolex-datejust-126234", "rolex-datejust-126200"]));
+        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/rolex");
+    }
+
+    [Fact]
+    public async Task EntityInfoResponse_NoCompareChip_HasBrandNavigateChip()
+    {
+        using var context = CreateContext();
+        var brand = new Brand
+        {
+            Id = 1,
+            Name = "Vacheron Constantin",
+            Slug = "vacheron-constantin",
+            Description = "Historic Geneva maison."
+        };
+        var collection = new Collection
+        {
+            Id = 10,
+            BrandId = 1,
+            Brand = brand,
+            Name = "Overseas",
+            Slug = "overseas",
+            Description = "Sport-luxury travel collection."
+        };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "4520V/210A-B128",
+            Slug = "vacheron-constantin-overseas-4520v-210a-b128",
+            Description = "Vacheron Constantin Overseas",
+            CurrentPrice = 38000m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "7920V/210A-B334",
+            Slug = "vacheron-constantin-overseas-7920v-210a-b334",
+            Description = "Vacheron Constantin Overseas",
+            CurrentPrice = 41000m
+        };
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"[Overseas](/collections/overseas) is the modern sport-luxury line from Vacheron Constantin.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "tell me about the Overseas", null, "127.0.0.1");
+
+        Assert.DoesNotContain(result.Actions, a => a.Type == "compare");
+        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/vacheron-constantin");
+    }
+
+    [Fact]
+    public async Task CompareResponse_NoExtraCompareChip_HasBrandChipsPerBrand()
+    {
+        using var context = CreateContext();
+        var patek = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var ap = new Brand { Id = 2, Name = "Audemars Piguet", Slug = "audemars-piguet" };
+        var nautilus = new Collection { Id = 10, BrandId = 1, Brand = patek, Name = "Nautilus", Slug = "nautilus" };
+        var royalOak = new Collection { Id = 20, BrandId = 2, Brand = ap, Name = "Royal Oak", Slug = "royal-oak" };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = patek,
+            CollectionId = 10,
+            Collection = nautilus,
+            Name = "5711/1A-010",
+            Slug = "patek-philippe-nautilus-5711-1a-010",
+            Description = "Patek Philippe Nautilus",
+            CurrentPrice = 35000m
+        };
+        var second = new Watch
+        {
+            Id = 200,
+            BrandId = 2,
+            Brand = ap,
+            CollectionId = 20,
+            Collection = royalOak,
+            Name = "16202ST",
+            Slug = "audemars-piguet-royal-oak-16202st",
+            Description = "Audemars Piguet Royal Oak",
+            CurrentPrice = 33000m
+        };
+        context.Brands.AddRange(patek, ap);
+        context.Collections.AddRange(nautilus, royalOak);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("5711/1A-010"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(first)],
+                OtherCandidates = [],
+                SearchPath = "direct_sql_merged"
+            });
+        watchFinder.Setup(f => f.FindWatchesAsync("16202ST"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(second)],
+                OtherCandidates = [],
+                SearchPath = "direct_sql_merged"
+            });
+
+        var service = CreateService(context, watchFinder);
+        var result = await service.HandleMessageAsync("session-1", "Compare 5711/1A-010 vs 16202ST", null, "127.0.0.1");
+
+        Assert.Single(result.Actions.Where(a => a.Type == "compare"));
+        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/patek-philippe");
+        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/audemars-piguet");
+    }
+
+    [Fact]
+    public async Task RefusalResponse_HasFallbackDiscoveryChip()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var service = CreateService(context, watchFinder);
+
+        var result = await service.HandleMessageAsync("session-1", "Write me a sales CV", null, "127.0.0.1");
+
+        AssertBrowseCatalogueAction(result);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task GreetingResponse_HasFallbackDiscoveryChip()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var service = CreateService(context, watchFinder);
+
+        var result = await service.HandleMessageAsync("session-1", "hi", null, "127.0.0.1");
+
+        AssertBrowseCatalogueAction(result);
         watchFinder.VerifyNoOtherCalls();
     }
 
@@ -1280,5 +1524,141 @@ public class ChatServiceTests
         Assert.Equal(2, collectionIds.Count);
         Assert.Equal(0, handler.CallCount);
         watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_DiscoveryResponse_HasCompareChip_AndBrandNavigateChip()
+    {
+        using var context = CreateContext();
+        var patek = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var watches = new[]
+        {
+            new Watch { Id = 100, BrandId = 1, Brand = patek, Name = "Nautilus", Slug = "nautilus", CurrentPrice = 50000m, Specs = "{\"productionStatus\":\"Current\"}" },
+            new Watch { Id = 101, BrandId = 1, Brand = patek, Name = "Aquanaut", Slug = "aquanaut", CurrentPrice = 40000m, Specs = "{\"productionStatus\":\"Current\"}" }
+        };
+
+        context.Brands.Add(patek);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync(It.IsAny<string>()))
+            .ReturnsAsync(new WatchFinderResult { Watches = watches.Select(w => new WatchDto { Id = w.Id, Name = w.Name, Slug = w.Slug }).ToList() });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"Here are two Patek Philippe models.\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "Find me a patek philippe", null, "127.0.0.1");
+
+        // Primary actions: the UI will have appended compare and navigate chips
+        Assert.Contains(result.Actions, a => a.Type == "compare" && a.Slugs != null && a.Slugs.Contains("nautilus"));
+        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/patek-philippe");
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_EntityInfoResponse_NoCompareChip_HasBrandNavigateChip()
+    {
+        using var context = CreateContext();
+        var patek = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var aquanaut = new Collection { Id = 10, BrandId = 1, Brand = patek, Name = "Aquanaut", Slug = "patek-philippe-aquanaut", Description = "Desc" };
+        var watches = new[]
+        {
+            new Watch { Id = 100, BrandId = 1, Brand = patek, CollectionId = 10, Name = "W1", Slug = "w1", CurrentPrice = 1000m },
+            new Watch { Id = 101, BrandId = 1, Brand = patek, CollectionId = 10, Name = "W2", Slug = "w2", CurrentPrice = 2000m }
+        };
+
+        context.Brands.Add(patek);
+        context.Collections.Add(aquanaut);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            // Note: chat prompt no longer tells AI to emit comparisons for collections
+            Content = new StringContent("{\"message\":\"The Aquanaut is great.\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "Tell me about the Aquanaut collection", null, "127.0.0.1");
+
+        Assert.DoesNotContain(result.Actions, a => a.Type == "compare");
+        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/patek-philippe");
+        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/collections/patek-philippe-aquanaut");
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_CompareResponse_HasBrandNavigateChips()
+    {
+        using var context = CreateContext();
+        var patek = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var rolex = new Brand { Id = 2, Name = "Rolex", Slug = "rolex" };
+        var watches = new[]
+        {
+            new Watch { Id = 100, BrandId = 1, Brand = patek, Name = "Nautilus", Slug = "nautilus", CurrentPrice = 50000m },
+            new Watch { Id = 200, BrandId = 2, Brand = rolex, Name = "Submariner", Slug = "submariner", CurrentPrice = 10000m }
+        };
+
+        context.Brands.AddRange(patek, rolex);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        // Return each watch individually so TryResolveExactWatchAsync (requires exactly 1 result) can resolve both
+        watchFinder.Setup(f => f.FindWatchesAsync(It.Is<string>(q => q.Contains("Nautilus", StringComparison.OrdinalIgnoreCase))))
+            .ReturnsAsync(new WatchFinderResult { SearchPath = "direct_sql", Watches = [new WatchDto { Id = 100, Name = "Nautilus", Slug = "nautilus" }] });
+        watchFinder.Setup(f => f.FindWatchesAsync(It.Is<string>(q => q.Contains("Submariner", StringComparison.OrdinalIgnoreCase))))
+            .ReturnsAsync(new WatchFinderResult { SearchPath = "direct_sql", Watches = [new WatchDto { Id = 200, Name = "Submariner", Slug = "submariner" }] });
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            // The AI spits out a compare action directly
+            Content = new StringContent("{\"message\":\"Both are icons.\",\"actions\":[{\"type\":\"compare\",\"slugs\":[\"nautilus\",\"submariner\"]}]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "Compare the Nautilus and the Submariner", null, "127.0.0.1");
+
+        // UI has the compare primary action
+        Assert.Contains(result.Actions, a => a.Type == "compare");
+        // And two brand navigation secondary actions
+        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/patek-philippe");
+        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/rolex");
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_RefusalResponse_HasFallbackDiscoveryChip()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+
+        var service = CreateService(context, watchFinder, handler);
+        
+        // Abusive query gets a deterministic refusal
+        var result = await service.HandleMessageAsync("session-1", "You are stupid", null, "127.0.0.1");
+
+        Assert.Contains(result.Actions, a => a.Type == "search" && a.Label == "Browse the catalogue");
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_GreetingResponse_HasFallbackDiscoveryChip()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        // Returns empty cards for greeting
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"Hello! How can I help?\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        
+        // Simple greeting
+        var result = await service.HandleMessageAsync("session-1", "Hello", null, "127.0.0.1");
+
+        Assert.Contains(result.Actions, a => a.Type == "search" && a.Label == "Browse the catalogue");
     }
 }
