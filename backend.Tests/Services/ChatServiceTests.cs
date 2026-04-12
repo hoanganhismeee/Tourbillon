@@ -735,8 +735,10 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public async Task HandleMessageAsync_NoCloseCatalogueMatch_AsksUserToRephrase()
+    public async Task HandleMessageAsync_NoCloseCatalogueMatch_RoutesToAiWithHelpfulContext()
     {
+        // When the watch finder returns 0 results, the concierge now routes to AI so it can
+        // give a helpful "try narrowing the brief" response instead of a dead-end refusal.
         using var context = CreateContext();
         var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
         watchFinder.Setup(f => f.FindWatchesAsync("show me a ceramic moonphase reverso under 2k"))
@@ -746,16 +748,22 @@ public class ChatServiceTests
                 OtherCandidates = [],
                 SearchPath = "vector"
             });
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"No exact match for a ceramic moonphase Reverso under 2k. Try a different reference or adjust your price range.\",\"actions\":[]}",
+                Encoding.UTF8, "application/json")
+        });
 
-        var service = CreateService(context, watchFinder);
+        var service = CreateService(context, watchFinder, handler);
         var result = await service.HandleMessageAsync("session-1", "show me a ceramic moonphase reverso under 2k", null, "127.0.0.1");
 
-        Assert.Contains("rephrase", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("reference", result.Message, StringComparison.OrdinalIgnoreCase);
         AssertBrowseCatalogueAction(result);
         Assert.Empty(result.WatchCards);
         watchFinder.Verify(f => f.FindWatchesAsync("show me a ceramic moonphase reverso under 2k"), Times.Once);
         watchFinder.VerifyNoOtherCalls();
+        Assert.Equal(1, handler.CallCount);
     }
 
     [Fact]
