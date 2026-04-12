@@ -211,10 +211,12 @@ function ActionChips({
   actions,
   autoExecute = false,
   messageKey,
+  onSendMessage,
 }: {
   actions: ChatAction[];
   autoExecute?: boolean;
   messageKey: string;
+  onSendMessage?: (text: string) => void;
 }) {
   const router = useRouter();
   const { addToCompare, clearCompare } = useCompare();
@@ -225,6 +227,7 @@ function ActionChips({
   const getActionKey = useCallback((action: ChatAction) => {
     if (action.type === 'compare') return `compare:${action.slugs?.join('|') ?? ''}`;
     if (action.type === 'search') return `search:${action.query ?? ''}`;
+    if (action.type === 'navigate') return `navigate:${action.href ?? ''}`;
     return `set_cursor:${action.cursor ?? ''}`;
   }, []);
 
@@ -265,7 +268,7 @@ function ActionChips({
     if (!autoExecute) return;
 
     actions.forEach(action => {
-      if (action.type !== 'compare' && action.type !== 'set_cursor') return;
+      if (action.type !== 'set_cursor') return;
 
       const autoKey = `${messageKey}:${getActionKey(action)}`;
       if (autoExecutedRef.current.has(autoKey)) return;
@@ -274,12 +277,48 @@ function ActionChips({
     });
   }, [actions, autoExecute, executeAction, getActionKey, messageKey]);
 
-  if (!actions.length) return null;
+  // Filter out set_cursor chips — they auto-execute and the message text confirms the change
+  const visibleActions = actions.filter(a => a.type !== 'set_cursor');
+  if (!visibleActions.length) return null;
+
+  // Per-type icons
+  const compareIcon = (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+      <path d="M16 3h5v5" /><path d="M8 3H3v5" /><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3" /><path d="m15 9 6-6" />
+    </svg>
+  );
+  const searchIcon = (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+      <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+  const exploreIcon = (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+      <circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+    </svg>
+  );
+
+  const chevron = (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0 opacity-30">
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  );
+
+  // Primary actions: compare + search — amber-tinted, stronger border
+  const primaryClass = "flex w-full items-center gap-3 rounded-xl border border-[#bfa68a]/20 px-3.5 py-2.5 text-left text-[12px] leading-snug text-[#ecddc8]/70 transition-all hover:border-[#bfa68a]/40 hover:text-[#ecddc8] hover:bg-[#bfa68a]/[0.06] group";
+  const primaryStyle = { background: 'rgba(191,166,138,0.05)' };
+
+  // Suggestion actions: navigate — lighter, subdued
+  const suggestionClass = "flex w-full items-center gap-3 rounded-xl border border-white/[0.06] px-3.5 py-2 text-left text-[11.5px] leading-snug text-white/45 transition-all hover:border-white/15 hover:text-white/70 hover:bg-white/[0.03] group";
+  const suggestionStyle = { background: 'rgba(255,255,255,0.02)' };
 
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
-      {actions.map((action, idx) => {
+    <div className="mt-4 flex flex-col gap-1.5 border-t border-white/[0.06] pt-3">
+      {visibleActions.map((action, idx) => {
         const status = actionStatus[getActionKey(action)] ?? 'idle';
+        const isPrimary = action.type === 'compare' || action.type === 'search';
+        const chipClass = isPrimary ? primaryClass : suggestionClass;
+        const chipStyle = isPrimary ? primaryStyle : suggestionStyle;
 
         if (action.type === 'search' && action.query) {
           const query = action.query;
@@ -287,12 +326,12 @@ function ActionChips({
             <button
               key={`${messageKey}-${idx}`}
               onClick={() => router.push(`/smart-search?q=${encodeURIComponent(query)}`)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#bfa68a]/30 px-3 py-1.5 text-[11px] text-[#bfa68a] transition-colors hover:border-[#bfa68a]/60 hover:bg-[#bfa68a]/10 hover:text-[#ecddc8]"
+              className={chipClass}
+              style={chipStyle}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-              </svg>
-              {action.label}
+              <span className="text-[#bfa68a]/60 group-hover:text-[#bfa68a]">{searchIcon}</span>
+              <span className="flex-1">{action.label}</span>
+              {chevron}
             </button>
           );
         }
@@ -303,44 +342,28 @@ function ActionChips({
               key={`${messageKey}-${idx}`}
               onClick={() => void handleCompare(action)}
               disabled={status === 'loading'}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#bfa68a]/30 px-3 py-1.5 text-[11px] text-[#bfa68a] transition-colors hover:border-[#bfa68a]/60 hover:bg-[#bfa68a]/10 hover:text-[#ecddc8] disabled:cursor-not-allowed disabled:opacity-50"
+              className={`${chipClass} disabled:cursor-not-allowed disabled:opacity-40`}
+              style={chipStyle}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="7" height="18" rx="1" /><rect x="14" y="3" width="7" height="18" rx="1" />
-              </svg>
-              {status === 'loading' ? 'Opening compare...' : status === 'error' ? 'Retry compare' : action.label}
+              <span className="text-[#bfa68a]/60 group-hover:text-[#bfa68a]">{compareIcon}</span>
+              <span className="flex-1">{status === 'loading' ? 'Opening compare...' : status === 'error' ? 'Try again' : action.label}</span>
+              {chevron}
             </button>
           );
         }
 
-        if (action.type === 'set_cursor' && action.cursor) {
+        if (action.type === 'navigate' && action.label) {
+          // Send as a chat message instead of routing away from the concierge
           return (
             <button
               key={`${messageKey}-${idx}`}
-              onClick={() => handleCursor(action)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#bfa68a]/30 px-3 py-1.5 text-[11px] text-[#bfa68a] transition-colors hover:border-[#bfa68a]/60 hover:bg-[#bfa68a]/10 hover:text-[#ecddc8]"
+              onClick={() => onSendMessage?.(action.label)}
+              className={chipClass}
+              style={chipStyle}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M5 5l14 7-14 7 3-7-3-7Z" />
-              </svg>
-              {action.label}
-            </button>
-          );
-        }
-
-        if (action.type === 'navigate' && action.href) {
-          const href = action.href;
-          return (
-            <button
-              key={`${messageKey}-${idx}`}
-              onClick={() => startTransition(() => router.push(href))}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#bfa68a]/30 px-3 py-1.5 text-[11px] text-[#bfa68a] transition-colors hover:border-[#bfa68a]/60 hover:bg-[#bfa68a]/10 hover:text-[#ecddc8]"
-            >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-              </svg>
-              {action.label}
+              <span className="text-white/30 group-hover:text-white/50">{exploreIcon}</span>
+              <span className="flex-1">{action.label}</span>
+              {chevron}
             </button>
           );
         }
@@ -474,6 +497,7 @@ export default function ChatPanel() {
                       && index === messages.length - 1
                       && (message.createdAt ?? 0) >= mountTimeRef.current
                     }
+                    onSendMessage={(text) => void handlePromptClick(text)}
                   />
                 )}
               </div>
