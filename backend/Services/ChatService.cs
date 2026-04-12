@@ -88,6 +88,23 @@ public class ChatService
     private const string DailyQuotaMessage = "You have reached your daily concierge quota of 5 messages. Please come back tomorrow.";
     private const string GreetingMessage = "Hello. Tourbillon can help compare watches, explain brands or collections, and narrow a brief into real catalogue options. Try something like \"compare the Aquanaut and the Overseas\", \"tell me about Vacheron Constantin\", or \"JLC Reverso under 50k\".";
 
+    // Single-word collection names that are too generic to be reliable entity matches.
+    // e.g. Greubel Forsey has a collection literally named "Collection" which would match any query
+    // containing the word "collection".
+    private static readonly HashSet<string> _genericCollectionWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "collection", "collections", "watch", "watches", "model", "models",
+        "series", "line", "range", "edition", "classic", "sport", "heritage"
+    };
+
+    // Words that indicate the watch Description field contains editorial prose, not a model subtitle.
+    // CardShortLabel falls back to Name when Description starts with one of these.
+    private static readonly HashSet<string> _editorialLeadWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "the", "a", "an", "with", "in", "this", "it", "its", "featuring",
+        "designed", "built", "from", "born", "crafted", "combining", "inspired"
+    };
+
     // Brand name aliases shared with WatchFinderService.
     private static readonly Dictionary<string, string> _brandAliases = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -304,6 +321,11 @@ public class ChatService
             if (!string.IsNullOrWhiteSpace(behaviorSummary))
                 resolution.Context.Insert(0, $"[User context] {behaviorSummary}");
 
+            // Explicit language hint for ASCII-only queries (virtually always English).
+            // Prevents local qwen models from drifting to Chinese or other languages.
+            if (message.All(c => c < 128))
+                resolution.Context.Insert(0, "LANGUAGE RULE (mandatory): The user message is in English. Your entire response MUST be written in English only. Do not output Chinese characters, Vietnamese, French, or any other non-English text. Responding in any language other than English is a critical error.");
+
             if (resolution.Context.Count == 0)
                 resolution.Context.Add("Stay within Tourbillon's catalogue and watch expertise. No relevant catalogue records were resolved.");
 
@@ -439,9 +461,16 @@ public class ChatService
         if (mentions.HasAny)
             return await BuildEntityInfoResolutionAsync(message, mentions, noDirectMatch: true);
 
+        // No catalogue match but query is watch-scoped — let AI handle it as a helpful concierge
+        // response (e.g. "recommend me watch models", "what should I look for first?").
         return new ChatResolution
         {
-            Message = NoCloseMatchMessage
+            UseAi = true,
+            Query = message,
+            Context =
+            [
+                "No specific Tourbillon catalogue records were resolved for this query. Respond as a helpful boutique concierge: if the user is asking for general watch discovery or guidance, invite them to narrow the brief by style, brand, or price range. Stay concise and within Tourbillon's scope."
+            ]
         };
     }
 
@@ -534,6 +563,13 @@ public class ChatService
         foreach (var collection in collectionPool.OrderByDescending(c => c.Name.Length))
         {
             var normalizedName = NormalizeEntityText(collection.Name);
+
+            // Skip single-word generic collection names (e.g. "Collection", "Series") — they match
+            // too loosely against everyday English and pollute entity resolution.
+            if (collection.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length == 1
+                && _genericCollectionWords.Contains(collection.Name.Trim()))
+                continue;
+
             if (!query.Contains(collection.Name, StringComparison.OrdinalIgnoreCase) && !normalizedQuery.Contains(normalizedName))
                 continue;
 
@@ -2014,7 +2050,7 @@ public class ChatService
                     suggestions.Add(new ChatAction
                     {
                         Type = "navigate",
-                        Label = $"Explore the {firstWithCollection.CollectionName} collection",
+                        Label = $"Explore the {FormatCollectionChipName(firstWithCollection.CollectionName)} collection",
                         Href = $"/collections/{firstWithCollection.CollectionSlug}"
                     });
                 }
@@ -2024,12 +2060,45 @@ public class ChatService
         return suggestions;
     }
 
-    // Returns a short human-readable label from a watch card (2 words of Description, or Name fallback).
+    // Returns the collection name with any leading generic word stripped for use in chip labels.
+    // e.g. "Collection Convexe" → "Convexe", "Aquanaut" → "Aquanaut"
+    private static string FormatCollectionChipName(string? collectionName)
+    {
+        if (string.IsNullOrWhiteSpace(collectionName)) return "this collection";
+        var words = collectionName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length > 1 && _genericCollectionWords.Contains(words[0]))
+            return string.Join(" ", words.Skip(1));
+        return collectionName;
+    }
+
+    // Returns a short human-readable label for a chip (e.g. "Compare Aquanaut vs Overseas").
+    // Prefers: last word of collection name + first reference part > non-editorial Description > Name.
     private static string CardShortLabel(ChatWatchCard card)
     {
-        var text = !string.IsNullOrWhiteSpace(card.Description) ? card.Description : card.Name;
-        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return string.Join(" ", words.Take(2));
+        // Collection name last word + first name segment (e.g. "Aquanaut 5164G-001")
+        var collName = card.CollectionName?.Trim();
+        if (!string.IsNullOrWhiteSpace(collName))
+        {
+            var collWords = collName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var distinctWord = collWords.Length == 1 ? collWords[0] : collWords.Last();
+            if (!_genericCollectionWords.Contains(distinctWord))
+            {
+                var refPart = card.Name?.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                return string.IsNullOrWhiteSpace(refPart) ? distinctWord : $"{distinctWord} {refPart}";
+            }
+        }
+
+        // Description — only if it doesn't start with an article or editorial word
+        if (!string.IsNullOrWhiteSpace(card.Description))
+        {
+            var descWords = card.Description.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (descWords.Length >= 2 && !_editorialLeadWords.Contains(descWords[0].TrimEnd('.', ',')))
+                return string.Join(" ", descWords.Take(2));
+        }
+
+        // Fallback: first word(s) of the watch name (reference number)
+        var nameWords = card.Name?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? [];
+        return nameWords.Length > 0 ? string.Join(" ", nameWords.Take(2)) : card.Name ?? "";
     }
 
     private static string FormatPrice(decimal price) =>
