@@ -15,8 +15,10 @@ import { useCompare } from '@/stores/compareStore';
 
 const EXAMPLE_PROMPTS = [
   'Compare the Aquanaut and the Overseas',
-  'Tell me about Vacheron Constantin',
-  'As a girl, should I wear round or square dial',
+  'Tell me about Patek Philippe',
+  'Sporty watches under $20,000',
+  'Something elegant for a formal dinner',
+  'Best diving watch from Rolex',
 ];
 
 type NavigateFn = (href: string) => void;
@@ -228,6 +230,7 @@ function ActionChips({
     if (action.type === 'compare') return `compare:${action.slugs?.join('|') ?? ''}`;
     if (action.type === 'search') return `search:${action.query ?? ''}`;
     if (action.type === 'navigate') return `navigate:${action.href ?? ''}`;
+    if (action.type === 'suggest') return `suggest:${action.query ?? action.label ?? ''}`;
     return `set_cursor:${action.cursor ?? ''}`;
   }, []);
 
@@ -279,6 +282,8 @@ function ActionChips({
 
   // Filter out set_cursor chips — they auto-execute and the message text confirms the change
   const visibleActions = actions.filter(a => a.type !== 'set_cursor');
+  const suggestActions = visibleActions.filter(a => a.type === 'suggest');
+  const actionItems = visibleActions.filter(a => a.type !== 'suggest');
   if (!visibleActions.length) return null;
 
   // Per-type icons
@@ -314,7 +319,7 @@ function ActionChips({
 
   return (
     <div className="mt-4 flex flex-col gap-1.5 border-t border-white/[0.06] pt-3">
-      {visibleActions.map((action, idx) => {
+      {actionItems.map((action, idx) => {
         const status = actionStatus[getActionKey(action)] ?? 'idle';
         const isPrimary = action.type === 'compare' || action.type === 'search';
         const chipClass = isPrimary ? primaryClass : suggestionClass;
@@ -353,11 +358,10 @@ function ActionChips({
         }
 
         if (action.type === 'navigate' && action.label) {
-          // Send as a chat message instead of routing away from the concierge
           return (
             <button
               key={`${messageKey}-${idx}`}
-              onClick={() => onSendMessage?.(action.label)}
+              onClick={() => action.href && router.push(action.href)}
               className={chipClass}
               style={chipStyle}
             >
@@ -370,6 +374,22 @@ function ActionChips({
 
         return null;
       })}
+
+      {suggestActions.length > 0 && (
+        <div className={`flex flex-col gap-1.5 ${actionItems.length > 0 ? 'mt-2' : ''}`}>
+          <p className="px-0.5 text-[10px] uppercase tracking-wider text-white/25">Try asking</p>
+          {suggestActions.map((action, idx) => (
+            <button
+              key={`${messageKey}-suggest-${idx}`}
+              onClick={() => onSendMessage?.(action.query ?? action.label)}
+              className="w-full rounded-full border border-[#bfa68a]/20 px-4 py-2 text-center text-xs text-white/50 transition-colors hover:border-[#bfa68a]/50 hover:text-white/80"
+              style={{ background: 'rgba(255,255,255,0.03)' }}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

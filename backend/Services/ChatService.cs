@@ -30,6 +30,10 @@ public class ChatMessageRequest
 
     // Summary of the user's recent browsing behavior and Watch DNA.
     public string? BehaviorSummary { get; set; }
+
+    // Browser locale hint from the frontend. Used only when message-level
+    // language detection is ambiguous.
+    public string? PreferredLanguage { get; set; }
 }
 
 public class ChatWatchCard
@@ -97,6 +101,26 @@ public class ChatService
         "series", "line", "range", "edition", "classic", "sport", "heritage"
     };
 
+    // Curated query bank for "Try asking" chips shown after hard refusals.
+    // Covers brand exploration, comparisons, discovery by style/budget/occasion.
+    private static readonly string[] _suggestedQueryBank =
+    [
+        "Compare the Aquanaut and the Overseas",
+        "Tell me about Patek Philippe",
+        "Sporty watches under $20,000",
+        "JLC Reverso — what makes it special?",
+        "Tell me about Vacheron Constantin",
+        "Grand Seiko for everyday wear",
+        "Slim dress watch under $15,000",
+        "Audemars Piguet Royal Oak",
+        "Best diving watches",
+        "Watches for a woman",
+        "Tell me about F.P.Journe",
+        "Frederique Constant under $5,000",
+        "Classic dress watch for formal occasions",
+        "A. Lange & Sohne Saxonia",
+    ];
+
     // Words that indicate the watch Description field contains editorial prose, not a model subtitle.
     // CardShortLabel falls back to Name when Description starts with one of these.
     private static readonly HashSet<string> _editorialLeadWords = new(StringComparer.OrdinalIgnoreCase)
@@ -153,6 +177,10 @@ public class ChatService
         public List<ChatAction> Actions { get; set; } = [];
         public ChatSessionState? SessionState { get; set; }
         public bool SuppressCompareSuggestion { get; set; }
+        public string? ResponseLanguage { get; set; }
+        public bool AllowWebEnrichment { get; set; }
+        public string? WebQuery { get; set; }
+        public bool AllowAiActions { get; set; } = true;
     }
 
     private sealed class EntityMentions
@@ -264,7 +292,12 @@ public class ChatService
     }
 
     public async Task<ChatApiResponse> HandleMessageAsync(
-        string sessionId, string message, string? userId, string? ipAddress, string? behaviorSummary = null)
+        string sessionId,
+        string message,
+        string? userId,
+        string? ipAddress,
+        string? behaviorSummary = null,
+        string? preferredLanguage = null)
     {
         var disableLimit = _config.GetValue<bool>("ChatSettings:DisableLimitInDev");
         var dailyLimit = _config.GetValue<int>("ChatSettings:DailyLimit", 5);
@@ -321,17 +354,22 @@ public class ChatService
             if (!string.IsNullOrWhiteSpace(behaviorSummary))
                 resolution.Context.Insert(0, $"[User context] {behaviorSummary}");
 
-            // Explicit language hint for ASCII-only queries (virtually always English).
-            // Prevents local qwen models from drifting to Chinese or other languages.
-            if (message.All(c => c < 128))
-                resolution.Context.Insert(0, "LANGUAGE RULE (mandatory): The user message is in English. Your entire response MUST be written in English only. Do not output Chinese characters, Vietnamese, French, or any other non-English text. Responding in any language other than English is a critical error.");
-
             if (resolution.Context.Count == 0)
                 resolution.Context.Add("Stay within Tourbillon's catalogue and watch expertise. No relevant catalogue records were resolved.");
 
-            var aiResult = await CallAiServiceAsync(history, resolution.Query, resolution.Context);
+            var responseLanguage = resolution.ResponseLanguage ?? ResolveResponseLanguage(message, preferredLanguage);
+            var aiResult = await CallAiServiceAsync(
+                history,
+                resolution.Query,
+                resolution.Context,
+                responseLanguage,
+                resolution.AllowWebEnrichment,
+                resolution.WebQuery,
+                resolution.AllowAiActions);
             aiMessage = aiResult.Message;
-            actions = MergeActions(resolution.Actions, aiResult.Actions);
+            actions = MergeActions(
+                resolution.Actions,
+                resolution.AllowAiActions ? aiResult.Actions : []);
             if (watchCards.Count == 0)
                 watchCards = await ExtractWatchCardsAsync(aiMessage, actions);
         }
@@ -429,11 +467,26 @@ public class ChatService
                 };
             }
 
+            // Shopping/occasion phrasing — route to AI with a catalogue search for context.
+            // e.g. "gift for my girlfriend", "something for a black-tie dinner".
+            if (LooksLikeWatchShoppingIntent(message))
+                return await BuildShoppingGuidanceResolutionAsync(message);
+
+            // Clearly off-topic — refuse and attach 3 example queries so the user
+            // knows what the concierge can actually help with.
             return new ChatResolution
             {
-                Message = UnsupportedQueryMessage
+                Message = UnsupportedQueryMessage,
+                Actions = GetStaticSuggestions()
             };
         }
+
+        if (LooksLikeBrandHistoryRequest(message, mentions))
+            return await BuildEntityInfoResolutionAsync(
+                message,
+                mentions,
+                allowWebEnrichment: true,
+                allowAiActions: false);
 
         if (LooksLikeEntityInfoRequest(message, mentions))
             return await BuildEntityInfoResolutionAsync(message, mentions);
@@ -475,7 +528,13 @@ public class ChatService
     }
 
     private async Task<(string Message, List<ChatAction> Actions)> CallAiServiceAsync(
-        List<ChatHistoryEntry> history, string query, List<string> context)
+        List<ChatHistoryEntry> history,
+        string query,
+        List<string> context,
+        string? responseLanguage = null,
+        bool allowWebEnrichment = false,
+        string? webQuery = null,
+        bool allowAiActions = true)
     {
         try
         {
@@ -487,7 +546,16 @@ public class ChatService
             };
             safeContext.AddRange(context);
 
-            var payload = new { query, context = safeContext, history };
+            var payload = new
+            {
+                query,
+                context = safeContext,
+                history,
+                responseLanguage,
+                allowWebEnrichment,
+                webQuery,
+                allowActions = allowAiActions,
+            };
             var resp = await httpClient.PostAsJsonAsync("/chat", payload);
             chatSw.Stop();
 
@@ -1152,7 +1220,11 @@ public class ChatService
     }
 
     private async Task<ChatResolution> BuildEntityInfoResolutionAsync(
-        string query, EntityMentions mentions, bool noDirectMatch = false)
+        string query,
+        EntityMentions mentions,
+        bool noDirectMatch = false,
+        bool allowWebEnrichment = false,
+        bool allowAiActions = true)
     {
         var context = new List<string>();
         var cards = new List<ChatWatchCard>();
@@ -1230,6 +1302,14 @@ public class ChatService
         if (noDirectMatch)
             context.Insert(0, "No exact Tourbillon product match was resolved for the request. Answer using the matched brand and collection context only.");
 
+        if (allowWebEnrichment)
+        {
+            context.Insert(0,
+                "Brand history request: answer the maison or horology-background question directly. Use Tourbillon catalogue context first, then use any supplied secondary web notes only for factual background such as founding year, heritage, or historical positioning.");
+            context.Insert(1,
+                "Action guidance: do not emit compare or Smart Search actions for this reply. Keep any next step focused on the linked brand or collection pages.");
+        }
+
         return new ChatResolution
         {
             UseAi = true,
@@ -1248,7 +1328,36 @@ public class ChatService
                 WatchSlugs = cards.Select(card => card.Slug).Where(slug => !string.IsNullOrWhiteSpace(slug)).Distinct(StringComparer.OrdinalIgnoreCase).Take(DiscoveryCardLimit).ToList(),
                 FollowUpMode = cards.Count > 0 ? "watch_cards" : "entity_info",
                 CanonicalQuery = mentions.Collections.FirstOrDefault()?.Name ?? mentions.Brands.FirstOrDefault()?.Name ?? query,
-            }
+            },
+            AllowWebEnrichment = allowWebEnrichment,
+            WebQuery = allowWebEnrichment ? mentions.Brands.FirstOrDefault()?.Name : null,
+            AllowAiActions = allowAiActions,
+        };
+    }
+
+    // Resolves shopping/occasion queries that lack watch keywords but have clear purchase intent.
+    // Runs a general catalogue search to populate context and watch cards so the AI can make
+    // specific recommendations rather than giving purely generic advice.
+    private async Task<ChatResolution> BuildShoppingGuidanceResolutionAsync(string message)
+    {
+        // Broaden the query with "watch" so the WatchFinder can retrieve relevant catalogue entries.
+        var searchQuery = $"watch {message.Trim()}";
+        var searchResult = await _watchFinderService.FindWatchesAsync(searchQuery) ?? new WatchFinderResult();
+
+        var context = new List<string>
+        {
+            "Shopping guidance request: the user is looking for a watch for a specific person, occasion, or style. Help them discover relevant watches from Tourbillon's catalogue. If the context includes specific watches, highlight the best fits. Invite them to narrow by brand, budget, or style if helpful. Stay within Tourbillon's scope."
+        };
+
+        if (searchResult.Watches.Count > 0)
+            return await BuildDiscoveryResolutionAsync(message, searchResult, includeSearchAction: true);
+
+        // Fallback when WatchFinder returns nothing — respond with context-only guidance
+        return new ChatResolution
+        {
+            UseAi = true,
+            Query = message,
+            Context = context,
         };
     }
 
@@ -1653,6 +1762,7 @@ public class ChatService
             (@"\bsecond\b", _ => 1),
             (@"\bthird\b", _ => 2),
             (@"\bfourth\b", _ => 3),
+            (@"\bfifth\b", _ => 4),
             (@"\blast\b", _ => totalCards - 1),
             (@"\b(\d+)(?:st|nd|rd|th)\b", match => int.TryParse(match.Groups[1].Value, out var ordinal) ? ordinal - 1 : null),
             (@"\bnumber\s+(\d+)\b", match => int.TryParse(match.Groups[1].Value, out var ordinal) ? ordinal - 1 : null),
@@ -1677,8 +1787,17 @@ public class ChatService
             .ToList();
     }
 
-    private static bool IsAffirmativeFollowUp(string query) =>
-        Regex.IsMatch(query.Trim(), @"^(?:yes|yeah|yep|sure|ok|okay|please do|go ahead|sounds good|do it)[!.]*$", RegexOptions.IgnoreCase);
+    private static bool IsAffirmativeFollowUp(string query)
+    {
+        var q = query.Trim();
+        // Bare affirmatives: "yes", "yeah!", "sure.", etc.
+        if (Regex.IsMatch(q, @"^(?:yes|yeah|yep|sure|ok|okay|please do|go ahead|sounds good|do it)[!.]*$", RegexOptions.IgnoreCase))
+            return true;
+        // "yes/yeah/sure please [optional trailing words]" — e.g. "yes please show me the details"
+        var words = q.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return words.Length <= 8
+            && Regex.IsMatch(q, @"^(?:yes|yeah|yep|sure|ok|okay)\s+please\b", RegexOptions.IgnoreCase);
+    }
 
     private static bool IsGreetingQuery(string query) =>
         Regex.IsMatch(query.Trim(), @"^(?:hi|hello|hey|yo|hiya|sup|what'?s up|good morning|good afternoon|good evening)[!.]*$", RegexOptions.IgnoreCase);
@@ -1698,10 +1817,54 @@ public class ChatService
         return CountWords(query) <= 3;
     }
 
+    private static bool LooksLikeBrandHistoryRequest(string query, EntityMentions mentions)
+    {
+        if (mentions.Brands.Count == 0)
+            return false;
+
+        if (!Regex.IsMatch(query, @"\b(?:history|heritage|background|founded|founder|origin|origins|legacy|maison|browse the web|web|internet)\b", RegexOptions.IgnoreCase))
+            return false;
+
+        return !IsExplicitCompareQuery(query);
+    }
+
     private static bool LooksLikeDiscoveryRequest(string query) =>
         Regex.IsMatch(query,
             @"\b(?:find|show|search|looking for|look for|recommend|suggest|need|want|shopping|browse|under\s+\$?\d|between\s+\$?\d)\b",
             RegexOptions.IgnoreCase);
+
+    // Catches shopping/occasion phrasing that lacks watch keywords but signals watch discovery
+    // intent in a boutique context — e.g. "gift for my girlfriend", "something for a dinner".
+    // Uses separate patterns to keep each group readable.
+    private static bool LooksLikeWatchShoppingIntent(string query)
+    {
+        // Recipient: "for him", "for my dad", "for a woman"
+        if (Regex.IsMatch(query, @"\bfor\s+(?:him|her|a\s+man|a\s+woman|my\s+(?:dad|mom|wife|husband|girlfriend|boyfriend|father|mother|partner|friend))\b", RegexOptions.IgnoreCase))
+            return true;
+
+        // Occasion: "for a dinner", "for a formal wedding", "for a black-tie event" (optional adjective)
+        if (Regex.IsMatch(query, @"\bfor\s+(?:an?\s+)?(?:\w+\s+)?(?:dinner|wedding|event|gala|occasion|birthday|anniversary|trip|travel|holiday|ceremony|reception|formal)\b", RegexOptions.IgnoreCase))
+            return true;
+
+        // Gift framing
+        if (Regex.IsMatch(query, @"\b(?:gift|present)\s+for\b", RegexOptions.IgnoreCase))
+            return true;
+
+        // Style adjective without a watch keyword: "something elegant", "something sporty"
+        if (Regex.IsMatch(query, @"\bsomething\s+(?:elegant|sporty|casual|formal|classic|modern|slim|thin|bold|minimalist|dressy|luxurious|understated|refined)\b", RegexOptions.IgnoreCase))
+            return true;
+
+        // Explicit use-case phrases
+        return Regex.IsMatch(query, @"\b(?:daily\s+driver|everyday\s+wear|dress\s+watch|sport\s+watch|weekend\s+watch|travel\s+watch|office\s+watch|business\s+watch)\b", RegexOptions.IgnoreCase);
+    }
+
+    // Returns `count` randomly selected queries from the curated bank as suggest-type actions.
+    private static List<ChatAction> GetStaticSuggestions(int count = 3) =>
+        _suggestedQueryBank
+            .OrderBy(_ => Random.Shared.Next())
+            .Take(count)
+            .Select(q => new ChatAction { Type = "suggest", Label = q, Query = q })
+            .ToList();
 
     private static bool IsExplicitCompareQuery(string query) =>
         Regex.IsMatch(query,
@@ -1813,6 +1976,7 @@ public class ChatService
         cleaned = Regex.Replace(cleaned, @"\bfor me\b", " ", RegexOptions.IgnoreCase);
         cleaned = Regex.Replace(cleaned, @"\bsomething like\b", " ", RegexOptions.IgnoreCase);
         cleaned = Regex.Replace(cleaned, @"\b(?:should i wear|would i wear|should i buy|would i buy|change the cursor to|set the cursor to|switch the cursor to)\b", " ", RegexOptions.IgnoreCase);
+        cleaned = Regex.Replace(cleaned, @"\b(?:browse the web|search the web|web|internet|history|heritage|background|founder|founded|origins?)\b", " ", RegexOptions.IgnoreCase);
         cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
 
         if (ordered.Count == 0)
@@ -1846,7 +2010,7 @@ public class ChatService
 
         descriptor = Regex.Replace(
             descriptor,
-            @"\b(?:recommend|suggest|find|show|give|bring|help|discover|looking|look|want|need|please|pls|me|some|any|maybe|few|couple|options?|pieces?|models?|watches?|should|wear|buy|cursor|change|switch|set|jlc|ap|pp|vc)\b",
+            @"\b(?:recommend|suggest|find|show|give|bring|help|discover|looking|look|want|need|please|pls|me|some|any|maybe|few|couple|options?|pieces?|models?|watches?|should|wear|buy|cursor|change|switch|set|jlc|ap|pp|vc|history|heritage|background|web|internet|founder|founded|origins?)\b",
             " ",
             RegexOptions.IgnoreCase);
         descriptor = Regex.Replace(descriptor, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
@@ -1883,6 +2047,42 @@ public class ChatService
         var pattern = $@"\b{Regex.Escape(term)}{suffix}\b";
         return Regex.Replace(input, pattern, " ", RegexOptions.IgnoreCase);
     }
+
+    private static string ResolveResponseLanguage(string query, string? preferredLanguage)
+    {
+        if (LooksLikeVietnameseText(query))
+            return "vietnamese";
+
+        if (LooksLikeFrenchText(query))
+            return "french";
+
+        if (query.All(c => c < 128))
+            return "english";
+
+        return NormalizeLanguageHint(preferredLanguage) ?? "english";
+    }
+
+    private static string? NormalizeLanguageHint(string? preferredLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(preferredLanguage))
+            return null;
+
+        var normalized = preferredLanguage.Trim().ToLowerInvariant();
+        if (normalized.StartsWith("en")) return "english";
+        if (normalized.StartsWith("fr")) return "french";
+        if (normalized.StartsWith("vi")) return "vietnamese";
+        if (normalized.StartsWith("ja")) return "japanese";
+        if (normalized.StartsWith("zh")) return "chinese";
+        return null;
+    }
+
+    private static bool LooksLikeVietnameseText(string query) =>
+        Regex.IsMatch(query, @"[ăâêôơưđáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]", RegexOptions.IgnoreCase)
+        || Regex.IsMatch(query, @"\b(?:xin chao|xin chào|dong ho|đồng hồ|lich su|lịch sử|thuong hieu|thương hiệu|bo suu tap|bộ sưu tập)\b", RegexOptions.IgnoreCase);
+
+    private static bool LooksLikeFrenchText(string query) =>
+        Regex.IsMatch(query, @"[àâçéèêëîïôûùüÿœæ]", RegexOptions.IgnoreCase)
+        || Regex.IsMatch(query, @"\b(?:bonjour|montre|histoire|heritage|maison|collection|parlez[- ]moi|raconte[- ]moi|suisse)\b", RegexOptions.IgnoreCase);
 
     private static string BuildReferencedWatchFallbackMessage(List<Watch> watches)
     {
@@ -1981,10 +2181,10 @@ public class ChatService
     {
         if (watchCards.Count == 0)
         {
-            // Greetings, refusals, and cursor-only responses have no cards — give the user
-            // a single discovery chip so there is always something to click.
+            // Greetings and cursor-only responses — show 3 example query chips so the user
+            // always has a concrete next step regardless of why no cards were returned.
             if (!primaryActions.Any())
-                return [new ChatAction { Type = "search", Query = "luxury watches", Label = "Browse the catalogue" }];
+                return GetStaticSuggestions();
             return [];
         }
 

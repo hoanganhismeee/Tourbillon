@@ -938,7 +938,7 @@ export interface ChatWatchCard {
 }
 
 export interface ChatAction {
-  type: 'compare' | 'search' | 'set_cursor' | 'navigate';
+  type: 'compare' | 'search' | 'set_cursor' | 'navigate' | 'suggest';
   label: string;
   slugs?: string[];
   query?: string;
@@ -959,11 +959,12 @@ export const sendChatMessage = async (
   sessionId: string,
   message: string,
   behaviorSummary?: string,
+  preferredLanguage?: string,
 ): Promise<ChatApiResponse> => {
   const response = await fetchWithTimeout(`${API_BASE_URL}/chat/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, message, behaviorSummary }),
+    body: JSON.stringify({ sessionId, message, behaviorSummary, preferredLanguage }),
     credentials: 'include',
     timeoutMs: 30000,
   });

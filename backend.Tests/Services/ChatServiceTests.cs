@@ -147,12 +147,12 @@ public class ChatServiceTests
             NullLogger<ChatService>.Instance);
     }
 
-    private static void AssertBrowseCatalogueAction(ChatApiResponse result)
+    // 0-card responses now show 3 "suggest"-type actions from the curated query bank.
+    private static void AssertSuggestActions(ChatApiResponse result)
     {
-        var action = Assert.Single(result.Actions);
-        Assert.Equal("search", action.Type);
-        Assert.Equal("luxury watches", action.Query);
-        Assert.Equal("Browse the catalogue", action.Label);
+        Assert.Equal(3, result.Actions.Count);
+        Assert.All(result.Actions, a => Assert.Equal("suggest", a.Type));
+        Assert.All(result.Actions, a => Assert.False(string.IsNullOrWhiteSpace(a.Query)));
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public class ChatServiceTests
         var result = await service.HandleMessageAsync("session-1", "Write me a sales CV", null, "127.0.0.1");
 
         Assert.Contains("rephrase", result.Message, StringComparison.OrdinalIgnoreCase);
-        AssertBrowseCatalogueAction(result);
+        AssertSuggestActions(result);
         Assert.Empty(result.WatchCards);
         watchFinder.VerifyNoOtherCalls();
     }
@@ -180,7 +180,7 @@ public class ChatServiceTests
         var result = await service.HandleMessageAsync("session-1", "fuck you", null, "127.0.0.1");
 
         Assert.Contains("Tourbillon watches", result.Message, StringComparison.OrdinalIgnoreCase);
-        AssertBrowseCatalogueAction(result);
+        AssertSuggestActions(result);
         Assert.Empty(result.WatchCards);
         watchFinder.VerifyNoOtherCalls();
     }
@@ -195,7 +195,7 @@ public class ChatServiceTests
         var result = await service.HandleMessageAsync("session-1", "yo", null, "127.0.0.1");
 
         Assert.Contains("Tourbillon can help compare watches", result.Message, StringComparison.OrdinalIgnoreCase);
-        AssertBrowseCatalogueAction(result);
+        AssertSuggestActions(result);
         Assert.Empty(result.WatchCards);
         watchFinder.VerifyNoOtherCalls();
     }
@@ -483,6 +483,63 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_BrandHistoryWebQuery_UsesLimitedWebEnrichment_WithoutDiscoveryActions()
+    {
+        using var context = CreateContext();
+        var brand = new Brand
+        {
+            Id = 2,
+            Name = "Vacheron Constantin",
+            Slug = "vacheron-constantin",
+            Description = "Historic Geneva maison.",
+            Summary = "Known for elegant finishing."
+        };
+        var collection = new Collection
+        {
+            Id = 20,
+            BrandId = 2,
+            Brand = brand,
+            Name = "Historiques",
+            Slug = "vacheron-constantin-historiques",
+            Description = "Revives classic maison references."
+        };
+        var watch = new Watch
+        {
+            Id = 200,
+            BrandId = 2,
+            Brand = brand,
+            CollectionId = 20,
+            Collection = collection,
+            Name = "4200H/222A-B934",
+            Slug = "vacheron-constantin-historiques-4200h-222a-b934",
+            Description = "Vacheron Constantin Historiques",
+            CurrentPrice = 0m
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.Add(watch);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"[Vacheron Constantin](/brands/vacheron-constantin) was founded in 1755 and remains one of watchmaking's oldest maisons.\",\"actions\":[{\"type\":\"search\",\"query\":\"Vacheron Constantin history\"}]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "browse the web for Vacheron Constantin history", null, "127.0.0.1");
+
+        Assert.Equal(1, handler.CallCount);
+        Assert.Contains("\"allowWebEnrichment\":true", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"allowActions\":false", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"responseLanguage\":\"english\"", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(result.Actions, action => action.Type == "search" || action.Type == "compare");
+        Assert.Contains(result.Actions, action => action.Type == "navigate" && action.Href == "/brands/vacheron-constantin");
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_CollectionGuidanceQuery_DoesNotEmitSearchAction()
     {
         using var context = CreateContext();
@@ -729,7 +786,7 @@ public class ChatServiceTests
         var result = await service.HandleMessageAsync("session-1", "watch podcast recommendations", null, "127.0.0.1");
 
         Assert.Contains("rephrase", result.Message, StringComparison.OrdinalIgnoreCase);
-        AssertBrowseCatalogueAction(result);
+        AssertSuggestActions(result);
         Assert.Empty(result.WatchCards);
         watchFinder.Verify(f => f.FindWatchesAsync("watch podcast recommendations"), Times.Once);
     }
@@ -759,7 +816,7 @@ public class ChatServiceTests
         var result = await service.HandleMessageAsync("session-1", "show me a ceramic moonphase reverso under 2k", null, "127.0.0.1");
 
         Assert.Contains("reference", result.Message, StringComparison.OrdinalIgnoreCase);
-        AssertBrowseCatalogueAction(result);
+        AssertSuggestActions(result);
         Assert.Empty(result.WatchCards);
         watchFinder.Verify(f => f.FindWatchesAsync("show me a ceramic moonphase reverso under 2k"), Times.Once);
         watchFinder.VerifyNoOtherCalls();
@@ -785,7 +842,7 @@ public class ChatServiceTests
         Assert.Equal(1, handler.CallCount);
         Assert.Contains("non-English language", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Xin chao", result.Message, StringComparison.OrdinalIgnoreCase);
-        AssertBrowseCatalogueAction(result);
+        AssertSuggestActions(result);
         watchFinder.VerifyNoOtherCalls();
     }
 
@@ -985,7 +1042,7 @@ public class ChatServiceTests
 
         var result = await service.HandleMessageAsync("session-1", "Write me a sales CV", null, "127.0.0.1");
 
-        AssertBrowseCatalogueAction(result);
+        AssertSuggestActions(result);
         watchFinder.VerifyNoOtherCalls();
     }
 
@@ -998,7 +1055,7 @@ public class ChatServiceTests
 
         var result = await service.HandleMessageAsync("session-1", "hi", null, "127.0.0.1");
 
-        AssertBrowseCatalogueAction(result);
+        AssertSuggestActions(result);
         watchFinder.VerifyNoOtherCalls();
     }
 
@@ -1645,10 +1702,10 @@ public class ChatServiceTests
 
         var service = CreateService(context, watchFinder, handler);
         
-        // Abusive query gets a deterministic refusal
+        // Abusive query gets a deterministic refusal with suggest chips
         var result = await service.HandleMessageAsync("session-1", "You are stupid", null, "127.0.0.1");
 
-        Assert.Contains(result.Actions, a => a.Type == "search" && a.Label == "Browse the catalogue");
+        AssertSuggestActions(result);
     }
 
     [Fact]
@@ -1656,17 +1713,12 @@ public class ChatServiceTests
     {
         using var context = CreateContext();
         var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
-        // Returns empty cards for greeting
-        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent("{\"message\":\"Hello! How can I help?\",\"actions\":[]}", Encoding.UTF8, "application/json")
-        });
+        var service = CreateService(context, watchFinder);
 
-        var service = CreateService(context, watchFinder, handler);
-        
-        // Simple greeting
+        // Simple greeting never calls AI — deterministic response with suggest chips
         var result = await service.HandleMessageAsync("session-1", "Hello", null, "127.0.0.1");
 
-        Assert.Contains(result.Actions, a => a.Type == "search" && a.Label == "Browse the catalogue");
+        AssertSuggestActions(result);
+        watchFinder.VerifyNoOtherCalls();
     }
 }

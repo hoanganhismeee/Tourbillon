@@ -147,6 +147,13 @@ function buildPersonalizationSummary(profile: TasteProfile | null): string | und
   return parts.length > 0 ? parts.join(' ') : undefined;
 }
 
+function getPreferredLanguageHint(): string | undefined {
+  if (typeof navigator === 'undefined') return undefined;
+
+  const language = navigator.languages?.find(Boolean) ?? navigator.language;
+  return typeof language === 'string' && language.trim().length > 0 ? language : undefined;
+}
+
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   const initialSessionId = getOrCreateChatSessionId();
@@ -221,7 +228,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     try {
       const behaviorSummary = buildPersonalizationSummary(tasteProfile);
-      const result = await sendChatMessage(sessionIdRef.current, text, behaviorSummary);
+      const preferredLanguage = getPreferredLanguageHint();
+      const result = await sendChatMessage(sessionIdRef.current, text, behaviorSummary, preferredLanguage);
       setDailyUsed(result.dailyUsed ?? null);
       setDailyLimit(result.dailyLimit ?? null);
 
