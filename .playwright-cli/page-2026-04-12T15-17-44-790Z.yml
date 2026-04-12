@@ -1,0 +1,504 @@
+- generic [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e4]:
+      - link "Timepieces" [ref=e5] [cursor=pointer]:
+        - /url: /watches
+      - link "Trend" [ref=e6] [cursor=pointer]:
+        - /url: /trend
+      - link "Stories" [ref=e7] [cursor=pointer]:
+        - /url: /stories
+      - link "Contact" [ref=e8] [cursor=pointer]:
+        - /url: /contact
+    - link "Tourbillon" [ref=e10] [cursor=pointer]:
+      - /url: /
+    - generic [ref=e11]:
+      - link [ref=e12] [cursor=pointer]:
+        - /url: /auth/start
+        - img [ref=e13]
+      - link [ref=e16] [cursor=pointer]:
+        - /url: /auth/start?redirect=/favourites
+        - generic [ref=e17]:
+          - img [ref=e18]
+          - img [ref=e20]
+      - button [ref=e22] [cursor=pointer]:
+        - img [ref=e23]
+  - main [ref=e25]:
+    - generic [ref=e27]:
+      - generic "Tourbillon hero video" [ref=e30]
+      - generic:
+        - generic:
+          - paragraph: Private Collection
+          - heading "Tourbillon" [level=1]
+          - paragraph: Rare watches, collected with editorial restraint.
+      - generic [ref=e32]: scroll
+    - generic [ref=e35]:
+      - paragraph [ref=e36]: The House of Horology
+      - heading "Thirteen Maisons. Endless Discovery." [level=1] [ref=e37]:
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - generic [ref=e40]: Thirteen
+            - generic [ref=e41]: Maisons.
+          - generic [ref=e42]:
+            - generic [ref=e43]: Endless
+            - generic [ref=e44]: Discovery.
+      - paragraph [ref=e46]: Exceptional timepieces from the world's finest maisons, curated for the discerning collector.
+      - generic [ref=e48]:
+        - link "Explore Watches →" [ref=e49] [cursor=pointer]:
+          - /url: /watches
+          - generic [ref=e50]: Explore Watches
+          - generic [ref=e51]: →
+        - link "Our Story" [ref=e52] [cursor=pointer]:
+          - /url: /stories
+    - generic:
+      - generic:
+        - generic:
+          - paragraph: Curated Collections
+          - heading "Discover Your Archetype" [level=2]
+    - generic [ref=e54]:
+      - generic [ref=e56]:
+        - generic [ref=e58]:
+          - paragraph [ref=e59]: "01"
+          - heading "The Complications" [level=3] [ref=e60]
+          - paragraph [ref=e61]: Every mechanism a poem
+          - paragraph [ref=e62]: Centuries of craft. One wrist.
+          - link "Explore collection →" [ref=e63] [cursor=pointer]:
+            - /url: /watches?collection=patek-philippe-grand-complications&collection=audemars-piguet-royal-oak-concept&collection=a-lange-sohne-datograph&collection=vacheron-constantin-traditionnelle
+            - generic [ref=e64]: Explore collection
+            - generic [ref=e65]: →
+        - generic [ref=e220]:
+          - img "Grand complication reaches a dazzling peak in the 6300/403G-001, where extraordinary mechanical ambition meets equally lavish gem-setting. This is not simply a watch to be worn, but a statement of what Patek Philippe is capable of when technical virtuosity and decorative artistry are pushed to their highest level. Despite its opulence, there remains a sense of discipline beneath the surface, reminding you that true extravagance is most powerful when built upon genuine mastery." [ref=e223]
+          - img "Few watches project such quiet authority as the 6301P-001, a piece defined by the gravitas of its grande sonnerie complication and the restraint of its platinum case. Rather than announcing itself through visual excess, it impresses through depth, rarity, and the knowledge of what it represents in traditional watchmaking. It feels almost ceremonial in nature, created for the collector who values acoustic complexity and horological significance above all else." [ref=e226]
+          - img "Poetic in the truest sense, the 6102P-001 turns the night sky into the very soul of the watch. Its celestial display is less about practicality than wonder, tracing the motion of the heavens with an almost dreamlike elegance that sets it apart from more conventional complications. The platinum case reinforces its seriousness, yet the overall impression is one of romance, imagination, and a kind of quiet awe seldom found in watchmaking." [ref=e229]
+          - img "The 5303R is Patek Philippe’s boldest expression of mechanical artistry, combining a minute repeater and visible tourbillon in a fully openworked dial. Launched in 2020, it’s the first Patek repeater to display its striking mechanism on the dial side—letting wearers admire the chiming hammers and rotating tourbillon in real time. Its rose and white gold hybrid case adds dynamic contrast, while the hollowed lugs and engraved caseband elevate its sculptural presence. Built in extremely limited numbers and rarely seen publicly, it offers a rare glimpse into the maison’s inner workings. Both an acoustic marvel and a visual spectacle, the 5303R departs from the brand’s usual restraint, celebrating transparency, innovation, and high horology with unapologetic flair. A true collector’s piece that pushes tradition forward without losing its soul." [ref=e232]
+          - img "Warmth and transparency define the 5304/301R-001, where the traditional prestige of a minute repeater and retrograde perpetual calendar is transformed by an unusually open and expressive dial. In rose gold, the watch feels more intimate and luminous, allowing its mechanical sophistication to be admired rather than merely understood. It offers a rare combination of grandeur and visual accessibility, making an elite complication feel almost inviting." [ref=e235]
+          - img "Dark, intricate, and deeply sophisticated, the 5316/50P-001 carries the aura of a grand complication in a more contemporary, almost mysterious register. The platinum case gives it weight and seriousness, while the openworked display reveals a world of mechanical architecture normally hidden from view. What makes it so striking is the way technical density becomes visual theatre, turning complexity itself into part of the watch’s emotional appeal." [ref=e238]
+      - generic [ref=e68]:
+        - generic [ref=e239]:
+          - img "Warm and deeply luxurious, the 26730OR.OO.1320OR.05 gives the flying tourbillon a richer, more expressive stage. The rose gold amplifies the Royal Oak’s sculptural qualities, making the whole watch feel more fluid and more formal at the same time. It is bold, refined, and unmistakably high-end in the way only AP can be." [ref=e242]
+          - img "The 26685XT.OO.1320XT.01 gives the perpetual calendar a strikingly contemporary voice, pairing a high complication with a cooler, more technical personality than the genre usually allows. What stands out is the sense of control, with so much mechanical sophistication carried inside a watch that still feels sharp, modern, and wearable. It is serious horology, filtered through AP’s futuristic lens." [ref=e245]
+          - img [ref=e248]
+          - img "Richly assertive in full yellow gold, the 26240BA.OO.1320BA.02 turns the Royal Oak chronograph into something almost celebratory. Its strength lies in that contrast between the collection’s sharp industrial lines and the warmth of precious metal, creating a watch that feels both sporty and unmistakably opulent. It is confident, iconic, and impossible to mistake for anything else." [ref=e251]
+          - img "The 26674ST.OO.1320ST.01 is one of the cleanest expressions of modern AP complication design, taking the perpetual calendar and housing it within the pure familiarity of the steel Royal Oak. It feels technical, but never heavy-handed, with a balance that makes the complexity seem almost effortless. Elegant, iconic, and very collectible." [ref=e254]
+          - img "Stealthy and highly contemporary, the 26591CE.OO.D002CA.02 channels the Royal Oak’s complexity into a darker, more tactical mood. Its strength is not in ornament, but in tension, matte surfaces, sharp lines, and a mechanical presence that feels purposeful rather than decorative. It is the kind of watch that projects confidence through control." [ref=e257]
+        - generic [ref=e71]:
+          - paragraph [ref=e72]: "02"
+          - heading "Sport Watches" [level=3] [ref=e73]
+          - paragraph [ref=e74]: Precision under pressure
+          - paragraph [ref=e75]: Built for performance. Worn with conviction.
+          - link "Explore collection →" [ref=e76] [cursor=pointer]:
+            - /url: /watches?collection=audemars-piguet-royal-oak&collection=vacheron-constantin-overseas&collection=patek-philippe-nautilus&collection=rolex-daytona&collection=omega-speedmaster&collection=rolex-submariner
+            - generic [ref=e77]: Explore collection
+            - generic [ref=e78]: →
+      - generic [ref=e80]:
+        - generic [ref=e82]:
+          - paragraph [ref=e83]: "03"
+          - heading "Dress Watches" [level=3] [ref=e84]
+          - paragraph [ref=e85]: Restraint as a statement
+          - paragraph [ref=e86]: Nothing is more powerful than refinement.
+          - link "Explore collection →" [ref=e87] [cursor=pointer]:
+            - /url: /watches?collection=patek-philippe-calatrava&collection=a-lange-sohne-lange-1&collection=breguet-classique&collection=jaeger-lecoultre-master-ultra-thin&collection=vacheron-constantin-patrimony&collection=alange-sohne-zeitwerk
+            - generic [ref=e88]: Explore collection
+            - generic [ref=e89]: →
+        - generic [ref=e258]:
+          - 'img "Graceful and luminous, the 4997/200G-001 brings jewellery-like refinement to the Calatrava without compromising its essential restraint. The blue dial gives the watch a richer emotional tone, while the diamond-set case adds light and texture in a way that feels elegant rather than excessive. What makes it compelling is its balance: feminine, polished, and unmistakably precious, yet still rooted in the calm, disciplined design language that defines the house." [ref=e261]'
+          - img "Vintage sensibility is reinterpreted with quiet confidence in the 5226G-001, a watch whose charm comes from atmosphere as much as design. The textured case flank and softly grained dial give it a more tactile, lived-in personality, setting it apart from the smoother formality often associated with Patek Philippe. It feels thoughtful, relaxed, and slightly adventurous, as though designed for someone who appreciates heritage most when it is made to feel personal and contemporary." [ref=e264]
+          - img "Cool restraint gives the 5738P-001 a quietly magnetic presence, proving that the Golden Ellipse does not need ornament to leave an impression. Its allure comes from proportion, surface, and tone, all working together with remarkable discipline. The result feels deeply refined, almost architectural, yet never severe. It is a watch for someone drawn to elegance that is intellectual rather than decorative, and confident enough to remain beautifully understated." [ref=e267]
+          - img "Classic watchmaking is distilled with uncommon purity in the 6119R-001, a piece that finds richness not in complication, but in detail, proportion, and finish. Its standout feature is the hobnail bezel, a historic Calatrava signature that adds texture and identity to an otherwise restrained silhouette. The result is deeply elegant but never plain, offering the kind of old-world sophistication that feels enduring precisely because it avoids chasing novelty." [ref=e270]
+          - 'img "Understated elegance meets old-world charm in the Calatrava 5227G. Crafted in 18k white gold, its clean ivory lacquer dial hides a secret: a hinged officer-style caseback, paying tribute to horological heritage. With automatic movement and date functionality, this 39 mm timepiece is ideal for the refined gentleman seeking discretion, comfort, and enduring Patek Philippe craftsmanship in one seamless design." [ref=e273]'
+          - img "Modern energy runs through the 6007G-010, where a more graphic, youthful dial language brings fresh attitude to a traditionally elegant house. It feels sharper and more urban than many classic Patek Philippe references, with contrasting details that create rhythm and visual tension without sacrificing balance. What makes it interesting is this deliberate shift in tone, still refined, still controlled, but with a sportier pulse that gives the watch a more contemporary voice." [ref=e276]
+      - generic [ref=e92]:
+        - generic [ref=e277]:
+          - img "Artistry takes precedence in the 86073/000P-H066, where watchmaking becomes a canvas for storytelling through the Chinese zodiac. The Year of the Horse motif brings movement, symbolism, and hand-finished detail into a piece that feels closer to objet d’art than conventional wristwatch. It is defined less by utility than by cultural richness, crafted for collectors who value rare métiers d’art as deeply as traditional horology." [ref=e280]
+          - img "The Métiers d’Art Tribute to Explorer Naturalists captures the spirit of 19th-century scientific voyages through a richly layered enamel dial that blends cartography, wildlife, and maritime exploration into a single composition. Inspired by the journeys of naturalists aboard historic expeditions, it combines hand-engraving and Grand Feu enamel on a two-level dial, creating depth and narrative rarely seen in watchmaking. The pink gold case frames this miniature artwork with classical restraint, while the wandering hours display adds a dynamic and unconventional way of reading time. Produced in extremely limited numbers, it stands as a fusion of horology and fine art, transforming historical storytelling into a mechanical and visual experience." [ref=e283]
+          - img "The Métiers d'Art Tribute to Great Civilisations translates ancient artistry into horological form, showcasing a sculpted dial inspired by historical relics through engraving, enameling, and bas-relief techniques. The white gold case frames a dial that functions as a three-dimensional canvas, where each detail is crafted by hand to recreate cultural symbols with remarkable depth. Beneath the artistic exterior lies a refined automatic movement, balancing visual storytelling with mechanical precision. Produced in highly limited numbers, it reflects a commitment to preserving heritage through the language of haute horlogerie." [ref=e286]
+          - img "The Métiers d'Art collection transforms traditional craftsmanship into a refined and expressive timepiece, where intricate engraving and enamel work elevate the dial into a piece of wearable art. The white gold case frames a composition of delicate motifs and textures, creating depth while maintaining an elegant and balanced aesthetic. Powered by an automatic movement, it delivers both precision and practicality beneath its artistic surface. Produced in limited numbers, it reflects Vacheron Constantin's dedication to preserving rare métiers while integrating them into contemporary watchmaking." [ref=e289]
+          - img "The Métiers d'Art Tribute to Explorer Naturalists presents a poetic interpretation of exploration through a white gold case paired with a vividly detailed enamel dial, where engraved motifs and painted scenes evoke the discoveries of early naturalists. Built around a two-level construction, it integrates traditional métiers with a wandering hours display, turning timekeeping into a dynamic visual experience. The use of Grand Feu enamel and hand-crafted elements creates a sense of depth and realism, while the automatic movement ensures mechanical refinement beneath its artistic surface. Produced in extremely limited numbers, it stands as both a horological complication and a narrative object rooted in history." [ref=e292]
+          - img "The Métiers d'Art Tribute to Great Civilisations reinterprets ancient iconography through a dial sculpted with exceptional depth and detail, combining engraving and enamel techniques to create a miniature work of art. Encased in white gold, the watch transforms historical motifs into a contemporary expression of craftsmanship, where each element is executed by hand with remarkable precision. The automatic movement remains discreet beneath the artistic façade, ensuring performance without distracting from the dial's visual impact. Produced in very limited quantities, it stands as a tribute to cultural legacy through refined watchmaking." [ref=e295]
+        - generic [ref=e95]:
+          - paragraph [ref=e96]: "04"
+          - heading "Métiers d'Arts" [level=3] [ref=e97]
+          - paragraph [ref=e98]: Horology as canvas
+          - paragraph [ref=e99]: Where the dial becomes a world.
+          - link "Explore collection →" [ref=e100] [cursor=pointer]:
+            - /url: /watches?collection=vacheron-constantin-metiers-d-art
+            - generic [ref=e101]: Explore collection
+            - generic [ref=e102]: →
+    - generic [ref=e103]:
+      - heading "Explore Our Brands" [level=2] [ref=e105]
+      - generic [ref=e107]:
+        - heading "The Holy Trinity — Haute Horlogerie" [level=3] [ref=e109]
+        - generic [ref=e297]:
+          - generic [ref=e299]:
+            - heading "Patek Philippe" [level=2] [ref=e300]
+            - paragraph [ref=e301]: Timeless prestige in Swiss watchmaking
+          - generic [ref=e302]:
+            - generic [ref=e303]:
+              - generic [ref=e304]:
+                - generic [ref=e305]:
+                  - link "5227G-010 Automatic Date" [ref=e306] [cursor=pointer]:
+                    - /url: /watches/patek-philippe-calatrava-5227g-010-automatic-date
+                    - img "5227G-010 Automatic Date" [ref=e310]
+                  - generic [ref=e311]:
+                    - button "Save to favourites" [ref=e312]:
+                      - generic [ref=e313]:
+                        - img [ref=e314]
+                        - img [ref=e316]
+                    - button "Add to comparison" [ref=e318]:
+                      - img [ref=e319]
+                - button "Calatrava" [ref=e323] [cursor=pointer]
+                - link "5227G-010 Automatic Date $73,200.00" [ref=e324] [cursor=pointer]:
+                  - /url: /watches/patek-philippe-calatrava-5227g-010-automatic-date
+                  - generic [ref=e325]:
+                    - heading "5227G-010 Automatic Date" [level=3] [ref=e326]
+                    - paragraph [ref=e327]: $73,200.00
+              - generic [ref=e328]:
+                - generic [ref=e329]:
+                  - link "5811/1G Blue Dial" [ref=e330] [cursor=pointer]:
+                    - /url: /watches/patek-philippe-nautilus-5811-1g-blue-dial
+                    - img "5811/1G Blue Dial" [ref=e334]
+                  - generic [ref=e335]:
+                    - button "Save to favourites" [ref=e336]:
+                      - generic [ref=e337]:
+                        - img [ref=e338]
+                        - img [ref=e340]
+                    - button "Add to comparison" [ref=e342]:
+                      - img [ref=e343]
+                - button "Nautilus" [ref=e347] [cursor=pointer]
+                - link "5811/1G Blue Dial $127,250.00" [ref=e348] [cursor=pointer]:
+                  - /url: /watches/patek-philippe-nautilus-5811-1g-blue-dial
+                  - generic [ref=e349]:
+                    - heading "5811/1G Blue Dial" [level=3] [ref=e350]
+                    - paragraph [ref=e351]: $127,250.00
+              - generic [ref=e352]:
+                - generic [ref=e353]:
+                  - link "5303R Minute Repeater Tourbillon" [ref=e354] [cursor=pointer]:
+                    - /url: /watches/patek-philippe-grand-complications-5303r-minute-repeater-tourbillon
+                    - img "5303R Minute Repeater Tourbillon" [ref=e358]
+                  - generic [ref=e359]:
+                    - button "Save to favourites" [ref=e360]:
+                      - generic [ref=e361]:
+                        - img [ref=e362]
+                        - img [ref=e364]
+                    - button "Add to comparison" [ref=e366]:
+                      - img [ref=e367]
+                - button "Grand Complications" [ref=e371] [cursor=pointer]
+                - link "5303R Minute Repeater Tourbillon $970,000.00" [ref=e372] [cursor=pointer]:
+                  - /url: /watches/patek-philippe-grand-complications-5303r-minute-repeater-tourbillon
+                  - generic [ref=e373]:
+                    - heading "5303R Minute Repeater Tourbillon" [level=3] [ref=e374]
+                    - paragraph [ref=e375]: $970,000.00
+            - link "Explore More" [ref=e377] [cursor=pointer]:
+              - /url: /brands/patek-philippe
+        - generic [ref=e380]:
+          - generic [ref=e382]:
+            - heading "Vacheron Constantin" [level=2] [ref=e383]
+            - paragraph [ref=e384]: Heritage and refinement since 1755
+          - generic [ref=e385]:
+            - generic [ref=e386]:
+              - generic [ref=e387]:
+                - generic [ref=e388]:
+                  - link "43175/000R-9687 Perpetual Calendar" [ref=e389] [cursor=pointer]:
+                    - /url: /watches/vacheron-constantin-patrimony-43175-000r-9687-perpetual-calendar
+                    - img "43175/000R-9687 Perpetual Calendar" [ref=e393]
+                  - generic [ref=e394]:
+                    - button "Save to favourites" [ref=e395]:
+                      - generic [ref=e396]:
+                        - img [ref=e397]
+                        - img [ref=e399]
+                    - button "Add to comparison" [ref=e401]:
+                      - img [ref=e402]
+                - button "Patrimony" [ref=e406] [cursor=pointer]
+                - link "43175/000R-9687 Perpetual Calendar $167,000.00" [ref=e407] [cursor=pointer]:
+                  - /url: /watches/vacheron-constantin-patrimony-43175-000r-9687-perpetual-calendar
+                  - generic [ref=e408]:
+                    - heading "43175/000R-9687 Perpetual Calendar" [level=3] [ref=e409]
+                    - paragraph [ref=e410]: $167,000.00
+              - generic [ref=e411]:
+                - generic [ref=e412]:
+                  - link "6000V/210T-H032 Overseas Tourbillon" [ref=e413] [cursor=pointer]:
+                    - /url: /watches/vacheron-constantin-overseas-6000v-210t-h032-overseas-tourbillon
+                    - img "6000V/210T-H032 Overseas Tourbillon" [ref=e417]
+                  - generic [ref=e418]:
+                    - button "Save to favourites" [ref=e419]:
+                      - generic [ref=e420]:
+                        - img [ref=e421]
+                        - img [ref=e423]
+                    - button "Add to comparison" [ref=e425]:
+                      - img [ref=e426]
+                - button "Overseas" [ref=e430] [cursor=pointer]
+                - link "6000V/210T-H032 Overseas Tourbillon $200,000.00" [ref=e431] [cursor=pointer]:
+                  - /url: /watches/vacheron-constantin-overseas-6000v-210t-h032-overseas-tourbillon
+                  - generic [ref=e432]:
+                    - heading "6000V/210T-H032 Overseas Tourbillon" [level=3] [ref=e433]
+                    - paragraph [ref=e434]: $200,000.00
+              - generic [ref=e435]:
+                - generic [ref=e436]:
+                  - link "6007A/000G-H049 Tribute to The Celestial - Scorpio" [ref=e437] [cursor=pointer]:
+                    - /url: /watches/vacheron-constantin-metiers-d-art-6007a-000g-h049-tribute-to-the-celestial-scorpio
+                    - img "6007A/000G-H049 Tribute to The Celestial - Scorpio" [ref=e441]
+                  - generic [ref=e442]:
+                    - button "Save to favourites" [ref=e443]:
+                      - generic [ref=e444]:
+                        - img [ref=e445]
+                        - img [ref=e447]
+                    - button "Add to comparison" [ref=e449]:
+                      - img [ref=e450]
+                - button "Métiers d’Art" [ref=e454] [cursor=pointer]
+                - link "6007A/000G-H049 Tribute to The Celestial - Scorpio $372,000.00" [ref=e455] [cursor=pointer]:
+                  - /url: /watches/vacheron-constantin-metiers-d-art-6007a-000g-h049-tribute-to-the-celestial-scorpio
+                  - generic [ref=e456]:
+                    - heading "6007A/000G-H049 Tribute to The Celestial - Scorpio" [level=3] [ref=e457]
+                    - paragraph [ref=e458]: $372,000.00
+            - link "Explore More" [ref=e460] [cursor=pointer]:
+              - /url: /brands/vacheron-constantin
+        - generic [ref=e463]:
+          - generic [ref=e465]:
+            - heading "Audemars Piguet" [level=2] [ref=e466]
+            - paragraph [ref=e467]: Distinctive design meets Swiss tradition
+          - generic [ref=e468]:
+            - generic [ref=e469]:
+              - generic [ref=e470]:
+                - generic [ref=e471]:
+                  - link "16202ST.OO.1240ST.02 “Jumbo” Extra-Thin" [ref=e472] [cursor=pointer]:
+                    - /url: /watches/audemars-piguet-royal-oak-16202st-oo-1240st-02-jumbo-extra-thin
+                    - img "16202ST.OO.1240ST.02 “Jumbo” Extra-Thin" [ref=e476]
+                  - generic [ref=e477]:
+                    - button "Save to favourites" [ref=e478]:
+                      - generic [ref=e479]:
+                        - img [ref=e480]
+                        - img [ref=e482]
+                    - button "Add to comparison" [ref=e484]:
+                      - img [ref=e485]
+                - button "Royal Oak" [ref=e489] [cursor=pointer]
+                - link "16202ST.OO.1240ST.02 “Jumbo” Extra-Thin $57,800.00" [ref=e490] [cursor=pointer]:
+                  - /url: /watches/audemars-piguet-royal-oak-16202st-oo-1240st-02-jumbo-extra-thin
+                  - generic [ref=e491]:
+                    - heading "16202ST.OO.1240ST.02 “Jumbo” Extra-Thin" [level=3] [ref=e492]
+                    - paragraph [ref=e493]: $57,800.00
+              - generic [ref=e494]:
+                - generic [ref=e495]:
+                  - link "26585XT.OO.1220XT.01 Perpetual Calendar \"150th Anniversary\"" [ref=e496] [cursor=pointer]:
+                    - /url: /watches/audemars-piguet-royal-oak-26585xt-oo-1220xt-01-perpetual-calendar-150th-anniversary
+                    - img "26585XT.OO.1220XT.01 Perpetual Calendar \"150th Anniversary\"" [ref=e500]
+                  - generic [ref=e501]:
+                    - button "Save to favourites" [ref=e502]:
+                      - generic [ref=e503]:
+                        - img [ref=e504]
+                        - img [ref=e506]
+                    - button "Add to comparison" [ref=e508]:
+                      - img [ref=e509]
+                - button "Royal Oak" [ref=e513] [cursor=pointer]
+                - link "26585XT.OO.1220XT.01 Perpetual Calendar \"150th Anniversary\" $185,000.00" [ref=e514] [cursor=pointer]:
+                  - /url: /watches/audemars-piguet-royal-oak-26585xt-oo-1220xt-01-perpetual-calendar-150th-anniversary
+                  - generic [ref=e515]:
+                    - heading "26585XT.OO.1220XT.01 Perpetual Calendar \"150th Anniversary\"" [level=3] [ref=e516]
+                    - paragraph [ref=e517]: $185,000.00
+              - generic [ref=e518]:
+                - generic [ref=e519]:
+                  - link "26620IO.OO.D077CA.01 \"Black Panther\" Flying Tourbillon" [ref=e520] [cursor=pointer]:
+                    - /url: /watches/audemars-piguet-royal-oak-concept-26620io-oo-d077ca-01-black-panther-flying-tourbillon
+                    - img "26620IO.OO.D077CA.01 \"Black Panther\" Flying Tourbillon" [ref=e524]
+                  - generic [ref=e525]:
+                    - button "Save to favourites" [ref=e526]:
+                      - generic [ref=e527]:
+                        - img [ref=e528]
+                        - img [ref=e530]
+                    - button "Add to comparison" [ref=e532]:
+                      - img [ref=e533]
+                - button "Royal Oak Concept" [ref=e537] [cursor=pointer]
+                - link "26620IO.OO.D077CA.01 \"Black Panther\" Flying Tourbillon $150,000.00" [ref=e538] [cursor=pointer]:
+                  - /url: /watches/audemars-piguet-royal-oak-concept-26620io-oo-d077ca-01-black-panther-flying-tourbillon
+                  - generic [ref=e539]:
+                    - heading "26620IO.OO.D077CA.01 \"Black Panther\" Flying Tourbillon" [level=3] [ref=e540]
+                    - paragraph [ref=e541]: $150,000.00
+            - link "Explore More" [ref=e543] [cursor=pointer]:
+              - /url: /brands/audemars-piguet
+      - generic [ref=e114]:
+        - heading "Explore More Brands" [level=3] [ref=e116]
+        - generic [ref=e544]:
+          - link "Jaeger-LeCoultre Understated mastery in every detail" [ref=e546] [cursor=pointer]:
+            - /url: /brands/jaeger-lecoultre
+            - heading "Jaeger-LeCoultre" [level=2] [ref=e547]
+            - paragraph [ref=e548]: Understated mastery in every detail
+          - link "A. Lange & Söhne Precision redefined through German craft" [ref=e550] [cursor=pointer]:
+            - /url: /brands/a-lange-sohne
+            - heading "A. Lange & Söhne" [level=2] [ref=e551]
+            - paragraph [ref=e552]: Precision redefined through German craft
+          - link "Glashütte Original Saxon elegance shaped by tradition" [ref=e554] [cursor=pointer]:
+            - /url: /brands/glashutte-original
+            - heading "Glashütte Original" [level=2] [ref=e555]
+            - paragraph [ref=e556]: Saxon elegance shaped by tradition
+          - button "Show More" [ref=e558]:
+            - generic [ref=e559]: Show More
+            - generic [ref=e560]:
+              - img [ref=e561]
+              - img [ref=e563]
+    - generic [ref=e118]:
+      - generic [ref=e120]:
+        - paragraph [ref=e121]: Smart Search
+        - heading "Describe your ideal watch" [level=2] [ref=e122]
+      - generic [ref=e123]:
+        - generic [ref=e124]:
+          - generic:
+            - generic: JLC Reverso under $50k
+          - textbox [ref=e125]
+          - button "→" [ref=e126]
+        - generic [ref=e127]:
+          - button "Vacheron Dress Watch 39 to 40mm Dial below 200k" [ref=e128]
+          - button "Omega and Rolex with good water resistance" [ref=e129]
+          - button "AP Royal Oak steel" [ref=e130]
+          - button "JLC Reverso under $50k" [ref=e131]
+          - button "Perpetual calendar watch" [ref=e132]
+          - button "Tourbillon watches" [ref=e133]
+    - generic [ref=e567]:
+      - generic [ref=e569]:
+        - paragraph [ref=e570]: Watch DNA
+        - heading "Watches that know you." [level=2] [ref=e571]
+        - paragraph [ref=e572]: The more you explore, the sharper your curation gets. Watch DNA quietly learns your unparalleled taste to surface pieces you'll love.
+        - link "Sign in to unlock Watch DNA" [ref=e573] [cursor=pointer]:
+          - /url: /login?redirect=/trend
+          - generic [ref=e574]: Sign in to unlock Watch DNA
+          - img [ref=e575]
+      - generic [ref=e580]:
+        - generic [ref=e582]:
+          - generic [ref=e585]: "01"
+          - heading "Brand Affinity" [level=4] [ref=e587]
+          - paragraph [ref=e588]: Tracking your gravitation toward independent artisans or historic maisons.
+        - generic [ref=e590]:
+          - generic [ref=e593]: "02"
+          - heading "Material Language" [level=4] [ref=e595]
+          - paragraph [ref=e596]: Mapping your choices across classic steel, warm rose gold, or high-tech ceramic.
+        - generic [ref=e598]:
+          - generic [ref=e601]: "03"
+          - heading "Dial Character" [level=4] [ref=e603]
+          - paragraph [ref=e604]: Analyzing your draw to minimalist layouts versus intricate, open-worked dials.
+        - generic [ref=e606]:
+          - generic [ref=e609]: "04"
+          - heading "Wrist Proportion" [level=4] [ref=e611]
+          - paragraph [ref=e612]: Finding the exact millimeter sweet spot that offers your perfect wrist presence.
+    - generic [ref=e135]:
+      - paragraph [ref=e136]: Private Access
+      - heading "Begin your collection." [level=2] [ref=e137]
+      - paragraph [ref=e138]: Private viewings available in Sydney. By appointment only.
+      - link "Book a Private Viewing →" [ref=e139] [cursor=pointer]:
+        - /url: /contact
+        - generic [ref=e140]: Book a Private Viewing
+        - generic [ref=e141]: →
+  - contentinfo [ref=e142]:
+    - generic [ref=e143]:
+      - generic [ref=e144]:
+        - generic [ref=e145]:
+          - paragraph [ref=e146]: Tourbillon
+          - generic [ref=e147]:
+            - heading "Curated watches for collectors who value restraint." [level=2] [ref=e148]
+            - paragraph [ref=e149]: Private sourcing, considered storytelling, and a quieter way to discover modern horology.
+          - link "Book an Advisor →" [ref=e151] [cursor=pointer]:
+            - /url: /contact
+            - generic [ref=e152]: Book an Advisor
+            - generic [ref=e153]: →
+        - generic [ref=e155]:
+          - generic [ref=e156]:
+            - paragraph [ref=e157]: Explore
+            - generic [ref=e158]:
+              - link "Watches Browse the full collection." [ref=e159] [cursor=pointer]:
+                - /url: /watches
+                - generic [ref=e160]: Watches
+                - generic [ref=e161]: Browse the full collection.
+              - link "Stories Read editorial notes and horology pieces." [ref=e162] [cursor=pointer]:
+                - /url: /stories
+                - generic [ref=e163]: Stories
+                - generic [ref=e164]: Read editorial notes and horology pieces.
+              - link "Smart Search Describe a brief and start from the homepage finder." [ref=e165] [cursor=pointer]:
+                - /url: /#smart-search
+                - generic [ref=e166]: Smart Search
+                - generic [ref=e167]: Describe a brief and start from the homepage finder.
+              - link "Compare Review details side by side." [ref=e168] [cursor=pointer]:
+                - /url: /compare
+                - generic [ref=e169]: Compare
+                - generic [ref=e170]: Review details side by side.
+          - generic [ref=e171]:
+            - paragraph [ref=e172]: Client Services
+            - generic [ref=e173]:
+              - link "Watch DNA See how taste signals shape the homepage curation." [ref=e174] [cursor=pointer]:
+                - /url: /#watch-dna
+                - generic [ref=e175]: Watch DNA
+                - generic [ref=e176]: See how taste signals shape the homepage curation.
+              - link "Favourites Keep saved references within reach." [ref=e177] [cursor=pointer]:
+                - /url: /favourites
+                - generic [ref=e178]: Favourites
+                - generic [ref=e179]: Keep saved references within reach.
+              - link "Sign In Access your account and saved activity." [ref=e180] [cursor=pointer]:
+                - /url: /login
+                - generic [ref=e181]: Sign In
+                - generic [ref=e182]: Access your account and saved activity.
+              - link "LinkedIn Follow the project and its builder." [ref=e183] [cursor=pointer]:
+                - /url: https://www.linkedin.com/in/hoanganhchu/
+                - generic [ref=e184]: LinkedIn
+                - generic [ref=e185]: Follow the project and its builder.
+      - generic [ref=e187]:
+        - paragraph [ref=e188]: Copyright 2026 Tourbillon. All rights reserved.
+        - generic [ref=e189]:
+          - generic [ref=e190]: Private viewings in London
+          - generic [ref=e192]: Concierge-led discovery
+          - generic [ref=e194]: Price on Request available
+  - button "Concierge" [ref=e196] [cursor=pointer]:
+    - img [ref=e197]
+    - generic [ref=e199]: Concierge
+  - button "Cursor Default" [ref=e201] [cursor=pointer]:
+    - img [ref=e203]
+    - generic [ref=e205]:
+      - generic [ref=e206]: Cursor
+      - generic [ref=e207]: Default
+    - img [ref=e208]
+  - alert [ref=e210]
+  - button "Open Next.js Dev Tools" [ref=e216] [cursor=pointer]:
+    - img [ref=e217]
+  - dialog "Chat Concierge":
+    - generic [ref=e614]:
+      - generic [ref=e615]:
+        - heading "Chat Concierge" [level=2] [ref=e616]
+        - button "Close" [ref=e617]:
+          - img [ref=e618]
+      - generic [ref=e620]:
+        - generic [ref=e621]:
+          - paragraph [ref=e622]: Ask about any watch or brand
+          - button "Clear" [ref=e641]
+        - generic [ref=e624]:
+          - paragraph [ref=e645]: Tell me about Patek Philippe
+          - generic [ref=e647]:
+            - generic [ref=e648]:
+              - paragraph [ref=e649]:
+                - button "Patek Philippe" [ref=e650]
+                - text: is a legendary Swiss watchmaker known for its unparalleled craftsmanship and timeless elegance. Founded in 1839 by Antoine Norbert de Patek and Adrien Philippe, the brand has become synonymous with prestige and innovation. Each piece is meticulously crafted from movements to cases, often bearing the Patek Philippe Seal of Quality, ensuring exceptional durability and beauty.
+              - paragraph [ref=e651]:
+                - text: The
+                - button "Calatrava" [ref=e652]
+                - text: collection offers classic dress watches with pure lines and refined designs, perfect for those who appreciate understated elegance. The
+                - button "Aquanaut" [ref=e653]
+                - text: ", on the other hand, brings a modern twist to luxury sports watches with its distinctive checkerboard dial and water-resistant design."
+              - paragraph [ref=e654]: Would you like to explore specific collections or models?
+            - generic [ref=e655]:
+              - link "7200R-001 Ultra-Thin Automatic 7200R-001 Ultra-Thin Automatic $58,800" [ref=e656] [cursor=pointer]:
+                - /url: /watches/patek-philippe-calatrava-7200r-001-ultra-thin-automatic
+                - img "7200R-001 Ultra-Thin Automatic" [ref=e658]
+                - paragraph [ref=e659]: 7200R-001 Ultra-Thin Automatic
+                - paragraph [ref=e660]: $58,800
+              - link "5330G-001 World Time Date 5330G-001 World Time Date $135,350" [ref=e661] [cursor=pointer]:
+                - /url: /watches/patek-philippe-calatrava-5330g-001-world-time-date
+                - img "5330G-001 World Time Date" [ref=e663]
+                - paragraph [ref=e664]: 5330G-001 World Time Date
+                - paragraph [ref=e665]: $135,350
+            - generic [ref=e666]:
+              - button "Tell me more about Patek Philippe" [ref=e667]:
+                - img [ref=e669]
+                - generic [ref=e672]: Tell me more about Patek Philippe
+                - img [ref=e673]
+              - button "Explore the Calatrava collection" [active] [ref=e675]:
+                - img [ref=e677]
+                - generic [ref=e680]: Explore the Calatrava collection
+                - img [ref=e681]
+          - paragraph [ref=e688]: Explore the Calatrava collection
+        - generic [ref=e636]:
+          - textbox "Ask anything..." [ref=e637]
+          - button [disabled] [ref=e638]:
+            - img [ref=e639]

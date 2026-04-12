@@ -10,6 +10,15 @@ interface WatchSpecsParsed {
   dial?: { color?: string };
 }
 
+interface TastePreferences {
+  preferredBrandIds: number[];
+  preferredMaterials: string[];
+  preferredDialColors: string[];
+  preferredCaseSize: TasteProfile['preferredCaseSize'];
+  priceMin: number | null;
+  priceMax: number | null;
+}
+
 type RankedWatch = {
   watch: Watch;
   baseIndex: number;
@@ -24,10 +33,45 @@ interface FeaturedBrandQueue {
   tieBreaker: number;
 }
 
+interface FeaturedBrandRule {
+  key: string;
+  priority: number;
+  weight: number;
+}
+
+interface FeaturedCollectionRule {
+  key: string;
+  priority: number;
+}
+
+interface BrandCapRule {
+  untilPositionExclusive: number;
+  cap: number;
+}
+
 export class WatchOrderingService {
   private static readonly featuredSeed = 'tourbillon-featured-v2';
   private static readonly personalizedWindowSize = 48;
   private static readonly personalizedMinScore = 1;
+
+  private static readonly featuredBrandRules: FeaturedBrandRule[] = [
+    { key: 'patek philippe', priority: 60, weight: 5 },
+    { key: 'vacheron constantin', priority: 54, weight: 4 },
+    { key: 'audemars piguet', priority: 50, weight: 4 },
+    { key: 'rolex', priority: 46, weight: 4 },
+    { key: 'jaeger lecoultre', priority: 40, weight: 3 },
+    { key: 'omega', priority: 34, weight: 3 },
+  ];
+
+  private static readonly featuredCollectionRules: FeaturedCollectionRule[] = [
+    { key: 'reverso', priority: 8 },
+    { key: 'speedmaster', priority: 7 },
+  ];
+
+  private static readonly brandCapRules: BrandCapRule[] = [
+    { untilPositionExclusive: 12, cap: 3 },
+    { untilPositionExclusive: 24, cap: 5 },
+  ];
 
   static parseSortOrder(value: string | null): SortOrder {
     switch (value) {
@@ -41,15 +85,14 @@ export class WatchOrderingService {
   }
 
   static hasTastePreferences(profile?: TasteProfile): boolean {
-    if (!profile) return false;
-
+    const preferences = this.getEffectivePreferences(profile);
     return (
-      profile.preferredBrandIds.length > 0 ||
-      profile.preferredMaterials.length > 0 ||
-      profile.preferredDialColors.length > 0 ||
-      profile.preferredCaseSize != null ||
-      profile.priceMin != null ||
-      profile.priceMax != null
+      preferences.preferredBrandIds.length > 0 ||
+      preferences.preferredMaterials.length > 0 ||
+      preferences.preferredDialColors.length > 0 ||
+      preferences.preferredCaseSize != null ||
+      preferences.priceMin != null ||
+      preferences.priceMax != null
     );
   }
 
@@ -165,38 +208,37 @@ export class WatchOrderingService {
   }
 
   private static scoreTasteMatch(watch: Watch, profile: TasteProfile): number {
+    const preferences = this.getEffectivePreferences(profile);
     let score = 0;
 
-    if (profile.preferredBrandIds.includes(watch.brandId)) score += 3;
+    if (preferences.preferredBrandIds.includes(watch.brandId)) score += 3;
 
-    const specs: WatchSpecsParsed | null = (() => {
-      try { return watch.specs ? JSON.parse(watch.specs) : null; } catch { return null; }
-    })();
+    const specs = this.parseSpecs(watch.specs);
 
-    if (specs?.case?.material && profile.preferredMaterials.length > 0) {
+    if (specs?.case?.material && preferences.preferredMaterials.length > 0) {
       const material = specs.case.material.toLowerCase();
-      if (profile.preferredMaterials.some(value => material.includes(value.toLowerCase()))) score += 2;
+      if (preferences.preferredMaterials.some(value => material.includes(value.toLowerCase()))) score += 2;
     }
 
-    if (specs?.dial?.color && profile.preferredDialColors.length > 0) {
+    if (specs?.dial?.color && preferences.preferredDialColors.length > 0) {
       const color = specs.dial.color.toLowerCase();
-      if (profile.preferredDialColors.some(value => color.includes(value.toLowerCase()))) score += 2;
+      if (preferences.preferredDialColors.some(value => color.includes(value.toLowerCase()))) score += 2;
     }
 
-    if (specs?.case?.diameter && profile.preferredCaseSize) {
+    if (specs?.case?.diameter && preferences.preferredCaseSize) {
       const mmMatch = specs.case.diameter.match(/\d+\.?\d*/);
       if (mmMatch) {
         const mm = parseFloat(mmMatch[0]);
         const matches =
-          profile.preferredCaseSize === 'small' ? mm < 37 :
-          profile.preferredCaseSize === 'medium' ? mm >= 37 && mm <= 41 :
+          preferences.preferredCaseSize === 'small' ? mm < 37 :
+          preferences.preferredCaseSize === 'medium' ? mm >= 37 && mm <= 41 :
           mm > 41;
         if (matches) score += 1;
       }
     }
 
-    if (profile.priceMin != null && profile.priceMax != null && watch.currentPrice > 0) {
-      if (watch.currentPrice >= profile.priceMin && watch.currentPrice <= profile.priceMax) score += 1;
+    if (watch.currentPrice > 0 && this.isWithinPreferredPriceRange(watch.currentPrice, preferences)) {
+      score += 1;
     }
 
     return score;
@@ -241,48 +283,58 @@ export class WatchOrderingService {
   }
 
   private static getFeaturedBrandPriority(brandSlug: string, brandName: string): number {
-    const slug = this.normalizeToken(brandSlug);
-    const name = this.normalizeToken(brandName);
-
-    if (slug === 'patek-philippe' || name === 'patek philippe') return 60;
-    if (slug === 'vacheron-constantin' || name === 'vacheron constantin') return 54;
-    if (slug === 'audemars-piguet' || name === 'audemars piguet') return 50;
-    if (slug === 'rolex' || name === 'rolex') return 46;
-    if (slug === 'jaeger-lecoultre' || name === 'jaeger-lecoultre' || name === 'jaeger lecoultre') return 40;
-    if (slug === 'omega' || name === 'omega') return 34;
-    return 0;
+    const identity = this.normalizeIdentity(`${brandSlug} ${brandName}`);
+    return this.featuredBrandRules.find(rule => identity.includes(rule.key))?.priority ?? 0;
   }
 
   private static getFeaturedBrandWeight(brandSlug: string, brandName: string): number {
-    const slug = this.normalizeToken(brandSlug);
-    const name = this.normalizeToken(brandName);
-
-    if (slug === 'patek-philippe' || name === 'patek philippe') return 5;
-    if (slug === 'vacheron-constantin' || name === 'vacheron constantin') return 4;
-    if (slug === 'audemars-piguet' || name === 'audemars piguet') return 4;
-    if (slug === 'rolex' || name === 'rolex') return 4;
-    if (slug === 'jaeger-lecoultre' || name === 'jaeger-lecoultre' || name === 'jaeger lecoultre') return 3;
-    if (slug === 'omega' || name === 'omega') return 3;
-    return 1;
+    const identity = this.normalizeIdentity(`${brandSlug} ${brandName}`);
+    return this.featuredBrandRules.find(rule => identity.includes(rule.key))?.weight ?? 1;
   }
 
   private static getFeaturedCollectionPriority(collectionSlug: string, collectionName: string): number {
-    const slug = this.normalizeToken(collectionSlug);
-    const name = this.normalizeToken(collectionName);
-
-    if (slug.includes('reverso') || name.includes('reverso')) return 8;
-    if (slug.includes('speedmaster') || name.includes('speedmaster')) return 7;
-    return 0;
+    const identity = this.normalizeIdentity(`${collectionSlug} ${collectionName}`);
+    return this.featuredCollectionRules.find(rule => identity.includes(rule.key))?.priority ?? 0;
   }
 
   private static brandCapForPosition(position: number): number {
-    if (position < 12) return 3;
-    if (position < 24) return 5;
-    return Number.POSITIVE_INFINITY;
+    return this.brandCapRules.find(rule => position < rule.untilPositionExclusive)?.cap ?? Number.POSITIVE_INFINITY;
   }
 
-  private static normalizeToken(value?: string | null): string {
-    return value?.trim().toLowerCase() ?? '';
+  private static getEffectivePreferences(profile?: TasteProfile): TastePreferences {
+    return {
+      preferredBrandIds: profile?.preferredBrandIds.length ? profile.preferredBrandIds : (profile?.behaviorPreferredBrandIds ?? []),
+      preferredMaterials: profile?.preferredMaterials.length ? profile.preferredMaterials : (profile?.behaviorPreferredMaterials ?? []),
+      preferredDialColors: profile?.preferredDialColors.length ? profile.preferredDialColors : (profile?.behaviorPreferredDialColors ?? []),
+      preferredCaseSize: profile?.preferredCaseSize ?? profile?.behaviorPreferredCaseSize ?? null,
+      priceMin: profile?.priceMin ?? profile?.behaviorPriceMin ?? null,
+      priceMax: profile?.priceMax ?? profile?.behaviorPriceMax ?? null,
+    };
+  }
+
+  private static isWithinPreferredPriceRange(price: number, preferences: TastePreferences): boolean {
+    const { priceMin, priceMax } = preferences;
+    if (priceMin == null && priceMax == null) return false;
+    if (priceMin != null && priceMax != null) return price >= priceMin && price <= priceMax;
+    if (priceMin != null) return price >= priceMin;
+    return price <= (priceMax as number);
+  }
+
+  private static parseSpecs(specs: string | null): WatchSpecsParsed | null {
+    try {
+      return specs ? JSON.parse(specs) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private static normalizeIdentity(value?: string | null): string {
+    return (value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private static stableHash(input: string): number {

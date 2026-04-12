@@ -1,0 +1,193 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e4]:
+      - link "Timepieces" [ref=e5] [cursor=pointer]:
+        - /url: /watches
+      - link "Trend" [ref=e6] [cursor=pointer]:
+        - /url: /trend
+      - link "Stories" [ref=e7] [cursor=pointer]:
+        - /url: /stories
+      - link "Contact" [ref=e8] [cursor=pointer]:
+        - /url: /contact
+    - link "Tourbillon" [ref=e10] [cursor=pointer]:
+      - /url: /
+    - generic [ref=e11]:
+      - link [ref=e12] [cursor=pointer]:
+        - /url: /auth/start
+        - img [ref=e13]
+      - link [ref=e16] [cursor=pointer]:
+        - /url: /auth/start?redirect=/favourites
+        - generic [ref=e17]:
+          - img [ref=e18]
+          - img [ref=e20]
+      - button [ref=e22] [cursor=pointer]:
+        - img [ref=e23]
+  - main [ref=e25]:
+    - generic [ref=e27]:
+      - generic "Tourbillon hero video" [ref=e30]
+      - generic:
+        - generic:
+          - paragraph: Private Collection
+          - heading "Tourbillon" [level=1]
+          - paragraph: Rare watches, collected with editorial restraint.
+      - generic [ref=e32]: scroll
+    - generic [ref=e35]:
+      - paragraph [ref=e36]: The House of Horology
+      - heading "Thirteen Maisons. Endless Discovery." [level=1] [ref=e37]:
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - generic [ref=e40]: Thirteen
+            - generic [ref=e41]: Maisons.
+          - generic [ref=e42]:
+            - generic [ref=e43]: Endless
+            - generic [ref=e44]: Discovery.
+      - paragraph [ref=e46]: Exceptional timepieces from the world's finest maisons, curated for the discerning collector.
+      - generic [ref=e48]:
+        - link "Explore Watches →" [ref=e49] [cursor=pointer]:
+          - /url: /watches
+          - generic [ref=e50]: Explore Watches
+          - generic [ref=e51]: →
+        - link "Our Story" [ref=e52] [cursor=pointer]:
+          - /url: /stories
+    - generic:
+      - generic:
+        - generic:
+          - paragraph: Curated Collections
+          - heading "Discover Your Archetype" [level=2]
+    - generic [ref=e54]:
+      - generic [ref=e58]:
+        - paragraph [ref=e59]: "01"
+        - heading "The Complications" [level=3] [ref=e60]
+        - paragraph [ref=e61]: Every mechanism a poem
+        - paragraph [ref=e62]: Centuries of craft. One wrist.
+        - link "Explore collection →" [ref=e63] [cursor=pointer]:
+          - /url: /watches?collection=patek-philippe-grand-complications&collection=audemars-piguet-royal-oak-concept&collection=a-lange-sohne-datograph&collection=vacheron-constantin-traditionnelle
+          - generic [ref=e64]: Explore collection
+          - generic [ref=e65]: →
+      - generic [ref=e71]:
+        - paragraph [ref=e72]: "02"
+        - heading "Sport Watches" [level=3] [ref=e73]
+        - paragraph [ref=e74]: Precision under pressure
+        - paragraph [ref=e75]: Built for performance. Worn with conviction.
+        - link "Explore collection →" [ref=e76] [cursor=pointer]:
+          - /url: /watches?collection=audemars-piguet-royal-oak&collection=vacheron-constantin-overseas&collection=patek-philippe-nautilus&collection=rolex-daytona&collection=omega-speedmaster&collection=rolex-submariner
+          - generic [ref=e77]: Explore collection
+          - generic [ref=e78]: →
+      - generic [ref=e82]:
+        - paragraph [ref=e83]: "03"
+        - heading "Dress Watches" [level=3] [ref=e84]
+        - paragraph [ref=e85]: Restraint as a statement
+        - paragraph [ref=e86]: Nothing is more powerful than refinement.
+        - link "Explore collection →" [ref=e87] [cursor=pointer]:
+          - /url: /watches?collection=patek-philippe-calatrava&collection=a-lange-sohne-lange-1&collection=breguet-classique&collection=jaeger-lecoultre-master-ultra-thin&collection=vacheron-constantin-patrimony&collection=alange-sohne-zeitwerk
+          - generic [ref=e88]: Explore collection
+          - generic [ref=e89]: →
+      - generic [ref=e95]:
+        - paragraph [ref=e96]: "04"
+        - heading "Métiers d'Arts" [level=3] [ref=e97]
+        - paragraph [ref=e98]: Horology as canvas
+        - paragraph [ref=e99]: Where the dial becomes a world.
+        - link "Explore collection →" [ref=e100] [cursor=pointer]:
+          - /url: /watches?collection=vacheron-constantin-metiers-d-art
+          - generic [ref=e101]: Explore collection
+          - generic [ref=e102]: →
+    - generic [ref=e103]:
+      - heading "Explore Our Brands" [level=2] [ref=e105]
+      - generic [ref=e107]:
+        - heading "The Holy Trinity — Haute Horlogerie" [level=3] [ref=e109]
+        - paragraph [ref=e112]: Loading luxury brands...
+      - heading "Explore More Brands" [level=3] [ref=e116]
+    - generic [ref=e118]:
+      - generic [ref=e120]:
+        - paragraph [ref=e121]: Smart Search
+        - heading "Describe your ideal watch" [level=2] [ref=e122]
+      - generic [ref=e123]:
+        - generic [ref=e124]:
+          - generic:
+            - generic: Vach
+          - textbox [ref=e125]
+          - button "→" [ref=e126]
+        - generic [ref=e127]:
+          - button "Vacheron Dress Watch 39 to 40mm Dial below 200k" [ref=e128]
+          - button "Omega and Rolex with good water resistance" [ref=e129]
+          - button "AP Royal Oak steel" [ref=e130]
+          - button "JLC Reverso under $50k" [ref=e131]
+          - button "Perpetual calendar watch" [ref=e132]
+          - button "Tourbillon watches" [ref=e133]
+    - generic [ref=e135]:
+      - paragraph [ref=e136]: Private Access
+      - heading "Begin your collection." [level=2] [ref=e137]
+      - paragraph [ref=e138]: Private viewings available in Sydney. By appointment only.
+      - link "Book a Private Viewing →" [ref=e139] [cursor=pointer]:
+        - /url: /contact
+        - generic [ref=e140]: Book a Private Viewing
+        - generic [ref=e141]: →
+  - contentinfo [ref=e142]:
+    - generic [ref=e143]:
+      - generic [ref=e144]:
+        - generic [ref=e145]:
+          - paragraph [ref=e146]: Tourbillon
+          - generic [ref=e147]:
+            - heading "Curated watches for collectors who value restraint." [level=2] [ref=e148]
+            - paragraph [ref=e149]: Private sourcing, considered storytelling, and a quieter way to discover modern horology.
+          - link "Book an Advisor →" [ref=e151] [cursor=pointer]:
+            - /url: /contact
+            - generic [ref=e152]: Book an Advisor
+            - generic [ref=e153]: →
+        - generic [ref=e155]:
+          - generic [ref=e156]:
+            - paragraph [ref=e157]: Explore
+            - generic [ref=e158]:
+              - link "Watches Browse the full collection." [ref=e159] [cursor=pointer]:
+                - /url: /watches
+                - generic [ref=e160]: Watches
+                - generic [ref=e161]: Browse the full collection.
+              - link "Stories Read editorial notes and horology pieces." [ref=e162] [cursor=pointer]:
+                - /url: /stories
+                - generic [ref=e163]: Stories
+                - generic [ref=e164]: Read editorial notes and horology pieces.
+              - link "Smart Search Describe a brief and start from the homepage finder." [ref=e165] [cursor=pointer]:
+                - /url: /#smart-search
+                - generic [ref=e166]: Smart Search
+                - generic [ref=e167]: Describe a brief and start from the homepage finder.
+              - link "Compare Review details side by side." [ref=e168] [cursor=pointer]:
+                - /url: /compare
+                - generic [ref=e169]: Compare
+                - generic [ref=e170]: Review details side by side.
+          - generic [ref=e171]:
+            - paragraph [ref=e172]: Client Services
+            - generic [ref=e173]:
+              - link "Watch DNA See how taste signals shape the homepage curation." [ref=e174] [cursor=pointer]:
+                - /url: /#watch-dna
+                - generic [ref=e175]: Watch DNA
+                - generic [ref=e176]: See how taste signals shape the homepage curation.
+              - link "Favourites Keep saved references within reach." [ref=e177] [cursor=pointer]:
+                - /url: /favourites
+                - generic [ref=e178]: Favourites
+                - generic [ref=e179]: Keep saved references within reach.
+              - link "Sign In Access your account and saved activity." [ref=e180] [cursor=pointer]:
+                - /url: /login
+                - generic [ref=e181]: Sign In
+                - generic [ref=e182]: Access your account and saved activity.
+              - link "LinkedIn Follow the project and its builder." [ref=e183] [cursor=pointer]:
+                - /url: https://www.linkedin.com/in/hoanganhchu/
+                - generic [ref=e184]: LinkedIn
+                - generic [ref=e185]: Follow the project and its builder.
+      - generic [ref=e187]:
+        - paragraph [ref=e188]: Copyright 2026 Tourbillon. All rights reserved.
+        - generic [ref=e189]:
+          - generic [ref=e190]: Private viewings in London
+          - generic [ref=e192]: Concierge-led discovery
+          - generic [ref=e194]: Price on Request available
+  - button "Concierge" [ref=e196] [cursor=pointer]:
+    - img [ref=e197]
+    - generic [ref=e199]: Concierge
+  - button "Cursor Default" [ref=e201] [cursor=pointer]:
+    - img [ref=e203]
+    - generic [ref=e205]:
+      - generic [ref=e206]: Cursor
+      - generic [ref=e207]: Default
+    - img [ref=e208]
+  - alert [ref=e210]
+  - button "Open Next.js Dev Tools" [ref=e216] [cursor=pointer]:
+    - img [ref=e217]

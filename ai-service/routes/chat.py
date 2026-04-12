@@ -1,5 +1,8 @@
 import json
 import re
+import urllib.error
+import urllib.parse
+import urllib.request
 
 from flask import jsonify, request
 
@@ -16,6 +19,25 @@ ALLOWED_CURSOR_STYLES = {
     "compass",
     "sapphire",
     "rotor",
+}
+
+LANGUAGE_HINTS = {
+    "en": "english",
+    "english": "english",
+    "fr": "french",
+    "french": "french",
+    "vi": "vietnamese",
+    "vietnamese": "vietnamese",
+    "ja": "japanese",
+    "japanese": "japanese",
+    "zh": "chinese",
+    "chinese": "chinese",
+}
+
+LANGUAGE_KEYWORDS = {
+    "english": {"the", "and", "with", "about", "watch", "brand", "collection", "history"},
+    "french": {"bonjour", "montre", "maison", "histoire", "collection", "avec", "pour", "suisse"},
+    "vietnamese": {"dong", "ho", "lich", "su", "thuong", "hieu", "bo", "suu", "tap", "voi"},
 }
 
 
@@ -97,6 +119,74 @@ def _cleanup_markdown_artifacts(text: str) -> str:
     if cleaned and cleaned[-1] not in ".!?":
         cleaned += "."
     return cleaned
+
+
+def _normalize_language(language: str | None) -> str | None:
+    if not language:
+        return None
+
+    normalized = language.strip().lower()
+    if not normalized:
+        return None
+
+    primary = normalized.split("-", 1)[0]
+    return LANGUAGE_HINTS.get(normalized) or LANGUAGE_HINTS.get(primary)
+
+
+def _language_score(text: str, language: str) -> int:
+    words = re.findall(r"[a-zA-ZÀ-ÿ']+", text.lower())
+    keywords = LANGUAGE_KEYWORDS.get(language, set())
+    return sum(1 for word in words if word in keywords)
+
+
+def _response_matches_language(text: str, expected_language: str | None) -> bool:
+    if not text or not expected_language:
+        return True
+
+    if expected_language == "english":
+        if re.search(r"[^\x00-\x7F]", text):
+            return False
+        english_score = _language_score(text, "english")
+        competing_score = max(_language_score(text, "french"), _language_score(text, "vietnamese"))
+        return english_score >= competing_score
+
+    return True
+
+
+def _fetch_url_json(url: str) -> dict | list | None:
+    try:
+        request_obj = urllib.request.Request(url, headers={"User-Agent": "TourbillonChat/1.0"})
+        with urllib.request.urlopen(request_obj, timeout=4) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError):
+        return None
+
+
+def _fetch_web_notes(query: str) -> str | None:
+    if not query:
+        return None
+
+    encoded_query = urllib.parse.quote(query)
+    search_url = (
+        "https://en.wikipedia.org/w/api.php"
+        f"?action=opensearch&search={encoded_query}&limit=1&namespace=0&format=json"
+    )
+    search_result = _fetch_url_json(search_url)
+    if not isinstance(search_result, list) or len(search_result) < 2 or not search_result[1]:
+        return None
+
+    title = urllib.parse.quote(str(search_result[1][0]))
+    summary_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{title}"
+    summary = _fetch_url_json(summary_url)
+    if not isinstance(summary, dict):
+        return None
+
+    extract = str(summary.get("extract") or "").strip()
+    title_text = str(summary.get("title") or query).strip()
+    if not extract:
+        return None
+
+    return f"{title_text}: {extract}"
 
 
 def _allowed_catalogue_paths(context: list[str]) -> set[str]:
@@ -216,7 +306,7 @@ def _filter_actions(actions: list, context: list[str]) -> list:
         elif action_type == "search":
             query = str(action.get("query") or "").strip()
             if query and not re.search(
-                r"\b(?:change the cursor|set the cursor|switch the cursor|cursor|watch named|introduce me|should i wear)\b",
+                r"\b(?:change the cursor|set the cursor|switch the cursor|cursor|watch named|introduce me|should i wear|browse the web|search the web|web|internet|history|heritage|background|founder|founded|origins?)\b",
                 query,
                 re.IGNORECASE,
             ):
@@ -245,6 +335,10 @@ def register_routes(app, runtime: Runtime) -> None:
         query = (data.get("query") or "").strip()
         context = data.get("context") or []
         history = data.get("history") or []
+        response_language = _normalize_language(data.get("responseLanguage"))
+        allow_web_enrichment = bool(data.get("allowWebEnrichment"))
+        web_query = (data.get("webQuery") or "").strip()
+        allow_actions = bool(data.get("allowActions", True))
 
         if not query:
             return jsonify({"error": "query is required"}), 400
@@ -255,6 +349,29 @@ def register_routes(app, runtime: Runtime) -> None:
         if context_block:
             messages.append({"role": "user", "content": f"Relevant product context:\n{context_block}"})
             messages.append({"role": "assistant", "content": "Understood, I have the context."})
+
+        if response_language:
+            messages.append({
+                "role": "user",
+                "content": (
+                    f"Response language rule: write the entire answer in {response_language} only. "
+                    "Do not drift into another language."
+                ),
+            })
+            messages.append({"role": "assistant", "content": "Understood, I will stay in the requested language."})
+
+        if allow_web_enrichment and web_query:
+            web_notes = _fetch_web_notes(web_query)
+            if web_notes:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Secondary web notes for brand or horology background only. "
+                        "Use these only when they do not conflict with Tourbillon catalogue context:\n"
+                        f"{web_notes}"
+                    ),
+                })
+                messages.append({"role": "assistant", "content": "Understood, I will treat the web notes as secondary background only."})
 
         messages.extend(history)
         messages.append({"role": "user", "content": query})
@@ -268,10 +385,31 @@ def register_routes(app, runtime: Runtime) -> None:
             )
             raw = (response.choices[0].message.content or "").strip()
             text_only, actions = _extract_actions(raw)
+
+            if response_language and not _response_matches_language(text_only, response_language):
+                retry_messages = messages + [
+                    {"role": "assistant", "content": text_only},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Rewrite that answer in {response_language} only. "
+                            "Keep the meaning, keep it concise, and do not add any other language."
+                        ),
+                    },
+                ]
+                retry = runtime.client.chat.completions.create(
+                    model=runtime.llm_model,
+                    messages=retry_messages,
+                    max_tokens=200,
+                    temperature=0.1,
+                )
+                raw = (retry.choices[0].message.content or "").strip()
+                text_only, actions = _extract_actions(raw)
+
             trimmed = _cleanup_markdown_artifacts(_truncate_chat_response(text_only))
             linked = _inject_entity_links(trimmed, context)
             safe_text = _cleanup_markdown_artifacts(_filter_internal_links(linked, context))
-            safe_actions = _filter_actions(actions, context)
+            safe_actions = _filter_actions(actions, context) if allow_actions else []
             return jsonify({"message": safe_text, "actions": safe_actions})
         except Exception as exc:
             return jsonify({"error": f"Chat LLM call failed: {str(exc)}"}), 502

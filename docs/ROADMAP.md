@@ -26,7 +26,7 @@
 | Stripe Checkout (Test Mode) | Removed | — |
 | Contact Advisor/ Book an Appointment (PoR Inquiry) | Done | 4 |
 | Chat Concierge — floating widget + product comparison RAG | Done | 5 |
-| Chat Concierge — web search + brand knowledge answers | Done | 5 |
+| Chat Concierge — limited web enrichment + brand knowledge answers | Done | 5 |
 | Brand & Collection Embeddings | Removed | — |
 | Retrieval Quality Audit (chunk enrichment, vector ordering, index fix) | Done | 5 |
 | Favourites & Collections | Done | 6 |
@@ -320,27 +320,27 @@ Floating conversational assistant available on every page — handles both speci
 **What it does:**
 - Floating pill at bottom-right on all pages; panel slides up on click
 - Product comparison: "I like the Overseas and the Aquanaut, I go to the beach, which should I choose?" → specs analysis + recommendation + watch thumbnail cards
-- Brand knowledge: "Tell me about Vacheron's history" → web search + DB description blended → narrative with brand page link
+- Brand knowledge: "Tell me about Vacheron's history" → catalogue context + limited secondary web notes blended into a narrative with brand page link
 - Conversation-aware: follow-ups reference earlier turns in session; state survives in-app navigation (layout.tsx mount, never unmounted on soft nav)
 
 **Architecture — reuses Phase 3 infrastructure:**
 - `ParseQueryIntentAsync` (no LLM) pre-filters brand/collection/reference number signals for query type routing
 - PRODUCT query (collection/watch name in query): fetch watch records → ai-service `/chat`
-- BRAND query (brand name, no model match): fetch DB description → web search → ai-service `/chat`
+- BRAND query (brand name, no model match): fetch DB description → optional limited brand-history web notes → ai-service `/chat`
 - GENERAL query (neither): vector search top-5 `watch_finder` embeddings as context → ai-service `/chat`
 - `QueryCacheService` caches first-turn (history-free) responses at cosine ≥ 0.92 — not applied to multi-turn
 - Rate limit: 5/day deployed (`ChatSettings:DailyLimit`); `DisableLimitInDev: true` for local
 
 **Infrastructure:**
-- In-memory session store via `ConcurrentDictionary` (MVP; upgrade to Redis for horizontal scale)
-- `POST /chat` endpoint in ai-service — web search via `duckduckgo-search` (no API key)
+- Redis-backed session store for chat history, compare scope, follow-up mode, and surfaced cards
+- `POST /chat` endpoint in ai-service — Tourbillon-first response generation with optional limited brand-history web notes
 - Pill UI matches `CompareIndicator` design; chat pill `bottom-8`, compare pill moves to `bottom-24`
 - Brand/collection detection uses direct DB substring matching — no dedicated embeddings needed for a 13-brand catalogue
 
 **Full spec:** `docs/phase5-rag-chatbot.md`
 
 **Files involved:**
-- `ai-service/app.py` — `POST /chat` + `CHAT_SYSTEM_PROMPT` + web search tool
+- `ai-service/routes/chat.py`, `ai-service/prompts/chat.py` — `POST /chat`, response-language enforcement, action filtering, and limited brand-history web enrichment
 - `ai-service/requirements.txt` — `duckduckgo-search`
 - `backend/Controllers/ChatController.cs` — `POST /api/chat/message`, `DELETE /api/chat/session/{id}`
 - `backend/Services/ChatService.cs` — orchestration pipeline (PRODUCT/BRAND/GENERAL routing)
@@ -560,24 +560,43 @@ Hardens the chat concierge to be a specialist watch advisor — grounded in Tour
 
 **What it does:**
 - System prompt rewritten with 5 hardening layers: scope, grounding, safety, prompt injection resistance, consistency
-- AI prioritises Tourbillon catalogue data + navigable pill links, then supplements with interesting web-searched facts
+- AI prioritises Tourbillon catalogue data + navigable pill links, then supplements with limited web notes only for approved brand-history questions
 - Editorial content (WhyItMatters, BestFor) now injected into chat context — AI has access to rich horological knowledge already in the DB
 - Empty-context fallback: when vector search returns no matches, AI is told explicitly (prevents hallucination)
 - Collection.Style labels included in context for deterministic category awareness
 - Redis-backed session state keeps the last surfaced cards, compare scope, and follow-up mode so replies like `yes`, ordinal references, and short entity repeats continue from the prior turn
-- Chat actions now execute compare and cursor changes directly, and Smart Search actions are rewritten into canonical catalogue terms instead of echoing raw conversational phrasing
+- Chat actions now execute compare, cursor, and navigate actions directly, and Smart Search actions are rewritten into canonical catalogue terms instead of echoing raw conversational phrasing
+- Frontend passes a preferred-language hint so English prompts stop drifting into another language, and the ai-service retries when the draft response does not match the requested language
 
 **Hardening layers:**
 1. **Scope** — watches, horology, and Tourbillon topics only; polite redirect for off-topic
 2. **Grounding** — prioritise provided context, cite specific watches/collections, admit when data is missing
-3. **Anti-hallucination** — never invent specs, prices, or availability; supplement with web search for brand knowledge
+3. **Anti-hallucination** — never invent specs, prices, or availability; use limited brand-history web notes only as secondary context
 4. **Prompt injection resistance** — ignore role-change and system-prompt-reveal attempts
 5. **Harassment refusal** — single polite redirect, no engagement with abuse
 6. **Consistency** — always "Tourbillon", spec-based reasoning over adjectives
 
 **Files involved:**
-- `ai-service/app.py` — `CHAT_SYSTEM_PROMPT` rewrite
-- `backend/Services/ChatService.cs` — editorial context injection, empty-context fallback, Collection.Style
+- `ai-service/routes/chat.py`, `ai-service/prompts/chat.py` — chat prompt, response-language checks, limited web enrichment
+- `backend/Services/ChatService.cs` — editorial context injection, empty-context fallback, response-language + action controls
+- `frontend/contexts/ChatContext.tsx`, `frontend/app/components/chat/ChatPanel.tsx` — preferred language hinting and direct action execution
+
+### Concierge QA Loop (APRIL 13, 2026)
+
+The concierge hardening pass was re-run as a full loop against the live local stack (`make back`, direct `POST /api/chat/message` probes, then Playwright on `http://localhost:3000`).
+
+**Bugs reproduced and fixed:**
+- `navigate` chips were echoing their label back into chat instead of routing the app
+- English prompts could drift into another language under the local Qwen setup
+- "browse the web" brand-history prompts were misrouted into catalogue search and compare actions
+- Watch ordering relied on scattered hardcoded policy rules and ignored one-sided price preferences
+
+**Post-fix checks:**
+- `browse the web for Vacheron Constantin history` now stays in English and returns navigate-only actions
+- `show me some reversos` stays in English and still returns catalogue discovery actions
+- Playwright confirmed `Explore the Calatrava collection` routes to `/collections/patek-philippe-calatrava`
+- Playwright confirmed `Compare these watches` routes to `/compare`
+- Backend build, backend tests, and frontend type-check all pass
 
 ### Slug-Based URLs + Cloudinary Public ID Sync (IN PROGRESS)
 
