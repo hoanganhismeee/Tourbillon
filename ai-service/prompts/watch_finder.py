@@ -28,7 +28,13 @@ Return ONLY valid JSON with these exact keys. Use null for unmentioned fields, [
 Key guidance:
 - brands: full brand names the user WANTS to find. Canonical names: "Jaeger-LeCoultre", "Audemars Piguet", "Vacheron Constantin", "Patek Philippe", "A. Lange & Söhne", "Rolex", "Omega Watches", "Grand Seiko", "F.P.Journe", "Glashütte Original", "IWC Schaffhausen", "Breguet", "Frederique Constant". CRITICAL: if a brand is mentioned in a NEGATIVE context ("not Rolex", "other than Rolex", "something Rolex owners are jealous of", "avoid Omega") do NOT include it in brands[]. Empty [] if no positive brand intent.
 - collection: single collection name if explicitly mentioned (e.g. "Reverso", "Nautilus", "Royal Oak"). null otherwise.
-- style: one of "dress", "sport", "diver". Set when user says it directly ("sport watch", "dress watch", "diver") or clearly implies it ("beach vacation" → "diver", "boardroom" → "dress", "integrated bracelet" → "sport"). null if ambiguous. Bracelet preference alone is NOT sport.
+- style: one of "dress", "sport", "diver", "art". Set when user says it directly or clearly implies it:
+    "sport watch" / "sporty" / "integrated bracelet" → "sport"
+    "dress watch" / "formal" / "boardroom" → "dress"
+    "diver" / "dive watch" / "beach vacation" → "diver"
+    "collector piece" / "haute horlogerie" / "artistic watch" / "conversation piece" /
+    "art piece" / "grand complication" (as focus, not just feature) → "art"
+    null if ambiguous. Bracelet preference alone is NOT sport.
 - material: array from ["Steel", "Titanium", "Rose Gold", "Yellow Gold", "White Gold", "Platinum", "Ceramic", "Carbon"]. Only when user explicitly names the material. Never infer from style.
 - maxPrice / minPrice: number in USD. "under 10k" → maxPrice: 10000. "exactly 5000" → both maxPrice and minPrice: 5000. null if not stated.
 - maxThicknessMm: number. Only when user says "thin", "slim", "ultra-thin" → 9. null otherwise.
@@ -52,6 +58,7 @@ Category guidance — apply strictly:
 - "dress watch": thin, minimalist, time-only or simple complications. Chronographs, divers, and sport watches are NOT dress watches regardless of case material or price.
 - "sport watch": case and bracelet designed as one integrated unit — the bracelet IS the design identity. A dress watch sold with a bracelet option is still dress, not sport.
 - "diver": high water resistance (100m+), rotating or fixed bezel, legible dial. Score 80+ for dive/waterproof queries.
+- "art": high-complication collector objects, decorative/artistic pieces, haute horlogerie — Greubel Forsey, Grand Complications, Métiers d'Art, Tradition tourbillon. Score 80+ for collector/artistic queries.
 - "chronograph": stopwatch complication present in movement functions. Score 80+ for chronograph queries.
 
 You MUST include one entry per watch — do not skip any.

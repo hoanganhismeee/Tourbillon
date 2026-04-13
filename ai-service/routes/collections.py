@@ -30,14 +30,16 @@ def register_routes(app, runtime: Runtime) -> None:
         except (ValueError, json.JSONDecodeError) as exc:
             return jsonify({"error": f"LLM classification failed: {str(exc)}"}), 502
 
-        valid_styles = {"dress", "sport", "diver", None}
+        valid_styles = {"dress", "sport", "diver", "art"}
         cleaned = []
         for item in results:
-            style = item.get("style")
-            if isinstance(style, str):
-                style = style.lower()
-            if style not in valid_styles:
-                style = None
-            cleaned.append({"id": item.get("id"), "style": style})
+            # Accept "styles" array (new) or legacy "style" string
+            styles = item.get("styles")
+            if isinstance(styles, list):
+                styles = [s.lower() for s in styles if isinstance(s, str) and s.lower() in valid_styles]
+            else:
+                s = item.get("style")
+                styles = [s.lower()] if isinstance(s, str) and s.lower() in valid_styles else []
+            cleaned.append({"id": item.get("id"), "styles": styles})
 
         return jsonify({"results": cleaned})

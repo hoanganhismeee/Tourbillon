@@ -1065,6 +1065,7 @@ public class WatchFinderService : IWatchFinderService
             if (Regex.IsMatch(qLow, @"\bsport\s*watch"))      intent.Style = "sport";
             else if (Regex.IsMatch(qLow, @"\bdress\s*watch")) intent.Style = "dress";
             else if (Regex.IsMatch(qLow, @"\bdiv(?:er|e\s*watch|ing\s*watch)")) intent.Style = "diver";
+            else if (Regex.IsMatch(qLow, @"\b(?:art\s*piece|haute\s*horlogerie|collector\s*(?:watch|piece)|artistic\s*watch)\b")) intent.Style = "art";
         }
         intent.CaseMaterial  = NormaliseMaterial((parsed.Material ?? []).FirstOrDefault());
         intent.MinDiameterMm = parsed.MinDiameterMm;
@@ -1721,6 +1722,8 @@ public class WatchFinderService : IWatchFinderService
             intent.Style = "dress";
         else if (Regex.IsMatch(q, @"\b(?:dive|diver|diver\s*watch|diving|waterproof)\b", RegexOptions.IgnoreCase))
             intent.Style = "diver";
+        else if (Regex.IsMatch(q, @"\b(?:art\s*piece|haute\s*horlogerie|collector\s*watch|collector\s*piece|artistic)\b", RegexOptions.IgnoreCase))
+            intent.Style = "art";
 
         // ── Complication matching ───────────────────────────────────────────────────
         var complicationMap = new (string pattern, string label)[]
