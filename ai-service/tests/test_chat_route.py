@@ -65,6 +65,14 @@ class ChatRouteActionFilterTests(unittest.TestCase):
 
         self.assertEqual("Compare [Allowed Watch](/watches/allowed-watch) with Unknown Watch", filtered)
 
+    def test_filter_internal_links_removes_unknown_collection_paths(self) -> None:
+        filtered = _filter_internal_links(
+            "Try [Sport Collection](/collections/sport-collection) instead of [Imaginary Atelier](/collections/imaginary-atelier)",
+            ['Collection "Sport Collection" (Slug: sport-collection): Technical Grand Seiko sport line'],
+        )
+
+        self.assertEqual("Try [Sport Collection](/collections/sport-collection) instead of Imaginary Atelier", filtered)
+
     def test_cleanup_markdown_artifacts_degrades_truncated_links_to_plain_text(self) -> None:
         cleaned = _cleanup_markdown_artifacts("Compare [Overseas](/collections/vacheron-constantin-overseas")
 
