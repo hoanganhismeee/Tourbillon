@@ -1817,7 +1817,7 @@ public class AdminController : ControllerBase
 
         var collections = await db.Collections
             .Include(c => c.Brand)
-            .Where(c => overwrite || c.Style == null)
+            .Where(c => overwrite || c.Styles.Length == 0)
             .ToListAsync();
 
         if (collections.Count == 0)
@@ -1852,12 +1852,21 @@ public class AdminController : ControllerBase
             var col = collections.FirstOrDefault(c => c.Id == idEl.GetInt32());
             if (col == null) continue;
 
-            string? style = null;
-            if (item.TryGetProperty("style", out var styleEl) && styleEl.ValueKind == JsonValueKind.String)
-                style = styleEl.GetString()?.ToLowerInvariant();
+            // Accept either a single string or an array of styles from the AI
+            string[] styles = [];
+            if (item.TryGetProperty("styles", out var stylesEl) && stylesEl.ValueKind == JsonValueKind.Array)
+                styles = stylesEl.EnumerateArray()
+                    .Where(e => e.ValueKind == JsonValueKind.String)
+                    .Select(e => e.GetString()!.ToLowerInvariant())
+                    .ToArray();
+            else if (item.TryGetProperty("style", out var styleEl) && styleEl.ValueKind == JsonValueKind.String)
+            {
+                var s = styleEl.GetString()?.ToLowerInvariant();
+                if (s != null) styles = [s];
+            }
 
-            col.Style = style;
-            if (style != null) tagged++; else nulled++;
+            col.Styles = styles;
+            if (styles.Length > 0) tagged++; else nulled++;
         }
 
         await db.SaveChangesAsync();
@@ -1873,14 +1882,18 @@ public class AdminController : ControllerBase
     {
         var db       = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
         var all      = await db.Collections.Include(c => c.Brand).AsNoTracking().ToListAsync();
-        var tagged   = all.Where(c => c.Style != null).ToList();
-        var untagged = all.Where(c => c.Style == null).ToList();
+        var tagged   = all.Where(c => c.Styles.Length > 0).ToList();
+        var untagged = all.Where(c => c.Styles.Length == 0).ToList();
         return Ok(new
         {
             total    = all.Count,
             tagged   = tagged.Count,
             untagged = untagged.Count,
-            breakdown = tagged.GroupBy(c => c.Style).ToDictionary(g => g.Key!, g => g.Count()),
+            // Count per style tag — multi-style collections contribute to each tag's count
+            breakdown = tagged
+                .SelectMany(c => c.Styles)
+                .GroupBy(s => s)
+                .ToDictionary(g => g.Key, g => g.Count()),
             untaggedCollections = untagged.Select(c => new { c.Id, c.Name, brand = c.Brand?.Name })
         });
     }

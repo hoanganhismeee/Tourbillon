@@ -15,7 +15,8 @@ namespace backend.Services;
 
 public interface IWatchFinderService
 {
-    Task<WatchFinderResult> FindWatchesAsync(string query, IReadOnlyList<int>? excludedBrandIds = null);
+    Task<WatchFinderResult> FindWatchesAsync(string query);
+    Task<WatchFinderResult> FindWatchesAsync(string query, IReadOnlyList<int> excludedBrandIds);
 }
 
 // Used when serializing conversation history to ai-service.
@@ -535,10 +536,10 @@ public class ChatService
         if (directEntityResolution != null)
             return directEntityResolution;
 
-        var searchResult = await _watchFinderService.FindWatchesAsync(
-            canonicalMessage,
-            excludedBrandIds.Count > 0 ? excludedBrandIds : null)
-            ?? new WatchFinderResult();
+        var searchResult = excludedBrandIds.Count > 0
+            ? await _watchFinderService.FindWatchesAsync(canonicalMessage, excludedBrandIds)
+            : await _watchFinderService.FindWatchesAsync(canonicalMessage);
+        searchResult ??= new WatchFinderResult();
 
         if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
             return new ChatResolution { Message = UnsupportedQueryMessage };
@@ -783,9 +784,9 @@ public class ChatService
         if (string.IsNullOrWhiteSpace(directEntityQuery))
             return null;
 
-        var result = await _watchFinderService.FindWatchesAsync(
-            directEntityQuery,
-            excludedBrandIds?.Count > 0 ? excludedBrandIds : null)
+        var result = (excludedBrandIds?.Count > 0
+            ? await _watchFinderService.FindWatchesAsync(directEntityQuery, excludedBrandIds)
+            : await _watchFinderService.FindWatchesAsync(directEntityQuery))
             ?? new WatchFinderResult();
         if (string.Equals(result.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase) || result.Watches.Count == 0)
             return null;
@@ -1795,7 +1796,7 @@ public class ChatService
 
     private static string DescribeCollectionCharacter(Collection collection, Watch representativeWatch)
     {
-        var descriptor = $"{collection.Style} {collection.Description} {representativeWatch.Description} {representativeWatch.Specs}".ToLowerInvariant();
+        var descriptor = $"{string.Join(" ", collection.Styles)} {collection.Description} {representativeWatch.Description} {representativeWatch.Specs}".ToLowerInvariant();
 
         if (descriptor.Contains("casual") || descriptor.Contains("youthful") || descriptor.Contains("rubber")
             || descriptor.Contains("active") || descriptor.Contains("modern"))
@@ -2166,7 +2167,7 @@ public class ChatService
 
     private static string BuildCollectionContext(Collection collection)
     {
-        var style = string.IsNullOrWhiteSpace(collection.Style) ? "" : $" [Style: {collection.Style}]";
+        var style = collection.Styles.Length == 0 ? "" : $" [Style: {string.Join("/", collection.Styles)}]";
         return $"Collection \"{collection.Name}\" (Slug: {collection.Slug}){style}: {collection.Description}";
     }
 
@@ -2441,7 +2442,7 @@ public class ChatService
         var lines = brands.Select(b =>
         {
             var cols = colsByBrand.GetValueOrDefault(b.Id, [])
-                .Select(c => string.IsNullOrWhiteSpace(c.Style) ? c.Name : $"{c.Name} ({c.Style})")
+                .Select(c => c.Styles.Length == 0 ? c.Name : $"{c.Name} ({string.Join("/", c.Styles)})")
                 .ToList();
             return $"- {b.Name}: {(cols.Count > 0 ? string.Join(", ", cols) : "no collections listed")}";
         });
