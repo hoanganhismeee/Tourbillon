@@ -301,8 +301,8 @@ public class WatchFinderServiceTests
     {
         using var context = CreateContext();
         var brand = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
-        var sport = new Collection { Id = 10, BrandId = 2, Brand = brand, Name = "Overseas", Slug = "vacheron-constantin-overseas", Style = "sport" };
-        var dress = new Collection { Id = 20, BrandId = 2, Brand = brand, Name = "Patrimony", Slug = "vacheron-constantin-patrimony", Style = "dress" };
+        var sport = new Collection { Id = 10, BrandId = 2, Brand = brand, Name = "Overseas", Slug = "vacheron-constantin-overseas", Styles = ["sport"] };
+        var dress = new Collection { Id = 20, BrandId = 2, Brand = brand, Name = "Patrimony", Slug = "vacheron-constantin-patrimony", Styles = ["dress"] };
 
         context.Brands.Add(brand);
         context.Collections.AddRange(sport, dress);
@@ -325,8 +325,8 @@ public class WatchFinderServiceTests
         using var context = CreateContext();
         var vc = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
         var als = new Brand { Id = 5, Name = "A. Lange & Söhne", Slug = "a-lange-sohne" };
-        var overseas = new Collection { Id = 10, BrandId = 2, Brand = vc, Name = "Overseas", Slug = "vacheron-constantin-overseas", Style = "sport" };
-        var lange1 = new Collection { Id = 17, BrandId = 5, Brand = als, Name = "Lange 1", Slug = "a-lange-sohne-lange-1", Style = "dress" };
+        var overseas = new Collection { Id = 10, BrandId = 2, Brand = vc, Name = "Overseas", Slug = "vacheron-constantin-overseas", Styles = ["sport"] };
+        var lange1 = new Collection { Id = 17, BrandId = 5, Brand = als, Name = "Lange 1", Slug = "a-lange-sohne-lange-1", Styles = ["dress"] };
 
         context.Brands.AddRange(vc, als);
         context.Collections.AddRange(overseas, lange1);
@@ -351,8 +351,8 @@ public class WatchFinderServiceTests
         using var context = CreateContext();
         var vc = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
         var als = new Brand { Id = 5, Name = "A. Lange & Söhne", Slug = "a-lange-sohne" };
-        var overseas = new Collection { Id = 10, BrandId = 2, Brand = vc, Name = "Overseas", Slug = "vacheron-constantin-overseas", Style = "sport" };
-        var lange1 = new Collection { Id = 17, BrandId = 5, Brand = als, Name = "Lange 1", Slug = "a-lange-sohne-lange-1", Style = "dress" };
+        var overseas = new Collection { Id = 10, BrandId = 2, Brand = vc, Name = "Overseas", Slug = "vacheron-constantin-overseas", Styles = ["sport"] };
+        var lange1 = new Collection { Id = 17, BrandId = 5, Brand = als, Name = "Lange 1", Slug = "a-lange-sohne-lange-1", Styles = ["dress"] };
 
         var vcWatch = new Watch
         {

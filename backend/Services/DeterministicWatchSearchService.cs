@@ -60,7 +60,7 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
         if (intent?.Style != null && WatchFinderService.ShouldApplyStyleSqlFilter(intent))
         {
             styleCollectionIds = await _context.Collections
-                .Where(c => c.Style == intent.Style)
+                .Where(c => c.Styles.Contains(intent.Style!))
                 .Select(c => c.Id)
                 .ToListAsync();
             if (styleCollectionIds.Count > 0)
@@ -221,7 +221,7 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
         if (intent.Style != null && WatchFinderService.ShouldApplyStyleSqlFilter(intent))
         {
             styleCollectionIds = await _context.Collections
-                .Where(c => c.Style == intent.Style)
+                .Where(c => c.Styles.Contains(intent.Style!))
                 .Select(c => c.Id)
                 .ToListAsync();
             if (styleCollectionIds.Count > 0)

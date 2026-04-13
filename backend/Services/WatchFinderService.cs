@@ -167,7 +167,10 @@ public class WatchFinderService : IWatchFinderService
         intent.ExcludedBrandIds = intent.ExcludedBrandIds.Union(excluded).Distinct().ToList();
     }
 
-    public async Task<WatchFinderResult> FindWatchesAsync(string query, IReadOnlyList<int>? excludedBrandIds = null)
+    // Single-arg overload — no brand exclusions (satisfies interface + keeps Moq tests simple)
+    public Task<WatchFinderResult> FindWatchesAsync(string query) => FindWatchesAsync(query, []);
+
+    public async Task<WatchFinderResult> FindWatchesAsync(string query, IReadOnlyList<int> excludedBrandIds)
     {
         var normalizedQuery = NormalizeQueryPhrases(query);
         var deterministicIntent = await ParseQueryIntentAsync(normalizedQuery);
@@ -279,7 +282,7 @@ public class WatchFinderService : IWatchFinderService
                 if (ShouldApplyStyleSqlFilter(queryIntent))
                 {
                     var fallbackStyleCollectionIds = await _context.Collections
-                        .Where(c => c.Style == queryIntent.Style)
+                        .Where(c => c.Styles.Contains(queryIntent.Style!))
                         .Select(c => c.Id)
                         .ToListAsync();
                     if (fallbackStyleCollectionIds.Count > 0)
@@ -542,7 +545,7 @@ public class WatchFinderService : IWatchFinderService
         if (watch.CollectionId != null &&
             (intent?.CollectionId == watch.CollectionId || intent?.CollectionIds.Contains(watch.CollectionId.Value) == true))
             score += 120;
-        if (intent?.Style != null && watch.Collection?.Style == intent.Style)
+        if (intent?.Style != null && watch.Collection?.Styles.Contains(intent.Style) == true)
             score += 60;
         score += IntentPricePreferenceScore(watch, intent);
 
@@ -623,8 +626,8 @@ public class WatchFinderService : IWatchFinderService
         else if (intent.WaterResistanceBuckets.Count > 0 && waterMetres != null) score += 45;
         else if (intent.WaterResistanceBuckets.Count > 0 && waterMetres == null)
         {
-            if (string.Equals(watch.Collection?.Style, "diver", StringComparison.OrdinalIgnoreCase)) score += 35;
-            else if (string.Equals(watch.Collection?.Style, "sport", StringComparison.OrdinalIgnoreCase)) score += 15;
+            if (watch.Collection?.Styles.Contains("diver") == true) score += 35;
+            else if (watch.Collection?.Styles.Contains("sport") == true) score += 15;
         }
         if (intent.Complications.Count > 0 && functions.Count > 0) score += 35 + (intent.Complications.Count * 5);
         if (intent.PowerReserves.Count > 0 && powerReserveHours != null) score += 40;
@@ -687,7 +690,7 @@ public class WatchFinderService : IWatchFinderService
                     });
                 if (relaxedBuckets) score += 45;
             }
-            else if (string.Equals(watch.Collection?.Style, "diver", StringComparison.OrdinalIgnoreCase)) score += 25;
+            else if (watch.Collection?.Styles.Contains("diver") == true) score += 25;
         }
 
         if (intent.Complications.Count > 0)
@@ -706,7 +709,7 @@ public class WatchFinderService : IWatchFinderService
 
         if (intent.Style != null)
         {
-            if (watch.Collection?.Style == intent.Style) score += 50;
+            if (watch.Collection?.Styles.Contains(intent.Style) == true) score += 50;
             else if (styleCollectionIds.Count > 0 && watch.CollectionId != null && styleCollectionIds.Contains(watch.CollectionId.Value)) score += 35;
         }
 
@@ -826,7 +829,7 @@ public class WatchFinderService : IWatchFinderService
             if (style != null)
             {
                 styleCollectionIds = await _context.Collections
-                    .Where(c => c.Style == style)
+                    .Where(c => c.Styles.Contains(style))
                     .Select(c => c.Id)
                     .ToListAsync();
                 if (styleCollectionIds.Count > 0)
@@ -1278,7 +1281,7 @@ public class WatchFinderService : IWatchFinderService
 
         var styleCollections = collections
             .Where(c => scopedBrandIds.Contains(c.BrandId))
-            .Where(c => string.Equals(c.Style, intent.Style, StringComparison.OrdinalIgnoreCase))
+            .Where(c => c.Styles.Any(s => string.Equals(s, intent.Style, StringComparison.OrdinalIgnoreCase)))
             .ToList();
         if (styleCollections.Count == 0) return;
 

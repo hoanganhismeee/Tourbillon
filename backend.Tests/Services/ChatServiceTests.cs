@@ -782,7 +782,7 @@ public class ChatServiceTests
             Brand = vc,
             Name = "Overseas",
             Slug = "vacheron-constantin-overseas",
-            Style = "sport"
+            Styles = ["sport"]
         };
         var watch = new Watch
         {
