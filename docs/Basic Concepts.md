@@ -266,21 +266,181 @@ Both `WatchEmbeddings` and `QueryCaches` have HNSW indexes on their vector colum
 
 ---
 
-## 13. Summary Table
+## 13. What Tokens Actually Control
+
+"Token" appears in two very different contexts. Confusing them is a common source of wrong architectural decisions.
+
+### Output tokens — response length
+
+`max_tokens=200` in the AI call controls how long the model's reply can be. The 130-word cap in the chat concierge system prompt is this knob in a different form.
+
+**Raising output tokens makes answers longer. It does not make routing smarter, acronyms resolve, or vague queries reach the AI.**
+
+```
+"gift for my girlfriend"  ->  [C# scope gate: no watch keyword found]  ->  hard refusal
+                                         ^
+                                         raising max_tokens does nothing here
+                                         the AI was never called
+```
+
+### Input context tokens — what the AI knows
+
+The messages sent to the AI (system prompt + context block + history + user message) all consume input tokens. A larger context window lets you send more catalogue data, more session history, or longer conversation threads.
+
+**Raising input context lets the AI reason over more data. It does not fix problems that happen before the AI is called.**
+
+### The actual bottleneck
+
+Most of the chat concierge's edge cases were caused by a C# scope gate that ran before the AI was called at all. When the gate refused "gift for my girlfriend", no token limit was involved — the AI simply never saw the message.
+
+**Rule:** If a fix requires adding a new regex pattern in C# every time a new query type fails, the problem is in the routing layer, not in the AI or the token limits.
+
+---
+
+## 14. AI-First vs Code-First Routing
+
+There are two ways to decide what to do with a user's message.
+
+### Code-first (regex gate)
+
+C# code inspects the message for keywords and patterns before the AI is called. If no watch keyword is found, the message is refused immediately.
+
+```
+message: "something elegant for a gala"
+  |
+  v
+HasWatchDomainSignal() -> no "watch", "brand", "price" found -> false
+  |
+  v
+LooksLikeWatchShoppingIntent() -> does it match the regex? yes (this time)
+  |
+  v
+AI is called (shopping path)
+```
+
+Every new message pattern that the regex does not cover requires a code patch. "Gift for my girlfriend" worked only after `LooksLikeWatchShoppingIntent` was added. "Something for a formal dinner" failed until the regex was updated to allow an intervening adjective. Brand acronyms ("PP", "AP") required a static `_brandAliases` dictionary.
+
+**This approach scales linearly with the number of patterns you have manually discovered.**
+
+### AI-first
+
+The message is passed directly to the AI. The system prompt tells the AI what the concierge does and what it should decline. The AI's language understanding handles the classification.
+
+```
+message: "something elegant for a gala"
+  |
+  v
+AI (with system prompt: "you are a watch concierge, refuse off-topic requests")
+  |
+  v
+AI understands this as a shopping/occasion query, returns watch suggestions
+```
+
+```
+message: "what's the weather"
+  |
+  v
+AI: "I specialise in Tourbillon watches and horology..."
+    ACTIONS: [{"type":"suggest",...}, ...]
+```
+
+No code patch needed. The AI handles "PP Nautilus", "gift for my girlfriend", "something slim for summer", "yes please show me the details" — all without a line of regex.
+
+**This approach scales with the model's language understanding, which is already very broad.**
+
+### Where code-first is still correct
+
+Code-first is right when there is zero ambiguity and the AI adds no value:
+
+| Route | Why code handles it |
+|---|---|
+| "hi", "hello" | Unambiguously a greeting; no catalogue context needed |
+| Cursor command detection | Exact syntax; no language understanding needed |
+| DB slug lookup (brand, collection) | Must query the database regardless; AI cannot do this |
+| Compare with two resolved slugs | Structured action; routing decision is purely mechanical |
+
+The design principle: **C# owns data retrieval and structured actions. The AI owns language understanding and intent classification.**
+
+---
+
+## 15. Why the AI Does Not Need to Be "Trained" on Your Data
+
+A common assumption: "the AI doesn't know our brand acronyms, so we need to train it or add special handling."
+
+This is not how it works.
+
+The AI model is pre-trained on a large corpus that includes luxury watch content. It already knows that "PP" is Patek Philippe, "AP" is Audemars Piguet, "JLC" is Jaeger-LeCoultre. It knows what a tourbillon is, what an integrated bracelet means, and what "holy trinity" refers to in horology.
+
+What the AI does not know by default:
+- Which specific watches are currently in Tourbillon's catalogue
+- What slugs those watches have
+- What their current prices are
+- Which collections exist in the store
+
+That specific structured data is injected into the context at request time, built from the live database. The AI then uses its general language understanding on top of that grounded context.
+
+```
+AI general knowledge:   "PP" = Patek Philippe, Nautilus = iconic sport watch
++
+Injected context:       Watch "5711/1A-011" (Slug: nautilus-5711-steel), Price: $...
+=
+Response:               Accurate, grounded, linked answer — no code patch for "PP"
+```
+
+**One-line rule:** The AI handles language. The code handles data. You do not need to enumerate every abbreviation or shopping phrase the AI already understands natively.
+
+---
+
+## 16. Tool Calling — The Long-Term Architecture
+
+The current pipeline calls the AI once per message, with context assembled in C# beforehand. The AI generates a text response with optional structured `ACTIONS`.
+
+A more scalable architecture — used by ChatGPT plugins and Claude Projects — is tool calling. Instead of C# deciding what context to fetch, the AI decides.
+
+```
+User: "gift for my girlfriend who likes blue dials"
+  |
+  v
+AI (with tools available):
+  -> calls search_catalogue({ query: "blue dial women's dress watch" })
+  -> receives results from the database
+  -> generates response grounded in those results
+  -> emits compare ACTION if two strong matches
+```
+
+The AI has access to a defined set of tools (database search, brand lookup, collection lookup) and calls them in the order it decides. C# executes the tool calls and returns structured results. The AI reasons over the results and generates the final response.
+
+**Why this matters:**
+- C# does not need to classify intent at all — the AI picks the right tool
+- No regex for shopping queries, occasion phrasing, or contextual follow-ups
+- New query types are handled automatically if they map to an existing tool
+- The AI can chain tool calls: "look up brand, then search its collections, then compare two watches" in one turn
+
+**Current tradeoff vs the present pipeline:**
+Tool calling requires more LLM calls per message (one for tool selection, one for the response, possibly more for multi-step queries). This increases latency and cost. The current hybrid approach (deterministic routing + single AI call) is a pragmatic optimisation for the current scale. Tool calling becomes worth it as query complexity and user expectations grow.
+
+---
+
+## 17. Summary Table
 
 
-| Concept           | One-line definition                                                             |
-| ----------------- | ------------------------------------------------------------------------------- |
-| Embedding         | A list of 768 numbers representing the meaning of text                          |
-| Cosine similarity | How close two vectors are (1.0 = identical, 0.0 = unrelated)                    |
-| Semantic search   | Finding results by meaning, not exact text match                                |
-| Semantic ordering | Ranking results by how close their meaning is to the query                      |
-| WatchEmbeddings   | Pre-computed vectors for every watch (the semantic index)                       |
-| QueryCaches       | Stored results for past queries (the speed layer)                               |
-| Hybrid search     | SQL filters + semantic ranking combined                                         |
-| Chunk             | One of four text descriptions per watch, each targeting a different query style |
-| HNSW              | Fast approximate vector lookup index                                            |
-| Category taxonomy | Deterministic labels (dress/sport/diver/chrono) assigned by code, not AI        |
-| nomic-embed-text  | The fixed embedding model — same input always produces same output              |
+| Concept              | One-line definition                                                              |
+| -------------------- | -------------------------------------------------------------------------------- |
+| Embedding            | A list of 768 numbers representing the meaning of text                           |
+| Cosine similarity    | How close two vectors are (1.0 = identical, 0.0 = unrelated)                     |
+| Semantic search      | Finding results by meaning, not exact text match                                 |
+| Semantic ordering    | Ranking results by how close their meaning is to the query                       |
+| WatchEmbeddings      | Pre-computed vectors for every watch (the semantic index)                        |
+| QueryCaches          | Stored results for past queries (the speed layer)                                |
+| Hybrid search        | SQL filters + semantic ranking combined                                          |
+| Chunk                | One of four text descriptions per watch, each targeting a different query style  |
+| HNSW                 | Fast approximate vector lookup index                                             |
+| Category taxonomy    | Deterministic labels (dress/sport/diver/chrono) assigned by code, not AI         |
+| nomic-embed-text     | The fixed embedding model — same input always produces same output               |
+| Output tokens        | Max length of the AI's reply — does not affect routing or intent classification  |
+| Input context tokens | What the AI is given to reason over — assembled from DB before the AI is called  |
+| Code-first routing   | C# regex decides whether to call the AI — scales poorly with new query patterns  |
+| AI-first routing     | AI sees all messages and classifies intent — scales with the model's language understanding |
+| Tool calling         | AI decides which data to fetch by calling defined tools — eliminates routing code entirely |
 
 

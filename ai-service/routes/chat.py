@@ -32,6 +32,16 @@ LANGUAGE_HINTS = {
     "japanese": "japanese",
     "zh": "chinese",
     "chinese": "chinese",
+    "es": "spanish",
+    "spanish": "spanish",
+    "de": "german",
+    "german": "german",
+    "it": "italian",
+    "italian": "italian",
+    "pt": "portuguese",
+    "portuguese": "portuguese",
+    "ko": "korean",
+    "korean": "korean",
 }
 
 LANGUAGE_KEYWORDS = {
@@ -143,6 +153,11 @@ def _response_matches_language(text: str, expected_language: str | None) -> bool
     if not text or not expected_language:
         return True
 
+    # Vietnamese tone marks are highly distinctive and rarely appear in other languages.
+    has_viet_tone_marks = bool(re.search(
+        r"[ắằẳẵặấầẩẫậếềểễệịọốồổỗộớờởỡợụứừửữựỳỷỹỵ]", text
+    ))
+
     if expected_language == "english":
         if re.search(r"[^\x00-\x7F]", text):
             return False
@@ -150,6 +165,13 @@ def _response_matches_language(text: str, expected_language: str | None) -> bool
         competing_score = max(_language_score(text, "french"), _language_score(text, "vietnamese"))
         return english_score >= competing_score
 
+    if expected_language == "french":
+        # Vietnamese drift in a French response is clearly wrong.
+        if has_viet_tone_marks:
+            return False
+        return True
+
+    # All other languages — trust the model's built-in multilingual capability.
     return True
 
 

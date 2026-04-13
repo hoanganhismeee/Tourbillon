@@ -381,7 +381,17 @@ public class WatchFinderService : IWatchFinderService
 
                     var scoredAndOrdered = rerankCandidates
                         .Where(w => scoreMap.ContainsKey(w.Id))
-                        .OrderByDescending(w => scoreMap[w.Id].Score)
+                        .Select(w => new
+                        {
+                            Watch = w,
+                            CompositeScore = scoreMap[w.Id].Score
+                                + RelaxedDeterministicScore(w, queryIntent, [])
+                                + IntentPricePreferenceScore(w, queryIntent)
+                        })
+                        .OrderByDescending(x => x.CompositeScore)
+                        .ThenBy(x => x.Watch.CurrentPrice == 0 ? 1 : 0)
+                        .ThenBy(x => PriceDistanceFromIntent(x.Watch, queryIntent))
+                        .Select(x => x.Watch)
                         .ToList();
 
                     var topMatches = scoredAndOrdered
@@ -389,8 +399,8 @@ public class WatchFinderService : IWatchFinderService
                         .Take(TopMatchLimit)
                         .ToList();
 
-                    if (topMatches.Count < 3)
-                        topMatches = scoredAndOrdered.Take(Math.Min(TopMatchLimit, scoredAndOrdered.Count)).ToList();
+                    if (topMatches.Count() < 3)
+                        topMatches = scoredAndOrdered.Take(Math.Min(TopMatchLimit, scoredAndOrdered.Count())).ToList();
 
                     var topMatchIds = new HashSet<int>(topMatches.Select(w => w.Id));
 
@@ -516,6 +526,7 @@ public class WatchFinderService : IWatchFinderService
             score += 120;
         if (intent?.Style != null && watch.Collection?.Style == intent.Style)
             score += 60;
+        score += IntentPricePreferenceScore(watch, intent);
 
         foreach (var token in directTokens)
         {
@@ -585,7 +596,7 @@ public class WatchFinderService : IWatchFinderService
         var powerReserveHours = ParsePowerReserveHours(specs?.Movement?.PowerReserve);
         var functions = specs?.Movement?.Functions ?? [];
 
-        if (intent.MinPrice != null || intent.MaxPrice != null) score += 10;
+        if (intent.MinPrice != null || intent.MaxPrice != null) score += 10 + IntentPricePreferenceScore(watch, intent);
         if (intent.MinDiameterMm != null && intent.MaxDiameterMm != null && diameterMm != null) score += 70;
         else if ((intent.MinDiameterMm != null || intent.MaxDiameterMm != null) && diameterMm != null) score += 50;
         if (intent.CaseMaterial != null && specs?.Case?.Material != null) score += 40;
@@ -616,7 +627,7 @@ public class WatchFinderService : IWatchFinderService
         var powerReserveHours = ParsePowerReserveHours(specs?.Movement?.PowerReserve);
         var functions = specs?.Movement?.Functions ?? [];
 
-        if (intent.MinPrice != null || intent.MaxPrice != null) score += 10;
+        if (intent.MinPrice != null || intent.MaxPrice != null) score += 10 + IntentPricePreferenceScore(watch, intent);
 
         if (intent.MinDiameterMm != null || intent.MaxDiameterMm != null)
         {
@@ -722,6 +733,45 @@ public class WatchFinderService : IWatchFinderService
         if (buckets.Contains("48h – 72h")) return 48;
         if (buckets.Contains("Under 48h")) return 0;
         return 0;
+    }
+
+    private static int IntentPricePreferenceScore(Watch watch, QueryIntent? intent)
+    {
+        if (intent == null || (intent.MinPrice == null && intent.MaxPrice == null))
+            return 0;
+
+        if (watch.CurrentPrice <= 0)
+            return -30;
+
+        var targetPrice = TargetPriceFromIntent(intent);
+        if (targetPrice == null)
+            return 20;
+
+        var delta = Math.Abs(watch.CurrentPrice - targetPrice.Value);
+        if (delta <= 2_500m) return 45;
+        if (delta <= 5_000m) return 35;
+        if (delta <= 10_000m) return 20;
+        if (delta <= 20_000m) return 10;
+        return 0;
+    }
+
+    private static decimal PriceDistanceFromIntent(Watch watch, QueryIntent? intent)
+    {
+        if (watch.CurrentPrice <= 0)
+            return decimal.MaxValue;
+
+        var targetPrice = TargetPriceFromIntent(intent);
+        return targetPrice == null
+            ? watch.CurrentPrice
+            : Math.Abs(watch.CurrentPrice - targetPrice.Value);
+    }
+
+    private static decimal? TargetPriceFromIntent(QueryIntent? intent)
+    {
+        if (intent?.MinPrice != null && intent.MaxPrice != null)
+            return (intent.MinPrice.Value + intent.MaxPrice.Value) / 2m;
+
+        return intent?.MaxPrice ?? intent?.MinPrice;
     }
 
     // Phase 3B retrieval: cosine similarity search against watch chunk embeddings.
@@ -881,8 +931,11 @@ public class WatchFinderService : IWatchFinderService
         ApplyCollectionMatches(primary, IntentCollections(fallback, collections));
         if (!hadPrimaryCollections && fallback.CollectionsDerivedFromStyle)
             primary.CollectionsDerivedFromStyle = true;
-        primary.MaxPrice ??= fallback.MaxPrice;
-        primary.MinPrice ??= fallback.MinPrice;
+        if (fallback.MinPrice != null || fallback.MaxPrice != null)
+        {
+            primary.MinPrice = fallback.MinPrice;
+            primary.MaxPrice = fallback.MaxPrice;
+        }
         if (fallback.MinDiameterMm != null || fallback.MaxDiameterMm != null)
         {
             primary.MinDiameterMm = fallback.MinDiameterMm;
@@ -967,13 +1020,19 @@ public class WatchFinderService : IWatchFinderService
 
         ApplyCollectionMatches(
             intent,
-            ResolveFuzzyCollections(query, collections, matchedBrands.Select(b => b!.Id).ToHashSet()));
+            ResolveFuzzyCollections(
+                query,
+                collections,
+                matchedBrands.Select(b => b!.Id).ToHashSet(),
+                BuildBlockedCollectionTokens(matchedBrands.Select(b => b!))));
         ReconcileCollectionBrandScope(intent, collections);
 
         // ── Soft filters (frontend pre-population only) ───────────────────────────
         // Note: MovementType is intentionally omitted — the LLM infers it from complications
         // (e.g. tourbillon → Manual-winding) even when not explicitly stated, causing over-filtering.
         intent.Style = parsed.Style;
+        if (intent.Style != null && HasOccasionOnlyWatchSignals(query) && !HasExplicitStyleLanguage(query))
+            intent.Style = null;
 
         // Style keyword fallback — style→collection taxonomy is an allowed deterministic mapping.
         // If the LLM missed an obvious style keyword ("sport watches", "dress watch", "diver"),
@@ -1079,9 +1138,25 @@ public class WatchFinderService : IWatchFinderService
             @"\b\d+\s*(?:m(?!m)\b|meters?\b|metres?\b)",
             RegexOptions.IgnoreCase);
 
-    internal static List<Collection> ResolveFuzzyCollections(string query, List<Collection> collections, HashSet<int> matchedBrandIds)
+    private static bool HasExplicitStyleLanguage(string query) =>
+        Regex.IsMatch(query,
+            @"\b(?:sport|sports|sporty|sport\s*watch|dress|formal|elegant|elegance|dress\s*watch|dive|diver|diver\s*watch|diving|waterproof)\b",
+            RegexOptions.IgnoreCase);
+
+    private static bool HasOccasionOnlyWatchSignals(string query) =>
+        Regex.IsMatch(query,
+            @"\b(?:daily\s+driver|daily\s+wear|everyday\s+wear|travel\s+watch|office\s+watch|business\s+watch|weekend\s+watch)\b",
+            RegexOptions.IgnoreCase);
+
+    internal static List<Collection> ResolveFuzzyCollections(
+        string query,
+        List<Collection> collections,
+        HashSet<int> matchedBrandIds,
+        HashSet<string>? blockedTokens = null)
     {
-        var tokens = TokenizeQuery(query);
+        var tokens = TokenizeQuery(query)
+            .Where(token => blockedTokens == null || !blockedTokens.Contains(token))
+            .ToList();
         var normalisedQuery = NormaliseEntityText(query);
         if (tokens.Count == 0 && normalisedQuery.Length == 0) return [];
 
@@ -1192,6 +1267,12 @@ public class WatchFinderService : IWatchFinderService
         intent.CollectionsDerivedFromStyle = true;
         ReconcileCollectionBrandScope(intent, collections);
     }
+
+    internal static HashSet<string> BuildBlockedCollectionTokens(IEnumerable<Brand> brands) =>
+        brands
+            .SelectMany(brand => TokenizeQuery(brand.Name))
+            .Where(token => token.Length >= 4)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     private static List<string> TokenizeQuery(string text) =>
         Regex.Split(text.ToLowerInvariant(), @"[^a-z0-9]+")
@@ -1450,8 +1531,10 @@ public class WatchFinderService : IWatchFinderService
                 .ToList();
         }
 
+        var blockedCollectionTokens = BuildBlockedCollectionTokens(matchedBrands);
+
         ApplyCollectionMatches(intent, exactCollections);
-        ApplyCollectionMatches(intent, ResolveFuzzyCollections(query, collections, matchedBrandIds));
+        ApplyCollectionMatches(intent, ResolveFuzzyCollections(query, collections, matchedBrandIds, blockedCollectionTokens));
         ReconcileCollectionBrandScope(intent, collections);
 
         ApplyRegexFilters(query, intent);
@@ -1502,6 +1585,33 @@ public class WatchFinderService : IWatchFinderService
                 RegexOptions.IgnoreCase);
             if (lower.Success)
                 intent.MinPrice = ParsePriceToken(lower.Groups[1].Value, lower.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
+
+            if (intent.MinPrice == null && intent.MaxPrice == null)
+            {
+                var approximate = Regex.Match(q,
+                    @"(?:around|about|roughly|approximately|approx\.?|near|close\s+to|~)\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
+                    RegexOptions.IgnoreCase);
+                if (approximate.Success)
+                {
+                    var target = ParsePriceToken(
+                        approximate.Groups[1].Value,
+                        approximate.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
+                    ApplyApproximatePriceBand(intent, target);
+                }
+            }
+
+            if (intent.MaxPrice == null && intent.MinPrice == null)
+            {
+                var budgetCap = Regex.Match(q,
+                    @"\b(?:budget|cap|ceiling|max(?:imum)?|up\s+to)\s*(?:of|is)?\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
+                    RegexOptions.IgnoreCase);
+                if (budgetCap.Success)
+                {
+                    intent.MaxPrice = ParsePriceToken(
+                        budgetCap.Groups[1].Value,
+                        budgetCap.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
+                }
+            }
         }
 
         // ── Diameter matching ───────────────────────────────────────────────────────
@@ -1635,6 +1745,16 @@ public class WatchFinderService : IWatchFinderService
         if (!decimal.TryParse(clean, out var value)) return 0;
         if (isK) return value * 1000;
         return value < 1000 ? value * 1000 : value;
+    }
+
+    private static void ApplyApproximatePriceBand(QueryIntent intent, decimal targetPrice)
+    {
+        if (targetPrice <= 0)
+            return;
+
+        var spread = Math.Max(5_000m, Math.Round(targetPrice * 0.25m / 1_000m, MidpointRounding.AwayFromZero) * 1_000m);
+        intent.MinPrice = Math.Max(1_000m, targetPrice - spread);
+        intent.MaxPrice = targetPrice + spread;
     }
 
     // Embeds the query text using nomic-embed-text via ai-service.
