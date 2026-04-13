@@ -483,6 +483,70 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_DiscoveryPrompt_UsesConciseWatchTitle_ButKeepsDescriptionInContext()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Grand Seiko", Slug = "grand-seiko" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Sport Collection", Slug = "sport-collection" };
+        var watch = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "SBGE255 Spring Drive GMT",
+            Slug = "grand-seiko-sbge255-spring-drive-gmt",
+            Description = "The SBGE255 translates Spring Drive GMT utility into a sports format that feels robust without losing Grand Seiko's trademark restraint.",
+            CurrentPrice = 0m
+        };
+        var secondWatch = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "SBGA461 Spring Drive",
+            Slug = "grand-seiko-sbga461-spring-drive",
+            Description = "Grand Seiko Sport Collection",
+            CurrentPrice = 7200m
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(watch, secondWatch);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("Recommend me an art-focused watch"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(watch), ToDto(secondWatch)],
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"[Grand Seiko Sport Collection SBGE255 Spring Drive GMT](/watches/grand-seiko-sbge255-spring-drive-gmt) is a sculptural technical option.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        await service.HandleMessageAsync("session-1", "Recommend me an art-focused watch", null, "127.0.0.1");
+
+        var payload = JsonDocument.Parse(handler.RequestBodies[0]).RootElement;
+        var contextText = string.Join("\n", payload.GetProperty("context").EnumerateArray().Select(item => item.GetString()));
+
+        Assert.Contains("Watch \"Grand Seiko Sport Collection SBGE255 Spring Drive GMT\"", contextText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Watch \"The SBGE255 translates Spring Drive GMT utility", contextText, StringComparison.Ordinal);
+        Assert.Contains("Description The SBGE255 translates Spring Drive GMT utility", contextText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_BrandHistoryWebQuery_UsesLimitedWebEnrichment_WithoutDiscoveryActions()
     {
         using var context = CreateContext();

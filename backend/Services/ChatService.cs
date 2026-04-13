@@ -220,6 +220,9 @@ public class ChatService
         public List<string> WatchSlugs { get; set; } = [];
         public string FollowUpMode { get; set; } = "";
         public string? CanonicalQuery { get; set; }
+        public string? DiscoveryQuery { get; set; }
+        public List<string> RejectedWatchSlugs { get; set; } = [];
+        public string? LastCorrectionSummary { get; set; }
         /// Brands the user has explicitly rejected in this session — persisted across turns.
         public List<int> ExcludedBrandIds { get; set; } = [];
     }
@@ -304,6 +307,13 @@ public class ChatService
                 .ToList(),
             FollowUpMode = state.FollowUpMode,
             CanonicalQuery = string.IsNullOrWhiteSpace(state.CanonicalQuery) ? null : state.CanonicalQuery.Trim(),
+            DiscoveryQuery = string.IsNullOrWhiteSpace(state.DiscoveryQuery) ? null : state.DiscoveryQuery.Trim(),
+            RejectedWatchSlugs = state.RejectedWatchSlugs
+                .Where(slug => !string.IsNullOrWhiteSpace(slug))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(24)
+                .ToList(),
+            LastCorrectionSummary = string.IsNullOrWhiteSpace(state.LastCorrectionSummary) ? null : state.LastCorrectionSummary.Trim(),
             ExcludedBrandIds = state.ExcludedBrandIds.Distinct().Take(10).ToList(),
         };
 
@@ -503,6 +513,15 @@ public class ChatService
 
         if (referencedWatches.Count > 0)
             return BuildReferencedWatchResolution(canonicalMessage, referencedWatches);
+
+        var recommendationRevision = await TryResolveRecommendationRevisionAsync(
+            message,
+            canonicalMessage,
+            lastWatchCards,
+            sessionState,
+            excludedBrandIds);
+        if (recommendationRevision != null)
+            return recommendationRevision;
 
         var contextualFollowUp = await TryResolveContextualFollowUpAsync(message, lastWatchCards, sessionState, excludedBrandIds);
         if (contextualFollowUp != null)
@@ -774,6 +793,74 @@ public class ChatService
         return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false, sessionState?.FollowUpMode);
     }
 
+    private async Task<ChatResolution?> TryResolveRecommendationRevisionAsync(
+        string originalMessage,
+        string canonicalMessage,
+        List<ChatWatchCard> lastWatchCards,
+        ChatSessionState? sessionState,
+        List<int> excludedBrandIds)
+    {
+        if (excludedBrandIds.Count > 0)
+            lastWatchCards = lastWatchCards.Where(card => !excludedBrandIds.Contains(card.BrandId)).ToList();
+
+        if (!LooksLikeRecommendationRevision(canonicalMessage, lastWatchCards, sessionState))
+            return null;
+
+        var accumulatedRejectedSlugs = (sessionState?.RejectedWatchSlugs ?? [])
+            .Union(DetectRejectedWatchSlugs(canonicalMessage, lastWatchCards), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var revisionSummary = ExtractRecommendationCorrectionFocus(canonicalMessage);
+        var revisedQuery = BuildRecommendationRevisionQuery(
+            canonicalMessage,
+            sessionState?.DiscoveryQuery ?? sessionState?.CanonicalQuery,
+            revisionSummary);
+
+        var searchResult = excludedBrandIds.Count > 0
+            ? await _watchFinderService.FindWatchesAsync(revisedQuery, excludedBrandIds)
+            : await _watchFinderService.FindWatchesAsync(revisedQuery);
+        searchResult ??= new WatchFinderResult();
+
+        if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var filteredResult = FilterRejectedWatchCandidates(searchResult, accumulatedRejectedSlugs);
+        if (filteredResult.Watches.Count == 0)
+        {
+            return new ChatResolution
+            {
+                Message = "Tourbillon could not find a stronger revised shortlist in the current catalogue yet. Try narrowing by material, occasion, price, or a specific brand.",
+                SessionState = BuildUpdatedRecommendationState(
+                    sessionState,
+                    [],
+                    sessionState?.DiscoveryQuery ?? revisedQuery,
+                    revisionSummary,
+                    accumulatedRejectedSlugs,
+                    excludedBrandIds)
+            };
+        }
+
+        var revisedMentions = await ResolveEntityMentionsAsync(revisedQuery);
+        var resolution = await BuildDiscoveryResolutionAsync(
+            revisedQuery,
+            filteredResult,
+            excludedBrandIds,
+            includeSearchAction: true,
+            mentions: revisedMentions,
+            revisionSummary: string.IsNullOrWhiteSpace(revisionSummary) ? originalMessage.Trim() : revisionSummary);
+
+        var revisedWatches = await LoadWatchesByIdsAsync(
+            filteredResult.Watches.Take(DiscoveryCardLimit).Select(watch => watch.Id).ToList());
+        resolution.SessionState = BuildUpdatedRecommendationState(
+            resolution.SessionState ?? sessionState,
+            revisedWatches,
+            revisedQuery,
+            revisionSummary,
+            accumulatedRejectedSlugs,
+            excludedBrandIds);
+        return resolution;
+    }
+
     private async Task<ChatResolution?> TryResolveDirectEntityResolutionAsync(
         string query,
         EntityMentions mentions,
@@ -889,7 +976,8 @@ public class ChatService
             SessionState = BuildSessionStateFromWatches(
                 ordered,
                 isCompareFollowUp ? "compare" : "watch_cards",
-                ordered.Count == 1 ? ordered[0].Name : BuildCanonicalEntityQuery(ordered, query)),
+                ordered.Count == 1 ? ordered[0].Name : BuildCanonicalEntityQuery(ordered, query),
+                discoveryQuery: query),
         };
     }
 
@@ -1017,7 +1105,8 @@ public class ChatService
     private static ChatSessionState BuildSessionStateFromWatches(
         List<Watch> watches,
         string followUpMode,
-        string? canonicalQuery = null)
+        string? canonicalQuery = null,
+        string? discoveryQuery = null)
     {
         return new ChatSessionState
         {
@@ -1026,6 +1115,7 @@ public class ChatService
             WatchSlugs = watches.Select(w => w.Slug).ToList(),
             FollowUpMode = followUpMode,
             CanonicalQuery = canonicalQuery,
+            DiscoveryQuery = discoveryQuery,
         };
     }
 
@@ -1036,7 +1126,68 @@ public class ChatService
             BrandIds = cards.Select(card => card.BrandId).Distinct().ToList(),
             WatchSlugs = cards.Select(card => card.Slug).Where(slug => !string.IsNullOrWhiteSpace(slug)).ToList(),
             FollowUpMode = cards.Count > 0 ? "watch_cards" : "",
+            DiscoveryQuery = cards.Count > 0
+                ? string.Join(" ", cards
+                    .Select(card => card.CollectionName ?? card.BrandName)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(3))
+                : null,
         };
+    }
+
+    private async Task<List<Watch>> LoadWatchesByIdsAsync(List<int> ids)
+    {
+        if (ids.Count == 0)
+            return [];
+
+        var watches = await _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .AsNoTracking()
+            .Where(w => ids.Contains(w.Id))
+            .ToListAsync();
+
+        return ids
+            .Select(id => watches.FirstOrDefault(w => w.Id == id))
+            .Where(w => w != null)
+            .Cast<Watch>()
+            .ToList();
+    }
+
+    private static ChatSessionState BuildUpdatedRecommendationState(
+        ChatSessionState? existingState,
+        List<Watch> watches,
+        string discoveryQuery,
+        string? revisionSummary,
+        IReadOnlyCollection<string> rejectedWatchSlugs,
+        IReadOnlyCollection<int> excludedBrandIds)
+    {
+        var nextState = watches.Count > 0
+            ? BuildSessionStateFromWatches(
+                watches,
+                "watch_cards",
+                BuildCanonicalEntityQuery(watches, discoveryQuery),
+                discoveryQuery: discoveryQuery)
+            : new ChatSessionState
+            {
+                FollowUpMode = "watch_cards",
+                CanonicalQuery = existingState?.CanonicalQuery ?? discoveryQuery,
+                DiscoveryQuery = discoveryQuery,
+            };
+
+        nextState.RejectedWatchSlugs = (existingState?.RejectedWatchSlugs ?? [])
+            .Union(rejectedWatchSlugs, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        nextState.ExcludedBrandIds = (existingState?.ExcludedBrandIds ?? [])
+            .Union(excludedBrandIds)
+            .Distinct()
+            .ToList();
+        nextState.LastCorrectionSummary = string.IsNullOrWhiteSpace(revisionSummary)
+            ? existingState?.LastCorrectionSummary
+            : revisionSummary.Trim();
+
+        return nextState;
     }
 
     private async Task<ChatCompareScope?> BuildCompareScopeAsync(List<ChatAction> actions)
@@ -1408,7 +1559,8 @@ public class ChatService
         WatchFinderResult result,
         List<int>? excludedBrandIds = null,
         bool includeSearchAction = true,
-        EntityMentions? mentions = null)
+        EntityMentions? mentions = null,
+        string? revisionSummary = null)
     {
         var topIds = result.Watches.Take(DiscoveryCardLimit).Select(w => w.Id).Distinct().ToList();
         var watches = await _context.Watches
@@ -1427,12 +1579,16 @@ public class ChatService
         var context = new List<string>
         {
             includeSearchAction
-                ? $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Search guidance request: answer like a sales concierge, highlight the strongest matches, tell the user the Smart Search chip can broaden discovery, emit one Smart Search action with a concise catalogue-style query built from the resolved matches rather than the user's raw wording, and end with a short follow-up question about size, material, budget, occasion, or a specific model."
-                : $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Answer like a sales concierge, stay anchored to these exact catalogue matches, do not emit a Smart Search action, and end with a short follow-up question about size, material, budget, occasion, or a specific model.",
+                ? $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Search guidance request: answer like a sales concierge, highlight the strongest matches, give each surfaced watch one short fit reason tied to the brief, tell the user the Smart Search chip can broaden discovery, emit one Smart Search action with a concise catalogue-style query built from the resolved matches rather than the user's raw wording, and end with a short follow-up question about size, material, budget, occasion, or a specific model."
+                : $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Answer like a sales concierge, stay anchored to these exact catalogue matches, give each surfaced watch one short fit reason tied to the brief, do not emit a Smart Search action, and end with a short follow-up question about size, material, budget, occasion, or a specific model.",
             includeSearchAction
                 ? "Smart Search action guidance: rewrite discovery queries into compact catalogue terms. Prefer canonical brand and collection names from the supplied context. Good example: 'Jaeger-LeCoultre Reverso'. Bad example: 'yo, suggest me some reversos'."
                 : "Action guidance: no Smart Search action is needed for this reply."
         };
+
+        context.Add("Recommendation writing guidance: reason from catalogue facts and description cues, but do not paste or closely paraphrase Watch.Description into the answer.");
+        if (!string.IsNullOrWhiteSpace(revisionSummary))
+            context.Insert(0, $"Recommendation revision request: the user corrected or rejected the previous shortlist ({revisionSummary}). Replace the prior direction with a genuinely revised set from the supplied catalogue context only, and do not resurface the rejected watches.");
 
         var requestedBrandNames = mentions?.Brands
             .Select(brand => brand.Name)
@@ -1512,7 +1668,8 @@ public class ChatService
                 SessionState = BuildSessionStateFromWatches(
                     ordered,
                     "watch_cards",
-                    BuildCanonicalEntityQuery(ordered, query))
+                    BuildCanonicalEntityQuery(ordered, query),
+                    discoveryQuery: query)
             };
         }
 
@@ -1527,7 +1684,8 @@ public class ChatService
             SessionState = BuildSessionStateFromWatches(
                 ordered,
                 "watch_cards",
-                BuildCanonicalEntityQuery(ordered, query))
+                BuildCanonicalEntityQuery(ordered, query),
+                discoveryQuery: query)
         };
     }
 
@@ -2036,6 +2194,27 @@ public class ChatService
             @"\b(?:yes|yeah|yep|sure|ok|okay|please|those|these|them|that|this|first|second|third|fourth|fifth|more|details|tell me|show me|compare|go ahead|sounds good|do it)\b",
             RegexOptions.IgnoreCase);
 
+    private static bool LooksLikeRecommendationRevision(
+        string query,
+        List<ChatWatchCard> lastWatchCards,
+        ChatSessionState? sessionState)
+    {
+        if (lastWatchCards.Count == 0 && string.IsNullOrWhiteSpace(sessionState?.DiscoveryQuery))
+            return false;
+
+        if (!string.Equals(sessionState?.FollowUpMode, "watch_cards", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(sessionState?.DiscoveryQuery))
+            return false;
+
+        if (IsExplicitCompareQuery(query) || IsAffirmativeFollowUp(query))
+            return false;
+
+        return Regex.IsMatch(
+            query,
+            @"\b(?:show me something else|show me another|what else|anything else|another option|different option|different direction|not what i meant|not really|not quite|don't like|do not like|dislike|hate|skip these|skip those|avoid these|avoid those|those are not|these are not|they are not|isn't right|aren't right|wrong direction|too sporty|too dressy|too expensive|too big|too small|more artistic|more art|less sporty|less dressy|more formal|more casual)\b",
+            RegexOptions.IgnoreCase);
+    }
+
     // Detects refinement queries that contain only price/budget signals — no watch vocabulary.
     // Used to keep pure price follow-ups ("under 10k", "what about 20,000?") in the discovery
     // flow when the user is already mid-session, rather than routing them to the AI with no context.
@@ -2180,10 +2359,35 @@ public class ChatService
 
     private static string BuildWatchTitle(Watch watch)
     {
-        var prefix = !string.IsNullOrWhiteSpace(watch.Description)
+        var prefix = !LooksLikeEditorialDescription(watch.Description)
             ? watch.Description!.Trim()
             : string.Join(" ", new[] { watch.Brand?.Name, watch.Collection?.Name }.Where(s => !string.IsNullOrWhiteSpace(s)));
-        return string.IsNullOrWhiteSpace(prefix) ? watch.Name : $"{prefix} {watch.Name}".Trim();
+        if (string.IsNullOrWhiteSpace(prefix))
+            return watch.Name;
+
+        return prefix.Contains(watch.Name, StringComparison.OrdinalIgnoreCase)
+            ? prefix
+            : $"{prefix} {watch.Name}".Trim();
+    }
+
+    private static bool LooksLikeEditorialDescription(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+            return true;
+
+        var trimmed = description.Trim();
+        if (trimmed.Length > 80 || CountWords(trimmed) > 8)
+            return true;
+
+        if (Regex.IsMatch(trimmed, @"[.!?:;]"))
+            return true;
+
+        var firstWord = trimmed
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault()?
+            .Trim(' ', ',', '.', '"', '\'');
+        return !string.IsNullOrWhiteSpace(firstWord)
+            && _editorialLeadWords.Contains(firstWord);
     }
 
     private static string BuildCanonicalEntityQuery(List<Watch> watches, string fallbackQuery)
@@ -2418,6 +2622,86 @@ public class ChatService
                 rejected.Add(brand.Id);
         }
         return rejected;
+    }
+
+    private static List<string> DetectRejectedWatchSlugs(string message, List<ChatWatchCard> lastWatchCards)
+    {
+        if (lastWatchCards.Count == 0)
+            return [];
+
+        var explicitMatches = lastWatchCards
+            .Where(card =>
+                (!string.IsNullOrWhiteSpace(card.Name) && message.Contains(card.Name, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(card.CollectionName) && message.Contains(card.CollectionName, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(card.BrandName) && message.Contains(card.BrandName, StringComparison.OrdinalIgnoreCase)))
+            .Select(card => card.Slug)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (explicitMatches.Count > 0)
+            return explicitMatches;
+
+        return Regex.IsMatch(
+            message,
+            @"\b(?:those|these|them|they|that|this|options?|watches?|models?)\b|\b(?:show me something else|show me another|what else|anything else|different option|different direction|don't like|do not like|not what i meant|those are not|these are not|they are not|too )\b",
+            RegexOptions.IgnoreCase)
+            ? lastWatchCards.Select(card => card.Slug).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+            : [];
+    }
+
+    private static string ExtractRecommendationCorrectionFocus(string query)
+    {
+        var cleaned = NormalizeCompoundWatchTerms(query);
+        cleaned = Regex.Replace(cleaned, @"\b(?:those|these|them|they|that|this|are|is|were|was|not|isn't|aren't|don't|do not|doesn't|does not|too|more|less|really|quite|feel|feels|look|looks|seem|seems|show me|give me|i want|i need|something|else|another|different|direction|wrong|right|related|enough|what i meant|options?|ones?)\b", " ", RegexOptions.IgnoreCase);
+        return Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
+    }
+
+    private static string BuildRecommendationRevisionQuery(
+        string originalMessage,
+        string? baseQuery,
+        string revisionFocus)
+    {
+        if (!string.IsNullOrWhiteSpace(revisionFocus) && CountWords(revisionFocus) >= 2)
+            return revisionFocus;
+
+        if (LooksLikePriceFollowUp(originalMessage) && !string.IsNullOrWhiteSpace(baseQuery))
+            return $"{baseQuery} {originalMessage}".Trim();
+
+        if (!string.IsNullOrWhiteSpace(revisionFocus) && !string.IsNullOrWhiteSpace(baseQuery))
+            return $"{baseQuery} {revisionFocus}".Trim();
+
+        if (!string.IsNullOrWhiteSpace(baseQuery))
+            return baseQuery.Trim();
+
+        return originalMessage.Trim();
+    }
+
+    private static WatchFinderResult FilterRejectedWatchCandidates(
+        WatchFinderResult result,
+        IReadOnlyCollection<string> rejectedWatchSlugs)
+    {
+        if (rejectedWatchSlugs.Count == 0)
+            return result;
+
+        var combined = result.Watches
+            .Concat(result.OtherCandidates)
+            .Where(watch => !string.IsNullOrWhiteSpace(watch.Slug) && !rejectedWatchSlugs.Contains(watch.Slug, StringComparer.OrdinalIgnoreCase))
+            .GroupBy(watch => watch.Slug, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+        var allowedIds = combined.Select(watch => watch.Id).ToHashSet();
+        return new WatchFinderResult
+        {
+            Watches = combined.Take(WatchFinderService.TopMatchLimit).ToList(),
+            OtherCandidates = combined.Skip(WatchFinderService.TopMatchLimit).ToList(),
+            MatchDetails = result.MatchDetails
+                .Where(pair => allowedIds.Contains(pair.Key))
+                .ToDictionary(pair => pair.Key, pair => pair.Value),
+            ParsedIntent = result.ParsedIntent,
+            QueryIntent = result.QueryIntent,
+            SearchPath = result.SearchPath,
+        };
     }
 
     private async Task<List<string>> GetBrandNamesAsync(IEnumerable<int> ids)

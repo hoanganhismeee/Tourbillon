@@ -2,6 +2,7 @@
 // Broad discovery requests should surface up to five in-store matches by default.
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using backend.Database;
 using backend.Models;
 using backend.Services;
@@ -92,11 +93,14 @@ public class ChatServiceRecommendationTests
         }
 
         public int CallCount { get; private set; }
+        public List<string> RequestBodies { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             CallCount++;
-            return Task.FromResult(_responder(request));
+            if (request.Content != null)
+                RequestBodies.Add(await request.Content.ReadAsStringAsync(cancellationToken));
+            return _responder(request);
         }
     }
 
@@ -255,5 +259,66 @@ public class ChatServiceRecommendationTests
 
         Assert.Contains(result.Actions, action => action.Type == "search" && action.Query == "Jaeger-LeCoultre Reverso under 50k");
         Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_RecommendationCorrection_ReplacesVisibleCards()
+    {
+        using var context = CreateContext();
+
+        var brand = new Brand { Id = 1, Name = "Omega", Slug = "omega" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Seamaster", Slug = "seamaster" };
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+
+        var watches = Enumerable.Range(1, 7)
+            .Select(i => new Watch
+            {
+                Id = i,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 10,
+                Collection = collection,
+                Name = $"Seamaster {i}",
+                Slug = $"omega-seamaster-{i}",
+                Description = "Omega Seamaster",
+                CurrentPrice = 5000m + i
+            })
+            .ToList();
+
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("Recommend me sporty watches"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = watches.Take(5).Select(ToDto).ToList(),
+                OtherCandidates = watches.Skip(5).Select(ToDto).ToList(),
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"Here are the strongest sport-led options Tourbillon surfaced.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+
+        var initial = await service.HandleMessageAsync("session-1", "Recommend me sporty watches", null, "127.0.0.1");
+        var revised = await service.HandleMessageAsync("session-1", "show me something else", null, "127.0.0.1");
+
+        var initialSlugs = initial.WatchCards.Select(card => card.Slug).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(5, initial.WatchCards.Count);
+        Assert.Equal(2, revised.WatchCards.Count);
+        Assert.All(revised.WatchCards, card => Assert.DoesNotContain(card.Slug, initialSlugs));
+        Assert.Equal(2, handler.CallCount);
+
+        var revisionPayload = JsonDocument.Parse(handler.RequestBodies[1]).RootElement;
+        var revisionContext = string.Join("\n", revisionPayload.GetProperty("context").EnumerateArray().Select(item => item.GetString()));
+        Assert.Contains("Recommendation revision request", revisionContext, StringComparison.OrdinalIgnoreCase);
     }
 }
