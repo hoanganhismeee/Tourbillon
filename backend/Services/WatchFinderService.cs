@@ -78,6 +78,9 @@ public class QueryIntent
     /// Multi-brand filter — populated when 2+ brands are named in the query.
     /// Applied as SQL WHERE BrandId IN (ids). Exclusive with BrandId (single-brand path).
     public List<int> BrandIds { get; set; } = [];
+    /// Brands explicitly excluded by the caller (e.g., user said "not FC").
+    /// Applied as SQL WHERE BrandId NOT IN (ids). Overrides BrandId/BrandIds inclusions.
+    public List<int> ExcludedBrandIds { get; set; } = [];
     /// Complication labels from query text (e.g. "Chronograph", "Perpetual Calendar").
     /// Client-side filter only — complications live in Watch.Specs JSON, not a DB column.
     /// Labels must match frontend COMPLICATION_OPTIONS labels exactly.
@@ -154,10 +157,21 @@ public class WatchFinderService : IWatchFinderService
         _logger = logger;
     }
 
-    public async Task<WatchFinderResult> FindWatchesAsync(string query)
+    /// Strips excluded brand IDs from inclusion lists and stores them for SQL NOT IN filtering.
+    private static void ApplyBrandExclusions(QueryIntent? intent, IReadOnlyList<int>? excluded)
+    {
+        if (intent == null || excluded == null || excluded.Count == 0) return;
+        if (intent.BrandId != null && excluded.Contains(intent.BrandId.Value))
+            intent.BrandId = null;
+        intent.BrandIds = intent.BrandIds.Except(excluded).ToList();
+        intent.ExcludedBrandIds = intent.ExcludedBrandIds.Union(excluded).Distinct().ToList();
+    }
+
+    public async Task<WatchFinderResult> FindWatchesAsync(string query, IReadOnlyList<int>? excludedBrandIds = null)
     {
         var normalizedQuery = NormalizeQueryPhrases(query);
         var deterministicIntent = await ParseQueryIntentAsync(normalizedQuery);
+        ApplyBrandExclusions(deterministicIntent, excludedBrandIds);
         if (deterministicIntent == null && !HasWatchDomainSignal(normalizedQuery))
         {
             _logger.LogInformation("WatchFinder ignored non-watch query={QueryPreview}",
@@ -200,6 +214,7 @@ public class WatchFinderService : IWatchFinderService
 
         var queryIntent   = await parseTask;
         var queryEmbedding = await embedTask;
+        ApplyBrandExclusions(queryIntent, excludedBrandIds);
 
         var mergedDirectResult = await _deterministicSearch.TryDirectSqlSearchAsync(normalizedQuery, queryIntent, "direct_sql_merged");
         if (mergedDirectResult != null)
@@ -248,6 +263,9 @@ public class WatchFinderService : IWatchFinderService
                     .Include(w => w.Collection)
                     .AsNoTracking()
                     .Where(w => brandFilter.Contains(w.BrandId));
+
+                if (queryIntent.ExcludedBrandIds.Count > 0)
+                    fallbackQuery = fallbackQuery.Where(w => !queryIntent.ExcludedBrandIds.Contains(w.BrandId));
 
                 if (HasStrictCollectionIntent(queryIntent) && queryIntent.CollectionId != null)
                     fallbackQuery = fallbackQuery.Where(w => w.CollectionId == queryIntent.CollectionId);
@@ -791,6 +809,7 @@ public class WatchFinderService : IWatchFinderService
         // Price 0 = "Price on Request"; never exclude PoR watches from a price-filtered search.
         if (intent?.BrandId      != null) q = q.Where(e => e.Watch.BrandId      == intent.BrandId);
         if (intent?.BrandIds?.Count > 0)  q = q.Where(e => intent.BrandIds.Contains(e.Watch.BrandId));
+        if (intent?.ExcludedBrandIds?.Count > 0) q = q.Where(e => !intent.ExcludedBrandIds.Contains(e.Watch.BrandId));
         if (HasStrictCollectionIntent(intent) && intent?.CollectionId != null) q = q.Where(e => e.Watch.CollectionId == intent.CollectionId);
         if (HasStrictCollectionIntent(intent) && intent?.CollectionIds?.Count > 0) q = q.Where(e => e.Watch.CollectionId != null && intent.CollectionIds.Contains(e.Watch.CollectionId.Value));
         if (intent?.MaxPrice     != null) q = q.Where(e => e.Watch.CurrentPrice == 0 || e.Watch.CurrentPrice <= intent.MaxPrice);

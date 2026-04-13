@@ -15,7 +15,7 @@ namespace backend.Services;
 
 public interface IWatchFinderService
 {
-    Task<WatchFinderResult> FindWatchesAsync(string query);
+    Task<WatchFinderResult> FindWatchesAsync(string query, IReadOnlyList<int>? excludedBrandIds = null);
 }
 
 // Used when serializing conversation history to ai-service.
@@ -88,6 +88,9 @@ public class ChatService
     private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(1);
     private const string CloudName = "dcd9lcdoj";
     private const int DiscoveryCardLimit = 5;
+
+    // Lazy-loaded catalogue roster — built once and reused for the service lifetime.
+    private string? _catalogueRoster;
     private const string UnsupportedQueryMessage = "I specialise in Tourbillon watches and horology. I don't quite get that request yet. Please rephrase it with a watch, brand, collection, comparison, size, material, or price range.";
     private const string NoCloseMatchMessage = "I don't quite get the request from the current Tourbillon catalogue context. Please rephrase it with a watch, brand, collection, reference, size, material, or price range.";
     private const string ProcessingFallbackMessage = "I don't quite get that request right now. Please rephrase it, or try again in a moment with a watch, brand, collection, comparison, size, material, or price range.";
@@ -190,6 +193,17 @@ public class ChatService
         public List<Brand> Brands { get; set; } = [];
         public List<Collection> Collections { get; set; } = [];
         public bool HasAny => Brands.Count > 0 || Collections.Count > 0;
+
+        // Returns a copy with rejected brands (and their collections) removed.
+        public EntityMentions WithoutBrands(IReadOnlyList<int> excludedBrandIds)
+        {
+            var filteredBrands = Brands.Where(b => !excludedBrandIds.Contains(b.Id)).ToList();
+            var allowedBrandIds = filteredBrands.Select(b => b.Id).ToHashSet();
+            var filteredCollections = Collections
+                .Where(c => allowedBrandIds.Contains(c.BrandId))
+                .ToList();
+            return new EntityMentions { Brands = filteredBrands, Collections = filteredCollections };
+        }
     }
 
     private sealed class ChatCompareScope
@@ -205,6 +219,8 @@ public class ChatService
         public List<string> WatchSlugs { get; set; } = [];
         public string FollowUpMode { get; set; } = "";
         public string? CanonicalQuery { get; set; }
+        /// Brands the user has explicitly rejected in this session — persisted across turns.
+        public List<int> ExcludedBrandIds { get; set; } = [];
     }
 
     public ChatService(
@@ -287,6 +303,7 @@ public class ChatService
                 .ToList(),
             FollowUpMode = state.FollowUpMode,
             CanonicalQuery = string.IsNullOrWhiteSpace(state.CanonicalQuery) ? null : state.CanonicalQuery.Trim(),
+            ExcludedBrandIds = state.ExcludedBrandIds.Distinct().Take(10).ToList(),
         };
 
         var json = JsonSerializer.Serialize(normalized, _jsonOptions);
@@ -418,6 +435,7 @@ public class ChatService
         ChatCompareScope? compareScope,
         ChatSessionState? sessionState)
     {
+        // Fast-path checks that need no entity resolution — always safe to return early.
         if (IsAbusiveQuery(message))
             return new ChatResolution
             {
@@ -425,19 +443,56 @@ public class ChatService
             };
 
         if (IsGreetingQuery(message))
-            return new ChatResolution
-            {
-                Message = GreetingMessage
-            };
+            return new ChatResolution { Message = GreetingMessage };
 
         var cursorResolution = TryResolveCursorCommand(message);
         if (cursorResolution != null)
             return cursorResolution;
 
+        // Entity resolution — required for rejection detection and all routing below.
         var mentions = await ResolveEntityMentionsAsync(message);
         var canonicalMessage = CanonicalizeQueryForRouting(message, mentions);
         var referencedWatches = await TryResolveReferencedWatchesAsync(message, lastWatchCards);
 
+        // Detect brands the user has rejected in this turn and accumulate with prior session rejections.
+        var newlyRejected = DetectBrandRejections(canonicalMessage, mentions);
+        var excludedBrandIds = (sessionState?.ExcludedBrandIds ?? [])
+            .Union(newlyRejected).Distinct().ToList();
+
+        var resolution = await ResolveWatchScopedAsync(
+            message, canonicalMessage, mentions, referencedWatches,
+            lastWatchCards, compareScope, sessionState, excludedBrandIds);
+
+        // Propagate accumulated exclusions into session state for future turns.
+        if (excludedBrandIds.Count > 0)
+        {
+            resolution.SessionState ??= new ChatSessionState();
+            resolution.SessionState.ExcludedBrandIds = excludedBrandIds;
+
+            // For AI-path responses (no catalogue context injected), prepend the rejection
+            // reminder so the model doesn't re-surface excluded brands from conversation history.
+            if (resolution.UseAi && resolution.Context is { Count: 0 })
+            {
+                var excludedNames = await GetBrandNamesAsync(excludedBrandIds);
+                resolution.Context.Add(
+                    $"User preference: the user has expressed dislike for {string.Join(", ", excludedNames)}. Do not suggest these brands; offer alternatives from the supplied context instead.");
+            }
+        }
+        return resolution;
+    }
+
+    // Core routing after entity resolution. Receives pre-computed excludedBrandIds so
+    // WatchFinder calls and context building can honour session-level brand rejections.
+    private async Task<ChatResolution> ResolveWatchScopedAsync(
+        string message,
+        string canonicalMessage,
+        EntityMentions mentions,
+        List<Watch> referencedWatches,
+        List<ChatWatchCard> lastWatchCards,
+        ChatCompareScope? compareScope,
+        ChatSessionState? sessionState,
+        List<int> excludedBrandIds)
+    {
         if (IsExplicitCompareQuery(canonicalMessage))
         {
             var compareWatches = await TryResolveCompareWatchesAsync(canonicalMessage, lastWatchCards, mentions, compareScope);
@@ -448,14 +503,18 @@ public class ChatService
         if (referencedWatches.Count > 0)
             return BuildReferencedWatchResolution(canonicalMessage, referencedWatches);
 
-        var contextualFollowUp = await TryResolveContextualFollowUpAsync(message, lastWatchCards, sessionState);
+        var contextualFollowUp = await TryResolveContextualFollowUpAsync(message, lastWatchCards, sessionState, excludedBrandIds);
         if (contextualFollowUp != null)
             return contextualFollowUp;
 
+        // Price-only follow-ups like "under 10k" lack watch keywords but are clearly watch-scoped
+        // when the user is already mid-session (has watch history or active brand exclusions).
+        var hasSessionContext = sessionState?.WatchSlugs.Count > 0 || sessionState?.ExcludedBrandIds.Count > 0;
         var hasWatchScope = mentions.HasAny
             || referencedWatches.Count > 0
             || WatchFinderService.HasWatchDomainSignal(canonicalMessage)
-            || (sessionState?.WatchSlugs.Count > 0 && LooksLikeContextualFollowUp(message));
+            || (sessionState?.WatchSlugs.Count > 0 && LooksLikeContextualFollowUp(message))
+            || (hasSessionContext && LooksLikePriceFollowUp(canonicalMessage));
 
         // Queries without watch-domain signals go to the AI — the system prompt enforces scope
         // and emits suggest chips on refusals. C# no longer classifies intent here.
@@ -472,28 +531,34 @@ public class ChatService
         if (LooksLikeEntityInfoRequest(canonicalMessage, mentions))
             return await BuildEntityInfoResolutionAsync(canonicalMessage, mentions);
 
-        var directEntityResolution = await TryResolveDirectEntityResolutionAsync(canonicalMessage, mentions, sessionState);
+        var directEntityResolution = await TryResolveDirectEntityResolutionAsync(canonicalMessage, mentions, sessionState, excludedBrandIds);
         if (directEntityResolution != null)
             return directEntityResolution;
 
-        var searchResult = await _watchFinderService.FindWatchesAsync(canonicalMessage) ?? new WatchFinderResult();
+        var searchResult = await _watchFinderService.FindWatchesAsync(
+            canonicalMessage,
+            excludedBrandIds.Count > 0 ? excludedBrandIds : null)
+            ?? new WatchFinderResult();
+
         if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
-        {
-            return new ChatResolution
-            {
-                Message = UnsupportedQueryMessage
-            };
-        }
+            return new ChatResolution { Message = UnsupportedQueryMessage };
 
         var exactWatch = await TryResolveExactWatchAsync(canonicalMessage, searchResult);
         if (exactWatch != null)
             return BuildExactWatchResolution(exactWatch, canonicalMessage);
 
         if (searchResult.Watches.Count > 0)
-            return await BuildDiscoveryResolutionAsync(canonicalMessage, searchResult, mentions: mentions);
+            return await BuildDiscoveryResolutionAsync(
+                canonicalMessage, searchResult, excludedBrandIds, mentions: mentions);
 
-        if (mentions.HasAny)
-            return await BuildEntityInfoResolutionAsync(canonicalMessage, mentions, noDirectMatch: true);
+        // Suppress entity info for any brand the user has rejected — the entity info path
+        // returns that brand's watches, which would re-surface the rejected brand.
+        var filteredMentions = excludedBrandIds.Count > 0
+            ? mentions.WithoutBrands(excludedBrandIds)
+            : mentions;
+
+        if (filteredMentions.HasAny)
+            return await BuildEntityInfoResolutionAsync(canonicalMessage, filteredMentions, noDirectMatch: true);
 
         // No catalogue match but query is watch-scoped — let AI handle it as a helpful concierge
         // response (e.g. "recommend me watch models", "what should I look for first?").
@@ -685,8 +750,13 @@ public class ChatService
     private async Task<ChatResolution?> TryResolveContextualFollowUpAsync(
         string query,
         List<ChatWatchCard> lastWatchCards,
-        ChatSessionState? sessionState)
+        ChatSessionState? sessionState,
+        List<int>? excludedBrandIds = null)
     {
+        // Strip cards from rejected brands so follow-up paths never re-surface them.
+        if (excludedBrandIds?.Count > 0)
+            lastWatchCards = lastWatchCards.Where(c => !excludedBrandIds.Contains(c.BrandId)).ToList();
+
         if (IsAffirmativeFollowUp(query))
         {
             if (lastWatchCards.Count > 0)
@@ -706,13 +776,17 @@ public class ChatService
     private async Task<ChatResolution?> TryResolveDirectEntityResolutionAsync(
         string query,
         EntityMentions mentions,
-        ChatSessionState? sessionState)
+        ChatSessionState? sessionState,
+        List<int>? excludedBrandIds = null)
     {
         var directEntityQuery = ExtractDirectEntityQuery(query, mentions, sessionState);
         if (string.IsNullOrWhiteSpace(directEntityQuery))
             return null;
 
-        var result = await _watchFinderService.FindWatchesAsync(directEntityQuery) ?? new WatchFinderResult();
+        var result = await _watchFinderService.FindWatchesAsync(
+            directEntityQuery,
+            excludedBrandIds?.Count > 0 ? excludedBrandIds : null)
+            ?? new WatchFinderResult();
         if (string.Equals(result.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase) || result.Watches.Count == 0)
             return null;
 
@@ -720,7 +794,7 @@ public class ChatService
         if (exactWatch != null)
             return BuildExactWatchResolution(exactWatch, directEntityQuery);
 
-        return await BuildDiscoveryResolutionAsync(directEntityQuery, result, includeSearchAction: false);
+        return await BuildDiscoveryResolutionAsync(directEntityQuery, result, excludedBrandIds, includeSearchAction: false);
     }
 
     private async Task<ChatResolution> BuildCardContinuationResolutionAsync(
@@ -1331,6 +1405,7 @@ public class ChatService
     private async Task<ChatResolution> BuildDiscoveryResolutionAsync(
         string query,
         WatchFinderResult result,
+        List<int>? excludedBrandIds = null,
         bool includeSearchAction = true,
         EntityMentions? mentions = null)
     {
@@ -1380,6 +1455,19 @@ public class ChatService
                 context.Add(
                     $"Requested brand coverage: the user asked about {string.Join(", ", requestedBrandNames)}. The supplied catalogue matches only cover {string.Join(", ", resolvedBrandNames)}. Do not invent products or collections for the missing requested brands; say plainly when Tourbillon does not have a strong supplied match for them in this result set.");
             }
+        }
+
+        // When the user has excluded brands or results are limited to one brand,
+        // inject the full catalogue roster so the AI can suggest genuine alternatives.
+        var uniqueBrandsInResult = ordered.Select(w => w.BrandId).Distinct().Count();
+        if (excludedBrandIds?.Count > 0 || uniqueBrandsInResult <= 1)
+        {
+            if (excludedBrandIds?.Count > 0)
+            {
+                var excludedNames = await GetBrandNamesAsync(excludedBrandIds);
+                context.Add($"User preference: the user has expressed dislike for {string.Join(", ", excludedNames)}. Do not suggest these brands; offer alternatives instead.");
+            }
+            context.Add(await BuildCatalogueRosterContextAsync());
         }
 
         foreach (var watch in ordered)
@@ -1947,6 +2035,15 @@ public class ChatService
             @"\b(?:yes|yeah|yep|sure|ok|okay|please|those|these|them|that|this|first|second|third|fourth|fifth|more|details|tell me|show me|compare|go ahead|sounds good|do it)\b",
             RegexOptions.IgnoreCase);
 
+    // Detects refinement queries that contain only price/budget signals — no watch vocabulary.
+    // Used to keep pure price follow-ups ("under 10k", "what about 20,000?") in the discovery
+    // flow when the user is already mid-session, rather than routing them to the AI with no context.
+    private static bool LooksLikePriceFollowUp(string query) =>
+        Regex.IsMatch(query,
+            @"\b(?:under|below|above|over|around|budget|price|cost|between|cheap|affordable|expensive|luxury)\b"
+            + @"|\b\d[\d,]*\s*(?:k|000)?\b",
+            RegexOptions.IgnoreCase);
+
     private static bool LooksLikeEntityInfoRequest(string query, EntityMentions mentions)
     {
         if (!mentions.HasAny) return false;
@@ -2302,6 +2399,56 @@ public class ChatService
     private static bool LooksLikeFrenchText(string query) =>
         Regex.IsMatch(query, @"[àâçéèêëîïôûùüÿœæ]", RegexOptions.IgnoreCase)
         || Regex.IsMatch(query, @"\b(?:bonjour|montre|histoire|heritage|maison|collection|parlez[- ]moi|raconte[- ]moi|suisse)\b", RegexOptions.IgnoreCase);
+
+    /// Returns brand IDs that appear near a negation word in the message (within 12 preceding words).
+    private static List<int> DetectBrandRejections(string message, EntityMentions mentions)
+    {
+        if (!mentions.Brands.Any()) return [];
+        var rejected = new List<int>();
+        foreach (var brand in mentions.Brands)
+        {
+            var idx = message.IndexOf(brand.Name, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) continue;
+            var prefix = message[..idx];
+            var window = string.Join(" ", prefix.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).TakeLast(12));
+            if (Regex.IsMatch(window,
+                @"\b(?:don'?t\s+like|not\s+interested\s+in|no\b|not\b|other\s+than|instead\s+of|avoid|hate|dislike|skip)\b",
+                RegexOptions.IgnoreCase))
+                rejected.Add(brand.Id);
+        }
+        return rejected;
+    }
+
+    private async Task<List<string>> GetBrandNamesAsync(IEnumerable<int> ids)
+    {
+        var idList = ids.ToList();
+        if (idList.Count == 0) return [];
+        return await _context.Brands
+            .Where(b => idList.Contains(b.Id))
+            .Select(b => b.Name)
+            .ToListAsync();
+    }
+
+    /// Builds (and caches) a one-line-per-brand catalogue roster for context injection.
+    private async Task<string> BuildCatalogueRosterContextAsync()
+    {
+        if (_catalogueRoster is not null) return _catalogueRoster;
+
+        var brands = await _context.Brands.AsNoTracking().OrderBy(b => b.Name).ToListAsync();
+        var collections = await _context.Collections.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+        var colsByBrand = collections.GroupBy(c => c.BrandId).ToDictionary(g => g.Key, g => g.ToList());
+
+        var lines = brands.Select(b =>
+        {
+            var cols = colsByBrand.GetValueOrDefault(b.Id, [])
+                .Select(c => string.IsNullOrWhiteSpace(c.Style) ? c.Name : $"{c.Name} ({c.Style})")
+                .ToList();
+            return $"- {b.Name}: {(cols.Count > 0 ? string.Join(", ", cols) : "no collections listed")}";
+        });
+
+        _catalogueRoster = "Tourbillon catalogue — available brands and their collections:\n" + string.Join("\n", lines);
+        return _catalogueRoster;
+    }
 
     private static string BuildReferencedWatchFallbackMessage(List<Watch> watches)
     {
