@@ -46,7 +46,7 @@
 | 11 Smart Search (AI Watch Finder) refinement | Done | 11 |
 | 11 User (Auth/Anonymous Taste Profile logic improvement) | Done | 11 |
 | 12 Trend Page Enhancements (product trends, staff pick, most viewed over 7/14/30 days, user DNA) | Done | 12 |
-| 13 Chat Concierge integration with core product features (Compare, Cursor) | In-progress | 13 |
+| 13 Chat Concierge integration with core product features (Compare, Cursor, AI-first routing) | Done | 13 |
 | Storage Abstraction + S3 + CloudFront Migration | Planned | 14 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | ? |
 

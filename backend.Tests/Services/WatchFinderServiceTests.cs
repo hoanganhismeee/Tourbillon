@@ -320,6 +320,84 @@ public class WatchFinderServiceTests
     }
 
     [Fact]
+    public async Task ParseQueryIntentForTestsAsync_MultiBrandStyleQuery_DoesNotTreatBrandTokenAsCollection()
+    {
+        using var context = CreateContext();
+        var vc = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var als = new Brand { Id = 5, Name = "A. Lange & Söhne", Slug = "a-lange-sohne" };
+        var overseas = new Collection { Id = 10, BrandId = 2, Brand = vc, Name = "Overseas", Slug = "vacheron-constantin-overseas", Style = "sport" };
+        var lange1 = new Collection { Id = 17, BrandId = 5, Brand = als, Name = "Lange 1", Slug = "a-lange-sohne-lange-1", Style = "dress" };
+
+        context.Brands.AddRange(vc, als);
+        context.Collections.AddRange(overseas, lange1);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        var intent = await service.ParseQueryIntentForTestsAsync("i want some sport watch from A. Lange & Söhne and Vacheron Constantin");
+
+        Assert.NotNull(intent);
+        Assert.Null(intent!.BrandId);
+        Assert.Equal([2, 5], intent.BrandIds.OrderBy(id => id).ToArray());
+        Assert.Equal("sport", intent.Style);
+        Assert.True(intent.CollectionsDerivedFromStyle);
+        Assert.Equal(10, intent.CollectionId);
+        Assert.Empty(intent.CollectionIds);
+    }
+
+    [Fact]
+    public async Task TryDirectSqlSearchForTestsAsync_MultiBrandSportQuery_PrefersSportBrandCoverage()
+    {
+        using var context = CreateContext();
+        var vc = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var als = new Brand { Id = 5, Name = "A. Lange & Söhne", Slug = "a-lange-sohne" };
+        var overseas = new Collection { Id = 10, BrandId = 2, Brand = vc, Name = "Overseas", Slug = "vacheron-constantin-overseas", Style = "sport" };
+        var lange1 = new Collection { Id = 17, BrandId = 5, Brand = als, Name = "Lange 1", Slug = "a-lange-sohne-lange-1", Style = "dress" };
+
+        var vcWatch = new Watch
+        {
+            Id = 100,
+            BrandId = 2,
+            Brand = vc,
+            CollectionId = 10,
+            Collection = overseas,
+            Name = "4520V/210R-B967",
+            Slug = "vacheron-constantin-overseas-4520v-210r-b967",
+            CurrentPrice = 111000m,
+            Description = "Overseas sport watch"
+        };
+        var alsWatch = new Watch
+        {
+            Id = 200,
+            BrandId = 5,
+            Brand = als,
+            CollectionId = 17,
+            Collection = lange1,
+            Name = "191.039",
+            Slug = "a-lange-sohne-lange-1-191-039",
+            CurrentPrice = 80000m,
+            Description = "Lange 1 dress watch"
+        };
+
+        context.Brands.AddRange(vc, als);
+        context.Collections.AddRange(overseas, lange1);
+        context.Watches.AddRange(vcWatch, alsWatch);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var intent = await service.ParseQueryIntentForTestsAsync("i want some sport watch from A. Lange & Söhne and Vacheron Constantin");
+
+        var result = await service.TryDirectSqlSearchForTestsAsync(
+            "i want some sport watch from A. Lange & Söhne and Vacheron Constantin",
+            intent,
+            "test_direct");
+
+        Assert.NotNull(result);
+        Assert.NotEmpty(result!.Watches);
+        Assert.Equal("vacheron-constantin-overseas-4520v-210r-b967", result.Watches[0].Slug);
+    }
+
+    [Fact]
     public void ApplyRegexFilters_ParsesToDiameterRangeAndMinPrice()
     {
         var intent = new QueryIntent();
@@ -362,6 +440,28 @@ public class WatchFinderServiceTests
         Assert.Null(intent.MinPrice);
         Assert.Empty(intent.WaterResistanceBuckets);
         Assert.Null(intent.WaterResistance);
+    }
+
+    [Fact]
+    public void ApplyRegexFilters_ParsesApproximateTargetPriceBand()
+    {
+        var intent = new QueryIntent();
+
+        WatchFinderService.ApplyRegexFilters("something for daily wear around 40k", intent);
+
+        Assert.Equal(30_000m, intent.MinPrice);
+        Assert.Equal(50_000m, intent.MaxPrice);
+    }
+
+    [Fact]
+    public void ApplyRegexFilters_ParsesBudgetCap()
+    {
+        var intent = new QueryIntent();
+
+        WatchFinderService.ApplyRegexFilters("sport watch budget 40k", intent);
+
+        Assert.Null(intent.MinPrice);
+        Assert.Equal(40_000m, intent.MaxPrice);
     }
 
     [Fact]

@@ -368,7 +368,9 @@ public class ChatService
                 resolution.AllowWebEnrichment,
                 resolution.WebQuery,
                 resolution.AllowAiActions);
-            aiMessage = aiResult.Message;
+            aiMessage = ShouldKeepDeterministicResolutionMessage(aiResult.Message, resolution)
+                ? resolution.Message
+                : aiResult.Message;
             actions = MergeActions(
                 resolution.Actions,
                 resolution.AllowAiActions ? aiResult.Actions : []);
@@ -455,34 +457,10 @@ public class ChatService
             || WatchFinderService.HasWatchDomainSignal(canonicalMessage)
             || (sessionState?.WatchSlugs.Count > 0 && LooksLikeContextualFollowUp(message));
 
+        // Queries without watch-domain signals go to the AI — the system prompt enforces scope
+        // and emits suggest chips on refusals. C# no longer classifies intent here.
         if (!hasWatchScope)
-        {
-            if (message.Any(c => c > 127))
-            {
-                return new ChatResolution
-                {
-                    UseAi = true,
-                    Query = message,
-                    Context =
-                    [
-                        "The user appears to be writing in a non-English language. If the question relates to Tourbillon's watches, brands, or collections, answer helpfully in their language. If it is outside Tourbillon's scope, politely decline in their language."
-                    ]
-                };
-            }
-
-            // Shopping/occasion phrasing — route to AI with a catalogue search for context.
-            // e.g. "gift for my girlfriend", "something for a black-tie dinner".
-            if (LooksLikeWatchShoppingIntent(canonicalMessage))
-                return await BuildShoppingGuidanceResolutionAsync(canonicalMessage);
-
-            // Clearly off-topic — refuse and attach 3 example queries so the user
-            // knows what the concierge can actually help with.
-            return new ChatResolution
-            {
-                Message = UnsupportedQueryMessage,
-                Actions = GetStaticSuggestions()
-            };
-        }
+            return new ChatResolution { UseAi = true, Query = message, Context = [] };
 
         if (LooksLikeBrandHistoryRequest(canonicalMessage, mentions))
             return await BuildEntityInfoResolutionAsync(
@@ -644,6 +622,18 @@ public class ChatService
             if (!query.Contains(collection.Name, StringComparison.OrdinalIgnoreCase) && !normalizedQuery.Contains(normalizedName))
                 continue;
 
+            if (matchedCollectionIds.Add(collection.Id))
+                mentions.Collections.Add(collection);
+        }
+
+        var blockedCollectionTokens = WatchFinderService.BuildBlockedCollectionTokens(mentions.Brands);
+        var fuzzyCollections = WatchFinderService.ResolveFuzzyCollections(
+            query,
+            collections,
+            matchedBrandIds,
+            blockedCollectionTokens);
+        foreach (var collection in fuzzyCollections)
+        {
             if (matchedCollectionIds.Add(collection.Id))
                 mentions.Collections.Add(collection);
         }
@@ -1338,32 +1328,6 @@ public class ChatService
         };
     }
 
-    // Resolves shopping/occasion queries that lack watch keywords but have clear purchase intent.
-    // Runs a general catalogue search to populate context and watch cards so the AI can make
-    // specific recommendations rather than giving purely generic advice.
-    private async Task<ChatResolution> BuildShoppingGuidanceResolutionAsync(string message)
-    {
-        // Broaden the query with "watch" so the WatchFinder can retrieve relevant catalogue entries.
-        var searchQuery = $"watch {message.Trim()}";
-        var searchResult = await _watchFinderService.FindWatchesAsync(searchQuery) ?? new WatchFinderResult();
-
-        var context = new List<string>
-        {
-            "Shopping guidance request: the user is looking for a watch for a specific person, occasion, or style. Help them discover relevant watches from Tourbillon's catalogue. If the context includes specific watches, highlight the best fits. Invite them to narrow by brand, budget, or style if helpful. Stay within Tourbillon's scope."
-        };
-
-        if (searchResult.Watches.Count > 0)
-            return await BuildDiscoveryResolutionAsync(message, searchResult, includeSearchAction: true);
-
-        // Fallback when WatchFinder returns nothing — respond with context-only guidance
-        return new ChatResolution
-        {
-            UseAi = true,
-            Query = message,
-            Context = context,
-        };
-    }
-
     private async Task<ChatResolution> BuildDiscoveryResolutionAsync(
         string query,
         WatchFinderResult result,
@@ -1398,17 +1362,19 @@ public class ChatService
             .Select(brand => brand.Name)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList() ?? [];
-        if (requestedBrandNames.Count > 0)
-        {
-            var resolvedBrandNames = ordered
-                .Where(watch => !string.IsNullOrWhiteSpace(watch.Brand?.Name))
-                .Select(watch => watch.Brand!.Name)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            var missingBrandNames = requestedBrandNames
+        var resolvedBrandNames = ordered
+            .Where(watch => !string.IsNullOrWhiteSpace(watch.Brand?.Name))
+            .Select(watch => watch.Brand!.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var missingBrandNames = requestedBrandNames.Count == 0
+            ? []
+            : requestedBrandNames
                 .Where(name => resolvedBrandNames.All(resolved => !string.Equals(resolved, name, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
 
+        if (requestedBrandNames.Count > 0)
+        {
             if (missingBrandNames.Count > 0)
             {
                 context.Add(
@@ -1441,9 +1407,30 @@ public class ChatService
                 }
             };
 
+        var coverageMessage = BuildMissingBrandCoverageMessage(
+            missingBrandNames,
+            resolvedBrandNames,
+            ordered,
+            result.QueryIntent?.Style,
+            includeSearchAction);
+        if (coverageMessage != null)
+        {
+            return new ChatResolution
+            {
+                Message = coverageMessage,
+                WatchCards = ordered.Select(ToChatWatchCard).Take(DiscoveryCardLimit).ToList(),
+                Actions = actions,
+                SessionState = BuildSessionStateFromWatches(
+                    ordered,
+                    "watch_cards",
+                    BuildCanonicalEntityQuery(ordered, query))
+            };
+        }
+
         return new ChatResolution
         {
             UseAi = true,
+            Message = BuildGroundedDiscoveryMessage(ordered, includeSearchAction),
             Query = query,
             Context = context,
             WatchCards = ordered.Select(ToChatWatchCard).Take(DiscoveryCardLimit).ToList(),
@@ -1453,6 +1440,129 @@ public class ChatService
                 "watch_cards",
                 BuildCanonicalEntityQuery(ordered, query))
         };
+    }
+
+    private static string? BuildMissingBrandCoverageMessage(
+        List<string> missingBrandNames,
+        List<string> resolvedBrandNames,
+        List<Watch> ordered,
+        string? style,
+        bool includeSearchAction)
+    {
+        if (missingBrandNames.Count == 0 || ordered.Count == 0 || resolvedBrandNames.Count == 0)
+            return null;
+
+        var styleLabel = style switch
+        {
+            "sport" => "sport-watch",
+            "dress" => "dress-watch",
+            "diver" => "diver-watch",
+            _ => "catalogue"
+        };
+
+        var primaryCollection = ordered
+            .Select(w => w.Collection?.Name)
+            .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name));
+        var primaryBrand = resolvedBrandNames[0];
+        var coverageLead = missingBrandNames.Count == 1
+            ? $"Tourbillon does not have a strong {styleLabel} match for {missingBrandNames[0]} in this result set."
+            : $"Tourbillon does not have strong {styleLabel} matches for {string.Join(", ", missingBrandNames)} in this result set.";
+
+        var resolvedLead = !string.IsNullOrWhiteSpace(primaryCollection)
+            ? $"The clearest match here is {primaryBrand}'s {primaryCollection}."
+            : $"The clearest supplied match here is from {primaryBrand}.";
+        var close = includeSearchAction
+            ? "Open Smart Search to broaden the brief, or compare the surfaced watches side by side."
+            : "If you want, compare the surfaced watches side by side or narrow the brief by budget, size, or material.";
+
+        return $"{coverageLead} {resolvedLead} {close}";
+    }
+
+    private static string BuildGroundedDiscoveryMessage(List<Watch> ordered, bool includeSearchAction)
+    {
+        if (ordered.Count == 0)
+            return NoCloseMatchMessage;
+
+        var first = ordered[0];
+        var firstBrandLink = first.Brand != null && !string.IsNullOrWhiteSpace(first.Brand.Slug)
+            ? $"[{first.Brand.Name}](/brands/{first.Brand.Slug})"
+            : "its brand";
+        var firstCollectionLink = first.Collection != null && !string.IsNullOrWhiteSpace(first.Collection.Slug)
+            ? $"[{first.Collection.Name}](/collections/{first.Collection.Slug})"
+            : null;
+        var firstWatchLink = $"[{BuildWatchTitle(first)}](/watches/{first.Slug})";
+
+        if (ordered.Count == 1)
+        {
+            var close = includeSearchAction
+                ? "Open Smart Search to broaden the brief if you want adjacent options."
+                : "If you want, ask about size, material, or a nearby alternative.";
+            return firstCollectionLink != null
+                ? $"{firstWatchLink} in {firstCollectionLink} from {firstBrandLink} is the clearest catalogue match Tourbillon surfaced. {close}"
+                : $"{firstWatchLink} from {firstBrandLink} is the clearest catalogue match Tourbillon surfaced. {close}";
+        }
+
+        var second = ordered[1];
+        var secondWatchLink = $"[{BuildWatchTitle(second)}](/watches/{second.Slug})";
+        var secondCollectionLink = second.Collection != null && !string.IsNullOrWhiteSpace(second.Collection.Slug)
+            ? $"[{second.Collection.Name}](/collections/{second.Collection.Slug})"
+            : null;
+        var closeTwo = includeSearchAction
+            ? "Open Smart Search to broaden the brief, or compare the surfaced watches side by side."
+            : "If you want, compare the surfaced watches side by side or narrow by size, material, or budget.";
+
+        if (firstCollectionLink != null && secondCollectionLink != null)
+            return $"{firstWatchLink} in {firstCollectionLink} and {secondWatchLink} in {secondCollectionLink} are the strongest catalogue matches Tourbillon surfaced. {closeTwo}";
+
+        return $"{firstWatchLink} and {secondWatchLink} are the strongest catalogue matches Tourbillon surfaced. {closeTwo}";
+    }
+
+    private static bool ShouldKeepDeterministicResolutionMessage(string? aiMessage, ChatResolution resolution)
+    {
+        if (string.IsNullOrWhiteSpace(aiMessage) || string.IsNullOrWhiteSpace(resolution.Message))
+            return false;
+
+        if (resolution.WatchCards.Count == 0 && resolution.Actions.Count == 0)
+            return false;
+
+        return IsGenericAiFallbackMessage(aiMessage)
+            || IsUngroundedCatalogueReply(aiMessage, resolution);
+    }
+
+    private static bool IsGenericAiFallbackMessage(string message)
+    {
+        var normalized = Regex.Replace(message, @"\s+", " ").Trim();
+        return normalized.Equals(NoCloseMatchMessage, StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals(ProcessingFallbackMessage, StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals(UnsupportedQueryMessage, StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("I don't quite get the request from the current Tourbillon catalogue context.", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("I don't quite get that request right now.", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("I specialise in Tourbillon watches and horology.", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsUngroundedCatalogueReply(string message, ChatResolution resolution)
+    {
+        if (resolution.WatchCards.Count == 0)
+            return false;
+
+        if (resolution.Actions.Any(action => string.Equals(action.Type, "compare", StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        return !MentionsResolvedCatalogueEntity(message, resolution.WatchCards);
+    }
+
+    private static bool MentionsResolvedCatalogueEntity(string message, List<ChatWatchCard> watchCards)
+    {
+        var normalizedMessage = NormalizeEntityText(message);
+        var candidates = watchCards
+            .Take(3)
+            .SelectMany(card => new[] { card.BrandName, card.CollectionName, card.Name })
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => NormalizeEntityText(value!))
+            .Where(value => value.Length >= 4)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        return candidates.Any(candidate => normalizedMessage.Contains(candidate, StringComparison.OrdinalIgnoreCase));
     }
 
     private ChatResolution BuildExactWatchResolution(Watch watch, string? canonicalQuery = null)
@@ -1829,11 +1939,13 @@ public class ChatService
     }
 
     private static bool IsGreetingQuery(string query) =>
-        Regex.IsMatch(query.Trim(), @"^(?:hi|hello|hey|yo|hiya|sup|what'?s up|good morning|good afternoon|good evening)[!.]*$", RegexOptions.IgnoreCase);
+        Regex.IsMatch(query.Trim(), @"^(?:hi|hello|hey(?:\s+there)?|yo|hiya|sup|what'?s up|good morning|good afternoon|good evening)[!.]*$", RegexOptions.IgnoreCase);
 
     private static bool LooksLikeContextualFollowUp(string query) =>
-        IsAffirmativeFollowUp(query)
-        || Regex.IsMatch(query, @"\b(?:that one|those|these|them|this one|first one|second one|third one|fourth one|first two|first 2)\b", RegexOptions.IgnoreCase);
+        query.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 10
+        && Regex.IsMatch(query,
+            @"\b(?:yes|yeah|yep|sure|ok|okay|please|those|these|them|that|this|first|second|third|fourth|fifth|more|details|tell me|show me|compare|go ahead|sounds good|do it)\b",
+            RegexOptions.IgnoreCase);
 
     private static bool LooksLikeEntityInfoRequest(string query, EntityMentions mentions)
     {
@@ -1861,31 +1973,6 @@ public class ChatService
         Regex.IsMatch(query,
             @"\b(?:find|show|search|looking for|look for|recommend|suggest|need|want|shopping|browse|under\s+\$?\d|between\s+\$?\d)\b",
             RegexOptions.IgnoreCase);
-
-    // Catches shopping/occasion phrasing that lacks watch keywords but signals watch discovery
-    // intent in a boutique context — e.g. "gift for my girlfriend", "something for a dinner".
-    // Uses separate patterns to keep each group readable.
-    private static bool LooksLikeWatchShoppingIntent(string query)
-    {
-        // Recipient: "for him", "for my dad", "for a woman"
-        if (Regex.IsMatch(query, @"\bfor\s+(?:him|her|a\s+man|a\s+woman|my\s+(?:dad|mom|wife|husband|girlfriend|boyfriend|father|mother|partner|friend))\b", RegexOptions.IgnoreCase))
-            return true;
-
-        // Occasion: "for a dinner", "for a formal wedding", "for a black-tie event" (optional adjective)
-        if (Regex.IsMatch(query, @"\bfor\s+(?:an?\s+)?(?:\w+\s+)?(?:dinner|wedding|event|gala|occasion|birthday|anniversary|trip|travel|holiday|ceremony|reception|formal)\b", RegexOptions.IgnoreCase))
-            return true;
-
-        // Gift framing
-        if (Regex.IsMatch(query, @"\b(?:gift|present)\s+for\b", RegexOptions.IgnoreCase))
-            return true;
-
-        // Style adjective without a watch keyword: "something elegant", "something sporty"
-        if (Regex.IsMatch(query, @"\bsomething\s+(?:elegant|sporty|casual|formal|classic|modern|slim|thin|bold|minimalist|dressy|luxurious|understated|refined)\b", RegexOptions.IgnoreCase))
-            return true;
-
-        // Explicit use-case phrases
-        return Regex.IsMatch(query, @"\b(?:daily\s+driver|everyday\s+wear|dress\s+watch|sport\s+watch|weekend\s+watch|travel\s+watch|office\s+watch|business\s+watch)\b", RegexOptions.IgnoreCase);
-    }
 
     // Returns `count` randomly selected queries from the curated bank as suggest-type actions.
     private static List<ChatAction> GetStaticSuggestions(int count = 3) =>
@@ -1941,6 +2028,18 @@ public class ChatService
 
             foreach (var alias in aliases)
                 canonicalQuery = Regex.Replace(canonicalQuery, $@"\b{Regex.Escape(alias)}\b", brand.Name, RegexOptions.IgnoreCase);
+        }
+
+        var normalizedCanonicalQuery = NormalizeEntityText(canonicalQuery);
+        foreach (var collection in mentions.Collections.OrderByDescending(collection => collection.Name.Length))
+        {
+            var normalizedCollectionName = NormalizeEntityText(collection.Name);
+            if (string.IsNullOrWhiteSpace(normalizedCollectionName)
+                || normalizedCanonicalQuery.Contains(normalizedCollectionName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            canonicalQuery = $"{canonicalQuery.Trim()} {collection.Name}".Trim();
+            normalizedCanonicalQuery = NormalizeEntityText(canonicalQuery);
         }
 
         return canonicalQuery;
@@ -2188,6 +2287,11 @@ public class ChatService
         if (normalized.StartsWith("vi")) return "vietnamese";
         if (normalized.StartsWith("ja")) return "japanese";
         if (normalized.StartsWith("zh")) return "chinese";
+        if (normalized.StartsWith("es")) return "spanish";
+        if (normalized.StartsWith("de")) return "german";
+        if (normalized.StartsWith("it")) return "italian";
+        if (normalized.StartsWith("pt")) return "portuguese";
+        if (normalized.StartsWith("ko")) return "korean";
         return null;
     }
 
