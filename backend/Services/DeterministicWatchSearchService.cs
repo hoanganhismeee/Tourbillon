@@ -47,6 +47,8 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
             strictQuery = strictQuery.Where(w => w.BrandId == intent.BrandId);
         if (intent?.BrandIds.Count > 0)
             strictQuery = strictQuery.Where(w => intent.BrandIds.Contains(w.BrandId));
+        if (intent?.ExcludedBrandIds.Count > 0)
+            strictQuery = strictQuery.Where(w => !intent.ExcludedBrandIds.Contains(w.BrandId));
         if (WatchFinderService.HasStrictCollectionIntent(intent) && intent?.CollectionId != null)
             strictQuery = strictQuery.Where(w => w.CollectionId == intent.CollectionId);
         if (WatchFinderService.HasStrictCollectionIntent(intent) && intent?.CollectionIds.Count > 0)
@@ -89,6 +91,9 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
                 relaxedQuery = relaxedQuery.Where(w => intent.BrandIds.Contains(w.BrandId));
             else if (styleCollectionIds.Count > 0)
                 relaxedQuery = relaxedQuery.Where(w => w.CollectionId != null && styleCollectionIds.Contains(w.CollectionId.Value));
+
+            if (intent?.ExcludedBrandIds.Count > 0)
+                relaxedQuery = relaxedQuery.Where(w => !intent.ExcludedBrandIds.Contains(w.BrandId));
 
             relaxedCandidates = await relaxedQuery
                 .OrderByDescending(w => w.Id)
@@ -201,6 +206,8 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
             q = q.Where(w => w.BrandId == intent.BrandId);
         if (intent.BrandIds.Count > 0)
             q = q.Where(w => intent.BrandIds.Contains(w.BrandId));
+        if (intent.ExcludedBrandIds.Count > 0)
+            q = q.Where(w => !intent.ExcludedBrandIds.Contains(w.BrandId));
         if (WatchFinderService.HasStrictCollectionIntent(intent) && intent.CollectionId != null)
             q = q.Where(w => w.CollectionId == intent.CollectionId);
         if (WatchFinderService.HasStrictCollectionIntent(intent) && intent.CollectionIds.Count > 0)
