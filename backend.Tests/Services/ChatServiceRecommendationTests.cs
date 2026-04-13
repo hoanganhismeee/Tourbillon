@@ -1,5 +1,5 @@
 // Recommendation-path tests for ChatService.
-// Broad discovery requests should surface up to five in-store matches by default.
+// Broad discovery requests should surface up to ten in-store matches by default.
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -143,7 +143,7 @@ public class ChatServiceRecommendationTests
     private static WatchDto ToDto(Watch watch) => WatchDto.FromWatch(watch);
 
     [Fact]
-    public async Task HandleMessageAsync_BroadRecommendation_ShowsUpToFiveMatchedProductsByDefault()
+    public async Task HandleMessageAsync_BroadRecommendation_ShowsUpToTenMatchedProductsByDefault()
     {
         using var context = CreateContext();
 
@@ -182,7 +182,7 @@ public class ChatServiceRecommendationTests
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(
-                "{\"message\":\"Here are five strong Tourbillon matches from [Omega](/brands/omega).\",\"actions\":[]}",
+                "{\"message\":\"Here are several strong Tourbillon matches from [Omega](/brands/omega).\",\"actions\":[]}",
                 Encoding.UTF8,
                 "application/json")
         });
@@ -190,8 +190,8 @@ public class ChatServiceRecommendationTests
         var service = CreateService(context, watchFinder, handler);
         var result = await service.HandleMessageAsync("session-1", "Recommend me a versatile Omega", null, "127.0.0.1");
 
-        Assert.Equal(5, result.WatchCards.Count);
-        Assert.Equal(watches.Take(5).Select(w => w.Slug), result.WatchCards.Select(w => w.Slug));
+        Assert.Equal(6, result.WatchCards.Count);
+        Assert.Equal(watches.Select(w => w.Slug), result.WatchCards.Select(w => w.Slug));
         Assert.Contains(result.Actions, a => a.Type == "search" && a.Query == "Omega Seamaster versatile");
         Assert.Equal(1, handler.CallCount);
     }
@@ -320,5 +320,170 @@ public class ChatServiceRecommendationTests
         var revisionPayload = JsonDocument.Parse(handler.RequestBodies[1]).RootElement;
         var revisionContext = string.Join("\n", revisionPayload.GetProperty("context").EnumerateArray().Select(item => item.GetString()));
         Assert.Contains("Recommendation revision request", revisionContext, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_MixedBrief_DiversifiesAcrossDiveAndArtDirections()
+    {
+        using var context = CreateContext();
+
+        var omega = new Brand { Id = 1, Name = "Omega", Slug = "omega" };
+        var vacheron = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var seamaster = new Collection
+        {
+            Id = 10,
+            BrandId = 1,
+            Brand = omega,
+            Name = "Seamaster",
+            Slug = "omega-seamaster",
+            Styles = ["diver"],
+            Description = "Omega diver line"
+        };
+        var metiers = new Collection
+        {
+            Id = 20,
+            BrandId = 2,
+            Brand = vacheron,
+            Name = "Métiers d'Art",
+            Slug = "vacheron-constantin-metiers-d-art",
+            Styles = ["art"],
+            Description = "Decorative arts and artisanal craftsmanship"
+        };
+        context.Brands.AddRange(omega, vacheron);
+        context.Collections.AddRange(seamaster, metiers);
+
+        var diveWatches = new[]
+        {
+            new Watch { Id = 1, BrandId = 1, Brand = omega, CollectionId = 10, Collection = seamaster, Name = "Diver 300M", Slug = "omega-seamaster-diver-300m", Description = "Omega Seamaster", CurrentPrice = 7000m },
+            new Watch { Id = 2, BrandId = 1, Brand = omega, CollectionId = 10, Collection = seamaster, Name = "Planet Ocean", Slug = "omega-seamaster-planet-ocean", Description = "Omega Seamaster", CurrentPrice = 8200m }
+        };
+        var artWatches = new[]
+        {
+            new Watch { Id = 3, BrandId = 2, Brand = vacheron, CollectionId = 20, Collection = metiers, Name = "Les Aérostiers", Slug = "vacheron-constantin-metiers-d-art-les-aerostiers", Description = "Vacheron Constantin Métiers d'Art", CurrentPrice = 0m },
+            new Watch { Id = 4, BrandId = 2, Brand = vacheron, CollectionId = 20, Collection = metiers, Name = "Tribute to Great Civilisations", Slug = "vacheron-constantin-metiers-d-art-great-civilisations", Description = "Vacheron Constantin Métiers d'Art", CurrentPrice = 0m }
+        };
+
+        context.Watches.AddRange(diveWatches);
+        context.Watches.AddRange(artWatches);
+        await context.SaveChangesAsync();
+
+        var initialQuery = "i want dive watches and art watches, recommend me some";
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync(It.IsAny<string>()))
+            .ReturnsAsync((string query) =>
+            {
+                var normalized = query.ToLowerInvariant();
+                if (normalized == initialQuery)
+                {
+                    return new WatchFinderResult
+                    {
+                        Watches = diveWatches.Select(ToDto).ToList(),
+                        OtherCandidates = [],
+                        SearchPath = "vector"
+                    };
+                }
+
+                if (normalized.Contains("art watches", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new WatchFinderResult
+                    {
+                        Watches = artWatches.Select(ToDto).ToList(),
+                        OtherCandidates = [],
+                        SearchPath = "vector"
+                    };
+                }
+
+                if (normalized.Contains("dive watches", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new WatchFinderResult
+                    {
+                        Watches = diveWatches.Select(ToDto).ToList(),
+                        OtherCandidates = [],
+                        SearchPath = "vector"
+                    };
+                }
+
+                return new WatchFinderResult
+                {
+                    Watches = diveWatches.Select(ToDto).ToList(),
+                    OtherCandidates = [],
+                    SearchPath = "vector"
+                };
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"Here is a balanced mixed shortlist.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", initialQuery, null, "127.0.0.1");
+
+        Assert.True(result.WatchCards.Count >= 4);
+        Assert.Contains(result.WatchCards, card => string.Equals(card.CollectionSlug, seamaster.Slug, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.WatchCards, card => string.Equals(card.CollectionSlug, metiers.Slug, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_DiscoveryReplyThatMentionsUnsupportedBrands_FallsBackToGroundedMessage()
+    {
+        using var context = CreateContext();
+
+        var omega = new Brand { Id = 1, Name = "Omega", Slug = "omega" };
+        var seamaster = new Collection
+        {
+            Id = 10,
+            BrandId = 1,
+            Brand = omega,
+            Name = "Seamaster",
+            Slug = "omega-seamaster",
+            Styles = ["diver"],
+            Description = "Omega diver line"
+        };
+        var watch = new Watch
+        {
+            Id = 1,
+            BrandId = 1,
+            Brand = omega,
+            CollectionId = 10,
+            Collection = seamaster,
+            Name = "Diver 300M",
+            Slug = "omega-seamaster-diver-300m",
+            Description = "Omega Seamaster",
+            CurrentPrice = 7000m
+        };
+        context.Brands.Add(omega);
+        context.Collections.Add(seamaster);
+        context.Watches.Add(watch);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("show me a diver"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(watch)],
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"For art watches, explore Patek Philippe Grandmaster Chime before you decide.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "show me a diver", null, "127.0.0.1");
+
+        Assert.DoesNotContain("Patek Philippe", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Omega", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(result.WatchCards);
+        Assert.Equal(watch.Slug, result.WatchCards[0].Slug);
     }
 }

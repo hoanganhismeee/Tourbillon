@@ -88,7 +88,7 @@ public class ChatService
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(1);
     private const string CloudName = "dcd9lcdoj";
-    private const int DiscoveryCardLimit = 5;
+    private const int DiscoveryCardLimit = 10;
 
     // Lazy-loaded catalogue roster — built once and reused for the service lifetime.
     private string? _catalogueRoster;
@@ -396,7 +396,9 @@ public class ChatService
                 resolution.AllowWebEnrichment,
                 resolution.WebQuery,
                 resolution.AllowAiActions);
-            aiMessage = ShouldKeepDeterministicResolutionMessage(aiResult.Message, resolution)
+            var keepDeterministic = ShouldKeepDeterministicResolutionMessage(aiResult.Message, resolution)
+                || await MentionsUnsupportedResolvedEntitiesAsync(aiResult.Message, resolution);
+            aiMessage = keepDeterministic
                 ? resolution.Message
                 : aiResult.Message;
             actions = MergeActions(
@@ -788,7 +790,12 @@ public class ChatService
         }
 
         if (!LooksLikeContextualFollowUp(query) || lastWatchCards.Count == 0)
+        {
+            if (lastWatchCards.Count > 0 && LooksLikeShortlistContinuation(query))
+                return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false, sessionState?.FollowUpMode);
+
             return null;
+        }
 
         return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false, sessionState?.FollowUpMode);
     }
@@ -847,7 +854,8 @@ public class ChatService
             excludedBrandIds,
             includeSearchAction: true,
             mentions: revisedMentions,
-            revisionSummary: string.IsNullOrWhiteSpace(revisionSummary) ? originalMessage.Trim() : revisionSummary);
+            revisionSummary: string.IsNullOrWhiteSpace(revisionSummary) ? originalMessage.Trim() : revisionSummary,
+            rejectedWatchSlugs: accumulatedRejectedSlugs);
 
         var revisedWatches = await LoadWatchesByIdsAsync(
             filteredResult.Watches.Take(DiscoveryCardLimit).Select(watch => watch.Id).ToList());
@@ -956,6 +964,7 @@ public class ChatService
         return new ChatResolution
         {
             UseAi = true,
+            Message = BuildCardContinuationFallbackMessage(ordered, isCompareFollowUp, affirmative),
             Query = isCompareFollowUp
                 ? affirmative
                     ? "Continue comparing these exact watches and explain the clearest practical split."
@@ -1560,21 +1569,26 @@ public class ChatService
         List<int>? excludedBrandIds = null,
         bool includeSearchAction = true,
         EntityMentions? mentions = null,
-        string? revisionSummary = null)
+        string? revisionSummary = null,
+        IReadOnlyCollection<string>? rejectedWatchSlugs = null)
     {
         var topIds = result.Watches.Take(DiscoveryCardLimit).Select(w => w.Id).Distinct().ToList();
-        var watches = await _context.Watches
-            .Include(w => w.Brand)
-            .Include(w => w.Collection)
-            .Where(w => topIds.Contains(w.Id))
-            .AsNoTracking()
-            .ToListAsync();
-
-        var ordered = topIds
-            .Select(id => watches.FirstOrDefault(w => w.Id == id))
-            .Where(w => w != null)
-            .Cast<Watch>()
-            .ToList();
+        var ordered = await LoadWatchesByIdsAsync(topIds);
+        var requestedDirections = DetectDiscoveryDirections(query);
+        ordered = await DiversifyDiscoveryWatchesAsync(
+            query,
+            ordered,
+            requestedDirections,
+            mentions,
+            excludedBrandIds);
+        if (rejectedWatchSlugs is { Count: > 0 })
+        {
+            ordered = ordered
+                .Where(watch => !string.IsNullOrWhiteSpace(watch.Slug)
+                    && !rejectedWatchSlugs.Contains(watch.Slug, StringComparer.OrdinalIgnoreCase))
+                .Take(DiscoveryCardLimit)
+                .ToList();
+        }
 
         var context = new List<string>
         {
@@ -1587,6 +1601,11 @@ public class ChatService
         };
 
         context.Add("Recommendation writing guidance: reason from catalogue facts and description cues, but do not paste or closely paraphrase Watch.Description into the answer.");
+        if (requestedDirections.Count >= 2)
+        {
+            context.Insert(0,
+                $"Mixed brief guidance: the user wants a shortlist that covers {string.Join(" and ", requestedDirections.Select(FormatDirectionLabel))}. Keep the answer grouped or clearly balanced across those directions, and keep the surfaced watches aligned with that split.");
+        }
         if (!string.IsNullOrWhiteSpace(revisionSummary))
             context.Insert(0, $"Recommendation revision request: the user corrected or rejected the previous shortlist ({revisionSummary}). Replace the prior direction with a genuinely revised set from the supplied catalogue context only, and do not resurface the rejected watches.");
 
@@ -1614,17 +1633,10 @@ public class ChatService
             }
         }
 
-        // When the user has excluded brands or results are limited to one brand,
-        // inject the full catalogue roster so the AI can suggest genuine alternatives.
-        var uniqueBrandsInResult = ordered.Select(w => w.BrandId).Distinct().Count();
-        if (excludedBrandIds?.Count > 0 || uniqueBrandsInResult <= 1)
+        if (excludedBrandIds?.Count > 0)
         {
-            if (excludedBrandIds?.Count > 0)
-            {
-                var excludedNames = await GetBrandNamesAsync(excludedBrandIds);
-                context.Add($"User preference: the user has expressed dislike for {string.Join(", ", excludedNames)}. Do not suggest these brands; offer alternatives instead.");
-            }
-            context.Add(await BuildCatalogueRosterContextAsync());
+            var excludedNames = await GetBrandNamesAsync(excludedBrandIds);
+            context.Add($"User preference: the user has expressed dislike for {string.Join(", ", excludedNames)}. Do not suggest these brands; offer alternatives from the supplied watches instead.");
         }
 
         foreach (var watch in ordered)
@@ -1676,7 +1688,7 @@ public class ChatService
         return new ChatResolution
         {
             UseAi = true,
-            Message = BuildGroundedDiscoveryMessage(ordered, includeSearchAction),
+            Message = BuildGroundedDiscoveryMessage(ordered, includeSearchAction, requestedDirections),
             Query = query,
             Context = context,
             WatchCards = ordered.Select(ToChatWatchCard).Take(DiscoveryCardLimit).ToList(),
@@ -1725,10 +1737,223 @@ public class ChatService
         return $"{coverageLead} {resolvedLead} {close}";
     }
 
-    private static string BuildGroundedDiscoveryMessage(List<Watch> ordered, bool includeSearchAction)
+    private async Task<List<Watch>> DiversifyDiscoveryWatchesAsync(
+        string query,
+        List<Watch> currentOrdered,
+        List<string> requestedDirections,
+        EntityMentions? mentions,
+        List<int>? excludedBrandIds)
+    {
+        if (currentOrdered.Count == 0 || requestedDirections.Count < 2)
+            return currentOrdered.Take(DiscoveryCardLimit).ToList();
+
+        var missingDirections = requestedDirections
+            .Where(direction => !currentOrdered.Any(watch => WatchMatchesDirection(watch, direction)))
+            .ToList();
+
+        if (missingDirections.Count == 0 && currentOrdered.Count >= Math.Min(DiscoveryCardLimit, requestedDirections.Count * 2))
+            return currentOrdered.Take(DiscoveryCardLimit).ToList();
+
+        var directionalQueries = requestedDirections
+            .Select(direction => new
+            {
+                Direction = direction,
+                Query = BuildDirectionalDiscoveryQuery(query, mentions, direction)
+            })
+            .DistinctBy(item => item.Query, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var directionalPools = new List<(string Direction, List<Watch> Watches)>();
+        foreach (var item in directionalQueries)
+        {
+            var searchResult = excludedBrandIds?.Count > 0
+                ? await _watchFinderService.FindWatchesAsync(item.Query, excludedBrandIds)
+                : await _watchFinderService.FindWatchesAsync(item.Query);
+            searchResult ??= new WatchFinderResult();
+
+            var watchIds = searchResult.Watches
+                .Take(DiscoveryCardLimit)
+                .Select(watch => watch.Id)
+                .Distinct()
+                .ToList();
+            var loaded = watchIds.Count > 0
+                ? await LoadWatchesByIdsAsync(watchIds)
+                : [];
+            if (loaded.Count == 0)
+                loaded = await LoadDirectionalFallbackWatchesAsync(item.Direction, mentions, excludedBrandIds);
+
+            var matched = loaded
+                .Where(watch => WatchMatchesDirection(watch, item.Direction))
+                .ToList();
+            if (matched.Count == 0)
+                matched = await LoadDirectionalFallbackWatchesAsync(item.Direction, mentions, excludedBrandIds);
+
+            directionalPools.Add((item.Direction, matched));
+        }
+        var merged = new List<Watch>();
+        var seenSlugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddWatch(Watch watch)
+        {
+            if (merged.Count >= DiscoveryCardLimit || string.IsNullOrWhiteSpace(watch.Slug))
+                return;
+
+            if (seenSlugs.Add(watch.Slug))
+                merged.Add(watch);
+        }
+
+        foreach (var direction in requestedDirections)
+        {
+            foreach (var watch in directionalPools
+                .Where(pool => string.Equals(pool.Direction, direction, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(pool => pool.Watches)
+                .Take(3))
+            {
+                AddWatch(watch);
+            }
+        }
+
+        foreach (var watch in currentOrdered)
+            AddWatch(watch);
+
+        foreach (var watch in directionalPools.SelectMany(pool => pool.Watches))
+            AddWatch(watch);
+
+        return merged.Count > 0
+            ? merged.Take(DiscoveryCardLimit).ToList()
+            : currentOrdered.Take(DiscoveryCardLimit).ToList();
+    }
+
+    private static List<string> DetectDiscoveryDirections(string query)
+    {
+        var directions = new List<string>();
+        AddDiscoveryDirectionIfMatched(directions, query, "art", @"\b(?:art|artistic|artisan|craft|craftsmanship|metiers d'?art|rare handcraft)\b");
+        AddDiscoveryDirectionIfMatched(directions, query, "diver", @"\b(?:dive|diver|diving|tool watch|tool watches)\b");
+        AddDiscoveryDirectionIfMatched(directions, query, "dress", @"\b(?:dress|formal|elegant|black tie)\b");
+        AddDiscoveryDirectionIfMatched(directions, query, "sport", @"\b(?:sport|sporty|sports|everyday sport|luxury sport)\b");
+        return directions;
+    }
+
+    private static void AddDiscoveryDirectionIfMatched(List<string> directions, string query, string direction, string pattern)
+    {
+        if (Regex.IsMatch(query, pattern, RegexOptions.IgnoreCase) && !directions.Contains(direction, StringComparer.OrdinalIgnoreCase))
+            directions.Add(direction);
+    }
+
+    private static string FormatDirectionLabel(string direction) => direction switch
+    {
+        "art" => "art-led watches",
+        "diver" => "dive watches",
+        "dress" => "dress watches",
+        "sport" => "sport watches",
+        _ => direction
+    };
+
+    private static bool WatchMatchesDirection(Watch watch, string direction)
+    {
+        var styles = watch.Collection?.Styles ?? [];
+        if (styles.Contains(direction, StringComparer.OrdinalIgnoreCase))
+            return true;
+
+        var searchable = $"{watch.Description} {watch.Collection?.Name} {watch.Collection?.Description}";
+        return direction switch
+        {
+            "art" => Regex.IsMatch(searchable, @"\b(?:metiers d'?art|guilloche|enamel|engraving|miniature painting|gem[- ]setting|urushi|maki[- ]e)\b", RegexOptions.IgnoreCase),
+            "diver" => Regex.IsMatch(searchable, @"\b(?:dive|diver|diving|seamaster|submariner|marine|polaris)\b", RegexOptions.IgnoreCase),
+            "dress" => Regex.IsMatch(searchable, @"\b(?:dress|formal|elegant|patrimony|calatrava|ultra thin)\b", RegexOptions.IgnoreCase),
+            "sport" => Regex.IsMatch(searchable, @"\b(?:sport|sporty|chronograph|gmt|nautilus|overseas|royal oak)\b", RegexOptions.IgnoreCase),
+            _ => false
+        };
+    }
+
+    private async Task<List<Watch>> LoadDirectionalFallbackWatchesAsync(
+        string direction,
+        EntityMentions? mentions,
+        List<int>? excludedBrandIds)
+    {
+        var query = _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .AsNoTracking()
+            .Where(w => w.Collection != null && w.Collection.Styles.Contains(direction));
+
+        if (mentions?.Brands.Count > 0)
+        {
+            var brandIds = mentions.Brands.Select(brand => brand.Id).ToList();
+            query = query.Where(w => brandIds.Contains(w.BrandId));
+        }
+
+        if (excludedBrandIds?.Count > 0)
+            query = query.Where(w => !excludedBrandIds.Contains(w.BrandId));
+
+        return await query
+            .OrderBy(w => w.Brand!.Name)
+            .ThenBy(w => w.Collection!.Name)
+            .ThenBy(w => w.Name)
+            .Take(DiscoveryCardLimit)
+            .ToListAsync();
+    }
+
+    private static string BuildDirectionalDiscoveryQuery(string originalQuery, EntityMentions? mentions, string direction)
+    {
+        var parts = new List<string>();
+        parts.AddRange((mentions?.Brands ?? [])
+            .Where(brand => !string.IsNullOrWhiteSpace(brand.Name))
+            .Select(brand => brand.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2));
+
+        parts.Add(direction switch
+        {
+            "art" => "art watches",
+            "diver" => "dive watches",
+            "dress" => "dress watches",
+            "sport" => "sport watches",
+            _ => originalQuery
+        });
+
+        var budgetClause = ExtractBudgetClause(originalQuery);
+        if (!string.IsNullOrWhiteSpace(budgetClause))
+            parts.Add(budgetClause);
+
+        return string.Join(" ", parts.Where(part => !string.IsNullOrWhiteSpace(part))).Trim();
+    }
+
+    private static string? ExtractBudgetClause(string query)
+    {
+        var match = Regex.Match(
+            query,
+            @"\b(?:under|below|over|above|around)\s+\$?\d[\d,]*(?:\s*k)?\b|\bbetween\s+\$?\d[\d,]*(?:\s*k)?\s+(?:and|to)\s+\$?\d[\d,]*(?:\s*k)?\b",
+            RegexOptions.IgnoreCase);
+        return match.Success ? match.Value.Trim() : null;
+    }
+
+    private static string BuildGroundedDiscoveryMessage(List<Watch> ordered, bool includeSearchAction, List<string>? requestedDirections = null)
     {
         if (ordered.Count == 0)
             return NoCloseMatchMessage;
+
+        requestedDirections ??= [];
+        if (requestedDirections.Count >= 2)
+        {
+            var representatives = requestedDirections
+                .Select(direction => (Direction: direction, Watch: ordered.FirstOrDefault(watch => WatchMatchesDirection(watch, direction))))
+                .Where(entry => entry.Watch != null)
+                .ToList();
+
+            if (representatives.Count >= 2)
+            {
+                var leftWatch = representatives[0].Watch!;
+                var rightWatch = representatives[1].Watch!;
+                var leftLink = $"[{BuildWatchTitle(leftWatch)}](/watches/{leftWatch.Slug})";
+                var rightLink = $"[{BuildWatchTitle(rightWatch)}](/watches/{rightWatch.Slug})";
+                var closeMixed = includeSearchAction
+                    ? "Open Smart Search to broaden either direction, or ask Tourbillon to narrow the final picks."
+                    : "If you want, ask Tourbillon to narrow the final picks or compare the strongest two side by side.";
+
+                return $"{leftLink} carries the {FormatDirectionLabel(representatives[0].Direction)} side of the brief, while {rightLink} covers the {FormatDirectionLabel(representatives[1].Direction)} angle. {closeMixed}";
+            }
+        }
 
         var first = ordered[0];
         var firstBrandLink = first.Brand != null && !string.IsNullOrWhiteSpace(first.Brand.Slug)
@@ -1766,11 +1991,14 @@ public class ChatService
 
     private static bool ShouldKeepDeterministicResolutionMessage(string? aiMessage, ChatResolution resolution)
     {
-        if (string.IsNullOrWhiteSpace(aiMessage) || string.IsNullOrWhiteSpace(resolution.Message))
+        if (string.IsNullOrWhiteSpace(resolution.Message))
             return false;
 
         if (resolution.WatchCards.Count == 0 && resolution.Actions.Count == 0)
             return false;
+
+        if (string.IsNullOrWhiteSpace(aiMessage))
+            return true;
 
         return IsGenericAiFallbackMessage(aiMessage)
             || IsUngroundedCatalogueReply(aiMessage, resolution);
@@ -1810,6 +2038,44 @@ public class ChatService
             .Distinct(StringComparer.OrdinalIgnoreCase);
 
         return candidates.Any(candidate => normalizedMessage.Contains(candidate, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<bool> MentionsUnsupportedResolvedEntitiesAsync(string message, ChatResolution resolution)
+    {
+        if (string.IsNullOrWhiteSpace(message) || resolution.WatchCards.Count == 0)
+            return false;
+
+        var normalizedMessage = NormalizeEntityText(message);
+        if (string.IsNullOrWhiteSpace(normalizedMessage))
+            return false;
+
+        var allowedNames = resolution.WatchCards
+            .SelectMany(card => new[] { card.BrandName, card.CollectionName, card.Name })
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => NormalizeEntityText(value!))
+            .Where(value => value.Length >= 4)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var brandNames = await _context.Brands
+            .AsNoTracking()
+            .Select(brand => brand.Name)
+            .ToListAsync();
+        var collectionNames = await _context.Collections
+            .AsNoTracking()
+            .Select(collection => collection.Name)
+            .ToListAsync();
+
+        var knownNames = brandNames
+            .Concat(collectionNames)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => NormalizeEntityText(name))
+            .Where(name => name.Length >= 4)
+            .Where(name => !_genericCollectionWords.Contains(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        return knownNames.Any(name =>
+            !allowedNames.Contains(name)
+            && normalizedMessage.Contains(name, StringComparison.OrdinalIgnoreCase));
     }
 
     private ChatResolution BuildExactWatchResolution(Watch watch, string? canonicalQuery = null)
@@ -2009,17 +2275,23 @@ public class ChatService
         var distinctSlugs = slugs
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(5)
+            .Take(DiscoveryCardLimit)
             .ToList();
 
         if (distinctSlugs.Count == 0) return [];
 
         var watches = await _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
             .Where(w => distinctSlugs.Contains(w.Slug))
             .AsNoTracking()
             .ToListAsync();
 
-        return watches.Select(ToChatWatchCard).ToList();
+        return distinctSlugs
+            .Select(slug => watches.FirstOrDefault(w => string.Equals(w.Slug, slug, StringComparison.OrdinalIgnoreCase)))
+            .Where(watch => watch != null)
+            .Select(watch => ToChatWatchCard(watch!))
+            .ToList();
     }
 
     private static List<ChatAction> MergeActions(List<ChatAction> preferred, List<ChatAction> secondary)
@@ -2211,9 +2483,15 @@ public class ChatService
 
         return Regex.IsMatch(
             query,
-            @"\b(?:show me something else|show me another|what else|anything else|another option|different option|different direction|not what i meant|not really|not quite|don't like|do not like|dislike|hate|skip these|skip those|avoid these|avoid those|those are not|these are not|they are not|isn't right|aren't right|wrong direction|too sporty|too dressy|too expensive|too big|too small|more artistic|more art|less sporty|less dressy|more formal|more casual)\b",
+            @"\b(?:show me something else|show me another|what else|anything else|another option|different option|different direction|not what i meant|not really|not quite|don't like|do not like|dislike|hate|skip these|skip those|avoid these|avoid those|those are not|these are not|they are not|isn't right|aren't right|wrong direction|too sporty|too dressy|too expensive|too big|too small|more artistic|more art|less sporty|less dressy|more formal|more casual|make the list richer|richer list|separate the .* direction|split by intent|group(?:ed)? guidance|introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|strongest final shortlist)\b",
             RegexOptions.IgnoreCase);
     }
+
+    private static bool LooksLikeShortlistContinuation(string query) =>
+        Regex.IsMatch(
+            query,
+            @"\b(?:introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|final answer|mixed shortlist|which two are the clearest|art-led pick|dive-led pick|not just \w+ this time|compare the strongest)\b",
+            RegexOptions.IgnoreCase);
 
     // Detects refinement queries that contain only price/budget signals — no watch vocabulary.
     // Used to keep pure price follow-ups ("under 10k", "what about 20,000?") in the discovery
@@ -2661,14 +2939,17 @@ public class ChatService
         string? baseQuery,
         string revisionFocus)
     {
-        if (!string.IsNullOrWhiteSpace(revisionFocus) && CountWords(revisionFocus) >= 2)
-            return revisionFocus;
-
         if (LooksLikePriceFollowUp(originalMessage) && !string.IsNullOrWhiteSpace(baseQuery))
             return $"{baseQuery} {originalMessage}".Trim();
 
-        if (!string.IsNullOrWhiteSpace(revisionFocus) && !string.IsNullOrWhiteSpace(baseQuery))
-            return $"{baseQuery} {revisionFocus}".Trim();
+        if (!string.IsNullOrWhiteSpace(baseQuery) && !string.IsNullOrWhiteSpace(revisionFocus))
+        {
+            var combined = $"{baseQuery} {revisionFocus}".Trim();
+            return combined;
+        }
+
+        if (!string.IsNullOrWhiteSpace(revisionFocus) && CountWords(revisionFocus) >= 2)
+            return revisionFocus;
 
         if (!string.IsNullOrWhiteSpace(baseQuery))
             return baseQuery.Trim();
@@ -2747,6 +3028,38 @@ public class ChatService
             .Select((watch, index) => $"{OrdinalLabel(index + 1)}: [{BuildWatchTitle(watch)}](/watches/{watch.Slug})")
             .ToList();
         return string.Join(" ", labels);
+    }
+
+    private static string BuildCardContinuationFallbackMessage(
+        List<Watch> watches,
+        bool isCompareFollowUp,
+        bool affirmative)
+    {
+        if (watches.Count == 0)
+            return NoCloseMatchMessage;
+
+        if (isCompareFollowUp && watches.Count >= 2)
+        {
+            var leftLink = $"[{BuildWatchTitle(watches[0])}](/watches/{watches[0].Slug})";
+            var rightLink = $"[{BuildWatchTitle(watches[1])}](/watches/{watches[1].Slug})";
+            return affirmative
+                ? $"{leftLink} and {rightLink} remain the active compare set. Tourbillon can keep sharpening the practical split between them."
+                : $"{leftLink} and {rightLink} are still the active compare anchors. Tourbillon can compare them further or narrow the brief from here.";
+        }
+
+        if (watches.Count == 1)
+        {
+            var watchLink = $"[{BuildWatchTitle(watches[0])}](/watches/{watches[0].Slug})";
+            return affirmative
+                ? $"{watchLink} is still the clearest active shortlist reference. Tourbillon can keep expanding on it or suggest a nearby alternative."
+                : $"{watchLink} is still the active shortlist reference. Tourbillon can narrow the brief further or compare it with another watch.";
+        }
+
+        var firstLink = $"[{BuildWatchTitle(watches[0])}](/watches/{watches[0].Slug})";
+        var secondLink = $"[{BuildWatchTitle(watches[1])}](/watches/{watches[1].Slug})";
+        return affirmative
+            ? $"{firstLink} and {secondLink} remain the strongest active shortlist anchors. Tourbillon can keep refining the shortlist from here."
+            : $"{firstLink} and {secondLink} remain the clearest active shortlist anchors. Tourbillon can group them, compare them, or narrow the shortlist further.";
     }
 
     private static string OrdinalLabel(int index) => index switch
