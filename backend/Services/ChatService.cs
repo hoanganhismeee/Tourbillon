@@ -535,7 +535,7 @@ public class ChatService
             var compareWatches = await TryResolveCompareWatchesAsync(canonicalMessage, lastWatchCards, mentions, compareScope);
             if (compareWatches.Count >= 2)
             {
-                var r = BuildCompareResolution(canonicalMessage, compareWatches);
+                var r = await BuildCompareResolutionAsync(canonicalMessage, compareWatches);
                 r.RoutingPath = "compare";
                 return r;
             }
@@ -830,6 +830,67 @@ public class ChatService
             var storedMentions = await ResolveMentionsFromSessionStateAsync(sessionState);
             if (storedMentions.HasAny)
                 return await BuildEntityInfoResolutionAsync(sessionState?.CanonicalQuery ?? query, storedMentions);
+        }
+
+        // "Show me more" in a compare context would otherwise re-echo the same cards.
+        // Instead, reload all models from the session's collections excluding already-shown slugs.
+        if (string.Equals(sessionState?.FollowUpMode, "compare", StringComparison.OrdinalIgnoreCase)
+            && sessionState?.CollectionIds.Count > 0
+            && LooksLikeExplicitMoreRequest(query))
+        {
+            var shownSlugs = lastWatchCards
+                .Select(c => c.Slug)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var moreWatches = await _context.Watches
+                .Include(w => w.Brand)
+                .Include(w => w.Collection)
+                .AsNoTracking()
+                .Where(w => sessionState.CollectionIds.Contains(w.CollectionId ?? 0)
+                    && !shownSlugs.Contains(w.Slug))
+                .OrderByDescending(w => w.CurrentPrice)
+                .Take(DiscoveryCardLimit)
+                .ToListAsync();
+
+            if (moreWatches.Count > 0)
+            {
+                var moreCards = moreWatches.Select(ToChatWatchCard).ToList();
+                var moreContext = new List<string>
+                {
+                    "The user wants to see more models from the collections already under discussion. Surface these additional models, note what distinguishes them from the earlier set, and invite the user to compare any two or narrow the brief."
+                };
+                foreach (var w in moreWatches)
+                    moreContext.Add(BuildWatchContext(w));
+
+                return new ChatResolution
+                {
+                    UseAi = true,
+                    Query = query,
+                    Context = moreContext,
+                    WatchCards = moreCards,
+                    Actions = [],
+                    RoutingPath = "compare_expand",
+                    SessionState = new ChatSessionState
+                    {
+                        CollectionIds = sessionState.CollectionIds,
+                        BrandIds = sessionState.BrandIds,
+                        WatchSlugs = moreCards.Select(c => c.Slug).Where(s => !string.IsNullOrWhiteSpace(s)).ToList(),
+                        FollowUpMode = "compare",
+                        CanonicalQuery = sessionState.CanonicalQuery,
+                    }
+                };
+            }
+
+            // All models from these collections have already been surfaced — return a message
+            // only (no cards) so the old set is not re-echoed.
+            return new ChatResolution
+            {
+                Message = "Those are all the current models from these collections in the Tourbillon catalogue. Let me know if you'd like to compare any two or explore a different brief.",
+                WatchCards = [],
+                Actions = [],
+                RoutingPath = "compare_expand",
+                SessionState = sessionState,
+            };
         }
 
         if (!LooksLikeContextualFollowUp(query) || lastWatchCards.Count == 0)
@@ -2166,10 +2227,8 @@ public class ChatService
         };
     }
 
-    private ChatResolution BuildCompareResolution(string query, List<Watch> watches)
+    private async Task<ChatResolution> BuildCompareResolutionAsync(string query, List<Watch> watches)
     {
-        var watchCards = watches.Select(ToChatWatchCard).ToList();
-        var links = watches.Select(w => $"[{BuildWatchTitle(w)}](/watches/{w.Slug})");
         var collections = watches
             .Where(w => w.Collection != null)
             .Select(w => w.Collection!)
@@ -2183,50 +2242,75 @@ public class ChatService
             .Select(g => g.First())
             .ToList();
         var isCollectionLevelCompare = IsCollectionLevelCompare(query, collections);
-        var context = new List<string>
-        {
-            isCollectionLevelCompare
-                ? "Tourbillon resolved a collection-level comparison. Compare guidance request: explain the identity and use-case split between the collections first, use the resolved watches only as representative examples, mention one practical buying distinction, stay concise, and end with a complete sentence. Assume the compare view will open immediately with these representative watches preloaded."
-                : "Tourbillon resolved a concrete comparison set. Compare guidance request: explain the main split in practical buying terms, stay concise, end with a complete sentence, and assume the compare view will open immediately with these exact watches preloaded."
-        };
 
+        // For collection-level compares, load all models from both collections (up to 5 each,
+        // 10 total) so the user can choose what to compare rather than seeing a single hardcoded
+        // representative per side. Prestige sort within each collection by price descending.
         if (isCollectionLevelCompare)
         {
+            var collectionIds = collections.Select(c => c.Id).ToList();
+            var allModels = new List<Watch>();
+            foreach (var collectionId in collectionIds)
+            {
+                var models = await _context.Watches
+                    .Include(w => w.Brand)
+                    .Include(w => w.Collection)
+                    .AsNoTracking()
+                    .Where(w => w.CollectionId == collectionId)
+                    .OrderByDescending(w => w.CurrentPrice)
+                    .Take(5)
+                    .ToListAsync();
+                allModels.AddRange(models);
+            }
+
+            var context = new List<string>
+            {
+                "Tourbillon resolved a collection-level comparison. Write a short character split between the two collections, then pick two specific models from the surfaced watches that best illustrate the contrast and naturally suggest comparing them. Do not use the phrase 'representative'. End with a short buying question."
+            };
             foreach (var collection in collections)
                 context.Add(BuildCollectionContext(collection));
-
             foreach (var brand in brands.Take(2))
                 context.Add(BuildBrandContext(brand));
-        }
+            foreach (var w in allModels)
+                context.Add(BuildWatchContext(w));
 
-        foreach (var watch in watches)
-            context.Add(BuildWatchContext(watch));
-
-        if (isCollectionLevelCompare)
-        {
+            var allCards = allModels.Select(ToChatWatchCard).ToList();
             return new ChatResolution
             {
-                Message = BuildCollectionCompareMessage(collections, brands, watches),
-                WatchCards = watchCards,
-                Actions =
-                [
-                    new ChatAction
-                    {
-                        Type = "compare",
-                        Label = "Compare these watches",
-                        Slugs = watchCards.Select(w => w.Slug).ToList()
-                    }
-                ],
-                SessionState = BuildSessionStateFromWatches(watches, "compare", BuildCanonicalEntityQuery(watches, query))
+                UseAi = true,
+                Query = query,
+                Context = context,
+                WatchCards = allCards,
+                Actions = [],
+                // AI suggests the pair in prose — suppress the auto-compare chip post-processing adds.
+                SuppressCompareSuggestion = true,
+                SessionState = new ChatSessionState
+                {
+                    CollectionIds = collectionIds,
+                    BrandIds = brands.Select(b => b.Id).Distinct().ToList(),
+                    WatchSlugs = allCards.Select(c => c.Slug).Where(s => !string.IsNullOrWhiteSpace(s)).ToList(),
+                    FollowUpMode = "compare",
+                    CanonicalQuery = BuildCanonicalEntityQuery(watches, query),
+                }
             };
         }
+
+        // Concrete compare (specific watch references resolved).
+        var watchCards = watches.Select(ToChatWatchCard).ToList();
+        var links = watches.Select(w => $"[{BuildWatchTitle(w)}](/watches/{w.Slug})");
+        var concreteContext = new List<string>
+        {
+            "Tourbillon resolved a concrete comparison set. Compare guidance request: explain the main split in practical buying terms, stay concise, end with a complete sentence, and assume the compare view will open immediately with these exact watches preloaded."
+        };
+        foreach (var watch in watches)
+            concreteContext.Add(BuildWatchContext(watch));
 
         return new ChatResolution
         {
             UseAi = true,
             Message = $"Tourbillon resolved this comparison set: {string.Join(", ", links)}. The compare view will open with these watches preloaded.",
             Query = query,
-            Context = context,
+            Context = concreteContext,
             WatchCards = watchCards,
             Actions =
             [
@@ -2495,6 +2579,14 @@ public class ChatService
         Regex.IsMatch(
             query,
             @"\b(?:introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|final answer|mixed shortlist|which two are the clearest|art-led pick|dive-led pick|not just \w+ this time|compare the strongest)\b",
+            RegexOptions.IgnoreCase);
+
+    // Detects explicit "show me more / expand the list" intent, used to avoid re-echoing
+    // the same watch cards when the user wants additional models rather than a continuation.
+    private static bool LooksLikeExplicitMoreRequest(string query) =>
+        Regex.IsMatch(
+            query,
+            @"\b(?:show me more|more models?|more result|more watches?|more options?|expand|see more|all models?|full list|other models?|what else is there|what other)\b",
             RegexOptions.IgnoreCase);
 
     // Detects refinement queries that contain only price/budget signals — no watch vocabulary.
