@@ -46,7 +46,8 @@
 | 11 Smart Search (AI Watch Finder) refinement | Done | 11 |
 | 11 User (Auth/Anonymous Taste Profile logic improvement) | Done | 11 |
 | 12 Trend Page Enhancements (product trends, staff pick, most viewed over 7/14/30 days, user DNA) | Done | 12 |
-| 13 Chat Concierge integration with core product features (Compare, Cursor, AI-first routing) | Done | 13 |
+| 13 Chat Concierge integration with core product features (Compare, Cursor, grounded actions) | Done | 13 |
+| Chat Concierge Reliability Refactor (backend orchestration + typed compose contract) | In Progress | 13.5 |
 | Storage Abstraction + S3 + CloudFront Migration | Planned | 14 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | ? |
 
@@ -324,10 +325,10 @@ Floating conversational assistant available on every page — handles both speci
 - Conversation-aware: follow-ups reference earlier turns in session; state survives in-app navigation (layout.tsx mount, never unmounted on soft nav)
 
 **Architecture — reuses Phase 3 infrastructure:**
-- `ParseQueryIntentAsync` (no LLM) pre-filters brand/collection/reference number signals for query type routing
-- PRODUCT query (collection/watch name in query): fetch watch records → ai-service `/chat`
-- BRAND query (brand name, no model match): fetch DB description → optional limited brand-history web notes → ai-service `/chat`
-- GENERAL query (neither): vector search top-5 `watch_finder` embeddings as context → ai-service `/chat`
+- `ChatService` owns concierge orchestration and assembles grounded context before any wording call
+- `WatchFinderService` remains the source of truth for search intent and catalogue retrieval
+- Compare, exact-watch, follow-up, and revision paths are backend-resolved before the frontend sees the reply
+- `ai-service /chat` writes concierge copy for the resolved context; Phase 13.5 removes the remaining legacy dependence on model-emitted action strings
 - `QueryCacheService` caches first-turn (history-free) responses at cosine ≥ 0.92 — not applied to multi-turn
 - Rate limit: 5/day deployed (`ChatSettings:DailyLimit`); `DisableLimitInDev: true` for local
 
@@ -340,10 +341,10 @@ Floating conversational assistant available on every page — handles both speci
 **Full spec:** `docs/phase5-rag-chatbot.md`
 
 **Files involved:**
-- `ai-service/routes/chat.py`, `ai-service/prompts/chat.py` — `POST /chat`, response-language enforcement, action filtering, and limited brand-history web enrichment
+- `ai-service/routes/chat.py`, `ai-service/prompts/chat.py` — `POST /chat`, response-language enforcement, grounded wording, and limited brand-history web enrichment
 - `ai-service/requirements.txt` — `duckduckgo-search`
 - `backend/Controllers/ChatController.cs` — `POST /api/chat/message`, `DELETE /api/chat/session/{id}`
-- `backend/Services/ChatService.cs` — orchestration pipeline (PRODUCT/BRAND/GENERAL routing)
+- `backend/Services/ChatService.cs` — concierge orchestration and backend-issued action generation
 - `frontend/app/components/chat/ChatWidget.tsx`, `ChatPanel.tsx`
 - `frontend/app/layout.tsx` — mount ChatWidget
 - `frontend/lib/api.ts` — `sendChatMessage()`, `clearChatSession()`
@@ -565,7 +566,7 @@ Hardens the chat concierge to be a specialist watch advisor — grounded in Tour
 - Empty-context fallback: when vector search returns no matches, AI is told explicitly (prevents hallucination)
 - Collection.Style labels included in context for deterministic category awareness
 - Redis-backed session state keeps the last surfaced cards, compare scope, and follow-up mode so replies like `yes`, ordinal references, and short entity repeats continue from the prior turn
-- Chat actions now execute compare, cursor, and navigate actions directly, and Smart Search actions are rewritten into canonical catalogue terms instead of echoing raw conversational phrasing
+- Chat actions now execute compare, cursor, and navigate actions directly, and Smart Search actions are rewritten into canonical catalogue terms instead of echoing raw conversational phrasing. Phase 13.5 moves all core action ownership fully into backend orchestration.
 - Frontend passes a preferred-language hint so English prompts stop drifting into another language, and the ai-service retries when the draft response does not match the requested language
 
 **Hardening layers:**
@@ -597,6 +598,36 @@ The concierge hardening pass was re-run as a full loop against the live local st
 - Playwright confirmed `Explore the Calatrava collection` routes to `/collections/patek-philippe-calatrava`
 - Playwright confirmed `Compare these watches` routes to `/compare`
 - Backend build, backend tests, and frontend type-check all pass
+
+### Phase 13.5: Chat Concierge Reliability Refactor (IN PROGRESS)
+
+This phase addresses the main reliability gap in the concierge: overlapping decision-makers across `ChatService`, ai-service chat composition, and `WatchFinderService`.
+
+**What changes:**
+- Backend becomes the single orchestration authority for concierge behavior
+- `WatchFinderService` remains the source of truth for search intent and catalogue retrieval
+- `ChatService` classifies routes such as search, compare, entity info, continuation, revision, and general advice before any wording call
+- Backend builds watch cards and compare/search/navigate/cursor actions before the frontend sees the reply
+- `ai-service /chat` shifts toward grounded composition only for the resolved context instead of acting as a feature-trigger source
+
+**Why this phase exists:**
+- Retrieval quality is already strong: deterministic parsing, vector search, rerank, session memory, and style taxonomy are not the main instability
+- The weakness is control flow: legacy model-emitted `ACTIONS` and overlapping intent decisions make feature triggering feel random
+- The target design is simple: backend decides what the app does, ai-service explains it well
+
+**Planned migration steps:**
+1. Keep the current frontend response shape: `message`, `watchCards`, `actions`
+2. Move all core compare/search/navigation action generation into backend `ChatService`
+3. Reduce ai-service `/chat` to a composition contract for grounded wording
+4. Remove legacy `_extract_actions()` and `_filter_actions()` from the critical path after rollout
+
+**Primary files:**
+- `backend/Services/ChatService.cs`
+- `backend/Services/WatchFinderService.cs`
+- `ai-service/routes/chat.py`
+- `ai-service/prompts/chat.py`
+- `frontend/contexts/ChatContext.tsx`
+- `frontend/app/components/chat/ChatPanel.tsx`
 
 ### Slug-Based URLs + Cloudinary Public ID Sync (IN PROGRESS)
 

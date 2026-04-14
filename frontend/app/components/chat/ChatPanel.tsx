@@ -21,8 +21,50 @@ const EXAMPLE_PROMPTS = [
   'Best diving watch from Rolex',
 ];
 
+const ASSISTANT_REVEAL_START_MS = 140;
+
 type NavigateFn = (href: string) => void;
 type ActionStatus = 'idle' | 'loading' | 'error';
+
+function splitRevealChunks(text: string): string[] {
+  const tokens = text.match(/\n+|[^\s]+\s*/g) ?? [];
+  if (tokens.length === 0) return [text];
+
+  const chunks: string[] = [];
+  let buffer = '';
+
+  tokens.forEach((token, index) => {
+    buffer += token;
+
+    const trimmedToken = token.trim();
+    const isLineBreak = /\n/.test(token);
+    const isSentenceEnd = /[.!?]$/.test(trimmedToken);
+    const isClauseEnd = /[,;:]$/.test(trimmedToken);
+    const isLongChunk = buffer.length >= 34;
+    const isEarlyChunk = index < 3 && buffer.length >= 18;
+    const isLastToken = index === tokens.length - 1;
+
+    if (isLineBreak || isSentenceEnd || (isClauseEnd && buffer.length >= 20) || isLongChunk || isEarlyChunk || isLastToken) {
+      chunks.push(buffer);
+      buffer = '';
+    }
+  });
+
+  if (buffer) {
+    chunks.push(buffer);
+  }
+
+  return chunks.length > 0 ? chunks : [text];
+}
+
+function getRevealDelay(chunk: string): number {
+  const trimmed = chunk.trim();
+  if (!trimmed) return 70;
+  if (chunk.includes('\n')) return 170;
+  if (/[.!?]$/.test(trimmed)) return 220;
+  if (/[,;:]$/.test(trimmed)) return 150;
+  return 95;
+}
 
 function renderInlineMarkdown(
   text: string,
@@ -394,9 +436,105 @@ function ActionChips({
   );
 }
 
+function AssistantMessage({
+  text,
+  watchCards,
+  actions,
+  messageKey,
+  animate,
+  autoExecute,
+  onSendMessage,
+  onRevealProgress,
+}: {
+  text: string;
+  watchCards?: ChatWatchCard[];
+  actions?: ChatAction[];
+  messageKey: string;
+  animate: boolean;
+  autoExecute: boolean;
+  onSendMessage?: (text: string) => void;
+  onRevealProgress?: () => void;
+}) {
+  const [visibleText, setVisibleText] = useState(animate ? '' : text);
+  const [isComplete, setIsComplete] = useState(!animate);
+  const onRevealProgressRef = useRef(onRevealProgress);
+
+  useEffect(() => {
+    onRevealProgressRef.current = onRevealProgress;
+  }, [onRevealProgress]);
+
+  useEffect(() => {
+    if (!animate) {
+      setVisibleText(text);
+      setIsComplete(true);
+      return;
+    }
+
+    const chunks = splitRevealChunks(text);
+    let chunkIndex = 0;
+    let assembled = '';
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    setVisibleText('');
+    setIsComplete(false);
+
+    const revealNextChunk = () => {
+      const nextChunk = chunks[chunkIndex];
+      if (nextChunk === undefined) {
+        setIsComplete(true);
+        onRevealProgressRef.current?.();
+        return;
+      }
+
+      assembled += nextChunk;
+      chunkIndex += 1;
+      setVisibleText(assembled);
+      onRevealProgressRef.current?.();
+
+      if (chunkIndex >= chunks.length) {
+        setIsComplete(true);
+        return;
+      }
+
+      timeoutId = setTimeout(revealNextChunk, getRevealDelay(nextChunk));
+    };
+
+    timeoutId = setTimeout(revealNextChunk, ASSISTANT_REVEAL_START_MS);
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [animate, text]);
+
+  return (
+    <>
+      {isComplete ? (
+        <MarkdownMessage text={text} />
+      ) : (
+        <div className="whitespace-pre-wrap">
+          {visibleText}
+          <span className="ml-0.5 inline-block h-[1em] w-px translate-y-[2px] animate-pulse bg-[#bfa68a]/70 align-middle" />
+        </div>
+      )}
+      {isComplete && watchCards && watchCards.length > 0 && (
+        <WatchCardRow cards={watchCards} />
+      )}
+      {isComplete && actions && actions.length > 0 && (
+        <ActionChips
+          actions={actions}
+          messageKey={messageKey}
+          autoExecute={autoExecute}
+          onSendMessage={onSendMessage}
+        />
+      )}
+    </>
+  );
+}
+
 export default function ChatPanel() {
   const { messages, isLoading, dailyUsed, dailyLimit, sendMessage, clearSession } = useChat();
   const [input, setInput] = useState('');
+  const [revealTick, setRevealTick] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mountTimeRef = useRef(Date.now());
@@ -408,7 +546,7 @@ export default function ChatPanel() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+  }, [messages, isLoading, revealTick]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -504,21 +642,25 @@ export default function ChatPanel() {
                 }`}
                 style={message.role === 'assistant' ? { background: 'rgba(255,255,255,0.05)' } : undefined}
               >
-                <MarkdownMessage text={message.content} />
-                {message.watchCards && message.watchCards.length > 0 && (
-                  <WatchCardRow cards={message.watchCards} />
-                )}
-                {message.actions && message.actions.length > 0 && (
-                  <ActionChips
+                {message.role === 'assistant' ? (
+                  <AssistantMessage
+                    text={message.content}
+                    watchCards={message.watchCards}
                     actions={message.actions}
                     messageKey={message.id ?? `message-${index}`}
+                    animate={
+                      index === messages.length - 1
+                      && (message.createdAt ?? 0) >= mountTimeRef.current
+                    }
                     autoExecute={
-                      message.role === 'assistant'
-                      && index === messages.length - 1
+                      index === messages.length - 1
                       && (message.createdAt ?? 0) >= mountTimeRef.current
                     }
                     onSendMessage={(text) => void handlePromptClick(text)}
+                    onRevealProgress={() => setRevealTick((tick) => tick + 1)}
                   />
+                ) : (
+                  <MarkdownMessage text={message.content} />
                 )}
               </div>
             </div>

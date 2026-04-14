@@ -322,35 +322,39 @@ Every new message pattern that the regex does not cover requires a code patch. "
 
 **This approach scales linearly with the number of patterns you have manually discovered.**
 
-### AI-first
+### Backend-orchestrated routing
 
-The message is passed directly to the AI. The system prompt tells the AI what the concierge does and what it should decline. The AI's language understanding handles the classification.
+The message is resolved by backend orchestration first. The backend decides which feature should run, fetches the needed catalogue data, builds structured actions, and then asks the AI to write the reply for that resolved context.
 
 ```
 message: "something elegant for a gala"
   |
   v
-AI (with system prompt: "you are a watch concierge, refuse off-topic requests")
+backend route classification
+  -> search flow
+  -> WatchFinder resolves the shortlist
+  -> backend builds cards and actions
   |
   v
-AI understands this as a shopping/occasion query, returns watch suggestions
+AI writes the concierge explanation for those exact watches
 ```
 
 ```
 message: "what's the weather"
   |
   v
-AI: "I specialise in Tourbillon watches and horology..."
-    ACTIONS: [{"type":"suggest",...}, ...]
+backend route classification
+  -> out-of-scope guidance
+  -> backend returns refusal or safe suggestions
 ```
 
-No code patch needed. The AI handles "PP Nautilus", "gift for my girlfriend", "something slim for summer", "yes please show me the details" — all without a line of regex.
+No routing patch is needed for every new phrase. Backend state and retrieval stay stable, while the AI focuses on explaining the result set that was already resolved.
 
-**This approach scales with the model's language understanding, which is already very broad.**
+**This approach scales with deterministic app behavior and grounded AI wording, which is a better fit for this project.**
 
-### Where code-first is still correct
+### Where backend-first is still correct
 
-Code-first is right when there is zero ambiguity and the AI adds no value:
+Backend-first is right when there is zero ambiguity and the AI adds no value:
 
 | Route | Why code handles it |
 |---|---|
@@ -359,7 +363,7 @@ Code-first is right when there is zero ambiguity and the AI adds no value:
 | DB slug lookup (brand, collection) | Must query the database regardless; AI cannot do this |
 | Compare with two resolved slugs | Structured action; routing decision is purely mechanical |
 
-The design principle: **C# owns data retrieval and structured actions. The AI owns language understanding and intent classification.**
+The design principle: **C# owns data retrieval, routing, and structured actions. The AI owns grounded wording and explanation.**
 
 ---
 
@@ -393,31 +397,29 @@ Response:               Accurate, grounded, linked answer — no code patch for 
 
 ## 16. Tool Calling — The Long-Term Architecture
 
-The current pipeline calls the AI once per message, with context assembled in C# beforehand. The AI generates a text response with optional structured `ACTIONS`.
-
-A more scalable architecture — used by ChatGPT plugins and Claude Projects — is tool calling. Instead of C# deciding what context to fetch, the AI decides.
+The current concierge pipeline still has some legacy support for model-emitted `ACTIONS`, but the better architecture for this project is simpler:
 
 ```
-User: "gift for my girlfriend who likes blue dials"
+User message
   |
   v
-AI (with tools available):
-  -> calls search_catalogue({ query: "blue dial women's dress watch" })
-  -> receives results from the database
-  -> generates response grounded in those results
-  -> emits compare ACTION if two strong matches
+Backend route classification
+  -> decide search / compare / entity info / continuation / revision
+  -> fetch data from the database and WatchFinder
+  -> build structured actions
+  |
+  v
+AI composition
+  -> write the grounded concierge reply for the resolved context
 ```
 
-The AI has access to a defined set of tools (database search, brand lookup, collection lookup) and calls them in the order it decides. C# executes the tool calls and returns structured results. The AI reasons over the results and generates the final response.
+This keeps the responsibilities clean:
 
-**Why this matters:**
-- C# does not need to classify intent at all — the AI picks the right tool
-- No regex for shopping queries, occasion phrasing, or contextual follow-ups
-- New query types are handled automatically if they map to an existing tool
-- The AI can chain tool calls: "look up brand, then search its collections, then compare two watches" in one turn
+- C# owns routing and structured actions
+- `WatchFinderService` owns search intent and retrieval
+- AI owns language, explanation, and polish
 
-**Current tradeoff vs the present pipeline:**
-Tool calling requires more LLM calls per message (one for tool selection, one for the response, possibly more for multi-step queries). This increases latency and cost. The current hybrid approach (deterministic routing + single AI call) is a pragmatic optimisation for the current scale. Tool calling becomes worth it as query complexity and user expectations grow.
+Tool calling is still a possible future architecture, but it is not required to fix concierge reliability. The immediate gain comes from removing overlapping decision-makers, not from adding a more agentic tool layer.
 
 ---
 
@@ -439,8 +441,6 @@ Tool calling requires more LLM calls per message (one for tool selection, one fo
 | nomic-embed-text     | The fixed embedding model — same input always produces same output               |
 | Output tokens        | Max length of the AI's reply — does not affect routing or intent classification  |
 | Input context tokens | What the AI is given to reason over — assembled from DB before the AI is called  |
-| Code-first routing   | C# regex decides whether to call the AI — scales poorly with new query patterns  |
-| AI-first routing     | AI sees all messages and classifies intent — scales with the model's language understanding |
-| Tool calling         | AI decides which data to fetch by calling defined tools — eliminates routing code entirely |
-
-
+| Legacy action parsing | Model emits text-based actions that backend then parses and filters |
+| Backend orchestration | Backend decides search/compare/navigation behavior before the AI writes the reply |
+| Tool calling         | AI decides which data to fetch by calling defined tools — optional future architecture |

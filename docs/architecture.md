@@ -68,7 +68,7 @@ Entry point: `backend/Program.cs`
 - `WatchFilterMapper` — Maps parsed intent to SQL predicates.
 - `WatchEmbeddingService` — Builds 4 text chunks per watch (full, brand_style, specs, use_case), calls ai-service `/embed` in true batches (50 watches / 200 texts per HTTP call), upserts into WatchEmbeddings. Category taxonomy is deterministic (`InferCategory`, `InferOccasions`).
 - `QueryCacheService` — Persistent semantic query cache. Cosine similarity threshold 0.92. Cache bypassed when hard SQL filters detected.
-- `ChatService` — Chat concierge orchestration. Deterministic fast paths handle greetings, abusive inputs, cursor commands, exact slug resolution, ordinal follow-ups, compare requests, and recommendation revisions when the user rejects a shortlist. Discovery corrections now trigger a fresh catalogue search, replace the visible watch cards, and persist rejected brands/watch slugs in Redis-backed session state so the same poor-fit results are not resurfaced immediately. The AI prompt stays strictly Tourbillon-grounded, gives one short fit reason per surfaced watch, and uses description text as supporting context rather than pasted answer copy. Signed-in users also send a compact Watch DNA + behavior summary so responses can adapt to inferred taste without exposing raw profile internals. The frontend also sends an explicit response-language hint, which the backend normalizes before forwarding to ai-service. Redis session store carries history, last surfaced cards, compare scope, and follow-up mode with a 1-hour TTL. Rate-limited per user/day. Limited web enrichment is allowed only for approved brand-history questions, treated as secondary context that cannot override catalogue facts or create shopping actions.
+- `ChatService` — Chat concierge orchestration and the long-term control-flow authority for concierge behavior. Deterministic fast paths already handle greetings, abusive inputs, cursor commands, exact slug resolution, ordinal follow-ups, compare requests, and recommendation revisions when the user rejects a shortlist. Discovery corrections trigger a fresh catalogue search, replace the visible watch cards, and persist rejected brands/watch slugs in Redis-backed session state so the same poor-fit results are not resurfaced immediately. Signed-in users also send a compact Watch DNA + behavior summary so responses can adapt to inferred taste without exposing raw profile internals. The frontend sends an explicit response-language hint, which the backend normalizes before forwarding to ai-service. Redis session store carries history, last surfaced cards, compare scope, and follow-up mode with a 1-hour TTL. Rate-limited per user/day. Limited web enrichment is allowed only for approved brand-history questions, treated as secondary context that cannot override catalogue facts or create shopping actions. Phase 13.5 removes the remaining legacy reliance on model-emitted chat actions so backend-issued actions become the only feature-trigger path.
 - `TasteProfileService` — Watch DNA. Two AI paths: `ParseAndSaveAsync` (manual text → `/parse-taste`) and `GenerateFromBehaviorAsync` (browsing events → `/generate-dna-from-behavior`). Manual taste remains the durable source of truth; behavior analysis is stored separately and only fills gaps in the effective profile. `ScoreWatch()` is a pure static method (brand +3, material +2, dial +2, size +1, price +1 = 9 max). Zero AI cost at browse time.
 - `BehaviorService` — Browsing event storage for Watch DNA. `FlushEventsAsync` bulk-inserts with time-window deduplication (single batch query). `MergeAnonymousAsync` reassigns anonymous events to an existing signed-in user when that browser history is intentionally attached to the account. `GetRecentEventsAsync` returns recent events for AI profile generation. Requires ≥ 3 events before generation is attempted.
 - `WatchEditorialService` — Editorial content per collection. Generated once, stored in DB, served at zero runtime cost. 339/339 coverage.
@@ -200,7 +200,7 @@ Email: `TestEmailDto`
 - `AuthContext` — User auth state, login/logout, profile. Existing-account sign-ins flush and merge the current anonymous Watch DNA buffer; new-account completions and logout reset the anonymous browser state instead.
 - `WatchesPageContext` — Watch listing, filter, pagination state
 - `NavigationContext` — Navigation state
-- `ChatContext` — Chat concierge state. Persists session ID, visible message history, and usage counters in `sessionStorage` so chat survives soft navigation and hard refresh in the same tab. It forwards the browser's preferred language with every message. When authenticated, it also fetches the user's Watch DNA profile and folds a compact taste summary into chat requests. Fresh compare, cursor, and navigate actions are executed client-side from the latest assistant turn, with `navigate` routing through the Next.js router instead of being echoed back into chat. Corrective follow-ups such as “show me something else” now receive a revised watch row from the backend instead of commentary on the old cards.
+- `ChatContext` — Chat concierge state. Persists session ID, visible message history, and usage counters in `sessionStorage` so chat survives soft navigation and hard refresh in the same tab. It forwards the browser's preferred language with every message. When authenticated, it also fetches the user's Watch DNA profile and folds a compact taste summary into chat requests. Backend-issued compare, cursor, search, and navigate actions are executed client-side, with `navigate` routing through the Next.js router instead of being echoed back into chat. Corrective follow-ups such as “show me something else” now receive a revised watch row from the backend instead of commentary on the old cards.
 - `CursorContext` — Custom cursor state
 
 ### Key Libraries
@@ -270,11 +270,21 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 | `POST /watch-finder/rerank` | Candidate pool -> scores-only array (LLM call) |
 | `POST /watch-finder/explain` | Single-watch on-demand explanation (cached) |
 | `POST /embed` | Batch text -> float[768] embeddings via nomic-embed-text (no LLM) |
-| `POST /chat` | Conversational response from compact Tourbillon-first context, with optional limited web notes for approved brand-history questions |
+| `POST /chat` | Conversational wording and composition from compact Tourbillon-first context, with optional limited web notes for approved brand-history questions. Legacy action parsing still exists in the current implementation and is being retired by Phase 13.5. |
 | `POST /parse-taste` | Free-text -> structured taste preferences JSON (LLM call) |
 | `POST /generate-dna-from-behavior` | Browsing events array -> structured taste preferences + `summary` string (LLM call) |
 | `GET /ready` | 503 until model warmup completes, 200 after |
 | `GET /health` | Always 200, includes readiness flag |
+
+### Chat Concierge Routing
+
+Target direction for concierge reliability:
+
+- `ChatService` classifies the request and owns the app behavior.
+- `WatchFinderService` remains the single source of truth for search intent and catalogue retrieval.
+- The backend builds watch cards and actions before the frontend sees the reply.
+- `ai-service /chat` writes the grounded concierge copy for the resolved context instead of deciding compare, search, or navigation behavior.
+- The frontend executes backend-issued actions.
 
 **Models loaded at startup:** `qwen2.5:7b` (LLM) + `nomic-embed-text` (embeddings). Both run in the same Ollama container.
 
