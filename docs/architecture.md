@@ -270,7 +270,7 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 | `POST /watch-finder/rerank` | Candidate pool -> scores-only array (LLM call) |
 | `POST /watch-finder/explain` | Single-watch on-demand explanation (cached) |
 | `POST /embed` | Batch text -> float[768] embeddings via nomic-embed-text (no LLM) |
-| `POST /chat` | Conversational wording and composition from compact Tourbillon-first context, with optional limited web notes for approved brand-history questions. Legacy action parsing still exists in the current implementation and is being retired by Phase 13.5. |
+| `POST /chat` | Conversational wording and composition from compact Tourbillon-first context, with optional limited web notes for approved brand-history questions. Always returns an empty actions list — backend generates all compare/search/navigate/cursor/suggest actions before the reply reaches the frontend. |
 | `POST /parse-taste` | Free-text -> structured taste preferences JSON (LLM call) |
 | `POST /generate-dna-from-behavior` | Browsing events array -> structured taste preferences + `summary` string (LLM call) |
 | `GET /ready` | 503 until model warmup completes, 200 after |

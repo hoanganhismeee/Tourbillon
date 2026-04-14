@@ -9,18 +9,6 @@ from flask import jsonify, request
 from core.runtime import Runtime
 from prompts.chat import CHAT_SYSTEM_PROMPT
 
-ALLOWED_CURSOR_STYLES = {
-    "default",
-    "tourbillon",
-    "crosshair",
-    "lumed",
-    "hand",
-    "bezel",
-    "compass",
-    "sapphire",
-    "rotor",
-}
-
 LANGUAGE_HINTS = {
     "en": "english",
     "english": "english",
@@ -51,26 +39,12 @@ LANGUAGE_KEYWORDS = {
 }
 
 
-def _extract_actions(raw: str) -> tuple[str, list]:
-    """Extract and strip any ACTIONS: [...] lines from the LLM response."""
-    lines = raw.rstrip().splitlines()
-    actions = []
-    text_lines: list[str] = []
-
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("ACTIONS:"):
-            payload = stripped[len("ACTIONS:") :].strip()
-            try:
-                parsed = json.loads(payload)
-                if isinstance(parsed, list):
-                    actions.extend(item for item in parsed if isinstance(item, dict))
-            except Exception:
-                pass
-            continue
-        text_lines.append(line)
-
-    return "\n".join(text_lines).strip(), actions
+def _strip_action_lines(raw: str) -> str:
+    """Drop any legacy ACTIONS lines so stale model behavior never leaks into replies."""
+    return "\n".join(
+        line for line in raw.rstrip().splitlines()
+        if not line.strip().startswith("ACTIONS:")
+    ).strip()
 
 
 def _truncate_chat_response(text: str, max_words: int = 130) -> str:
@@ -301,54 +275,6 @@ def _filter_internal_links(text: str, context: list[str]) -> str:
     return re.sub(r"\[([^\]]+)\]\(([^)]+)\)", replace, text)
 
 
-def _filter_actions(actions: list, context: list[str]) -> list:
-    """Keep only actions that reference store entities already present in context."""
-    allowed = _allowed_catalogue_paths(context)
-    filtered: list = []
-
-    for action in actions:
-        if not isinstance(action, dict):
-            continue
-
-        action_type = str(action.get("type") or "").strip().lower()
-        label = str(action.get("label") or "").strip()
-
-        if action_type == "compare":
-            slugs = [
-                slug for slug in action.get("slugs") or []
-                if isinstance(slug, str) and f"/watches/{slug}" in allowed
-            ]
-            slugs = list(dict.fromkeys(slugs))
-            if len(slugs) >= 2:
-                filtered.append({
-                    "type": "compare",
-                    "slugs": slugs,
-                    "label": label or "Compare these watches",
-                })
-        elif action_type == "search":
-            query = str(action.get("query") or "").strip()
-            if query and not re.search(
-                r"\b(?:change the cursor|set the cursor|switch the cursor|cursor|watch named|introduce me|should i wear|browse the web|search the web|web|internet|history|heritage|background|founder|founded|origins?)\b",
-                query,
-                re.IGNORECASE,
-            ):
-                filtered.append({
-                    "type": "search",
-                    "query": query,
-                    "label": label or "Open Smart Search",
-                })
-        elif action_type == "set_cursor":
-            cursor = str(action.get("cursor") or "").strip().lower()
-            if cursor in ALLOWED_CURSOR_STYLES:
-                filtered.append({
-                    "type": "set_cursor",
-                    "cursor": cursor,
-                    "label": label or "Update cursor",
-                })
-
-    return filtered
-
-
 def register_routes(app, runtime: Runtime) -> None:
     @app.route("/chat", methods=["POST"])
     def chat():
@@ -360,7 +286,6 @@ def register_routes(app, runtime: Runtime) -> None:
         response_language = _normalize_language(data.get("responseLanguage"))
         allow_web_enrichment = bool(data.get("allowWebEnrichment"))
         web_query = (data.get("webQuery") or "").strip()
-        allow_actions = bool(data.get("allowActions", True))
 
         if not query:
             return jsonify({"error": "query is required"}), 400
@@ -406,7 +331,7 @@ def register_routes(app, runtime: Runtime) -> None:
                 temperature=0.3,
             )
             raw = (response.choices[0].message.content or "").strip()
-            text_only, actions = _extract_actions(raw)
+            text_only = _strip_action_lines(raw)
 
             if response_language and not _response_matches_language(text_only, response_language):
                 retry_messages = messages + [
@@ -426,12 +351,11 @@ def register_routes(app, runtime: Runtime) -> None:
                     temperature=0.1,
                 )
                 raw = (retry.choices[0].message.content or "").strip()
-                text_only, actions = _extract_actions(raw)
+                text_only = _strip_action_lines(raw)
 
             trimmed = _cleanup_markdown_artifacts(_truncate_chat_response(text_only))
             linked = _inject_entity_links(trimmed, context)
             safe_text = _cleanup_markdown_artifacts(_filter_internal_links(linked, context))
-            safe_actions = _filter_actions(actions, context) if allow_actions else []
-            return jsonify({"message": safe_text, "actions": safe_actions})
+            return jsonify({"message": safe_text, "actions": []})
         except Exception as exc:
             return jsonify({"error": f"Chat LLM call failed: {str(exc)}"}), 502

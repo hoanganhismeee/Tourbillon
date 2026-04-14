@@ -186,7 +186,10 @@ public class ChatService
         public string? ResponseLanguage { get; set; }
         public bool AllowWebEnrichment { get; set; }
         public string? WebQuery { get; set; }
-        public bool AllowAiActions { get; set; } = true;
+        // Populated by each routing branch for structured tracing.
+        public string RoutingPath { get; set; } = "unknown";
+        // Populated when WatchFinderService is called; mirrors WatchFinderResult.SearchPath.
+        public string? SearchPath { get; set; }
     }
 
     private sealed class EntityMentions
@@ -351,6 +354,7 @@ public class ChatService
             }
         }
 
+        var routingSw = System.Diagnostics.Stopwatch.StartNew();
         var sessionHistory = await GetSessionHistoryAsync(sessionId);
         var lastWatchCards = await GetLastWatchCardsAsync(sessionId);
         var compareScope = await GetCompareScopeAsync(sessionId);
@@ -394,16 +398,12 @@ public class ChatService
                 resolution.Context,
                 responseLanguage,
                 resolution.AllowWebEnrichment,
-                resolution.WebQuery,
-                resolution.AllowAiActions);
-            var keepDeterministic = ShouldKeepDeterministicResolutionMessage(aiResult.Message, resolution)
-                || await MentionsUnsupportedResolvedEntitiesAsync(aiResult.Message, resolution);
+                resolution.WebQuery);
+            var keepDeterministic = ShouldKeepDeterministicResolutionMessage(aiResult, resolution)
+                || await MentionsUnsupportedResolvedEntitiesAsync(aiResult, resolution);
             aiMessage = keepDeterministic
                 ? resolution.Message
-                : aiResult.Message;
-            actions = MergeActions(
-                resolution.Actions,
-                resolution.AllowAiActions ? aiResult.Actions : []);
+                : aiResult;
             if (watchCards.Count == 0)
                 watchCards = await ExtractWatchCardsAsync(aiMessage, actions);
         }
@@ -429,6 +429,26 @@ public class ChatService
             newUsed = (int)await _redis.IncrementAsync(rlKey, ttlUntilMidnight);
         }
 
+        routingSw.Stop();
+        var actionSummary = string.Join(", ", actions
+            .Where(a => a.Type is "compare" or "search" or "navigate" or "set_cursor")
+            .Select(a => a.Type switch
+            {
+                "compare"    => $"compare:{a.Slugs?.Count ?? 0}w",
+                "search"     => $"search:{(a.Query?.Length > 35 ? a.Query[..35] + "…" : a.Query)}",
+                "navigate"   => $"navigate:{a.Href}",
+                "set_cursor" => $"cursor:{a.Cursor}",
+                _            => a.Type,
+            }));
+        _logger.LogInformation(
+            "Chat session={SessionId} path={RoutingPath} finder={SearchPath} actions=[{Actions}] cards={CardCount} elapsed={ElapsedMs}ms",
+            sessionId,
+            resolution.RoutingPath,
+            resolution.SearchPath ?? "none",
+            actionSummary,
+            watchCards.Count,
+            routingSw.ElapsedMilliseconds);
+
         return new ChatApiResponse
         {
             Message = aiMessage,
@@ -452,15 +472,19 @@ public class ChatService
         if (IsAbusiveQuery(message))
             return new ChatResolution
             {
-                Message = "I am here to help with Tourbillon watches and horology only. If you want, ask about a watch, brand, comparison, or product search."
+                Message = "I am here to help with Tourbillon watches and horology only. If you want, ask about a watch, brand, comparison, or product search.",
+                RoutingPath = "abusive"
             };
 
         if (IsGreetingQuery(message))
-            return new ChatResolution { Message = GreetingMessage };
+            return new ChatResolution { Message = GreetingMessage, RoutingPath = "greeting" };
 
         var cursorResolution = TryResolveCursorCommand(message);
         if (cursorResolution != null)
+        {
+            cursorResolution.RoutingPath = "cursor";
             return cursorResolution;
+        }
 
         // Entity resolution — required for rejection detection and all routing below.
         var mentions = await ResolveEntityMentionsAsync(message);
@@ -510,11 +534,19 @@ public class ChatService
         {
             var compareWatches = await TryResolveCompareWatchesAsync(canonicalMessage, lastWatchCards, mentions, compareScope);
             if (compareWatches.Count >= 2)
-                return BuildCompareResolution(canonicalMessage, compareWatches);
+            {
+                var r = BuildCompareResolution(canonicalMessage, compareWatches);
+                r.RoutingPath = "compare";
+                return r;
+            }
         }
 
         if (referencedWatches.Count > 0)
-            return BuildReferencedWatchResolution(canonicalMessage, referencedWatches);
+        {
+            var r = BuildReferencedWatchResolution(canonicalMessage, referencedWatches);
+            r.RoutingPath = "referenced_watch";
+            return r;
+        }
 
         var recommendationRevision = await TryResolveRecommendationRevisionAsync(
             message,
@@ -523,11 +555,17 @@ public class ChatService
             sessionState,
             excludedBrandIds);
         if (recommendationRevision != null)
+        {
+            recommendationRevision.RoutingPath = "revision";
             return recommendationRevision;
+        }
 
         var contextualFollowUp = await TryResolveContextualFollowUpAsync(message, lastWatchCards, sessionState, excludedBrandIds);
         if (contextualFollowUp != null)
+        {
+            contextualFollowUp.RoutingPath = "contextual_followup";
             return contextualFollowUp;
+        }
 
         // Price-only follow-ups like "under 10k" lack watch keywords but are clearly watch-scoped
         // when the user is already mid-session (has watch history or active brand exclusions).
@@ -538,24 +576,31 @@ public class ChatService
             || (sessionState?.WatchSlugs.Count > 0 && LooksLikeContextualFollowUp(message))
             || (hasSessionContext && LooksLikePriceFollowUp(canonicalMessage));
 
-        // Queries without watch-domain signals go to the AI — the system prompt enforces scope
-        // and emits suggest chips on refusals. C# no longer classifies intent here.
+        // Queries without watch-domain signals still go to the AI for scoped wording,
+        // while backend retains control of any structured actions shown to the user.
         if (!hasWatchScope)
-            return new ChatResolution { UseAi = true, Query = message, Context = [] };
+            return new ChatResolution { UseAi = true, Query = message, Context = [], RoutingPath = "ai_fallback" };
 
         if (LooksLikeBrandHistoryRequest(canonicalMessage, mentions))
-            return await BuildEntityInfoResolutionAsync(
-                canonicalMessage,
-                mentions,
-                allowWebEnrichment: true,
-                allowAiActions: false);
+        {
+            var r = await BuildEntityInfoResolutionAsync(canonicalMessage, mentions, allowWebEnrichment: true);
+            r.RoutingPath = "brand_history";
+            return r;
+        }
 
         if (LooksLikeEntityInfoRequest(canonicalMessage, mentions))
-            return await BuildEntityInfoResolutionAsync(canonicalMessage, mentions);
+        {
+            var r = await BuildEntityInfoResolutionAsync(canonicalMessage, mentions);
+            r.RoutingPath = "entity_info";
+            return r;
+        }
 
         var directEntityResolution = await TryResolveDirectEntityResolutionAsync(canonicalMessage, mentions, sessionState, excludedBrandIds);
         if (directEntityResolution != null)
+        {
+            directEntityResolution.RoutingPath = "entity_direct";
             return directEntityResolution;
+        }
 
         var searchResult = excludedBrandIds.Count > 0
             ? await _watchFinderService.FindWatchesAsync(canonicalMessage, excludedBrandIds)
@@ -563,15 +608,24 @@ public class ChatService
         searchResult ??= new WatchFinderResult();
 
         if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
-            return new ChatResolution { Message = UnsupportedQueryMessage };
+            return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
 
         var exactWatch = await TryResolveExactWatchAsync(canonicalMessage, searchResult);
         if (exactWatch != null)
-            return BuildExactWatchResolution(exactWatch, canonicalMessage);
+        {
+            var r = BuildExactWatchResolution(exactWatch, canonicalMessage);
+            r.RoutingPath = "exact_match";
+            r.SearchPath = searchResult.SearchPath;
+            return r;
+        }
 
         if (searchResult.Watches.Count > 0)
-            return await BuildDiscoveryResolutionAsync(
-                canonicalMessage, searchResult, excludedBrandIds, mentions: mentions);
+        {
+            var r = await BuildDiscoveryResolutionAsync(canonicalMessage, searchResult, excludedBrandIds, mentions: mentions);
+            r.RoutingPath = "discovery";
+            r.SearchPath = searchResult.SearchPath;
+            return r;
+        }
 
         // Suppress entity info for any brand the user has rejected — the entity info path
         // returns that brand's watches, which would re-surface the rejected brand.
@@ -580,7 +634,11 @@ public class ChatService
             : mentions;
 
         if (filteredMentions.HasAny)
-            return await BuildEntityInfoResolutionAsync(canonicalMessage, filteredMentions, noDirectMatch: true);
+        {
+            var r = await BuildEntityInfoResolutionAsync(canonicalMessage, filteredMentions, noDirectMatch: true);
+            r.RoutingPath = "entity_info_fallback";
+            return r;
+        }
 
         // No catalogue match but query is watch-scoped — let AI handle it as a helpful concierge
         // response (e.g. "recommend me watch models", "what should I look for first?").
@@ -588,6 +646,7 @@ public class ChatService
         {
             UseAi = true,
             Query = canonicalMessage,
+            RoutingPath = "ai_no_match",
             Context =
             [
                 "No specific Tourbillon catalogue records were resolved for this query. Respond as a helpful boutique concierge: if the user is asking for general watch discovery or guidance, invite them to narrow the brief by style, brand, or price range. Stay concise and within Tourbillon's scope."
@@ -595,14 +654,13 @@ public class ChatService
         };
     }
 
-    private async Task<(string Message, List<ChatAction> Actions)> CallAiServiceAsync(
+    private async Task<string> CallAiServiceAsync(
         List<ChatHistoryEntry> history,
         string query,
         List<string> context,
         string? responseLanguage = null,
         bool allowWebEnrichment = false,
-        string? webQuery = null,
-        bool allowAiActions = true)
+        string? webQuery = null)
     {
         try
         {
@@ -622,7 +680,6 @@ public class ChatService
                 responseLanguage,
                 allowWebEnrichment,
                 webQuery,
-                allowActions = allowAiActions,
             };
             var resp = await httpClient.PostAsJsonAsync("/chat", payload);
             chatSw.Stop();
@@ -631,34 +688,20 @@ public class ChatService
             {
                 _logger.LogWarning("Chat ai-service /chat returned {Status} after {ElapsedMs}ms",
                     (int)resp.StatusCode, chatSw.ElapsedMilliseconds);
-                return (ProcessingFallbackMessage, []);
+                return ProcessingFallbackMessage;
             }
 
             _logger.LogInformation("Chat ai-service /chat {ElapsedMs}ms", chatSw.ElapsedMilliseconds);
             var json = await resp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
             var message = json.TryGetProperty("message", out var messageEl) ? messageEl.GetString() ?? "" : "";
-            var actions = new List<ChatAction>();
-
-            if (json.TryGetProperty("actions", out var actionsEl) && actionsEl.ValueKind == JsonValueKind.Array)
-            {
-                try
-                {
-                    actions = JsonSerializer.Deserialize<List<ChatAction>>(actionsEl.GetRawText(), _jsonOptions) ?? [];
-                }
-                catch
-                {
-                    actions = [];
-                }
-            }
-
-            return (string.IsNullOrWhiteSpace(message)
+            return string.IsNullOrWhiteSpace(message)
                 ? NoCloseMatchMessage
-                : message, actions);
+                : message;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Chat ai-service call threw before producing a response");
-            return (ProcessingFallbackMessage, []);
+            return ProcessingFallbackMessage;
         }
     }
 
@@ -1451,8 +1494,7 @@ public class ChatService
         string query,
         EntityMentions mentions,
         bool noDirectMatch = false,
-        bool allowWebEnrichment = false,
-        bool allowAiActions = true)
+        bool allowWebEnrichment = false)
     {
         var context = new List<string>();
         var cards = new List<ChatWatchCard>();
@@ -1559,7 +1601,6 @@ public class ChatService
             },
             AllowWebEnrichment = allowWebEnrichment,
             WebQuery = allowWebEnrichment ? mentions.Brands.FirstOrDefault()?.Name : null,
-            AllowAiActions = allowAiActions,
         };
     }
 
@@ -2292,68 +2333,6 @@ public class ChatService
             .Where(watch => watch != null)
             .Select(watch => ToChatWatchCard(watch!))
             .ToList();
-    }
-
-    private static List<ChatAction> MergeActions(List<ChatAction> preferred, List<ChatAction> secondary)
-    {
-        var merged = new List<ChatAction>();
-
-        foreach (var action in preferred.Concat(secondary))
-        {
-            if (string.IsNullOrWhiteSpace(action.Type))
-                continue;
-
-            if (string.Equals(action.Type, "compare", StringComparison.OrdinalIgnoreCase) && action.Slugs?.Count > 0)
-            {
-                var slugs = action.Slugs
-                    .Where(s => !string.IsNullOrWhiteSpace(s))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                if (slugs.Count == 0) continue;
-                if (merged.Any(a => string.Equals(a.Type, "compare", StringComparison.OrdinalIgnoreCase)
-                    && a.Slugs != null
-                    && a.Slugs.SequenceEqual(slugs, StringComparer.OrdinalIgnoreCase)))
-                    continue;
-
-                merged.Add(new ChatAction
-                {
-                    Type = "compare",
-                    Label = string.IsNullOrWhiteSpace(action.Label) ? "Compare these watches" : action.Label,
-                    Slugs = slugs
-                });
-                continue;
-            }
-
-            if (string.Equals(action.Type, "search", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(action.Query))
-            {
-                if (merged.Any(a => string.Equals(a.Type, "search", StringComparison.OrdinalIgnoreCase)))
-                    continue;
-
-                merged.Add(new ChatAction
-                {
-                    Type = "search",
-                    Label = string.IsNullOrWhiteSpace(action.Label) ? "Open Smart Search" : action.Label,
-                    Query = action.Query
-                });
-                continue;
-            }
-
-            if (string.Equals(action.Type, "set_cursor", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(action.Cursor))
-            {
-                if (merged.Any(a => string.Equals(a.Type, "set_cursor", StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(a.Cursor, action.Cursor, StringComparison.OrdinalIgnoreCase)))
-                    continue;
-
-                merged.Add(new ChatAction
-                {
-                    Type = "set_cursor",
-                    Label = string.IsNullOrWhiteSpace(action.Label) ? "Update cursor" : action.Label,
-                    Cursor = action.Cursor
-                });
-            }
-        }
-
-        return merged;
     }
 
     private static List<string> ExtractCompareParts(string query)

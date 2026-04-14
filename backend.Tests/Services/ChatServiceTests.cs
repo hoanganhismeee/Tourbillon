@@ -596,7 +596,6 @@ public class ChatServiceTests
 
         Assert.Equal(1, handler.CallCount);
         Assert.Contains("\"allowWebEnrichment\":true", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("\"allowActions\":false", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"responseLanguage\":\"english\"", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(result.Actions, action => action.Type == "search" || action.Type == "compare");
         Assert.Contains(result.Actions, action => action.Type == "navigate" && action.Href == "/brands/vacheron-constantin");
@@ -961,8 +960,8 @@ public class ChatServiceTests
     [Fact]
     public async Task HandleMessageAsync_DailyWearShoppingBrief_RoutesToAiDirectly()
     {
-        // After AI-first routing: shopping queries without watch-domain signals bypass C# classification
-        // and go straight to the AI. No WatchFinder call, no hard refusal.
+        // Shopping queries without watch-domain signals still use the AI for scoped wording.
+        // Backend does not force WatchFinder or a hard refusal for this path.
         using var context = CreateContext();
 
         var watchFinder = new Mock<IWatchFinderService>();
@@ -983,7 +982,7 @@ public class ChatServiceTests
     [Fact]
     public async Task HandleMessageAsync_NonAsciiOutOfScope_RoutesToAiWithLanguageHint()
     {
-        // AI-first routing: non-ASCII queries without watch scope go directly to the AI.
+        // Non-ASCII queries without watch scope still use the AI path.
         // Language is detected from the query content and pinned via responseLanguage.
         using var context = CreateContext();
         var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);

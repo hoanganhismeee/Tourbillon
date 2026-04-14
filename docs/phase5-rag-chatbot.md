@@ -1,6 +1,6 @@
 # Phase 5 - RAG Chat Concierge
 
-**Status: Complete (core). Reliability refactor in progress under Phase 13.5.**
+**Status: Complete. Phase 13.5 reliability refactor complete — backend is the sole orchestration authority.**
 
 ---
 
