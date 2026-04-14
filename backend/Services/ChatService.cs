@@ -1207,6 +1207,23 @@ public class ChatService
             .ToList();
     }
 
+    // Returns a prestige tier used to stable-sort discovery cards so higher-tier brands
+    // surface first when WatchFinder's vector ranking alone would promote entry-level brands.
+    // Tier 4 — Holy Trinity + Lange: Patek Philippe, Vacheron Constantin, Audemars Piguet, A. Lange & Söhne.
+    // Tier 3 — All other prestige brands (Rolex, Grand Seiko, F.P. Journe, JLC, Omega, Glashütte Original, etc.).
+    // Tier 2 — Frédérique Constant (accessible luxury, should not lead prestige shortlists).
+    private static int GetBrandPrestigeTier(Watch watch)
+    {
+        var name = watch.Brand?.Name ?? "";
+        if (name.Contains("Patek", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Vacheron", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Audemars", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Lange", StringComparison.OrdinalIgnoreCase)) return 4;
+        if (name.Contains("Frédérique", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Frederique", StringComparison.OrdinalIgnoreCase)) return 2;
+        return 3;
+    }
+
     private static ChatSessionState BuildUpdatedRecommendationState(
         ChatSessionState? existingState,
         List<Watch> watches,
@@ -1622,6 +1639,14 @@ public class ChatService
             requestedDirections,
             mentions,
             excludedBrandIds);
+
+        // For unidirectional queries the diversifier does nothing, so WatchFinder's raw
+        // vector ranking determines order. Apply a stable prestige sort so higher-tier
+        // brands surface first regardless of embedding score — same tier weights as the
+        // watch listing Featured sort (PP=5, VC/AP/Rolex=4, JLC/Omega=3, others=1).
+        if (requestedDirections.Count < 2)
+            ordered = [.. ordered.OrderByDescending(GetBrandPrestigeTier)];
+
         if (rejectedWatchSlugs is { Count: > 0 })
         {
             ordered = ordered
