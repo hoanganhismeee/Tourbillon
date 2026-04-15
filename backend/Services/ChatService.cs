@@ -84,6 +84,7 @@ public class ChatService
     private readonly IConfiguration _config;
     private readonly IWatchFinderService _watchFinderService;
     private readonly ILogger<ChatService> _logger;
+    private readonly IIntentClassifier _classifier;
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(1);
@@ -193,6 +194,24 @@ public class ChatService
         public string? SearchPath { get; set; }
     }
 
+    // Intent class constants returned by the AI classifier — single source of truth for routing.
+    private static class ChatIntent
+    {
+        public const string WatchCompare        = "watch_compare";
+        public const string CollectionCompare   = "collection_compare";
+        public const string BrandDecision       = "brand_decision";
+        public const string AffirmativeFollowUp = "affirmative_followup";
+        public const string ExpansionRequest    = "expansion_request";
+        public const string RevisionRequest     = "revision_request";
+        public const string ContextualFollowUp  = "contextual_followup";
+        public const string BrandInfo           = "brand_info";
+        public const string CollectionInfo      = "collection_info";
+        public const string BrandHistory        = "brand_history";
+        public const string Discovery           = "discovery";
+        public const string NonWatch            = "non_watch";
+        public const string Unclear             = "unclear";
+    }
+
     private sealed class EntityMentions
     {
         public List<Brand> Brands { get; set; } = [];
@@ -237,7 +256,8 @@ public class ChatService
         IRedisService redis,
         IConfiguration config,
         IWatchFinderService watchFinderService,
-        ILogger<ChatService> logger)
+        ILogger<ChatService> logger,
+        IIntentClassifier classifier)
     {
         _httpClientFactory = httpClientFactory;
         _context = context;
@@ -245,6 +265,7 @@ public class ChatService
         _config = config;
         _watchFinderService = watchFinderService;
         _logger = logger;
+        _classifier = classifier;
     }
 
     private async Task<List<ChatMessage>> GetSessionHistoryAsync(string sessionId)
@@ -551,6 +572,32 @@ public class ChatService
             return r;
         }
 
+        // AI intent classifier — single LLM call determines routing for all fuzzy cases.
+        // Returns "unclear" on failure, which falls through to existing regex routing.
+        var classification = await _classifier.ClassifyAsync(
+            canonicalMessage,
+            mentions.Brands.Select(b => b.Name).ToList(),
+            mentions.Collections.Select(c => c.Name).ToList(),
+            sessionState?.FollowUpMode ?? "",
+            lastWatchCards.Count,
+            sessionState?.BrandIds ?? []);
+
+        _logger.LogInformation(
+            "Chat classify intent={Intent} confidence={Confidence:F2}",
+            classification.Intent, classification.Confidence);
+
+        if (classification.Intent != ChatIntent.Unclear && classification.Confidence >= 0.6)
+        {
+            var dispatched = await DispatchByIntentAsync(
+                classification.Intent, message, canonicalMessage, mentions,
+                sessionState, lastWatchCards, compareScope, excludedBrandIds);
+            if (dispatched != null)
+            {
+                dispatched.RoutingPath = $"classifier_{classification.Intent}";
+                return dispatched;
+            }
+        }
+
         var recommendationRevision = await TryResolveRecommendationRevisionAsync(
             message,
             canonicalMessage,
@@ -851,59 +898,7 @@ public class ChatService
             && sessionState?.CollectionIds.Count > 0
             && LooksLikeExplicitMoreRequest(query))
         {
-            var shownSlugs = lastWatchCards
-                .Select(c => c.Slug)
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var moreWatches = await _context.Watches
-                .Include(w => w.Brand)
-                .Include(w => w.Collection)
-                .AsNoTracking()
-                .Where(w => sessionState.CollectionIds.Contains(w.CollectionId ?? 0)
-                    && !shownSlugs.Contains(w.Slug))
-                .OrderByDescending(w => w.CurrentPrice)
-                .Take(DiscoveryCardLimit)
-                .ToListAsync();
-
-            if (moreWatches.Count > 0)
-            {
-                var moreCards = moreWatches.Select(ToChatWatchCard).ToList();
-                var moreContext = new List<string>
-                {
-                    "The user wants to see more models from the collections already under discussion. Surface these additional models, note what distinguishes them from the earlier set, and invite the user to compare any two or narrow the brief."
-                };
-                foreach (var w in moreWatches)
-                    moreContext.Add(BuildWatchContext(w));
-
-                return new ChatResolution
-                {
-                    UseAi = true,
-                    Query = query,
-                    Context = moreContext,
-                    WatchCards = moreCards,
-                    Actions = [],
-                    RoutingPath = "compare_expand",
-                    SessionState = new ChatSessionState
-                    {
-                        CollectionIds = sessionState.CollectionIds,
-                        BrandIds = sessionState.BrandIds,
-                        WatchSlugs = moreCards.Select(c => c.Slug).Where(s => !string.IsNullOrWhiteSpace(s)).ToList(),
-                        FollowUpMode = "compare",
-                        CanonicalQuery = sessionState.CanonicalQuery,
-                    }
-                };
-            }
-
-            // All models from these collections have already been surfaced — return a message
-            // only (no cards) so the old set is not re-echoed.
-            return new ChatResolution
-            {
-                Message = "Those are all the current models from these collections in the Tourbillon catalogue. Let me know if you'd like to compare any two or explore a different brief.",
-                WatchCards = [],
-                Actions = [],
-                RoutingPath = "compare_expand",
-                SessionState = sessionState,
-            };
+            return await BuildCompareExpandResolutionAsync(query, lastWatchCards, sessionState);
         }
 
         if (!LooksLikeContextualFollowUp(query) || lastWatchCards.Count == 0)
@@ -915,6 +910,161 @@ public class ChatService
         }
 
         return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false, sessionState?.FollowUpMode);
+    }
+
+    // Loads unseen models from the session's compare collections and returns an AI-worded card row.
+    // Returns a message-only resolution when all models have already been surfaced.
+    private async Task<ChatResolution> BuildCompareExpandResolutionAsync(
+        string query,
+        List<ChatWatchCard> lastWatchCards,
+        ChatSessionState sessionState)
+    {
+        var shownSlugs = lastWatchCards
+            .Select(c => c.Slug)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var moreWatches = await _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .AsNoTracking()
+            .Where(w => sessionState.CollectionIds.Contains(w.CollectionId ?? 0)
+                && !shownSlugs.Contains(w.Slug))
+            .OrderByDescending(w => w.CurrentPrice)
+            .Take(DiscoveryCardLimit)
+            .ToListAsync();
+
+        if (moreWatches.Count > 0)
+        {
+            var moreCards = moreWatches.Select(ToChatWatchCard).ToList();
+            var moreContext = new List<string>
+            {
+                "The user wants to see more models from the collections already under discussion. Surface these additional models, note what distinguishes them from the earlier set, and invite the user to compare any two or narrow the brief."
+            };
+            foreach (var w in moreWatches)
+                moreContext.Add(BuildWatchContext(w));
+
+            return new ChatResolution
+            {
+                UseAi = true,
+                Query = query,
+                Context = moreContext,
+                WatchCards = moreCards,
+                Actions = [],
+                RoutingPath = "compare_expand",
+                SessionState = new ChatSessionState
+                {
+                    CollectionIds = sessionState.CollectionIds,
+                    BrandIds = sessionState.BrandIds,
+                    WatchSlugs = moreCards.Select(c => c.Slug).Where(s => !string.IsNullOrWhiteSpace(s)).ToList(),
+                    FollowUpMode = "compare",
+                    CanonicalQuery = sessionState.CanonicalQuery,
+                }
+            };
+        }
+
+        // All models from these collections have already been surfaced — return a message
+        // only (no cards) so the old set is not re-echoed.
+        return new ChatResolution
+        {
+            Message = "Those are all the current models from these collections in the Tourbillon catalogue. Let me know if you'd like to compare any two or explore a different brief.",
+            WatchCards = [],
+            Actions = [],
+            RoutingPath = "compare_expand",
+            SessionState = sessionState,
+        };
+    }
+
+    // Dispatches to the appropriate resolution builder based on the AI classifier's intent.
+    // Returns null when the intent cannot be resolved (e.g. missing entities for brand_decision),
+    // which causes the caller to fall through to legacy regex routing.
+    private async Task<ChatResolution?> DispatchByIntentAsync(
+        string intent,
+        string message,
+        string canonicalMessage,
+        EntityMentions mentions,
+        ChatSessionState? sessionState,
+        List<ChatWatchCard> lastWatchCards,
+        ChatCompareScope? compareScope,
+        List<int> excludedBrandIds)
+    {
+        switch (intent)
+        {
+            case ChatIntent.WatchCompare:
+            case ChatIntent.CollectionCompare:
+            {
+                var compareWatches = await TryResolveCompareWatchesAsync(
+                    canonicalMessage, lastWatchCards, mentions, compareScope);
+                if (compareWatches.Count < 2)
+                    return null;
+                return await BuildCompareResolutionAsync(canonicalMessage, compareWatches);
+            }
+
+            case ChatIntent.BrandDecision:
+                if (mentions.Brands.Count < 2) return null;
+                return await BuildBrandDecisionResolutionAsync(canonicalMessage, mentions);
+
+            case ChatIntent.AffirmativeFollowUp:
+            {
+                if (lastWatchCards.Count > 0)
+                    return await BuildCardContinuationResolutionAsync(
+                        message, lastWatchCards, affirmative: true, sessionState?.FollowUpMode);
+                var storedMentions = await ResolveMentionsFromSessionStateAsync(sessionState);
+                if (storedMentions.HasAny)
+                    return await BuildEntityInfoResolutionAsync(sessionState?.CanonicalQuery ?? message, storedMentions);
+                return null;
+            }
+
+            case ChatIntent.ExpansionRequest:
+            {
+                // Compare-mode expansion: show unseen models from the same collections.
+                if (string.Equals(sessionState?.FollowUpMode, "compare", StringComparison.OrdinalIgnoreCase)
+                    && sessionState?.CollectionIds.Count > 0)
+                {
+                    return await BuildCompareExpandResolutionAsync(message, lastWatchCards, sessionState);
+                }
+                return null; // General expansion falls through to legacy routing
+            }
+
+            case ChatIntent.RevisionRequest:
+                return await TryResolveRecommendationRevisionAsync(
+                    message, canonicalMessage, lastWatchCards, sessionState, excludedBrandIds);
+
+            case ChatIntent.ContextualFollowUp:
+                if (lastWatchCards.Count == 0) return null;
+                return await BuildCardContinuationResolutionAsync(
+                    message, lastWatchCards, affirmative: false, sessionState?.FollowUpMode);
+
+            case ChatIntent.BrandInfo:
+            case ChatIntent.CollectionInfo:
+                if (!mentions.HasAny) return null;
+                return await BuildEntityInfoResolutionAsync(canonicalMessage, mentions);
+
+            case ChatIntent.BrandHistory:
+                if (mentions.Brands.Count == 0) return null;
+                return await BuildEntityInfoResolutionAsync(
+                    canonicalMessage, mentions, allowWebEnrichment: true);
+
+            case ChatIntent.Discovery:
+            {
+                var searchResult = excludedBrandIds.Count > 0
+                    ? await _watchFinderService.FindWatchesAsync(canonicalMessage, excludedBrandIds)
+                    : await _watchFinderService.FindWatchesAsync(canonicalMessage);
+                searchResult ??= new WatchFinderResult();
+                if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
+                    return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
+                if (searchResult.Watches.Count == 0) return null;
+                var r = await BuildDiscoveryResolutionAsync(
+                    canonicalMessage, searchResult, excludedBrandIds, mentions: mentions);
+                r.SearchPath = searchResult.SearchPath;
+                return r;
+            }
+
+            case ChatIntent.NonWatch:
+                return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
+
+            default:
+                return null;
+        }
     }
 
     private async Task<ChatResolution?> TryResolveRecommendationRevisionAsync(

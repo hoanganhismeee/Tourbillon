@@ -122,10 +122,24 @@ public class ChatServiceRecommendationTests
             })
             .Build();
 
+    // Default classifier always returns "unclear" so all existing tests use the legacy regex path.
+    private sealed class FakeClassifier : IIntentClassifier
+    {
+        public Task<IntentClassification> ClassifyAsync(
+            string query,
+            IReadOnlyList<string> entityBrands,
+            IReadOnlyList<string> entityCollections,
+            string followUpMode,
+            int lastCardCount,
+            IReadOnlyList<int> sessionBrandIds)
+            => Task.FromResult(new IntentClassification("unclear", 0.0));
+    }
+
     private static ChatService CreateService(
         TourbillonContext context,
         Mock<IWatchFinderService> watchFinderMock,
-        RecordingHandler handler)
+        RecordingHandler handler,
+        IIntentClassifier? classifier = null)
     {
         var httpFactory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
         var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5000") };
@@ -137,7 +151,8 @@ public class ChatServiceRecommendationTests
             new FakeRedis(),
             CreateConfig(),
             watchFinderMock.Object,
-            NullLogger<ChatService>.Instance);
+            NullLogger<ChatService>.Instance,
+            classifier ?? new FakeClassifier());
     }
 
     private static WatchDto ToDto(Watch watch) => WatchDto.FromWatch(watch);

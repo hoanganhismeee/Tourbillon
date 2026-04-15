@@ -124,12 +124,33 @@ public class ChatServiceTests
         }
     }
 
+    // Default classifier always returns "unclear" so all existing tests use the legacy regex path.
+    private sealed class FakeClassifier : IIntentClassifier
+    {
+        private readonly Func<string, IntentClassification> _classify;
+
+        public FakeClassifier(string fixedIntent = "unclear", double confidence = 0.95)
+            : this(_ => new IntentClassification(fixedIntent, confidence)) { }
+
+        public FakeClassifier(Func<string, IntentClassification> classify) => _classify = classify;
+
+        public Task<IntentClassification> ClassifyAsync(
+            string query,
+            IReadOnlyList<string> entityBrands,
+            IReadOnlyList<string> entityCollections,
+            string followUpMode,
+            int lastCardCount,
+            IReadOnlyList<int> sessionBrandIds)
+            => Task.FromResult(_classify(query));
+    }
+
     private static ChatService CreateService(
         TourbillonContext context,
         Mock<IWatchFinderService> watchFinderMock,
         RecordingHandler? handler = null,
         IRedisService? redis = null,
-        IConfiguration? config = null)
+        IConfiguration? config = null,
+        IIntentClassifier? classifier = null)
     {
         var httpFactory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
         if (handler != null)
@@ -144,7 +165,8 @@ public class ChatServiceTests
             redis ?? new FakeRedis(),
             config ?? CreateConfig(),
             watchFinderMock.Object,
-            NullLogger<ChatService>.Instance);
+            NullLogger<ChatService>.Instance,
+            classifier ?? new FakeClassifier());
     }
 
     // 0-card responses now show 3 "suggest"-type actions from the curated query bank.
