@@ -401,7 +401,9 @@ public class ChatService
                 resolution.WebQuery);
             var keepDeterministic = ShouldKeepDeterministicResolutionMessage(aiResult, resolution)
                 || await MentionsUnsupportedResolvedEntitiesAsync(aiResult, resolution);
-            aiMessage = keepDeterministic
+            // Only use the deterministic message when it's actually set — an empty deterministic
+            // message (e.g. collection compare where AI writes the intro) should still use aiResult.
+            aiMessage = keepDeterministic && !string.IsNullOrWhiteSpace(resolution.Message)
                 ? resolution.Message
                 : aiResult;
             if (watchCards.Count == 0)
@@ -2265,7 +2267,7 @@ public class ChatService
 
             var context = new List<string>
             {
-                "Tourbillon resolved a collection-level comparison. Write a short character split between the two collections, then pick two specific models from the surfaced watches that best illustrate the contrast and naturally suggest comparing them. Do not use the phrase 'representative'. End with a short buying question."
+                "Tourbillon resolved a collection-level comparison. Introduce each collection in your own concierge voice — explain what defines its character, history, and who it suits. Do not just repeat the supplied description; bring the collection to life. Draw on any secondary web notes for historical colour. Then pick two specific models from the surfaced watches that best illustrate the contrast between the collections and naturally suggest comparing them side by side. End with a short buying question."
             };
             foreach (var collection in collections)
                 context.Add(BuildCollectionContext(collection));
@@ -2273,6 +2275,11 @@ public class ChatService
                 context.Add(BuildBrandContext(brand));
             foreach (var w in allModels)
                 context.Add(BuildWatchContext(w));
+
+            // Web enrichment: query the first collection by name for historical colour.
+            var webQuery = collections.Count > 0
+                ? $"{brands.FirstOrDefault()?.Name} {collections[0].Name} watch history"
+                : null;
 
             var allCards = allModels.Select(ToChatWatchCard).ToList();
             return new ChatResolution
@@ -2282,6 +2289,8 @@ public class ChatService
                 Context = context,
                 WatchCards = allCards,
                 Actions = [],
+                AllowWebEnrichment = true,
+                WebQuery = webQuery,
                 // AI suggests the pair in prose — suppress the auto-compare chip post-processing adds.
                 SuppressCompareSuggestion = true,
                 SessionState = new ChatSessionState
