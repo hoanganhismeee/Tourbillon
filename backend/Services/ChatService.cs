@@ -503,6 +503,11 @@ public class ChatService
         if (IsGreetingQuery(message))
             return new ChatResolution { Message = GreetingMessage, RoutingPath = "greeting" };
 
+        // Deterministic off-topic guard: catches clear programming / translation queries before
+        // entity resolution assigns spurious watch-domain signals to them.
+        if (IsObviouslyOffTopicQuery(message))
+            return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
+
         var cursorResolution = TryResolveCursorCommand(message);
         if (cursorResolution != null)
         {
@@ -816,16 +821,22 @@ public class ChatService
                 mentions.Collections.Add(collection);
         }
 
-        var blockedCollectionTokens = WatchFinderService.BuildBlockedCollectionTokens(mentions.Brands);
-        var fuzzyCollections = WatchFinderService.ResolveFuzzyCollections(
-            query,
-            collections,
-            matchedBrandIds,
-            blockedCollectionTokens);
-        foreach (var collection in fuzzyCollections)
+        // Only do fuzzy collection resolution when the pool is already brand-scoped or the query
+        // has an explicit watch domain signal. Without either guard, single-token fuzzy matching
+        // produces false positives (e.g. "reverse" → "Reverso") on off-topic queries.
+        if (matchedBrandIds.Count > 0 || WatchFinderService.HasWatchDomainSignal(query))
         {
-            if (matchedCollectionIds.Add(collection.Id))
-                mentions.Collections.Add(collection);
+            var blockedCollectionTokens = WatchFinderService.BuildBlockedCollectionTokens(mentions.Brands);
+            var fuzzyCollections = WatchFinderService.ResolveFuzzyCollections(
+                query,
+                collections,
+                matchedBrandIds,
+                blockedCollectionTokens);
+            foreach (var collection in fuzzyCollections)
+            {
+                if (matchedCollectionIds.Add(collection.Id))
+                    mentions.Collections.Add(collection);
+            }
         }
 
         return mentions;
@@ -1089,6 +1100,16 @@ public class ChatService
             canonicalMessage,
             sessionState?.DiscoveryQuery ?? sessionState?.CanonicalQuery,
             revisionSummary);
+
+        // Strip excluded brand names from the revised query so they don't re-enter entity
+        // resolution or WatchFinder's LLM parser as spurious inclusion signals.
+        if (excludedBrandIds.Count > 0)
+        {
+            var excludedNames = await GetBrandNamesAsync(excludedBrandIds);
+            foreach (var name in excludedNames)
+                revisedQuery = Regex.Replace(revisedQuery, $@"\b{Regex.Escape(name)}\b", "", RegexOptions.IgnoreCase);
+            revisedQuery = Regex.Replace(revisedQuery, @"\s{2,}", " ").Trim(',', '.', '?', '!', ' ');
+        }
 
         var searchResult = excludedBrandIds.Count > 0
             ? await _watchFinderService.FindWatchesAsync(revisedQuery, excludedBrandIds)
@@ -2733,7 +2754,7 @@ public class ChatService
         if (Regex.IsMatch(query, @"\bboth\b|\beither\b", RegexOptions.IgnoreCase))
             return [0, 1];
         if (Regex.IsMatch(query, @"\ball\b(?:\s+(?:of\s+)?(?:them|those|these))?", RegexOptions.IgnoreCase))
-            return Enumerable.Range(0, Math.Min(totalCards, 4)).ToList();
+            return Enumerable.Range(0, Math.Min(totalCards, DiscoveryCardLimit)).ToList();
 
         var firstBatch = Regex.Match(query, @"\bfirst\s+(?<count>[2-4]|two|three|four)\b", RegexOptions.IgnoreCase);
         if (firstBatch.Success)
@@ -2890,6 +2911,22 @@ public class ChatService
     private static bool IsAbusiveQuery(string query) =>
         Regex.IsMatch(query,
             @"\b(?:fuck|shit|bitch|slut|cunt|retard|idiot|moron|stupid|nigger|faggot|kill yourself|rape)\b",
+            RegexOptions.IgnoreCase);
+
+    // Deterministic early-exit for obviously off-topic queries that would otherwise gain
+    // spurious watch-domain signals (e.g. "watch" keyword, fuzzy collection name matches).
+    private static bool IsObviouslyOffTopicQuery(string query) =>
+        // Translation requests: "translate X into Japanese / French / ..."
+        Regex.IsMatch(query,
+            @"\b(?:translate|translation)\b.{0,80}\b(?:into|in|to)\b.{0,30}\b(?:japanese|french|spanish|german|chinese|korean|italian|portuguese|arabic|dutch|russian|hindi|latin)\b",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline)
+        // Clear programming language keywords — never appear in watch copy
+        || Regex.IsMatch(query,
+            @"\b(?:python|javascript|typescript|golang|kotlin|perl|haskell|scala)\b",
+            RegexOptions.IgnoreCase)
+        // Explicit code/script creation in any language
+        || Regex.IsMatch(query,
+            @"\b(?:write|create|build|generate)\s+(?:a\s+|me\s+a\s+|me\s+)?(?:python|javascript|bash|shell|code)\s+(?:script|program|function|snippet)\b",
             RegexOptions.IgnoreCase);
 
     private static int CountWords(string query) =>

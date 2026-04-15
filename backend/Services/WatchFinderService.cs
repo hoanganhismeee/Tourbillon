@@ -217,17 +217,24 @@ public class WatchFinderService : IWatchFinderService
 
         var queryIntent   = await parseTask;
         var queryEmbedding = await embedTask;
+        // When the LLM returns null (no structured intent) but brand exclusions exist,
+        // create a minimal QueryIntent so exclusions reach VectorSearchAsync and the
+        // cache bypass check. Without this, hasHardFilters stays false and a cached
+        // FC-inclusive result can be served even when FC is excluded.
+        if (queryIntent == null && excludedBrandIds.Count > 0)
+            queryIntent = new QueryIntent();
         ApplyBrandExclusions(queryIntent, excludedBrandIds);
 
         var mergedDirectResult = await _deterministicSearch.TryDirectSqlSearchAsync(normalizedQuery, queryIntent, "direct_sql_merged");
         if (mergedDirectResult != null)
             return mergedDirectResult;
 
-        // Skip cache when hard SQL filters are active (price or brand) — a cached
-        // "dress watch" result must not be reused for "Vacheron dress watch".
+        // Skip cache when hard SQL filters are active (price, brand, or brand exclusions) — a cached
+        // "dress watch" result must not be reused for "Vacheron dress watch" or when a brand is excluded.
         var hasHardFilters = queryIntent?.BrandId != null || HasStrictCollectionIntent(queryIntent)
             || queryIntent?.MaxPrice != null || queryIntent?.MinPrice != null
             || queryIntent?.BrandIds?.Count > 0
+            || queryIntent?.ExcludedBrandIds?.Count > 0
             || (queryIntent?.CollectionsDerivedFromStyle != true && queryIntent?.CollectionIds?.Count > 0);
         if (queryEmbedding != null && !hasHardFilters)
         {
