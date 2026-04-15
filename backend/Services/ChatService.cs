@@ -1930,6 +1930,7 @@ public class ChatService
                 : "Action guidance: no Smart Search action is needed for this reply."
         };
 
+        context.Add("Catalogue boundary notice: the watches listed below are the ONLY matches Tourbillon has for this brief. Do not name, describe, or reference any watch model that does not appear below — not even to say it is unavailable. If the user named a famous model (e.g. Rolex Submariner) that is absent, do not mention it; present only the supplied watches as the available options.");
         context.Add("Recommendation writing guidance: reason from catalogue facts and description cues, but do not paste or closely paraphrase Watch.Description into the answer.");
         if (requestedDirections.Count >= 2)
         {
