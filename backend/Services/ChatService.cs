@@ -1890,7 +1890,26 @@ public class ChatService
         // brands surface first regardless of embedding score — same tier weights as the
         // watch listing Featured sort (PP=5, VC/AP/Rolex=4, JLC/Omega=3, others=1).
         if (requestedDirections.Count < 2)
+        {
             ordered = [.. ordered.OrderByDescending(GetBrandPrestigeTier)];
+
+            // Cap tier-2 brands (e.g. Frédérique Constant) at 3 cards when higher-tier
+            // alternatives are present — prevents a single accessible-luxury brand from
+            // flooding a prestige shortlist just because it has broad catalogue coverage.
+            const int tier2Cap = 3;
+            bool hasTier3OrAbove = ordered.Any(w => GetBrandPrestigeTier(w) >= 3);
+            if (hasTier3OrAbove)
+            {
+                var tier2Seen = 0;
+                ordered = ordered
+                    .Where(w =>
+                    {
+                        if (GetBrandPrestigeTier(w) >= 3) return true;
+                        return ++tier2Seen <= tier2Cap;
+                    })
+                    .ToList();
+            }
+        }
 
         if (rejectedWatchSlugs is { Count: > 0 })
         {
@@ -1957,8 +1976,7 @@ public class ChatService
             .Where(w => w.Collection != null)
             .Select(w => w.Collection!)
             .GroupBy(c => c.Id)
-            .Select(g => g.First())
-            .Take(2))
+            .Select(g => g.First()))
         {
             context.Add(BuildCollectionContext(collection));
         }
@@ -3013,8 +3031,14 @@ public class ChatService
     private static string BuildWatchContext(Watch watch)
     {
         var brandName = watch.Brand?.Name ?? "";
+        var brandSlug = watch.Brand?.Slug ?? "";
         var collectionName = watch.Collection?.Name ?? "";
-        return $"Watch \"{BuildWatchTitle(watch)}\" (Slug: {watch.Slug}): Brand {brandName}; Collection {collectionName}; Price {FormatPrice(watch.CurrentPrice)}; Description {watch.Description}; Specs {watch.Specs}";
+        var collectionSlug = watch.Collection?.Slug ?? "";
+        // Include brand and collection slugs so the AI can generate pill links
+        // in the format [Name](/brands/{slug}) and [Name](/collections/{slug}).
+        var brandRef = string.IsNullOrWhiteSpace(brandSlug) ? brandName : $"{brandName} (Slug: {brandSlug})";
+        var collectionRef = string.IsNullOrWhiteSpace(collectionSlug) ? collectionName : $"{collectionName} (Slug: {collectionSlug})";
+        return $"Watch \"{BuildWatchTitle(watch)}\" (Slug: {watch.Slug}): Brand {brandRef}; Collection {collectionRef}; Price {FormatPrice(watch.CurrentPrice)}; Description {watch.Description}; Specs {watch.Specs}";
     }
 
     private static string BuildWatchTitle(Watch watch)
