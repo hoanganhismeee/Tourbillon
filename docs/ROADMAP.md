@@ -48,7 +48,8 @@
 | 12 Trend Page Enhancements (product trends, staff pick, most viewed over 7/14/30 days, user DNA) | Done | 12 |
 | 13 Chat Concierge integration with core product features (Compare, Cursor, grounded actions) | Done | 13 |
 | Chat Concierge Reliability Refactor (backend orchestration + typed compose contract) | Done | 13.5 |
-| Storage Abstraction + S3 + CloudFront Migration | Planned | 14 |
+| AI Intent Classifier (POST /classify replaces 9 regex routing predicates; "unclear" falls back to regex) | Done | 14 |
+| Storage Abstraction + S3 + CloudFront Migration | Planned | 15 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | ? |
 
 ## Model Strategy

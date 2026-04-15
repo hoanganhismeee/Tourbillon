@@ -165,6 +165,7 @@ builder.Services.AddScoped<QueryCacheService>();
 builder.Services.AddScoped<WatchEditorialService>();
 
 // Register chat concierge services (sessions stored in Redis — no in-memory singleton needed)
+builder.Services.AddScoped<IIntentClassifier, ChatIntentClassifier>();
 builder.Services.AddScoped<ChatService>();
 
 // Register taste profile service for Watch DNA personalization

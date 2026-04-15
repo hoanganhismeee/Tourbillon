@@ -2,6 +2,7 @@ from flask import Flask
 
 from core.runtime import create_runtime, start_warmup
 from routes.chat import register_routes as register_chat_routes
+from routes.classify import register_routes as register_classify_routes
 from routes.collections import register_routes as register_collection_routes
 from routes.editorial import register_routes as register_editorial_routes
 from routes.embeddings import register_routes as register_embedding_routes
@@ -17,6 +18,7 @@ register_embedding_routes(app, runtime)
 register_taste_routes(app, runtime)
 register_editorial_routes(app, runtime)
 register_chat_routes(app, runtime)
+register_classify_routes(app, runtime)
 register_collection_routes(app, runtime)
 register_system_routes(app, runtime)
 
