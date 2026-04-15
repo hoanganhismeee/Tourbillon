@@ -150,6 +150,7 @@ public class ChatService
         ["Patek"] = "Patek Philippe",
         ["Audemars"] = "Audemars Piguet",
         ["Lange"] = "A. Lange & Sohne",
+        ["ALange"] = "A. Lange & Sohne",
         ["Glashutte"] = "Glashutte Original",
         ["Frederique"] = "Frederique Constant",
         ["FP Journe"] = "F.P.Journe",
@@ -594,6 +595,16 @@ public class ChatService
         {
             var r = await BuildEntityInfoResolutionAsync(canonicalMessage, mentions);
             r.RoutingPath = "entity_info";
+            return r;
+        }
+
+        // Two-brand decision queries ("Vacheron and A. Lange, which should I choose?") get a
+        // dedicated brand-compare path so they never fall into WatchFinder discovery and produce
+        // garbled deterministic messages.
+        if (mentions.Brands.Count >= 2 && LooksLikeBrandDecisionRequest(canonicalMessage))
+        {
+            var r = await BuildBrandDecisionResolutionAsync(canonicalMessage, mentions);
+            r.RoutingPath = "brand_compare";
             return r;
         }
 
@@ -2229,6 +2240,78 @@ public class ChatService
         };
     }
 
+    // Handles "Vacheron and A. Lange, which should I choose?" style queries.
+    // Loads up to 3 watches per brand so the AI can introduce each maison and suggest a shortlist.
+    private async Task<ChatResolution> BuildBrandDecisionResolutionAsync(string query, EntityMentions mentions)
+    {
+        var allModels = new List<Watch>();
+        var brands = new List<Brand>();
+        foreach (var brandRef in mentions.Brands.Take(3))
+        {
+            var brand = await _context.Brands.AsNoTracking().FirstOrDefaultAsync(b => b.Id == brandRef.Id);
+            if (brand == null) continue;
+            brands.Add(brand);
+
+            var models = await _context.Watches
+                .Include(w => w.Brand).Include(w => w.Collection)
+                .AsNoTracking()
+                .Where(w => w.BrandId == brandRef.Id)
+                .OrderByDescending(w => w.CurrentPrice)
+                .Take(3)
+                .ToListAsync();
+            allModels.AddRange(models);
+        }
+
+        if (allModels.Count == 0)
+            return new ChatResolution
+            {
+                UseAi = true,
+                Query = query,
+                Context = ["No specific Tourbillon catalogue records were resolved. Respond as a helpful boutique concierge."]
+            };
+
+        var context = new List<string>
+        {
+            "Tourbillon resolved a two-brand decision query. Introduce each brand's character and signature style grounded in the supplied catalogue context and any secondary web notes. Then name one or two specific watches that best represent each brand at a practical buying level, and end with a short question that helps the user narrow their brief."
+        };
+        foreach (var brand in brands)
+            context.Add(BuildBrandContext(brand));
+
+        var collections = allModels
+            .Where(w => w.Collection != null)
+            .Select(w => w.Collection!)
+            .GroupBy(c => c.Id).Select(g => g.First())
+            .Take(4).ToList();
+        foreach (var col in collections)
+            context.Add(BuildCollectionContext(col));
+
+        foreach (var w in allModels)
+            context.Add(BuildWatchContext(w));
+
+        var webQuery = brands.Count >= 2
+            ? $"{brands[0].Name} vs {brands[1].Name} luxury watch"
+            : brands.FirstOrDefault()?.Name;
+
+        var allCards = allModels.Select(ToChatWatchCard).ToList();
+        return new ChatResolution
+        {
+            UseAi = true,
+            Query = query,
+            Context = context,
+            WatchCards = allCards,
+            Actions = [],
+            AllowWebEnrichment = true,
+            WebQuery = webQuery,
+            SessionState = new ChatSessionState
+            {
+                BrandIds = brands.Select(b => b.Id).ToList(),
+                WatchSlugs = allCards.Select(c => c.Slug).Where(s => !string.IsNullOrWhiteSpace(s)).ToList(),
+                FollowUpMode = "watch_cards",
+                CanonicalQuery = query,
+            }
+        };
+    }
+
     private async Task<ChatResolution> BuildCompareResolutionAsync(string query, List<Watch> watches)
     {
         var collections = watches
@@ -2645,6 +2728,13 @@ public class ChatService
     private static bool IsExplicitCompareQuery(string query) =>
         Regex.IsMatch(query,
             @"\b(?:compare|versus|vs\.?|against|difference between|which should i buy|should i buy| or )\b",
+            RegexOptions.IgnoreCase);
+
+    // Detects decision-intent queries where the user mentions 2+ brands and is asking for a recommendation.
+    // Used to route to BuildBrandDecisionResolutionAsync instead of WatchFinder discovery.
+    private static bool LooksLikeBrandDecisionRequest(string query) =>
+        Regex.IsMatch(query,
+            @"\b(?:which should i (?:choose|get|buy|pick)|what should i (?:choose|get|buy|pick)|help me (?:choose|decide)|which is better|which one|recommend me|suggest me|for me|what do you (?:recommend|think|suggest))\b",
             RegexOptions.IgnoreCase);
 
     private static bool IsAbusiveQuery(string query) =>
