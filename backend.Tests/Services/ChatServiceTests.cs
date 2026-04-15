@@ -1830,6 +1830,45 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_BrandDecisionQuery_RoutesToBrandCompare_NotDiscovery()
+    {
+        // "vacheron and alange, what should I choose" must route to brand_compare, not WatchFinder
+        // discovery — avoiding the garbled BuildDiscoverySummaryMessage fallback text.
+        using var context = CreateContext();
+        var vacheron = new Brand { Id = 1, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var lange = new Brand { Id = 2, Name = "A. Lange & Söhne", Slug = "a-lange-sohne" };
+        var vcWatch1 = new Watch { Id = 100, BrandId = 1, Brand = vacheron, Name = "5500V/110A-B148", Slug = "vc-overseas-1", Description = "Vacheron Constantin Overseas", CurrentPrice = 38000m, Image = "vc1.png", Specs = "{}" };
+        var vcWatch2 = new Watch { Id = 101, BrandId = 1, Brand = vacheron, Name = "4101U/000R-B705", Slug = "vc-patrimony-1", Description = "Vacheron Constantin Patrimony", CurrentPrice = 42000m, Image = "vc2.png", Specs = "{}" };
+        var alWatch1 = new Watch { Id = 200, BrandId = 2, Brand = lange, Name = "401.035", Slug = "lange-saxonia-1", Description = "A. Lange & Söhne Saxonia", CurrentPrice = 48000m, Image = "al1.png", Specs = "{}" };
+        var alWatch2 = new Watch { Id = 201, BrandId = 2, Brand = lange, Name = "302.025", Slug = "lange-1-1", Description = "A. Lange & Söhne Lange 1", CurrentPrice = 52000m, Image = "al2.png", Specs = "{}" };
+
+        context.Brands.AddRange(vacheron, lange);
+        context.Watches.AddRange(vcWatch1, vcWatch2, alWatch1, alWatch2);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        // WatchFinder must NOT be called — brand_compare path bypasses it.
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"Vacheron brings polished Swiss refinement; A. Lange brings German precision. The Overseas and Saxonia illustrate the split well.\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "vacheron and alange, what should I choose", null, "127.0.0.1");
+
+        // Cards from both brands.
+        Assert.True(result.WatchCards.Count >= 2);
+        Assert.Contains(result.WatchCards, c => c.BrandId == 1);
+        Assert.Contains(result.WatchCards, c => c.BrandId == 2);
+        // AI is called to write the intro.
+        Assert.Equal(1, handler.CallCount);
+        // No garbled deterministic summary text.
+        Assert.DoesNotContain("strongest catalogue matches Tourbillon surfaced", result.Message, StringComparison.OrdinalIgnoreCase);
+        // WatchFinder must not have been called.
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_DiscoveryResponse_HasCompareChip_AndBrandNavigateChip()
     {
         using var context = CreateContext();
