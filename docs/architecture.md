@@ -278,17 +278,26 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 
 ### Chat Concierge Routing
 
-Target direction for concierge reliability:
+**Routing authority:** `ChatService` classifies the request and owns all app behavior. `WatchFinderService` is the source of truth for catalogue retrieval. `ai-service /chat` is a wording layer only — it never decides routing, compare, search, or navigation behavior.
 
-- `ChatService` classifies the request and owns the app behavior.
-- `WatchFinderService` remains the single source of truth for search intent and catalogue retrieval.
-- The backend builds watch cards and actions before the frontend sees the reply.
-- `ai-service /chat` writes the grounded concierge copy for the resolved context instead of deciding compare, search, or navigation behavior.
-- The frontend executes backend-issued actions.
+**Two-tier search routing (April 2026):**
+
+| Query type | Detection | Search path | Token cost |
+|---|---|---|---|
+| Simple brand/collection reference | `IsSimpleBrandQuery` — descriptor blacklist | `GetCatalogueSampleAsync` (pure SQL, price DESC) | Zero |
+| Complex / descriptor query | Descriptor present after entity strip | `WatchFinderService.FindWatchesAsync` (vector + LLM rerank) | Normal |
+
+`IsSimpleBrandQuery` strips resolved entity names then checks the remainder against a compiled `_watchDescriptorPattern` regex (style, material, complication, size, price, colour, activity words). If no descriptor matches → SQL. **Inverted logic is intentional**: watch descriptors are a finite, bounded set; acceptable request phrasings ("enlighten me about", "guide me through", "introduce me to") are infinite — whitelisting filler words fails on novel phrasing.
+
+**Brand/collection info watch cards:** `BuildEntityInfoResolutionAsync` surfaces 4 watch cards (was 2) ordered by `CurrentPrice DESC` (flagship models first) for both brand and collection info intents. No additional LLM call — same SQL used for context building.
+
+**Dispatcher null fallbacks:** Each `DispatchByIntentAsync` case that formerly returned `null` now returns an explicit message (e.g., compare with < 2 watches → "To compare I need at least two models"; affirmative with no context → "What are you looking for?"). Silent null cascades were a source of confusing fallthrough behavior.
+
+**Cursor command handler:** Detects cursor intent (cursor/pointer keyword + action verb including past tenses), resolves cursor name from `_cursorAliases`. On unrecognized cursor name, returns a list of available cursors instead of `null` (which previously fell to `ai_fallback` and showed the welcome screen).
 
 **Models loaded at startup:** `qwen2.5:7b` (LLM) + `nomic-embed-text` (embeddings). Both run in the same Ollama container.
 
-**Prompts:** `RERANK_SYSTEM_PROMPT`, `PARSE_SYSTEM_PROMPT`, `TASTE_SYSTEM_PROMPT`, `CHAT_SYSTEM_PROMPT` — all defined in `app.py`. Chat prompt written for Haiku (prose instructions, 130-word cap, inline watch cards).
+**Prompts:** `RERANK_SYSTEM_PROMPT`, `PARSE_SYSTEM_PROMPT`, `TASTE_SYSTEM_PROMPT`, `CHAT_SYSTEM_PROMPT` — all defined in `ai-service/prompts/`. Chat prompt written for Haiku (prose instructions, 200-word cap, inline watch cards). Safety-net truncation in `routes/chat.py` enforces the cap for any model that overshoots.
 
 ### AI Service Warm-up Strategy
 
@@ -432,6 +441,10 @@ Frontend runs locally (`npm run dev`) — intentionally excluded from Docker for
 | Backend owns all logic | SQL handles filtering, sorting, scoring. AI called only for NLU and explanation. |
 | Deterministic category taxonomy | `InferCategory()` is permanent structured metadata. LLM interprets on top — never owns ground truth. |
 | Defensive parsing in Python | AI service strips preamble, validates JSON, retries on failure. Never trust raw LLM output. |
+| Blacklist bad patterns, not whitelist good ones | For open-ended text, enumerate what you want to block (finite descriptor domain). Whitelisting acceptable phrasings fails on every new synonym ("enlighten" vs "tell"). |
+| SQL before LLM when entity is resolved | Once entity resolution gives a brand/collection ID, a SQL query is always cheaper and faster than vector + rerank. Reserve LLM search for queries with descriptors the SQL layer cannot interpret. |
+| Explicit fallbacks over null cascades | When a dispatcher cannot fulfill an intent, return a user-facing message. Silent null returns cascade to unrelated handlers and produce confusing output. |
+| Classifier is the semantic router — trust it | Regex pre-checks should guard only what classifiers cannot: latency-critical structural patterns (rate limit, abuse, cursor parsing) and exact token-level commands. Everything semantic — greetings, off-topic, follow-ups — belongs in the classifier. Duplicate semantic logic in regex is always a lagging copy. |
 
 ### Infrastructure Status
 

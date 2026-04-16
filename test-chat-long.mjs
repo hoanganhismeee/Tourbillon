@@ -159,6 +159,35 @@ const FLOWS = [
       { msg: 'I have a budget of 40k', note: 't15 late budget filter' },
     ]
   },
+  {
+    name: 'SQL brand path — simple brand queries bypass WatchFinder LLM',
+    turns: [
+      { msg: 'Suggest me some Patek Philippe', note: 'simple brand SQL', checkCards: true },
+      { msg: 'Show me Rolex', note: 'simple brand SQL', checkCards: true },
+      { msg: 'Rolex Submariner collection', note: 'brand + collection SQL', checkCards: true },
+      { msg: 'Patek Philippe dress watch', note: 'descriptor → full WatchFinder', checkCards: true },
+      { msg: 'something elegant from Vacheron', note: 'descriptor → full WatchFinder', checkCards: true },
+    ]
+  },
+  {
+    name: 'Cursor edge cases — unrecognized names and past-tense verbs',
+    turns: [
+      { msg: 'changed cursor to something else', note: 'unresolved name — must NOT show welcome screen', checkCursorHelp: true },
+      { msg: 'change the cursor to tourbillon', note: 'known cursor', checkCursor: true },
+      { msg: 'I want the default pointer', note: 'want + pointer', checkCursor: true },
+      { msg: 'reset the cursor', note: 'reset verb', checkCursor: true },
+      { msg: 'switched cursor to crosshair', note: 'past-tense switched', checkCursor: true },
+    ]
+  },
+  {
+    name: 'Brand info cards — brand/collection info responses include watch cards',
+    turns: [
+      { msg: 'Tell me about Audemars Piguet', note: 'brand info cards', checkCards: true },
+      { msg: 'What about their Royal Oak collection?', note: 'collection info cards', checkCards: true },
+      { msg: 'tell me about grand seiko', note: 'brand info cards', checkCards: true },
+      { msg: 'show me all Vacheron Constantin', note: 'simple brand SQL cards', checkCards: true },
+    ]
+  },
 ];
 
 // ── Runner ──────────────────────────────────────────────────────────────────
@@ -174,7 +203,7 @@ async function runFlow(flow, flowIdx) {
   let prevCards = [];
 
   for (let t = 0; t < flow.turns.length; t++) {
-    const { msg, note, checkNoFC, checkDecline, checkCursor, checkCompare } = flow.turns[t];
+    const { msg, note, checkNoFC, checkDecline, checkCursor, checkCursorHelp, checkCompare, checkCards } = flow.turns[t];
 
     process.stdout.write(`  ${DIM}T${t + 1} sending...${RESET}\r`);
 
@@ -238,6 +267,33 @@ async function runFlow(flow, flowIdx) {
       } else {
         asserts.push(warn('no cursor action or mention'));
         checks.warn++;
+      }
+    }
+
+    // Verifies unresolved cursor name returns helpful list, NOT the generic welcome/off-topic screen.
+    if (checkCursorHelp) {
+      const isWelcomeScreen = msgLower.includes('try asking') || msgLower.includes('ask about any watch');
+      const mentionsCursorOptions = msgLower.includes('cursor') || msgLower.includes('available') || msgLower.includes('tourbillon') || msgLower.includes('crosshair') || msgLower.includes('default');
+      if (isWelcomeScreen) {
+        asserts.push(fail('returned generic welcome screen for unresolved cursor name'));
+        checks.fail++;
+      } else if (mentionsCursorOptions) {
+        asserts.push(pass('returned cursor help instead of welcome screen'));
+        checks.pass++;
+      } else {
+        asserts.push(warn('cursor response unclear — check manually'));
+        checks.warn++;
+      }
+    }
+
+    // Verifies at least one watch card is returned.
+    if (checkCards) {
+      if (cards.length >= 1) {
+        asserts.push(pass(`${cards.length} watch card(s) returned`));
+        checks.pass++;
+      } else {
+        asserts.push(fail('expected watch cards but got none'));
+        checks.fail++;
       }
     }
 

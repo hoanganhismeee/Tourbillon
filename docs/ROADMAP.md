@@ -49,6 +49,7 @@
 | 13 Chat Concierge integration with core product features (Compare, Cursor, grounded actions) | Done | 13 |
 | Chat Concierge Reliability Refactor (backend orchestration + typed compose contract) | Done | 13.5 |
 | AI Intent Classifier (POST /classify replaces 9 regex routing predicates; "unclear" falls back to regex) | Done | 14 |
+| Chat Concierge — Flexible Routing + Token-Optimized Search (SQL brand path, descriptor blacklist, 200-word limit, cursor fallback, explicit dispatcher messages) | Done | 14.5 |
 | Storage Abstraction + S3 + CloudFront Migration | Planned | 15 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | ? |
 
@@ -87,7 +88,7 @@ The warmup in `app.py` auto-detects non-Ollama URLs and skips model pull. No oth
 `ai-service/app.py` lines 171–175 contain hardcoded dress/sport/diver/chronograph narrative guidance for the reranker. These become redundant once Haiku handles them natively — remove after confirming correct scores in staging. Keep all scoring thresholds (`score 80+`). Do NOT remove `PARSE_SYSTEM_PROMPT` category lists (occasion, material, strap, etc.) — they constrain structured JSON output format and are model-agnostic.
 
 **Chat concierge prompt (`CHAT_SYSTEM_PROMPT`) — written for Haiku:**
-Style rules, word cap (130 words), and link format are expressed as plain instructions that Claude follows natively — no hardcoded narrative, no model-specific training. A server-side `_truncate_chat_response()` in `/chat` enforces the cap as a safety net for any model that overshoots. Do not add enumeration-heavy guidance; prose instructions are intentional and model-agnostic.
+Style rules, word cap (200 words), and link format are expressed as plain instructions that Claude follows natively — no hardcoded narrative, no model-specific training. A server-side `_truncate_chat_response()` in `/chat` enforces the cap as a safety net for any model that overshoots. Do not add enumeration-heavy guidance; prose instructions are intentional and model-agnostic.
 
 **`Collection.Style` DB column:** SQL pre-filter for query speed — not a knowledge proxy. Keep regardless of model.
 
@@ -622,6 +623,40 @@ Addressed the main reliability gap in the concierge: overlapping decision-makers
 - Backend build, 2184 backend tests, and 9 Python tests all pass
 - New test `HandleMessageAsync_DiscoveryIgnoresAiReturnedActions` verifies AI-returned action payloads are fully ignored
 - `HandleMessageAsync_MessyRecommendation_RewritesSearchActionIntoCanonicalTerms` confirms backend-generated search action uses canonical terms, not user's raw phrasing
+
+### Phase 14.5: Chat Concierge — Flexible Routing + Token-Optimized Search (COMPLETE)
+
+Reduced AI token spend for simple brand queries and made the routing layer resilient to novel user phrasing without adding new regex rules.
+
+**What changed:**
+
+**Two-tier search routing**
+- Simple brand/collection queries ("show me Patek Philippe", "enlighten me about Grand Seiko") now route to a pure SQL sample (`GetCatalogueSampleAsync` — `ORDER BY CurrentPrice DESC LIMIT 6`). No vector search, no LLM rerank, zero token cost.
+- Complex/descriptor queries ("Patek dress watch", "elegant Vacheron", "Rolex dive watch under $20k") continue to the full WatchFinder pipeline unchanged.
+- Detection uses a descriptor blacklist (`_watchDescriptorPattern` — style, material, complication, size, price, colour, activity words). **Intentionally inverted**: watch descriptors are finite, acceptable phrasings ("enlighten me about", "guide me through") are infinite. A whitelist always fails on new synonyms.
+
+**Brand/collection info cards improved**
+- `BuildEntityInfoResolutionAsync` now returns 4 watch cards (was 2 for brands, 3 for collections), ordered by `CurrentPrice DESC` so flagship models surface first instead of random ID order.
+
+**Dispatcher explicit fallbacks**
+- Replaced every `return null` in `DispatchByIntentAsync` with a user-facing message: compare with < 2 watches, affirmative follow-up with no context.
+- Silent null cascades to unrelated handlers are gone.
+
+**Cursor handler hardened**
+- Broader action-verb matching (changed, switched, want, reset, give).
+- Unrecognized cursor name returns a list of available options instead of falling to `ai_fallback` (which showed the welcome screen).
+
+**Pre-check flexibility**
+- Removed word-count limits on `LooksLikeContextualFollowUp` (was ≤ 10 words) and `IsAffirmativeFollowUp` (was ≤ 8 words).
+
+**Response word limit**
+- `CHAT_SYSTEM_PROMPT` cap raised from 130 → 200 words. Safety-net truncation in `routes/chat.py` updated to match.
+
+**Files involved:**
+- `backend/Services/ChatService.cs` — `IsSimpleBrandQuery`, `GetCatalogueSampleAsync`, `_watchDescriptorPattern`, discovery routing, entity info card count/order, dispatcher fallbacks, cursor handler, word-count limit removal
+- `ai-service/prompts/chat.py` — word cap 130 → 200
+- `ai-service/routes/chat.py` — truncation default 130 → 200
+- `test-chat-long.mjs` — 3 new flows (SQL brand path, cursor edge cases, brand info cards) + `checkCards` / `checkCursorHelp` assertion types
 
 ### Slug-Based URLs + Cloudinary Public ID Sync (IN PROGRESS)
 

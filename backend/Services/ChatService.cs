@@ -1086,7 +1086,8 @@ public class ChatService
             case ChatIntent.Discovery:
             {
                 // Simple brand/collection reference (no descriptors) → pure SQL sample, no LLM search cost.
-                if (IsSimpleBrandQuery(canonicalMessage, mentions))
+                // Uses semantic routing (embedding cosine similarity) with regex as fallback.
+                if (await IsSimpleBrandQueryAsync(canonicalMessage, mentions))
                 {
                     var brandId = mentions.Brands.FirstOrDefault()?.Id;
                     var collectionId = mentions.Collections.FirstOrDefault()?.Id;
@@ -2865,23 +2866,73 @@ public class ChatService
             .ToList();
     }
 
-    // Filler words stripped when deciding if a query is a plain brand/collection reference.
-    // Any word NOT in this set remaining after entity names are removed → complex query.
-    private static readonly HashSet<string> _queryFillerWords = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "suggest", "show", "me", "some", "tell", "about", "what", "do", "you", "have", "from", "by",
-        "watches", "watch", "timepieces", "timepiece", "models", "model", "references", "reference",
-        "a", "an", "the", "please", "i", "want", "like", "looking", "for", "any", "more", "give",
-        "recommend", "recommendation", "suggestions", "interested", "in", "your", "collection",
-        "something", "anything", "all", "hi", "hey", "hello", "there", "and", "or", "see", "get",
-        "can", "could", "would", "love", "appreciate", "available", "list", "catalogue", "catalog",
-        "selection", "lineup", "range", "everything", "anything", "them", "those", "these"
-    };
+    // Watch-domain descriptor pattern used to detect complex queries that need WatchFinder.
+    // Logic: strip entity names → if ANY remaining token matches a watch attribute → complex.
+    // Inverse of a filler-word whitelist: unknown words (enlighten, guide, introduce) are safe
+    // defaults and correctly fall to SQL rather than triggering an unnecessary LLM search.
+    private static readonly Regex _watchDescriptorPattern = new(
+        @"\b(?:" +
+        // Style / occasion
+        "dress|dressy|sport|sporty|casual|elegant|formal|classic|modern|vintage|bold|slim|thin|minimalist|" +
+        "everyday|office|business|dinner|party|event|travel|weekend|adventure|outdoor|" +
+        // Case material
+        "gold|rose.?gold|yellow.?gold|white.?gold|platinum|steel|titanium|ceramic|bronze|carbon|" +
+        // Strap / bracelet
+        "leather|rubber|nato|fabric|bracelet|integrated|" +
+        // Complications / movement
+        "chronograph|tourbillon|perpetual|annual|moonphase|moon.phase|gmt|world.?time|alarm|" +
+        "minute.?repeater|flyback|rattrapante|skeleton|open.?heart|automatic|manual|quartz|solar|" +
+        // Size / physical
+        "small|large|big|compact|oversize|oversized|mm|diameter|thick|" +
+        // Water resistance / activity
+        "dive|diver|diving|swim|swimming|waterproof|water.?resist|depth|" +
+        // Price signals
+        @"under|below|above|budget|affordable|cheap|expensive|\$|usd|eur|gbp|" +
+        // Colour
+        "blue|black|white|green|grey|gray|silver|brown|red|orange|yellow|dial|" +
+        // Generic attribute request words that imply filtering
+        "best|top|popular|iconic|rare|limited|new|latest|cheapest|priciest" +
+        @")\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Structured response from the ai-service /route endpoint.
+    private sealed record RouteResult(string Route, double Confidence, bool Fallback = false);
 
     // Returns true when the query names only a brand/collection with no descriptive attributes.
-    // These can be served by a direct SQL sample without calling WatchFinder's LLM pipeline.
-    // Examples: "suggest me some Patek Philippe", "show me Grand Seiko" → true
-    //           "Patek Philippe dress watch", "elegant Vacheron" → false (descriptor present)
+    // Primary path: calls POST /route on ai-service which uses embedding cosine similarity to
+    // classify the query against example utterances (same concept as semantic-router by Aurelio AI).
+    // Fallback: _watchDescriptorPattern regex blacklist when the route endpoint is unreachable.
+    //
+    // Examples: "suggest me some Patek Philippe"  → true  (SQL — pure brand browse)
+    //           "enlighten me about Grand Seiko"  → true  (SQL — "enlighten" has no descriptor)
+    //           "Patek Philippe dress watch"       → false (WatchFinder — "dress" is a descriptor)
+    //           "something elegant from Vacheron"  → false (WatchFinder — "elegant" is a descriptor)
+    private async Task<bool> IsSimpleBrandQueryAsync(string query, EntityMentions mentions)
+    {
+        // Must have at least one known entity to route to SQL.
+        if (!mentions.Brands.Any() && !mentions.Collections.Any()) return false;
+
+        try
+        {
+            var httpClient = _httpClientFactory.CreateClient("ai-service");
+            var resp = await httpClient.PostAsJsonAsync("/route", new { query });
+            if (resp.IsSuccessStatusCode)
+            {
+                var result = await resp.Content.ReadFromJsonAsync<RouteResult>(_jsonOptions);
+                if (result != null)
+                    return string.Equals(result.Route, "simple_brand", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug("Route endpoint unavailable, using regex fallback: {Error}", ex.Message);
+        }
+
+        // Fallback: descriptor blacklist (handles cases where ai-service is not yet warm).
+        return IsSimpleBrandQuery(query, mentions);
+    }
+
+    // Synchronous descriptor-blacklist check — used as fallback by IsSimpleBrandQueryAsync.
     private static bool IsSimpleBrandQuery(string query, EntityMentions mentions)
     {
         if (!mentions.Brands.Any() && !mentions.Collections.Any()) return false;
@@ -2892,13 +2943,7 @@ public class ChatService
         foreach (var c in mentions.Collections)
             stripped = Regex.Replace(stripped, Regex.Escape(c.Name), " ", RegexOptions.IgnoreCase);
 
-        var meaningfulWords = stripped
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Select(w => w.Trim('.', ',', '?', '!', '\'', '"'))
-            .Where(w => w.Length > 1 && !_queryFillerWords.Contains(w))
-            .ToArray();
-
-        return meaningfulWords.Length == 0;
+        return !_watchDescriptorPattern.IsMatch(stripped);
     }
 
     // Pure SQL catalogue sample — no embeddings, no LLM, no Hangfire jobs.
