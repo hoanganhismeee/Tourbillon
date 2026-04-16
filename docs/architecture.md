@@ -238,9 +238,9 @@ Email: `TestEmailDto`
 Entry point: `ai-service/app.py`
 
 Internal layout:
-- `ai-service/routes/` - endpoint registration by domain (`watch_finder`, `chat`, `taste`, `editorial`, `embeddings`, `collections`, `system`)
+- `ai-service/routes/` - endpoint registration by domain (`watch_finder`, `chat`, `classify`, `route`, `taste`, `editorial`, `embeddings`, `collections`, `system`)
 - `ai-service/prompts/` - prompt strings grouped by domain
-- `ai-service/core/` - shared runtime, warmup, cache, and LLM helpers
+- `ai-service/core/` - shared runtime, warmup, cache, LLM helpers, and the semantic route layer (`route_layer.py`)
 
 ```
 Frontend (Next.js)
@@ -270,6 +270,7 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 | `POST /watch-finder/rerank` | Candidate pool -> scores-only array (LLM call) |
 | `POST /watch-finder/explain` | Single-watch on-demand explanation (cached) |
 | `POST /embed` | Batch text -> float[768] embeddings via nomic-embed-text (no LLM) |
+| `POST /route` | Semantic query router — classifies a discovery query as `simple_brand` (pure SQL sufficient) or `descriptor_query` (full WatchFinder needed). Uses cosine similarity against pre-embedded example utterances (`core/route_layer.py`). Falls back to `descriptor_query` on any error. No LLM — embedding only. |
 | `POST /chat` | Conversational wording and composition from compact Tourbillon-first context, with optional limited web notes for approved brand-history questions. Always returns an empty actions list — backend generates all compare/search/navigate/cursor/suggest actions before the reply reaches the frontend. |
 | `POST /parse-taste` | Free-text -> structured taste preferences JSON (LLM call) |
 | `POST /generate-dna-from-behavior` | Browsing events array -> structured taste preferences + `summary` string (LLM call) |
@@ -284,10 +285,14 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 
 | Query type | Detection | Search path | Token cost |
 |---|---|---|---|
-| Simple brand/collection reference | `IsSimpleBrandQuery` — descriptor blacklist | `GetCatalogueSampleAsync` (pure SQL, price DESC) | Zero |
-| Complex / descriptor query | Descriptor present after entity strip | `WatchFinderService.FindWatchesAsync` (vector + LLM rerank) | Normal |
+| Simple brand/collection reference | `IsSimpleBrandQueryAsync` → `POST /route` (cosine similarity); regex fallback | `GetCatalogueSampleAsync` (pure SQL, price DESC) | Zero |
+| Complex / descriptor query | Semantic route returns `descriptor_query`; or regex detects descriptor after entity strip | `WatchFinderService.FindWatchesAsync` (vector + LLM rerank) | Normal |
 
-`IsSimpleBrandQuery` strips resolved entity names then checks the remainder against a compiled `_watchDescriptorPattern` regex (style, material, complication, size, price, colour, activity words). If no descriptor matches → SQL. **Inverted logic is intentional**: watch descriptors are a finite, bounded set; acceptable request phrasings ("enlighten me about", "guide me through", "introduce me to") are infinite — whitelisting filler words fails on novel phrasing.
+**Detection — two-tier:**
+1. `IsSimpleBrandQueryAsync` calls `POST /route` on ai-service, which pre-embeds example utterances (`core/route_layer.py`) and classifies by cosine similarity (threshold 0.45). Returns `simple_brand` or `descriptor_query`.
+2. If ai-service is unreachable, falls back to `IsSimpleBrandQuery` — strips entity names then checks the remainder against `_watchDescriptorPattern` (style, material, complication, size, price, colour, activity words). No descriptor match → SQL.
+
+**Inverted logic is intentional for the regex fallback**: watch descriptors are a finite, bounded set; acceptable request phrasings ("enlighten me about", "guide me through", "introduce me to") are infinite — whitelisting filler words fails on novel phrasing. The semantic router handles this naturally by similarity to known examples.
 
 **Brand/collection info watch cards:** `BuildEntityInfoResolutionAsync` surfaces 4 watch cards (was 2) ordered by `CurrentPrice DESC` (flagship models first) for both brand and collection info intents. No additional LLM call — same SQL used for context building.
 
