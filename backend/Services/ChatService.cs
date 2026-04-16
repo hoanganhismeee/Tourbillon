@@ -421,8 +421,12 @@ public class ChatService
                 responseLanguage,
                 resolution.AllowWebEnrichment,
                 resolution.WebQuery);
+            // Skip unsupported-entity rejection for referenced_watch — the AI naturally
+            // weaves in related entities from conversation history, which is correct behaviour
+            // for a single-watch deep-dive. Rejecting it produces a one-line stub.
             var keepDeterministic = ShouldKeepDeterministicResolutionMessage(aiResult, resolution)
-                || await MentionsUnsupportedResolvedEntitiesAsync(aiResult, resolution);
+                || (!string.Equals(resolution.RoutingPath, "referenced_watch", StringComparison.Ordinal)
+                    && await MentionsUnsupportedResolvedEntitiesAsync(aiResult, resolution));
             // Only use the deterministic message when it's actually set — an empty deterministic
             // message (e.g. collection compare where AI writes the intro) should still use aiResult.
             aiMessage = keepDeterministic && !string.IsNullOrWhiteSpace(resolution.Message)
@@ -622,14 +626,15 @@ public class ChatService
             return contextualFollowUp;
         }
 
-        // Price-only follow-ups like "under 10k" lack watch keywords but are clearly watch-scoped
-        // when the user is already mid-session (has watch history or active brand exclusions).
+        // Price-only and style-only follow-ups like "under 10k" or "something dressier" lack
+        // watch keywords but are clearly watch-scoped when the user is already mid-session.
         var hasSessionContext = sessionState?.WatchSlugs.Count > 0 || sessionState?.ExcludedBrandIds.Count > 0;
         var hasWatchScope = mentions.HasAny
             || referencedWatches.Count > 0
             || WatchFinderService.HasWatchDomainSignal(canonicalMessage)
             || (sessionState?.WatchSlugs.Count > 0 && LooksLikeContextualFollowUp(message))
-            || (hasSessionContext && LooksLikePriceFollowUp(canonicalMessage));
+            || (hasSessionContext && LooksLikePriceFollowUp(canonicalMessage))
+            || (hasSessionContext && LooksLikeStyleFollowUp(canonicalMessage));
 
         // Queries without watch-domain signals still go to the AI for scoped wording,
         // while backend retains control of any structured actions shown to the user.
@@ -847,7 +852,7 @@ public class ChatService
         if (!Regex.IsMatch(query, @"\b(?:cursor|pointer)\b", RegexOptions.IgnoreCase))
             return null;
 
-        if (!Regex.IsMatch(query, @"\b(?:change|set|switch|use|make)\b", RegexOptions.IgnoreCase)
+        if (!Regex.IsMatch(query, @"\b(?:change|changed|set|switch|switched|use|make|give|want|reset)\b", RegexOptions.IgnoreCase)
             && !Regex.IsMatch(query, @"\bcursor\s+to\b", RegexOptions.IgnoreCase))
             return null;
 
@@ -857,7 +862,19 @@ public class ChatService
             .FirstOrDefault(alias => normalized.Contains(NormalizeEntityText(alias.Key), StringComparison.OrdinalIgnoreCase));
 
         if (string.IsNullOrWhiteSpace(resolvedCursor.Value))
-            return null;
+        {
+            // Cursor intent is clear but the cursor name is unrecognized — list available options
+            // so the user knows what to ask for instead of falling to the generic ai_fallback.
+            var available = _cursorAliases.Values
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(v => char.ToUpperInvariant(v[0]) + v[1..])
+                .OrderBy(v => v);
+            return new ChatResolution
+            {
+                Message = $"Available cursors: {string.Join(", ", available)}. Which would you like?",
+                RoutingPath = "cursor_unresolved"
+            };
+        }
 
         var cursorLabel = string.Equals(resolvedCursor.Value, "default", StringComparison.OrdinalIgnoreCase)
             ? "Default"
@@ -2822,18 +2839,15 @@ public class ChatService
         if (Regex.IsMatch(q, @"^(?:yes|yeah|yep|sure|ok|okay|please do|go ahead|sounds good|do it)[!.]*$", RegexOptions.IgnoreCase))
             return true;
         // "yes/yeah/sure please [optional trailing words]" — e.g. "yes please show me the details"
-        var words = q.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return words.Length <= 8
-            && Regex.IsMatch(q, @"^(?:yes|yeah|yep|sure|ok|okay)\s+please\b", RegexOptions.IgnoreCase);
+        return Regex.IsMatch(q, @"^(?:yes|yeah|yep|sure|ok|okay)\s+please\b", RegexOptions.IgnoreCase);
     }
 
     private static bool IsGreetingQuery(string query) =>
         Regex.IsMatch(query.Trim(), @"^(?:hi|hello|hey(?:\s+there)?|yo|hiya|sup|what'?s up|good morning|good afternoon|good evening)[!.]*$", RegexOptions.IgnoreCase);
 
     private static bool LooksLikeContextualFollowUp(string query) =>
-        query.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 10
-        && Regex.IsMatch(query,
-            @"\b(?:yes|yeah|yep|sure|ok|okay|please|those|these|them|that|this|first|second|third|fourth|fifth|more|details|tell me|show me|compare|go ahead|sounds good|do it)\b",
+        Regex.IsMatch(query,
+            @"\b(?:yes|yeah|yep|sure|ok|okay|please|those|these|them|that|this|first|second|third|fourth|fifth|more|details|tell me|show me|compare|go ahead|sounds good|do it|what about|how about|something|instead|rather|another|other)\b",
             RegexOptions.IgnoreCase);
 
     private static bool LooksLikeRecommendationRevision(
@@ -2853,7 +2867,7 @@ public class ChatService
 
         return Regex.IsMatch(
             query,
-            @"\b(?:show me something else|show me another|what else|anything else|another option|different option|different direction|not what i meant|not really|not quite|don't like|do not like|dislike|hate|skip these|skip those|avoid these|avoid those|those are not|these are not|they are not|isn't right|aren't right|wrong direction|too sporty|too dressy|too expensive|too big|too small|more artistic|more art|less sporty|less dressy|more formal|more casual|make the list richer|richer list|separate the .* direction|split by intent|group(?:ed)? guidance|introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|strongest final shortlist)\b",
+            @"\b(?:show me something else|show me another|what else|anything else|another option|different option|different direction|not what i meant|not really|not quite|don't like|do not like|dislike|hate|skip these|skip those|avoid these|avoid those|those are not|these are not|they are not|isn't right|aren't right|wrong direction|too sporty|too dressy|too expensive|too big|too small|more artistic|more art|less sporty|less dressy|more formal|more casual|more refined|more elegant|more modern|more classic|more luxurious|dressier|sportier|fancier|classier|simpler|bolder|slimmer|something (?:more )?(?:dressy|sporty|formal|casual|elegant|refined|classic|modern|luxurious|artistic|simple|bold|slim)|(?:what|how) about (?:something|a |an )|make the list richer|richer list|separate the .* direction|split by intent|group(?:ed)? guidance|introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|strongest final shortlist)\b",
             RegexOptions.IgnoreCase);
     }
 
@@ -2878,6 +2892,15 @@ public class ChatService
         Regex.IsMatch(query,
             @"\b(?:under|below|above|over|around|budget|price|cost|between|cheap|affordable|expensive|luxury)\b"
             + @"|\b\d[\d,]*\s*(?:k|000)?\b",
+            RegexOptions.IgnoreCase);
+
+    // Detects style-shift follow-ups like "something dressier", "how about a dress watch",
+    // "more formal". Used alongside LooksLikePriceFollowUp to keep mid-session style
+    // queries in the discovery/revision flow instead of falling through to ai_fallback.
+    private static bool LooksLikeStyleFollowUp(string query) =>
+        Regex.IsMatch(query,
+            @"\b(?:dressier|sportier|fancier|classier|simpler|bolder|slimmer|dressy|sporty|formal|casual|elegant|refined|classic|modern|artistic|luxurious)"
+            + @"|(?:something|how about|what about)\s+(?:more\s+)?(?:dressy|sporty|formal|casual|elegant|refined|classic|modern|artistic|luxurious|simple|bold|slim)\b",
             RegexOptions.IgnoreCase);
 
     private static bool LooksLikeEntityInfoRequest(string query, EntityMentions mentions)
