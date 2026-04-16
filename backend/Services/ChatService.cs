@@ -2815,16 +2815,21 @@ public class ChatService
         return Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
     }
 
-    // Ordinal words with their 0-based card index and acceptable edit distance for typo tolerance.
+    // Ordinal words with acceptable edit distance for typo tolerance (covers up to DiscoveryCardLimit = 10).
     // "last" is intentionally excluded — it's a common English word (4 chars) where distance-1
     // neighbours like "list" are high-probability false positives.
     private static readonly (string Word, int MaxDist)[] _ordinalWords =
     [
-        ("first",  1),
-        ("second", 1),
-        ("third",  1),
-        ("fourth", 1),
-        ("fifth",  1),
+        ("first",   1),
+        ("second",  1),
+        ("third",   1),
+        ("fourth",  1),
+        ("fifth",   1),
+        ("sixth",   1),
+        ("seventh", 1),
+        ("eighth",  1),
+        ("ninth",   1),
+        ("tenth",   1),
     ];
 
     // Replaces ordinal-like words that are within edit distance 1 of a known ordinal with the
@@ -2891,12 +2896,17 @@ public class ChatService
         var matches = new List<(int Position, int Index)>();
         var patterns = new (string Pattern, Func<Match, int?> Resolve)[]
         {
-            (@"\bfirst\b", _ => 0),
-            (@"\bsecond\b", _ => 1),
-            (@"\bthird\b", _ => 2),
-            (@"\bfourth\b", _ => 3),
-            (@"\bfifth\b", _ => 4),
-            (@"\blast\b", _ => totalCards - 1),
+            (@"\bfirst\b",   _ => 0),
+            (@"\bsecond\b",  _ => 1),
+            (@"\bthird\b",   _ => 2),
+            (@"\bfourth\b",  _ => 3),
+            (@"\bfifth\b",   _ => 4),
+            (@"\bsixth\b",   _ => 5),
+            (@"\bseventh\b", _ => 6),
+            (@"\beighth\b",  _ => 7),
+            (@"\bninth\b",   _ => 8),
+            (@"\btenth\b",   _ => 9),
+            (@"\blast\b",    _ => totalCards - 1),
             (@"\b(\d+)(?:st|nd|rd|th)\b", match => int.TryParse(match.Groups[1].Value, out var ordinal) ? ordinal - 1 : null),
             (@"\bnumber\s+(\d+)\b", match => int.TryParse(match.Groups[1].Value, out var ordinal) ? ordinal - 1 : null),
         };
