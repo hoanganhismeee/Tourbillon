@@ -1023,7 +1023,14 @@ public class ChatService
                 var compareWatches = await TryResolveCompareWatchesAsync(
                     canonicalMessage, lastWatchCards, mentions, compareScope);
                 if (compareWatches.Count < 2)
-                    return null;
+                {
+                    var found = compareWatches.Count == 1 ? $" I found {compareWatches[0].Name}," : "";
+                    return new ChatResolution
+                    {
+                        Message = $"To compare I need at least two models.{found} try naming both by model or collection.",
+                        RoutingPath = "compare_insufficient"
+                    };
+                }
                 return await BuildCompareResolutionAsync(canonicalMessage, compareWatches);
             }
 
@@ -1039,7 +1046,11 @@ public class ChatService
                 var storedMentions = await ResolveMentionsFromSessionStateAsync(sessionState);
                 if (storedMentions.HasAny)
                     return await BuildEntityInfoResolutionAsync(sessionState?.CanonicalQuery ?? message, storedMentions);
-                return null;
+                return new ChatResolution
+                {
+                    Message = "What are you looking for? I can suggest watches, brands, or collections.",
+                    RoutingPath = "affirmative_no_context"
+                };
             }
 
             case ChatIntent.ExpansionRequest:
@@ -1859,8 +1870,8 @@ public class ChatService
                 .Include(w => w.Brand)
                 .Include(w => w.Collection)
                 .Where(w => w.BrandId == fullBrand.Id)
-                .OrderByDescending(w => w.Id)
-                .Take(2)
+                .OrderByDescending(w => w.CurrentPrice)
+                .Take(4)
                 .AsNoTracking()
                 .ToListAsync();
 
