@@ -2832,6 +2832,66 @@ public class ChatService
             .ToList();
     }
 
+    // Filler words stripped when deciding if a query is a plain brand/collection reference.
+    // Any word NOT in this set remaining after entity names are removed → complex query.
+    private static readonly HashSet<string> _queryFillerWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "suggest", "show", "me", "some", "tell", "about", "what", "do", "you", "have", "from", "by",
+        "watches", "watch", "timepieces", "timepiece", "models", "model", "references", "reference",
+        "a", "an", "the", "please", "i", "want", "like", "looking", "for", "any", "more", "give",
+        "recommend", "recommendation", "suggestions", "interested", "in", "your", "collection",
+        "something", "anything", "all", "hi", "hey", "hello", "there", "and", "or", "see", "get",
+        "can", "could", "would", "love", "appreciate", "available", "list", "catalogue", "catalog",
+        "selection", "lineup", "range", "everything", "anything", "them", "those", "these"
+    };
+
+    // Returns true when the query names only a brand/collection with no descriptive attributes.
+    // These can be served by a direct SQL sample without calling WatchFinder's LLM pipeline.
+    // Examples: "suggest me some Patek Philippe", "show me Grand Seiko" → true
+    //           "Patek Philippe dress watch", "elegant Vacheron" → false (descriptor present)
+    private static bool IsSimpleBrandQuery(string query, EntityMentions mentions)
+    {
+        if (!mentions.Brands.Any() && !mentions.Collections.Any()) return false;
+
+        var stripped = query;
+        foreach (var b in mentions.Brands)
+            stripped = Regex.Replace(stripped, Regex.Escape(b.Name), " ", RegexOptions.IgnoreCase);
+        foreach (var c in mentions.Collections)
+            stripped = Regex.Replace(stripped, Regex.Escape(c.Name), " ", RegexOptions.IgnoreCase);
+
+        var meaningfulWords = stripped
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.Trim('.', ',', '?', '!', '\'', '"'))
+            .Where(w => w.Length > 1 && !_queryFillerWords.Contains(w))
+            .ToArray();
+
+        return meaningfulWords.Length == 0;
+    }
+
+    // Pure SQL catalogue sample — no embeddings, no LLM, no Hangfire jobs.
+    // Ordered by price descending so the most prominent/prestigious models surface first.
+    private async Task<List<Watch>> GetCatalogueSampleAsync(
+        int? brandId,
+        int? collectionId,
+        List<int> excludedBrandIds,
+        int limit = 6)
+    {
+        var q = _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .AsQueryable();
+
+        if (brandId.HasValue)            q = q.Where(w => w.BrandId == brandId.Value);
+        if (collectionId.HasValue)       q = q.Where(w => w.CollectionId == collectionId.Value);
+        if (excludedBrandIds.Count > 0)  q = q.Where(w => !excludedBrandIds.Contains(w.BrandId));
+
+        return await q
+            .OrderByDescending(w => w.CurrentPrice)
+            .Take(limit)
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
     private static bool IsAffirmativeFollowUp(string query)
     {
         var q = query.Trim();
