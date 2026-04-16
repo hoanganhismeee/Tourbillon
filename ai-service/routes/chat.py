@@ -47,7 +47,7 @@ def _strip_action_lines(raw: str) -> str:
     ).strip()
 
 
-def _truncate_chat_response(text: str, max_words: int = 130) -> str:
+def _truncate_chat_response(text: str, max_words: int = 200) -> str:
     """Safety-net word cap that keeps whole sentences and avoids cut-off fragments."""
     words = text.split()
     if len(words) <= max_words:
