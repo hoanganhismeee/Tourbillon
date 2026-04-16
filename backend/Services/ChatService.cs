@@ -1074,6 +1074,28 @@ public class ChatService
 
             case ChatIntent.Discovery:
             {
+                // Simple brand/collection reference (no descriptors) → pure SQL sample, no LLM search cost.
+                if (IsSimpleBrandQuery(canonicalMessage, mentions))
+                {
+                    var brandId = mentions.Brands.FirstOrDefault()?.Id;
+                    var collectionId = mentions.Collections.FirstOrDefault()?.Id;
+                    var sqlWatches = await GetCatalogueSampleAsync(brandId, collectionId, excludedBrandIds, limit: 6);
+                    if (sqlWatches.Count > 0)
+                    {
+                        var sqlResult = new WatchFinderResult
+                        {
+                            Watches = sqlWatches.Select(w => WatchDto.FromWatch(w)).ToList(),
+                            SearchPath = "direct_sql_brand"
+                        };
+                        var sqlR = await BuildDiscoveryResolutionAsync(
+                            canonicalMessage, sqlResult, excludedBrandIds, mentions: mentions);
+                        sqlR.SearchPath = "direct_sql_brand";
+                        return sqlR;
+                    }
+                    // No SQL results (brand with 0 watches) → fall through to full pipeline
+                }
+
+                // Complex query or brand returned empty → full WatchFinder (vector + optional LLM rerank).
                 var searchResult = excludedBrandIds.Count > 0
                     ? await _watchFinderService.FindWatchesAsync(canonicalMessage, excludedBrandIds)
                     : await _watchFinderService.FindWatchesAsync(canonicalMessage);
@@ -1805,8 +1827,8 @@ public class ChatService
                 .Include(w => w.Brand)
                 .Include(w => w.Collection)
                 .Where(w => w.CollectionId == fullCollection.Id)
-                .OrderByDescending(w => w.Id)
-                .Take(3)
+                .OrderByDescending(w => w.CurrentPrice)
+                .Take(4)
                 .AsNoTracking()
                 .ToListAsync();
 
