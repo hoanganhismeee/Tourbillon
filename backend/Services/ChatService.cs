@@ -2781,7 +2781,7 @@ public class ChatService
     {
         var working = query.Trim();
         working = Regex.Replace(working, @"\b(?:compare|difference between|the difference between|which should i buy|should i buy|between)\b", " ", RegexOptions.IgnoreCase);
-        working = Regex.Replace(working, @"\b(?:versus|vs\.?|against)\b", "|", RegexOptions.IgnoreCase);
+        working = Regex.Replace(working, @"\b(?:versus|vs\.?|against|with)\b", "|", RegexOptions.IgnoreCase);
         working = Regex.Replace(working, @"\bor\b", "|", RegexOptions.IgnoreCase);
 
         if (working.Contains('|'))
@@ -2815,10 +2815,64 @@ public class ChatService
         return Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
     }
 
+    // Ordinal words with their 0-based card index and acceptable edit distance for typo tolerance.
+    // "last" is intentionally excluded — it's a common English word (4 chars) where distance-1
+    // neighbours like "list" are high-probability false positives.
+    private static readonly (string Word, int MaxDist)[] _ordinalWords =
+    [
+        ("first",  1),
+        ("second", 1),
+        ("third",  1),
+        ("fourth", 1),
+        ("fifth",  1),
+    ];
+
+    // Replaces ordinal-like words that are within edit distance 1 of a known ordinal with the
+    // canonical spelling, so downstream regex matching handles "forth", "fith", "thrid", etc.
+    private static string NormalizeOrdinalTypos(string query) =>
+        Regex.Replace(query, @"\b[a-z]{3,9}\b",
+            m =>
+            {
+                var word = m.Value.ToLowerInvariant();
+                foreach (var (canonical, maxDist) in _ordinalWords)
+                {
+                    if (Math.Abs(word.Length - canonical.Length) > maxDist) continue;
+                    if (EditDistance(word.AsSpan(), canonical.AsSpan()) <= maxDist)
+                        return canonical;
+                }
+                return m.Value;
+            },
+            RegexOptions.IgnoreCase);
+
+    // Wagner-Fischer edit distance — O(n*m) time, O(m) space using a single row and stackalloc.
+    private static int EditDistance(ReadOnlySpan<char> a, ReadOnlySpan<char> b)
+    {
+        if (a.IsEmpty) return b.Length;
+        if (b.IsEmpty) return a.Length;
+        Span<int> row = stackalloc int[b.Length + 1];
+        for (var j = 0; j <= b.Length; j++) row[j] = j;
+        for (var i = 1; i <= a.Length; i++)
+        {
+            var prev = row[0];
+            row[0] = i;
+            for (var j = 1; j <= b.Length; j++)
+            {
+                var temp = row[j];
+                row[j] = a[i - 1] == b[j - 1]
+                    ? prev
+                    : 1 + Math.Min(prev, Math.Min(row[j], row[j - 1]));
+                prev = temp;
+            }
+        }
+        return row[b.Length];
+    }
+
     private static List<int> ExtractReferencedCardIndexes(string query, int totalCards)
     {
         if (totalCards < 2)
             return [];
+
+        query = NormalizeOrdinalTypos(query);
 
         // "both" / "either" = first two cards; "all of them/those/these" = every card up to limit
         if (Regex.IsMatch(query, @"\bboth\b|\beither\b", RegexOptions.IgnoreCase))

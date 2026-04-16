@@ -49,7 +49,7 @@
 | 13 Chat Concierge integration with core product features (Compare, Cursor, grounded actions) | Done | 13 |
 | Chat Concierge Reliability Refactor (backend orchestration + typed compose contract) | Done | 13.5 |
 | AI Intent Classifier (POST /classify replaces 9 regex routing predicates; "unclear" falls back to regex) | Done | 14 |
-| Chat Concierge — Flexible Routing + Token-Optimized Search (SQL brand path, descriptor blacklist, 200-word limit, cursor fallback, explicit dispatcher messages) | Done | 14.5 |
+| Chat Concierge — Flexible Routing + Token-Optimized Search (SQL brand path, semantic router, descriptor blacklist fallback, 200-word limit, cursor fallback, explicit dispatcher messages) | Done | 14.5 |
 | Storage Abstraction + S3 + CloudFront Migration | Planned | 15 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | ? |
 
@@ -633,7 +633,8 @@ Reduced AI token spend for simple brand queries and made the routing layer resil
 **Two-tier search routing**
 - Simple brand/collection queries ("show me Patek Philippe", "enlighten me about Grand Seiko") now route to a pure SQL sample (`GetCatalogueSampleAsync` — `ORDER BY CurrentPrice DESC LIMIT 6`). No vector search, no LLM rerank, zero token cost.
 - Complex/descriptor queries ("Patek dress watch", "elegant Vacheron", "Rolex dive watch under $20k") continue to the full WatchFinder pipeline unchanged.
-- Detection uses a descriptor blacklist (`_watchDescriptorPattern` — style, material, complication, size, price, colour, activity words). **Intentionally inverted**: watch descriptors are finite, acceptable phrasings ("enlighten me about", "guide me through") are infinite. A whitelist always fails on new synonyms.
+- **Detection — semantic router (primary):** `IsSimpleBrandQueryAsync` calls `POST /route` on ai-service, which uses cosine similarity against pre-embedded example utterances in `core/route_layer.py`. Novel phrasing ("enlighten me about", "guide me through") is handled naturally by embedding similarity — no new rules needed.
+- **Detection — descriptor blacklist (fallback):** If ai-service is unreachable, falls back to `_watchDescriptorPattern` regex (style, material, complication, size, price, colour, activity words). Intentionally inverted: watch descriptors are finite, acceptable phrasings are infinite. A whitelist always fails on new synonyms.
 
 **Brand/collection info cards improved**
 - `BuildEntityInfoResolutionAsync` now returns 4 watch cards (was 2 for brands, 3 for collections), ordered by `CurrentPrice DESC` so flagship models surface first instead of random ID order.
