@@ -21,6 +21,7 @@ except ModuleNotFoundError:
     sys.modules["openai"] = stub
 
 from routes.chat import (  # noqa: E402
+    _collect_grounded_entities,
     _cleanup_markdown_artifacts,
     _filter_internal_links,
     _strip_action_lines,
@@ -69,6 +70,20 @@ class ChatRouteResponseSanitizerTests(unittest.TestCase):
         )
 
         self.assertEqual("Certainly! Let's compare the first two.", cleaned)
+
+    def test_collect_grounded_entities_returns_only_catalogue_mentions_from_context(self) -> None:
+        grounded = _collect_grounded_entities(
+            "The Patek Philippe Aquanaut 5167A-001 is the cleaner everyday pick.",
+            [
+                'Brand "Patek Philippe" (Slug: patek-philippe): Geneva maison',
+                'Collection "Aquanaut" (Slug: aquanaut): Modern sport line',
+                'Watch "5167A-001" (Slug: patek-philippe-aquanaut-5167a-001): Patek Philippe Aquanaut',
+            ],
+        )
+
+        self.assertEqual(["patek-philippe-aquanaut-5167a-001"], grounded["groundedWatchSlugs"])
+        self.assertEqual(["Patek Philippe"], grounded["groundedBrandNames"])
+        self.assertEqual(["Aquanaut"], grounded["groundedCollectionNames"])
 
 
 if __name__ == "__main__":

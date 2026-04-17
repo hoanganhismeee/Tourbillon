@@ -331,12 +331,14 @@ Floating conversational assistant available on every page — handles both speci
 - `WatchFinderService` remains the source of truth for search intent and catalogue retrieval
 - Compare, exact-watch, follow-up, and revision paths are backend-resolved before the frontend sees the reply
 - `ai-service /chat` writes concierge copy for the resolved context; Phase 13.5 removed the remaining legacy dependence on model-emitted action strings
+- Query normalization now repairs noisier ordinal typos and fuzzy brand spellings before routing, so malformed follow-ups do not need one-off hardcoded fixes
+- Active brand or collection scope is now enforced for direct model and reference lookups, which stops fake references from drifting into unrelated semantic matches
 - `QueryCacheService` caches first-turn (history-free) responses at cosine ≥ 0.92 — not applied to multi-turn
 - Rate limit: 5/day deployed (`ChatSettings:DailyLimit`); `DisableLimitInDev: true` for local
 
 **Infrastructure:**
 - Redis-backed session store for chat history, compare scope, follow-up mode, and surfaced cards
-- `POST /chat` endpoint in ai-service — Tourbillon-first response generation with optional limited brand-history web notes
+- `POST /chat` endpoint in ai-service — Tourbillon-first response generation with optional limited brand-history web notes, returning a typed draft that includes grounded watch, brand, and collection mentions
 - Pill UI matches `CompareIndicator` design; chat pill `bottom-8`, compare pill moves to `bottom-24`
 - Brand/collection detection uses direct DB substring matching — no dedicated embeddings needed for a 13-brand catalogue
 

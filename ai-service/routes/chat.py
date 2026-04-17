@@ -204,8 +204,7 @@ def _allowed_catalogue_paths(context: list[str]) -> set[str]:
     return allowed
 
 
-def _inject_entity_links(text: str, context: list[str]) -> str:
-    """Inject markdown links for bare watch, brand, and collection mentions using provided slugs."""
+def _extract_catalogue_entities(context: list[str]) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     watches: dict[str, str] = {}
     brands: dict[str, str] = {}
     collections: dict[str, str] = {}
@@ -222,6 +221,13 @@ def _inject_entity_links(text: str, context: list[str]) -> str:
         collection_match = re.search(r'Collection "([^"]+)" \(Slug: ([\w-]+)\)', item)
         if collection_match:
             collections[collection_match.group(1)] = collection_match.group(2)
+
+    return watches, brands, collections
+
+
+def _inject_entity_links(text: str, context: list[str]) -> str:
+    """Inject markdown links for bare watch, brand, and collection mentions using provided slugs."""
+    watches, brands, collections = _extract_catalogue_entities(context)
 
     if not watches and not brands and not collections:
         return text
@@ -257,6 +263,31 @@ def _inject_entity_links(text: str, context: list[str]) -> str:
         result.append(segment)
 
     return "".join(result)
+
+
+def _collect_grounded_entities(text: str, context: list[str]) -> dict[str, list[str]]:
+    watches, brands, collections = _extract_catalogue_entities(context)
+    grounded_watch_slugs: list[str] = []
+    grounded_brand_names: list[str] = []
+    grounded_collection_names: list[str] = []
+
+    for name, slug in watches.items():
+        if re.search(re.escape(name), text, re.IGNORECASE):
+            grounded_watch_slugs.append(slug)
+
+    for name in brands:
+        if re.search(re.escape(name), text, re.IGNORECASE):
+            grounded_brand_names.append(name)
+
+    for name in collections:
+        if re.search(re.escape(name), text, re.IGNORECASE):
+            grounded_collection_names.append(name)
+
+    return {
+        "groundedWatchSlugs": list(dict.fromkeys(grounded_watch_slugs)),
+        "groundedBrandNames": list(dict.fromkeys(grounded_brand_names)),
+        "groundedCollectionNames": list(dict.fromkeys(grounded_collection_names)),
+    }
 
 
 def _filter_internal_links(text: str, context: list[str]) -> str:
@@ -356,6 +387,7 @@ def register_routes(app, runtime: Runtime) -> None:
             trimmed = _cleanup_markdown_artifacts(_truncate_chat_response(text_only))
             linked = _inject_entity_links(trimmed, context)
             safe_text = _cleanup_markdown_artifacts(_filter_internal_links(linked, context))
-            return jsonify({"message": safe_text, "actions": []})
+            grounded = _collect_grounded_entities(safe_text, context)
+            return jsonify({"message": safe_text, "actions": [], **grounded})
         except Exception as exc:
             return jsonify({"error": f"Chat LLM call failed: {str(exc)}"}), 502

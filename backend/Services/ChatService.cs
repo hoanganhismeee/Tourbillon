@@ -185,6 +185,7 @@ public class ChatService
         public List<ChatAction> Actions { get; set; } = [];
         public ChatSessionState? SessionState { get; set; }
         public bool SuppressCompareSuggestion { get; set; }
+        public List<string> SuggestedCompareSlugs { get; set; } = [];
         public string? ResponseLanguage { get; set; }
         public bool AllowWebEnrichment { get; set; }
         public string? WebQuery { get; set; }
@@ -192,6 +193,21 @@ public class ChatService
         public string RoutingPath { get; set; } = "unknown";
         // Populated when WatchFinderService is called; mirrors WatchFinderResult.SearchPath.
         public string? SearchPath { get; set; }
+    }
+
+    private sealed class NormalizedUserQuery
+    {
+        public string RawQuery { get; set; } = "";
+        public string RepairedQuery { get; set; } = "";
+        public List<string> RepairNotes { get; set; } = [];
+    }
+
+    private sealed class AiChatDraft
+    {
+        public string Message { get; set; } = "";
+        public List<string> GroundedWatchSlugs { get; set; } = [];
+        public List<string> GroundedBrandNames { get; set; } = [];
+        public List<string> GroundedCollectionNames { get; set; } = [];
     }
 
     // Intent class constants returned by the AI classifier — single source of truth for routing.
@@ -414,13 +430,14 @@ public class ChatService
                 resolution.Context.Add("Stay within Tourbillon's catalogue and watch expertise. No relevant catalogue records were resolved.");
 
             var responseLanguage = resolution.ResponseLanguage ?? ResolveResponseLanguage(message, preferredLanguage);
-            var aiResult = await CallAiServiceAsync(
+            var aiDraft = await CallAiServiceAsync(
                 history,
                 resolution.Query,
                 resolution.Context,
                 responseLanguage,
                 resolution.AllowWebEnrichment,
                 resolution.WebQuery);
+            var aiResult = aiDraft.Message;
             // Skip unsupported-entity rejection for referenced_watch — the AI naturally
             // weaves in related entities from conversation history, which is correct behaviour
             // for a single-watch deep-dive. Rejecting it produces a one-line stub.
@@ -438,7 +455,11 @@ public class ChatService
 
         // Append 1–2 contextual follow-up suggestion chips grounded in the resolved watch cards.
         // Skipped for greetings, refusals, and cursor commands where no cards are present.
-        var suggestions = BuildSuggestionActions(watchCards, actions, resolution.SuppressCompareSuggestion);
+        var suggestions = BuildSuggestionActions(
+            watchCards,
+            actions,
+            resolution.SuggestedCompareSlugs,
+            resolution.SuppressCompareSuggestion);
         if (suggestions.Count > 0)
             actions = [..actions, ..suggestions];
 
@@ -496,23 +517,26 @@ public class ChatService
         ChatCompareScope? compareScope,
         ChatSessionState? sessionState)
     {
+        var normalizedQuery = NormalizeUserQuery(message);
+        var repairedMessage = normalizedQuery.RepairedQuery;
+
         // Fast-path checks that need no entity resolution — always safe to return early.
-        if (IsAbusiveQuery(message))
+        if (IsAbusiveQuery(repairedMessage))
             return new ChatResolution
             {
                 Message = "I am here to help with Tourbillon watches and horology only. If you want, ask about a watch, brand, comparison, or product search.",
                 RoutingPath = "abusive"
             };
 
-        if (IsGreetingQuery(message))
+        if (IsGreetingQuery(repairedMessage))
             return new ChatResolution { Message = GreetingMessage, RoutingPath = "greeting" };
 
         // Deterministic off-topic guard: catches clear programming / translation queries before
         // entity resolution assigns spurious watch-domain signals to them.
-        if (IsObviouslyOffTopicQuery(message))
+        if (IsObviouslyOffTopicQuery(repairedMessage))
             return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
 
-        var cursorResolution = TryResolveCursorCommand(message);
+        var cursorResolution = TryResolveCursorCommand(repairedMessage);
         if (cursorResolution != null)
         {
             cursorResolution.RoutingPath = "cursor";
@@ -520,9 +544,9 @@ public class ChatService
         }
 
         // Entity resolution — required for rejection detection and all routing below.
-        var mentions = await ResolveEntityMentionsAsync(message);
-        var canonicalMessage = CanonicalizeQueryForRouting(message, mentions);
-        var referencedWatches = await TryResolveReferencedWatchesAsync(message, lastWatchCards);
+        var mentions = await ResolveEntityMentionsAsync(repairedMessage);
+        var canonicalMessage = CanonicalizeQueryForRouting(repairedMessage, mentions);
+        var referencedWatches = await TryResolveReferencedWatchesAsync(repairedMessage, lastWatchCards);
 
         // Detect brands the user has rejected in this turn and accumulate with prior session rejections.
         var newlyRejected = DetectBrandRejections(canonicalMessage, mentions);
@@ -530,7 +554,7 @@ public class ChatService
             .Union(newlyRejected).Distinct().ToList();
 
         var resolution = await ResolveWatchScopedAsync(
-            message, canonicalMessage, mentions, referencedWatches,
+            repairedMessage, canonicalMessage, mentions, referencedWatches,
             lastWatchCards, compareScope, sessionState, excludedBrandIds);
 
         // Propagate accumulated exclusions into session state for future turns.
@@ -665,7 +689,12 @@ public class ChatService
             return r;
         }
 
-        var directEntityResolution = await TryResolveDirectEntityResolutionAsync(canonicalMessage, mentions, sessionState, excludedBrandIds);
+        var directEntityResolution = await TryResolveDirectEntityResolutionAsync(
+            canonicalMessage,
+            mentions,
+            lastWatchCards,
+            sessionState,
+            excludedBrandIds);
         if (directEntityResolution != null)
         {
             directEntityResolution.RoutingPath = "entity_direct";
@@ -724,7 +753,7 @@ public class ChatService
         };
     }
 
-    private async Task<string> CallAiServiceAsync(
+    private async Task<AiChatDraft> CallAiServiceAsync(
         List<ChatHistoryEntry> history,
         string query,
         List<string> context,
@@ -758,21 +787,40 @@ public class ChatService
             {
                 _logger.LogWarning("Chat ai-service /chat returned {Status} after {ElapsedMs}ms",
                     (int)resp.StatusCode, chatSw.ElapsedMilliseconds);
-                return ProcessingFallbackMessage;
+                return new AiChatDraft { Message = ProcessingFallbackMessage };
             }
 
             _logger.LogInformation("Chat ai-service /chat {ElapsedMs}ms", chatSw.ElapsedMilliseconds);
             var json = await resp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
             var message = json.TryGetProperty("message", out var messageEl) ? messageEl.GetString() ?? "" : "";
-            return string.IsNullOrWhiteSpace(message)
-                ? NoCloseMatchMessage
-                : message;
+            return new AiChatDraft
+            {
+                Message = string.IsNullOrWhiteSpace(message) ? NoCloseMatchMessage : message,
+                GroundedWatchSlugs = ReadStringArray(json, "groundedWatchSlugs"),
+                GroundedBrandNames = ReadStringArray(json, "groundedBrandNames"),
+                GroundedCollectionNames = ReadStringArray(json, "groundedCollectionNames"),
+            };
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Chat ai-service call threw before producing a response");
-            return ProcessingFallbackMessage;
+            return new AiChatDraft { Message = ProcessingFallbackMessage };
         }
+    }
+
+    private static List<string> ReadStringArray(JsonElement json, string propertyName)
+    {
+        if (!json.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.Array)
+            return [];
+
+        return property
+            .EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private async Task<EntityMentions> ResolveEntityMentionsAsync(string query)
@@ -802,6 +850,22 @@ public class ChatService
 
             if (matchedBrandIds.Add(brand.Id))
                 mentions.Brands.Add(brand);
+        }
+
+        var allowFuzzyBrandResolution = matchedBrandIds.Count == 0
+            && (WatchFinderService.HasWatchDomainSignal(query)
+                || Regex.IsMatch(
+                    query,
+                    @"\b(?:tell\s+me\s+about|show\s+me|introduce\s+me|brand|history|heritage|maison|collection|do\s+you\s+have)\b",
+                    RegexOptions.IgnoreCase)
+                || CountWords(query) <= 4);
+        if (allowFuzzyBrandResolution)
+        {
+            foreach (var brand in ResolveFuzzyBrands(query, brands))
+            {
+                if (matchedBrandIds.Add(brand.Id))
+                    mentions.Brands.Add(brand);
+            }
         }
 
         var collectionPool = mentions.Brands.Count > 0
@@ -1211,6 +1275,7 @@ public class ChatService
     private async Task<ChatResolution?> TryResolveDirectEntityResolutionAsync(
         string query,
         EntityMentions mentions,
+        List<ChatWatchCard> lastWatchCards,
         ChatSessionState? sessionState,
         List<int>? excludedBrandIds = null)
     {
@@ -1218,18 +1283,98 @@ public class ChatService
         if (string.IsNullOrWhiteSpace(directEntityQuery))
             return null;
 
+        var scopedMentions = mentions.HasAny
+            ? mentions
+            : await ResolveMentionsFromSessionStateAsync(sessionState);
+        var keepWithinActiveScope = ShouldKeepDirectLookupInsideScope(scopedMentions, lastWatchCards);
+
         var result = (excludedBrandIds?.Count > 0
             ? await _watchFinderService.FindWatchesAsync(directEntityQuery, excludedBrandIds)
             : await _watchFinderService.FindWatchesAsync(directEntityQuery))
             ?? new WatchFinderResult();
-        if (string.Equals(result.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase) || result.Watches.Count == 0)
+
+        if (string.Equals(result.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
             return null;
+
+        if (keepWithinActiveScope)
+            result = await FilterResultToActiveScopeAsync(result, scopedMentions);
+
+        if (result.Watches.Count == 0)
+        {
+            if (keepWithinActiveScope)
+                return await BuildScopedNoDirectMatchResolutionAsync(query, directEntityQuery, scopedMentions);
+            return null;
+        }
 
         var exactWatch = await TryResolveExactWatchAsync(directEntityQuery, result);
         if (exactWatch != null)
             return BuildExactWatchResolution(exactWatch, directEntityQuery);
 
         return await BuildDiscoveryResolutionAsync(directEntityQuery, result, excludedBrandIds, includeSearchAction: false);
+    }
+
+    private static bool ShouldKeepDirectLookupInsideScope(EntityMentions mentions, List<ChatWatchCard> lastWatchCards)
+    {
+        if (mentions.Collections.Count > 0 || mentions.Brands.Count > 0)
+            return true;
+
+        return lastWatchCards
+            .Where(card => card.BrandId > 0)
+            .Select(card => card.BrandId)
+            .Distinct()
+            .Count() == 1;
+    }
+
+    private async Task<WatchFinderResult> FilterResultToActiveScopeAsync(WatchFinderResult result, EntityMentions mentions)
+    {
+        if (result.Watches.Count == 0 || !mentions.HasAny)
+            return result;
+
+        var watchIds = result.Watches.Select(watch => watch.Id).Distinct().ToList();
+        var allowedBrandIds = mentions.Brands.Select(brand => brand.Id).ToHashSet();
+        var allowedCollectionIds = mentions.Collections.Select(collection => collection.Id).ToHashSet();
+
+        var scopeMap = await _context.Watches
+            .AsNoTracking()
+            .Where(watch => watchIds.Contains(watch.Id))
+            .Select(watch => new { watch.Id, watch.BrandId, watch.CollectionId })
+            .ToDictionaryAsync(watch => watch.Id);
+
+        var scopedWatches = result.Watches
+            .Where(watch =>
+            {
+                if (!scopeMap.TryGetValue(watch.Id, out var scope))
+                    return false;
+
+                if (allowedCollectionIds.Count > 0)
+                    return scope.CollectionId is int collectionId && allowedCollectionIds.Contains(collectionId);
+
+                return allowedBrandIds.Count == 0 || allowedBrandIds.Contains(scope.BrandId);
+            })
+            .ToList();
+
+        return new WatchFinderResult
+        {
+            Watches = scopedWatches,
+            OtherCandidates = [],
+            SearchPath = result.SearchPath,
+            QueryIntent = result.QueryIntent,
+        };
+    }
+
+    private async Task<ChatResolution> BuildScopedNoDirectMatchResolutionAsync(
+        string query,
+        string directEntityQuery,
+        EntityMentions scopedMentions)
+    {
+        var resolution = await BuildEntityInfoResolutionAsync(query, scopedMentions, noDirectMatch: true);
+        var scopeLabel = scopedMentions.Collections.FirstOrDefault()?.Name
+            ?? scopedMentions.Brands.FirstOrDefault()?.Name
+            ?? "current Tourbillon scope";
+        var displayQuery = directEntityQuery.Trim();
+        resolution.Message = $"I couldn't find a Tourbillon model matching \"{displayQuery}\" in the current {scopeLabel} scope. Here are the closest grounded options from that same scope.";
+        resolution.RoutingPath = "scoped_direct_miss";
+        return resolution;
     }
 
     private async Task<ChatResolution> BuildCardContinuationResolutionAsync(
@@ -1363,7 +1508,7 @@ public class ChatService
 
         var strippedLead = Regex.Replace(
             trimmed,
-            @"^\s*(?:introduce\s+me(?:\s+to)?(?:\s+the)?|tell\s+me\s+about(?:\s+the)?(?:\s+watch\s+named)?|show\s+me(?:\s+the)?(?:\s+watch\s+named)?|the\s+watch\s+named|the\s+model\s+named|model\s+named)\s+",
+            @"^\s*(?:introduce\s+me(?:\s+to)?(?:\s+the)?|tell\s+me\s+about(?:\s+the)?(?:\s+watch\s+named)?|show\s+me(?:\s+the)?(?:\s+watch\s+named)?|do\s+you\s+have(?:\s+(?:this|the))?(?:\s+(?:watch|model|reference|ref(?:erence)?))?|the\s+watch\s+named|the\s+model\s+named|model\s+named)\s+",
             "",
             RegexOptions.IgnoreCase).Trim(' ', '.', '?', '!');
 
@@ -1388,6 +1533,7 @@ public class ChatService
             @"^\s*(?:the\s+)?model\s+named\s+(.+?)\s*$",
             @"^\s*tell\s+me\s+about\s+the\s+watch\s+named\s+(.+?)\s*$",
             @"^\s*show\s+me\s+the\s+watch\s+named\s+(.+?)\s*$",
+            @"^\s*do\s+you\s+have(?:\s+(?:this|the))?(?:\s+(?:watch|model|reference|ref(?:erence)?))?\s+(.+?)\s*$",
         };
 
         foreach (var pattern in patterns)
@@ -1408,6 +1554,16 @@ public class ChatService
 
         if (CountWords(trimmed) <= 4 && Regex.IsMatch(trimmed, @"\d"))
             return trimmed;
+
+        var embeddedReference = Regex.Match(
+            trimmed,
+            @"\b([A-Za-z]{0,4}\d[\w/-]{2,})\b",
+            RegexOptions.IgnoreCase);
+        if (embeddedReference.Success
+            && Regex.IsMatch(trimmed, @"\b(?:watch|model|reference|ref(?:erence)?|have|carry|stock)\b", RegexOptions.IgnoreCase))
+        {
+            return embeddedReference.Groups[1].Value;
+        }
 
         if (mentions.Collections.Count == 1
             && CountWords(trimmed) <= 5
@@ -1893,17 +2049,27 @@ public class ChatService
                 "Action guidance: do not emit compare or Smart Search actions for this reply. Keep any next step focused on the linked brand or collection pages.");
         }
 
+        var dedupedCards = cards
+            .GroupBy(c => c.Id)
+            .Select(g => g.First())
+            .Take(4)
+            .ToList();
+        var suggestedCompareSlugs = allowWebEnrichment
+            ? []
+            : dedupedCards.Take(2)
+                .Select(card => card.Slug)
+                .Where(slug => !string.IsNullOrWhiteSpace(slug))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
         return new ChatResolution
         {
             UseAi = true,
             Query = query,
             Context = context,
-            WatchCards = cards
-                .GroupBy(c => c.Id)
-                .Select(g => g.First())
-                .Take(4)
-                .ToList(),
-            SuppressCompareSuggestion = true,
+            WatchCards = dedupedCards,
+            SuppressCompareSuggestion = allowWebEnrichment,
+            SuggestedCompareSlugs = suggestedCompareSlugs,
             SessionState = new ChatSessionState
             {
                 BrandIds = mentions.Brands.Select(brand => brand.Id).Distinct().ToList(),
@@ -2051,13 +2217,21 @@ public class ChatService
             ordered,
             result.QueryIntent?.Style,
             includeSearchAction);
+        var discoveryCards = ordered.Select(ToChatWatchCard).Take(DiscoveryCardLimit).ToList();
+        var suggestedCompareSlugs = discoveryCards
+            .Take(2)
+            .Select(card => card.Slug)
+            .Where(slug => !string.IsNullOrWhiteSpace(slug))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         if (coverageMessage != null)
         {
             return new ChatResolution
             {
                 Message = coverageMessage,
-                WatchCards = ordered.Select(ToChatWatchCard).Take(DiscoveryCardLimit).ToList(),
+                WatchCards = discoveryCards,
                 Actions = actions,
+                SuggestedCompareSlugs = suggestedCompareSlugs,
                 SessionState = BuildSessionStateFromWatches(
                     ordered,
                     "watch_cards",
@@ -2072,8 +2246,9 @@ public class ChatService
             Message = BuildGroundedDiscoveryMessage(ordered, includeSearchAction, requestedDirections),
             Query = query,
             Context = context,
-            WatchCards = ordered.Select(ToChatWatchCard).Take(DiscoveryCardLimit).ToList(),
+            WatchCards = discoveryCards,
             Actions = actions,
+            SuggestedCompareSlugs = suggestedCompareSlugs,
             SessionState = BuildSessionStateFromWatches(
                 ordered,
                 "watch_cards",
@@ -2818,34 +2993,41 @@ public class ChatService
     // Ordinal words with acceptable edit distance for typo tolerance (covers up to DiscoveryCardLimit = 10).
     // "last" is intentionally excluded — it's a common English word (4 chars) where distance-1
     // neighbours like "list" are high-probability false positives.
-    private static readonly (string Word, int MaxDist)[] _ordinalWords =
+    private static readonly string[] _ordinalWords =
     [
-        ("first",   1),
-        ("second",  1),
-        ("third",   1),
-        ("fourth",  1),
-        ("fifth",   1),
-        ("sixth",   1),
-        ("seventh", 1),
-        ("eighth",  1),
-        ("ninth",   1),
-        ("tenth",   1),
+        "first",
+        "second",
+        "third",
+        "fourth",
+        "fifth",
+        "sixth",
+        "seventh",
+        "eighth",
+        "ninth",
+        "tenth",
     ];
 
-    // Replaces ordinal-like words that are within edit distance 1 of a known ordinal with the
-    // canonical spelling, so downstream regex matching handles "forth", "fith", "thrid", etc.
+    // Replaces ordinal-like words that are within a small edit distance of a known ordinal with
+    // the canonical spelling, so downstream regex matching handles "forth", "fith", "thrid",
+    // and slightly noisier forms like "fisrt" / "forurth".
     private static string NormalizeOrdinalTypos(string query) =>
         Regex.Replace(query, @"\b[a-z]{3,9}\b",
             m =>
             {
                 var word = m.Value.ToLowerInvariant();
-                foreach (var (canonical, maxDist) in _ordinalWords)
+                var bestMatch = m.Value;
+                var bestDistance = int.MaxValue;
+                foreach (var canonical in _ordinalWords)
                 {
+                    var maxDist = canonical.Length >= 5 ? 2 : 1;
+                    if (word[0] != canonical[0]) continue;
                     if (Math.Abs(word.Length - canonical.Length) > maxDist) continue;
-                    if (EditDistance(word.AsSpan(), canonical.AsSpan()) <= maxDist)
-                        return canonical;
+                    var distance = EditDistance(word.AsSpan(), canonical.AsSpan());
+                    if (distance > maxDist || distance >= bestDistance) continue;
+                    bestDistance = distance;
+                    bestMatch = canonical;
                 }
-                return m.Value;
+                return bestMatch;
             },
             RegexOptions.IgnoreCase);
 
@@ -3187,12 +3369,97 @@ public class ChatService
         return Regex.Replace(compact, @"\s+", " ").Trim();
     }
 
+    private static NormalizedUserQuery NormalizeUserQuery(string query)
+    {
+        var repairedQuery = NormalizeCompoundWatchTerms(query);
+        var repairNotes = new List<string>();
+
+        if (!string.Equals(repairedQuery, query, StringComparison.Ordinal))
+            repairNotes.Add("compound_watch_terms");
+
+        var ordinalFixed = NormalizeOrdinalTypos(repairedQuery);
+        if (!string.Equals(ordinalFixed, repairedQuery, StringComparison.Ordinal))
+        {
+            repairedQuery = ordinalFixed;
+            repairNotes.Add("ordinal_typos");
+        }
+
+        return new NormalizedUserQuery
+        {
+            RawQuery = query,
+            RepairedQuery = repairedQuery,
+            RepairNotes = repairNotes,
+        };
+    }
+
+    private static List<Brand> ResolveFuzzyBrands(string query, List<Brand> brands)
+    {
+        var normalizedQuery = NormalizeEntityText(query);
+        if (string.IsNullOrWhiteSpace(normalizedQuery))
+            return [];
+
+        var queryTokens = normalizedQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (queryTokens.Length == 0)
+            return [];
+
+        var candidates = new List<(Brand Brand, int Distance, int TokenCount)>();
+        foreach (var brand in brands)
+        {
+            var normalizedBrand = NormalizeEntityText(brand.Name);
+            if (string.IsNullOrWhiteSpace(normalizedBrand) || normalizedQuery.Contains(normalizedBrand, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var compactBrand = normalizedBrand.Replace(" ", "", StringComparison.Ordinal);
+            if (compactBrand.Length < 5)
+                continue;
+
+            var bestDistance = int.MaxValue;
+            var bestTokenCount = int.MaxValue;
+            var brandTokenCount = normalizedBrand.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+            var minWindowSize = Math.Max(1, brandTokenCount - 1);
+            var maxWindowSize = Math.Min(queryTokens.Length, brandTokenCount + 1);
+            var maxDistance = compactBrand.Length >= 14 ? 3 : 2;
+
+            for (var size = minWindowSize; size <= maxWindowSize; size++)
+            {
+                for (var start = 0; start <= queryTokens.Length - size; start++)
+                {
+                    var window = string.Join(" ", queryTokens.Skip(start).Take(size));
+                    var compactWindow = window.Replace(" ", "", StringComparison.Ordinal);
+                    if (compactWindow.Length < 4 || Math.Abs(compactWindow.Length - compactBrand.Length) > maxDistance)
+                        continue;
+
+                    var distance = EditDistance(compactWindow.AsSpan(), compactBrand.AsSpan());
+                    if (distance > maxDistance)
+                        continue;
+
+                    if (distance < bestDistance || (distance == bestDistance && size < bestTokenCount))
+                    {
+                        bestDistance = distance;
+                        bestTokenCount = size;
+                    }
+                }
+            }
+
+            if (bestDistance != int.MaxValue)
+                candidates.Add((brand, bestDistance, bestTokenCount));
+        }
+
+        return candidates
+            .OrderBy(candidate => candidate.Distance)
+            .ThenBy(candidate => candidate.TokenCount)
+            .ThenByDescending(candidate => candidate.Brand.Name.Length)
+            .Take(2)
+            .Select(candidate => candidate.Brand)
+            .ToList();
+    }
+
     private static string CanonicalizeQueryForRouting(string query, EntityMentions mentions)
     {
         if (string.IsNullOrWhiteSpace(query))
             return query;
 
-        var canonicalQuery = NormalizeCompoundWatchTerms(query);
+        var canonicalQuery = NormalizeCompoundWatchTerms(NormalizeOrdinalTypos(query));
         foreach (var brand in mentions.Brands.OrderByDescending(brand => brand.Name.Length))
         {
             var aliases = _brandAliases
@@ -3212,6 +3479,17 @@ public class ChatService
         }
 
         var normalizedCanonicalQuery = NormalizeEntityText(canonicalQuery);
+        foreach (var brand in mentions.Brands.OrderByDescending(brand => brand.Name.Length))
+        {
+            var normalizedBrandName = NormalizeEntityText(brand.Name);
+            if (string.IsNullOrWhiteSpace(normalizedBrandName)
+                || normalizedCanonicalQuery.Contains(normalizedBrandName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            canonicalQuery = $"{canonicalQuery.Trim()} {brand.Name}".Trim();
+            normalizedCanonicalQuery = NormalizeEntityText(canonicalQuery);
+        }
+
         foreach (var collection in mentions.Collections.OrderByDescending(collection => collection.Name.Length))
         {
             var normalizedCollectionName = NormalizeEntityText(collection.Name);
@@ -3773,6 +4051,7 @@ public class ChatService
     private static List<ChatAction> BuildSuggestionActions(
         List<ChatWatchCard> watchCards,
         List<ChatAction> primaryActions,
+        IReadOnlyCollection<string>? suggestedCompareSlugs = null,
         bool suppressCompareSuggestion = false)
     {
         if (watchCards.Count == 0)
@@ -3787,17 +4066,25 @@ public class ChatService
         var suggestions = new List<ChatAction>();
         var hasCompareAction = primaryActions.Any(a =>
             string.Equals(a.Type, "compare", StringComparison.OrdinalIgnoreCase));
+        var compareCards = (suggestedCompareSlugs ?? [])
+            .Select(slug => watchCards.FirstOrDefault(card => string.Equals(card.Slug, slug, StringComparison.OrdinalIgnoreCase)))
+            .Where(card => card != null)
+            .Cast<ChatWatchCard>()
+            .Take(2)
+            .ToList();
+        if (compareCards.Count < 2)
+            compareCards = watchCards.Take(2).ToList();
 
         // Suggest comparing first two when no compare action was already generated
-        if (!suppressCompareSuggestion && !hasCompareAction && watchCards.Count >= 2)
+        if (!suppressCompareSuggestion && !hasCompareAction && compareCards.Count >= 2)
         {
-            var label1 = CardShortLabel(watchCards[0]);
-            var label2 = CardShortLabel(watchCards[1]);
+            var label1 = CardShortLabel(compareCards[0]);
+            var label2 = CardShortLabel(compareCards[1]);
             suggestions.Add(new ChatAction
             {
                 Type = "compare",
                 Label = $"Compare {label1} and {label2} side by side",
-                Slugs = [watchCards[0].Slug, watchCards[1].Slug]
+                Slugs = [compareCards[0].Slug, compareCards[1].Slug]
             });
         }
 
