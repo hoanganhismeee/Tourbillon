@@ -737,6 +737,152 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_FuzzyBrandTypo_CanonicalizesBrandBeforeAi()
+    {
+        using var context = CreateContext();
+        var brand = new Brand
+        {
+            Id = 1,
+            Name = "Patek Philippe",
+            Slug = "patek-philippe",
+            Description = "Geneva grand maison."
+        };
+        var collection = new Collection
+        {
+            Id = 10,
+            BrandId = 1,
+            Brand = brand,
+            Name = "Aquanaut",
+            Slug = "aquanaut",
+            Description = "Modern sport-luxury line."
+        };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "5167A-001",
+            Slug = "patek-philippe-aquanaut-5167a-001",
+            Description = "Patek Philippe Aquanaut",
+            CurrentPrice = 42000m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "5968A-001",
+            Slug = "patek-philippe-aquanaut-5968a-001",
+            Description = "Patek Philippe Aquanaut",
+            CurrentPrice = 58000m
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"[Patek Philippe](/brands/patek-philippe) is the reference point for classical Geneva finishing.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "Tell me about Pattek Philippe", null, "127.0.0.1");
+
+        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/patek-philippe");
+        Assert.Single(handler.RequestBodies);
+        using var payload = JsonDocument.Parse(handler.RequestBodies[0]);
+        var query = payload.RootElement.GetProperty("query").GetString();
+        Assert.Contains("Patek Philippe", query, StringComparison.Ordinal);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_DirectReferenceMiss_StaysInsideActiveBrandScope()
+    {
+        using var context = CreateContext();
+        var patek = new Brand
+        {
+            Id = 1,
+            Name = "Patek Philippe",
+            Slug = "patek-philippe",
+            Description = "Geneva grand maison."
+        };
+        var collection = new Collection
+        {
+            Id = 10,
+            BrandId = 1,
+            Brand = patek,
+            Name = "Aquanaut",
+            Slug = "aquanaut",
+            Description = "Modern sport-luxury line."
+        };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = patek,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "5167A-001",
+            Slug = "patek-philippe-aquanaut-5167a-001",
+            Description = "Patek Philippe Aquanaut",
+            CurrentPrice = 42000m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = patek,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "5968A-001",
+            Slug = "patek-philippe-aquanaut-5968a-001",
+            Description = "Patek Philippe Aquanaut",
+            CurrentPrice = 58000m
+        };
+
+        context.Brands.Add(patek);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var callCount = 0;
+        var handler = new RecordingHandler(_ =>
+        {
+            callCount++;
+            var payload = callCount == 1
+                ? "{\"message\":\"[Patek Philippe](/brands/patek-philippe) is known for disciplined finishing and broad complication depth.\",\"actions\":[]}"
+                : "{\"message\":\"The Jaeger-LeCoultre Master Ultra Thin line is the closest match.\",\"actions\":[]}";
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            };
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var initial = await service.HandleMessageAsync("session-1", "Tell me about Patek Philippe", null, "127.0.0.1");
+        Assert.NotEmpty(initial.WatchCards);
+
+        var followUp = await service.HandleMessageAsync("session-1", "do you have this model 20439/92902", null, "127.0.0.1");
+
+        Assert.Contains("Patek Philippe", followUp.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Jaeger-LeCoultre", followUp.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.All(followUp.WatchCards, card => Assert.Equal("Patek Philippe", card.BrandName));
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_DiscoveryQueryReturnsSearchAction()
     {
         using var context = CreateContext();
@@ -1089,7 +1235,7 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public async Task EntityInfoResponse_NoCompareChip_HasBrandNavigateChip()
+    public async Task EntityInfoResponse_HasCompareChip_AndBrandNavigateChip()
     {
         using var context = CreateContext();
         var brand = new Brand
@@ -1149,7 +1295,12 @@ public class ChatServiceTests
         var service = CreateService(context, watchFinder, handler);
         var result = await service.HandleMessageAsync("session-1", "tell me about the Overseas", null, "127.0.0.1");
 
-        Assert.DoesNotContain(result.Actions, a => a.Type == "compare");
+        Assert.Contains(result.Actions, a => a.Type == "compare"
+            && a.Slugs != null
+            && a.Slugs.SequenceEqual([
+                "vacheron-constantin-overseas-7920v-210a-b334",
+                "vacheron-constantin-overseas-4520v-210a-b128"
+            ]));
         Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/vacheron-constantin");
     }
 
@@ -1369,13 +1520,16 @@ public class ChatServiceTests
 
         var discovery = await service.HandleMessageAsync("session-1", "show me some vacheron options", null, "127.0.0.1");
         Assert.Equal(3, discovery.WatchCards.Count);
+        var expectedCompareSlugs = new[]
+        {
+            discovery.WatchCards[0].Slug,
+            discovery.WatchCards[2].Slug
+        };
 
         var compare = await service.HandleMessageAsync("session-1", "compare the first one and third one", null, "127.0.0.1");
 
         var compareAction1 = Assert.Single(compare.Actions.Where(a => a.Type == "compare").ToList());
-        Assert.Equal(
-            ["vacheron-constantin-overseas-4200h-222a-b934", "vacheron-constantin-historiques-1100s-000r-b430"],
-            compareAction1.Slugs);
+        Assert.Equal(expectedCompareSlugs, compareAction1.Slugs);
         Assert.Equal(2, compare.WatchCards.Count);
         Assert.Equal(2, handler.CallCount);
     }
@@ -1532,6 +1686,100 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_NoisyOrdinalCompareFollowUp_UsesPreviousChatCards()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Jaeger-LeCoultre", Slug = "jaeger-lecoultre" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Reverso", Slug = "reverso" };
+
+        var watches = new[]
+        {
+            new Watch
+            {
+                Id = 100,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 10,
+                Collection = collection,
+                Name = "Q397846J",
+                Slug = "jaeger-lecoultre-reverso-q397846j",
+                Description = "Jaeger-LeCoultre Reverso",
+                CurrentPrice = 11400m
+            },
+            new Watch
+            {
+                Id = 101,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 10,
+                Collection = collection,
+                Name = "Q2458422",
+                Slug = "jaeger-lecoultre-reverso-q2458422",
+                Description = "Jaeger-LeCoultre Reverso",
+                CurrentPrice = 15600m
+            },
+            new Watch
+            {
+                Id = 102,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 10,
+                Collection = collection,
+                Name = "Q3988482",
+                Slug = "jaeger-lecoultre-reverso-q3988482",
+                Description = "Jaeger-LeCoultre Reverso",
+                CurrentPrice = 18900m
+            },
+            new Watch
+            {
+                Id = 103,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 10,
+                Collection = collection,
+                Name = "Q7112520",
+                Slug = "jaeger-lecoultre-reverso-q7112520",
+                Description = "Jaeger-LeCoultre Reverso",
+                CurrentPrice = 22100m
+            }
+        };
+
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("show me some reversos"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = watches.Select(ToDto).ToList(),
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"These Reversos span classic small seconds through more complicated executions.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var discovery = await service.HandleMessageAsync("session-1", "show me some reversos", null, "127.0.0.1");
+        Assert.Equal(4, discovery.WatchCards.Count);
+
+        var compare = await service.HandleMessageAsync("session-1", "compare the fisrt and forurth one", null, "127.0.0.1");
+
+        var compareAction = Assert.Single(compare.Actions.Where(a => a.Type == "compare"));
+        Assert.Equal(
+            ["jaeger-lecoultre-reverso-q397846j", "jaeger-lecoultre-reverso-q7112520"],
+            compareAction.Slugs);
+        Assert.Equal(2, compare.WatchCards.Count);
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_OrdinalFollowUpWithoutCompare_UsesPreviousChatCards()
     {
         using var context = CreateContext();
@@ -1601,15 +1849,18 @@ public class ChatServiceTests
 
         var discovery = await service.HandleMessageAsync("session-1", "show me some journe options", null, "127.0.0.1");
         Assert.Equal(3, discovery.WatchCards.Count);
+        var expectedFollowUpSlugs = new[]
+        {
+            discovery.WatchCards[0].Slug,
+            discovery.WatchCards[2].Slug
+        };
 
         var followUp = await service.HandleMessageAsync("session-1", "what is the first and third one", null, "127.0.0.1");
 
         // Ordinal follow-up: no search action emitted, correct cards selected
         Assert.DoesNotContain(followUp.Actions, a => a.Type == "search");
         Assert.Equal(2, followUp.WatchCards.Count);
-        Assert.Equal(
-            ["fp-journe-linesport-elegante-40mm-titalyt", "fp-journe-linesport-131-30-41-21-99-001-meteorite-dial"],
-            followUp.WatchCards.Select(card => card.Slug).ToList());
+        Assert.Equal(expectedFollowUpSlugs, followUp.WatchCards.Select(card => card.Slug).ToList());
         Assert.Contains("first card", followUp.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(2, handler.CallCount);
     }
@@ -1923,7 +2174,7 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public async Task HandleMessageAsync_EntityInfoResponse_NoCompareChip_HasBrandNavigateChip()
+    public async Task HandleMessageAsync_EntityInfoResponse_HasCompareChip_AndBrandNavigateChip()
     {
         using var context = CreateContext();
         var patek = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
@@ -1949,9 +2200,10 @@ public class ChatServiceTests
         var service = CreateService(context, watchFinder, handler);
         var result = await service.HandleMessageAsync("session-1", "Tell me about the Aquanaut collection", null, "127.0.0.1");
 
-        Assert.DoesNotContain(result.Actions, a => a.Type == "compare");
+        Assert.Contains(result.Actions, a => a.Type == "compare"
+            && a.Slugs != null
+            && a.Slugs.SequenceEqual(["w2", "w1"]));
         Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/patek-philippe");
-        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/collections/patek-philippe-aquanaut");
     }
 
     [Fact]
