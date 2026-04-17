@@ -2207,6 +2207,61 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_ShortlistOnlyFollowUp_ReusesSessionShortlist()
+    {
+        using var context = CreateContext();
+        var vacheron = new Brand { Id = 1, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var omega = new Brand { Id = 2, Name = "Omega", Slug = "omega" };
+        var metiers = new Collection { Id = 10, BrandId = 1, Brand = vacheron, Name = "Métiers d’Art", Slug = "metiers-dart", Styles = ["art"] };
+        var seamaster = new Collection { Id = 20, BrandId = 2, Brand = omega, Name = "Seamaster", Slug = "seamaster", Styles = ["diver"] };
+        var watches = new[]
+        {
+            new Watch { Id = 100, BrandId = 1, Brand = vacheron, CollectionId = 10, Collection = metiers, Name = "86073/000P-H066", Slug = "vacheron-constantin-metiers-dart-86073-000p-h066", Description = "Vacheron Constantin Métiers d’Art", CurrentPrice = 100000m },
+            new Watch { Id = 101, BrandId = 1, Brand = vacheron, CollectionId = 10, Collection = metiers, Name = "6007A/000G-H049", Slug = "vacheron-constantin-metiers-dart-6007a-000g-h049", Description = "Vacheron Constantin Métiers d’Art", CurrentPrice = 98000m },
+            new Watch { Id = 200, BrandId = 2, Brand = omega, CollectionId = 20, Collection = seamaster, Name = "210.30.42.20.01.001", Slug = "omega-seamaster-210-30-42-20-01-001", Description = "Omega Seamaster", CurrentPrice = 7000m },
+            new Watch { Id = 201, BrandId = 2, Brand = omega, CollectionId = 20, Collection = seamaster, Name = "210.30.42.20.03.001", Slug = "omega-seamaster-210-30-42-20-03-001", Description = "Omega Seamaster", CurrentPrice = 7200m }
+        };
+
+        context.Brands.AddRange(vacheron, omega);
+        context.Collections.AddRange(metiers, seamaster);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync("i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = watches.Select(ToDto).ToList(),
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var callCount = 0;
+        var handler = new RecordingHandler(_ =>
+        {
+            callCount++;
+            var payload = callCount == 1
+                ? "{\"message\":\"[Vacheron Constantin Métiers d’Art 86073/000P-H066](/watches/vacheron-constantin-metiers-dart-86073-000p-h066) covers the art lane while [Omega Seamaster 210.30.42.20.01.001](/watches/omega-seamaster-210-30-42-20-01-001) covers the dive lane.\",\"actions\":[]}"
+                : "{\"message\":\"[Vacheron Constantin Métiers d’Art 86073/000P-H066](/watches/vacheron-constantin-metiers-dart-86073-000p-h066) and [Omega Seamaster 210.30.42.20.01.001](/watches/omega-seamaster-210-30-42-20-01-001) are the strongest shortlist anchors.\",\"actions\":[]}";
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            };
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var initial = await service.HandleMessageAsync("session-1", "i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist", null, "127.0.0.1");
+        Assert.Equal(4, initial.WatchCards.Count);
+
+        var followUp = await service.HandleMessageAsync("session-1", "now give me the strongest shortlist only, no extra waffle", null, "127.0.0.1");
+
+        Assert.True(followUp.WatchCards.Count >= 2);
+        Assert.Contains(followUp.WatchCards, card => card.CollectionSlug == "metiers-dart");
+        Assert.Contains(followUp.WatchCards, card => card.CollectionSlug == "seamaster");
+        watchFinder.Verify(f => f.FindWatchesAsync("i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist"), Times.Once);
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_CompareResponse_HasBrandNavigateChips()
     {
         using var context = CreateContext();

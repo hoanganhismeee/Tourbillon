@@ -464,11 +464,17 @@ public class ChatService
             actions = [..actions, ..suggestions];
 
         sessionHistory.Add(new ChatMessage { Role = "user", Content = message });
-        sessionHistory.Add(new ChatMessage { Role = "assistant", Content = aiMessage });
+       sessionHistory.Add(new ChatMessage { Role = "assistant", Content = aiMessage });
         await SaveSessionHistoryAsync(sessionId, sessionHistory);
         await SaveLastWatchCardsAsync(sessionId, watchCards);
         await SaveCompareScopeAsync(sessionId, await BuildCompareScopeAsync(actions));
-        await SaveSessionStateAsync(sessionId, resolution.SessionState ?? BuildFallbackSessionState(watchCards));
+        var nextSessionState = resolution.SessionState ?? BuildFallbackSessionState(watchCards);
+        if (string.Equals(nextSessionState.FollowUpMode, "watch_cards", StringComparison.OrdinalIgnoreCase)
+            && (LooksLikeShortlistContinuation(message) || LooksLikeSessionShortlistSelection(message)))
+        {
+            nextSessionState = PreserveBroaderWatchCardSessionState(sessionState, nextSessionState);
+        }
+        await SaveSessionStateAsync(sessionId, nextSessionState);
 
         var newUsed = 1;
         if (!disableLimit)
@@ -590,6 +596,8 @@ public class ChatService
         if (IsExplicitCompareQuery(canonicalMessage))
         {
             var compareWatches = await TryResolveCompareWatchesAsync(canonicalMessage, lastWatchCards, mentions, compareScope);
+            if (compareWatches.Count < 2 && sessionState?.WatchSlugs.Count > 0)
+                compareWatches = await TryResolveSessionShortlistCompareWatchesAsync(canonicalMessage, sessionState, lastWatchCards, excludedBrandIds);
             if (compareWatches.Count >= 2)
             {
                 var r = await BuildCompareResolutionAsync(canonicalMessage, compareWatches);
@@ -689,16 +697,22 @@ public class ChatService
             return r;
         }
 
-        var directEntityResolution = await TryResolveDirectEntityResolutionAsync(
-            canonicalMessage,
-            mentions,
-            lastWatchCards,
-            sessionState,
-            excludedBrandIds);
-        if (directEntityResolution != null)
+        var skipDirectEntityResolution = LooksLikeRecommendationRevision(canonicalMessage, lastWatchCards, sessionState)
+            || LooksLikeShortlistContinuation(canonicalMessage)
+            || LooksLikeSessionShortlistSelection(canonicalMessage);
+        if (!skipDirectEntityResolution)
         {
-            directEntityResolution.RoutingPath = "entity_direct";
-            return directEntityResolution;
+            var directEntityResolution = await TryResolveDirectEntityResolutionAsync(
+                canonicalMessage,
+                mentions,
+                lastWatchCards,
+                sessionState,
+                excludedBrandIds);
+            if (directEntityResolution != null)
+            {
+                directEntityResolution.RoutingPath = "entity_direct";
+                return directEntityResolution;
+            }
         }
 
         var searchResult = excludedBrandIds.Count > 0
@@ -977,11 +991,24 @@ public class ChatService
         if (IsAffirmativeFollowUp(query))
         {
             if (lastWatchCards.Count > 0)
-                return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: true, sessionState?.FollowUpMode);
+                return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: true, sessionState?.FollowUpMode, sessionState);
 
             var storedMentions = await ResolveMentionsFromSessionStateAsync(sessionState);
             if (storedMentions.HasAny)
                 return await BuildEntityInfoResolutionAsync(sessionState?.CanonicalQuery ?? query, storedMentions);
+        }
+
+        if (sessionState?.WatchSlugs.Count > 0
+            && string.Equals(sessionState.FollowUpMode, "watch_cards", StringComparison.OrdinalIgnoreCase)
+            && (LooksLikeShortlistContinuation(query) || LooksLikeSessionShortlistSelection(query)))
+        {
+            var sessionShortlist = await BuildSessionShortlistFollowUpResolutionAsync(
+                query,
+                lastWatchCards,
+                sessionState,
+                excludedBrandIds);
+            if (sessionShortlist != null)
+                return sessionShortlist;
         }
 
         // "Show me more" in a compare context would otherwise re-echo the same cards.
@@ -996,12 +1023,76 @@ public class ChatService
         if (!LooksLikeContextualFollowUp(query) || lastWatchCards.Count == 0)
         {
             if (lastWatchCards.Count > 0 && LooksLikeShortlistContinuation(query))
-                return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false, sessionState?.FollowUpMode);
+                return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false, sessionState?.FollowUpMode, sessionState);
 
             return null;
         }
 
-        return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false, sessionState?.FollowUpMode);
+        return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false, sessionState?.FollowUpMode, sessionState);
+    }
+
+    private async Task<ChatResolution?> BuildSessionShortlistFollowUpResolutionAsync(
+        string query,
+        List<ChatWatchCard> lastWatchCards,
+        ChatSessionState sessionState,
+        List<int>? excludedBrandIds)
+    {
+        var sessionWatches = await LoadSessionWatchesAsync(sessionState, lastWatchCards, excludedBrandIds);
+        if (sessionWatches.Count == 0)
+            return null;
+
+        var directions = DetectDiscoveryDirections($"{sessionState.DiscoveryQuery} {query}");
+        if (LooksLikeDirectionalCompareFollowUp(query))
+        {
+            var compareWatches = SelectSessionShortlistWatches(sessionWatches, directions, query, maxCount: 2);
+            if (compareWatches.Count >= 2)
+            {
+                var compareResolution = await BuildCompareResolutionAsync(query, compareWatches);
+                compareResolution.SessionState = PreserveBroaderWatchCardSessionState(
+                    sessionState,
+                    compareResolution.SessionState ?? BuildSessionStateFromWatches(compareWatches, "compare", BuildCanonicalEntityQuery(compareWatches, query), discoveryQuery: sessionState.DiscoveryQuery ?? query));
+                return compareResolution;
+            }
+        }
+
+        var selectedWatches = SelectSessionShortlistWatches(
+            sessionWatches,
+            directions,
+            query,
+            maxCount: DiscoveryCardLimit);
+        if (selectedWatches.Count == 0)
+            selectedWatches = sessionWatches.Take(DiscoveryCardLimit).ToList();
+
+        var mentions = await ResolveMentionsFromSessionStateAsync(sessionState);
+        var resolution = await BuildDiscoveryResolutionAsync(
+            query,
+            new WatchFinderResult
+            {
+                Watches = selectedWatches.Select(watch => WatchDto.FromWatch(watch)).ToList(),
+                SearchPath = "session_shortlist"
+            },
+            excludedBrandIds,
+            includeSearchAction: false,
+            mentions: mentions);
+        resolution.SearchPath = "session_shortlist";
+        resolution.SessionState = PreserveBroaderWatchCardSessionState(
+            sessionState,
+            resolution.SessionState ?? BuildSessionStateFromWatches(selectedWatches, "watch_cards", BuildCanonicalEntityQuery(selectedWatches, query), discoveryQuery: sessionState.DiscoveryQuery ?? query));
+        return resolution;
+    }
+
+    private async Task<List<Watch>> TryResolveSessionShortlistCompareWatchesAsync(
+        string query,
+        ChatSessionState sessionState,
+        List<ChatWatchCard> lastWatchCards,
+        List<int>? excludedBrandIds)
+    {
+        var sessionWatches = await LoadSessionWatchesAsync(sessionState, lastWatchCards, excludedBrandIds);
+        if (sessionWatches.Count == 0)
+            return [];
+
+        var directions = DetectDiscoveryDirections($"{sessionState.DiscoveryQuery} {query}");
+        return SelectSessionShortlistWatches(sessionWatches, directions, query, maxCount: 2);
     }
 
     // Loads unseen models from the session's compare collections and returns an AI-worded card row.
@@ -1086,6 +1177,8 @@ public class ChatService
             {
                 var compareWatches = await TryResolveCompareWatchesAsync(
                     canonicalMessage, lastWatchCards, mentions, compareScope);
+                if (compareWatches.Count < 2 && sessionState?.WatchSlugs.Count > 0)
+                    compareWatches = await TryResolveSessionShortlistCompareWatchesAsync(canonicalMessage, sessionState, lastWatchCards, excludedBrandIds);
                 if (compareWatches.Count < 2)
                 {
                     var found = compareWatches.Count == 1 ? $" I found {compareWatches[0].Name}," : "";
@@ -1106,7 +1199,7 @@ public class ChatService
             {
                 if (lastWatchCards.Count > 0)
                     return await BuildCardContinuationResolutionAsync(
-                        message, lastWatchCards, affirmative: true, sessionState?.FollowUpMode);
+                        message, lastWatchCards, affirmative: true, sessionState?.FollowUpMode, sessionState);
                 var storedMentions = await ResolveMentionsFromSessionStateAsync(sessionState);
                 if (storedMentions.HasAny)
                     return await BuildEntityInfoResolutionAsync(sessionState?.CanonicalQuery ?? message, storedMentions);
@@ -1135,7 +1228,7 @@ public class ChatService
             case ChatIntent.ContextualFollowUp:
                 if (lastWatchCards.Count == 0) return null;
                 return await BuildCardContinuationResolutionAsync(
-                    message, lastWatchCards, affirmative: false, sessionState?.FollowUpMode);
+                    message, lastWatchCards, affirmative: false, sessionState?.FollowUpMode, sessionState);
 
             case ChatIntent.BrandInfo:
             case ChatIntent.CollectionInfo:
@@ -1381,7 +1474,8 @@ public class ChatService
         string query,
         List<ChatWatchCard> lastWatchCards,
         bool affirmative,
-        string? followUpMode)
+        string? followUpMode,
+        ChatSessionState? sessionState = null)
     {
         var slugsInOrder = lastWatchCards
             .Select(card => card.Slug)
@@ -1445,6 +1539,14 @@ public class ChatService
             context.Add(BuildBrandContext(brand));
         }
 
+        var nextSessionState = BuildSessionStateFromWatches(
+            ordered,
+            isCompareFollowUp ? "compare" : "watch_cards",
+            ordered.Count == 1 ? ordered[0].Name : BuildCanonicalEntityQuery(ordered, query),
+            discoveryQuery: query);
+        if (!isCompareFollowUp)
+            nextSessionState = PreserveBroaderWatchCardSessionState(sessionState, nextSessionState);
+
         return new ChatResolution
         {
             UseAi = true,
@@ -1466,11 +1568,7 @@ public class ChatService
                         Slugs = ordered.Select(w => w.Slug).ToList()
                     }]
                 : [],
-            SessionState = BuildSessionStateFromWatches(
-                ordered,
-                isCompareFollowUp ? "compare" : "watch_cards",
-                ordered.Count == 1 ? ordered[0].Name : BuildCanonicalEntityQuery(ordered, query),
-                discoveryQuery: query),
+            SessionState = nextSessionState,
         };
     }
 
@@ -1638,6 +1736,112 @@ public class ChatService
                     .Take(3))
                 : null,
         };
+    }
+
+    private static ChatSessionState PreserveBroaderWatchCardSessionState(
+        ChatSessionState? previousState,
+        ChatSessionState nextState)
+    {
+        if (previousState == null
+            || !string.Equals(previousState.FollowUpMode, "watch_cards", StringComparison.OrdinalIgnoreCase)
+            || previousState.WatchSlugs.Count <= nextState.WatchSlugs.Count)
+        {
+            return nextState;
+        }
+
+        nextState.BrandIds = nextState.BrandIds
+            .Union(previousState.BrandIds)
+            .Distinct()
+            .ToList();
+        nextState.CollectionIds = nextState.CollectionIds
+            .Union(previousState.CollectionIds)
+            .Distinct()
+            .ToList();
+        nextState.WatchSlugs = previousState.WatchSlugs
+            .Where(slug => !string.IsNullOrWhiteSpace(slug))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        nextState.DiscoveryQuery ??= previousState.DiscoveryQuery;
+        nextState.CanonicalQuery ??= previousState.CanonicalQuery;
+        return nextState;
+    }
+
+    private async Task<List<Watch>> LoadSessionWatchesAsync(
+        ChatSessionState? sessionState,
+        List<ChatWatchCard> lastWatchCards,
+        List<int>? excludedBrandIds = null)
+    {
+        var slugsInOrder = (sessionState?.WatchSlugs ?? [])
+            .Where(slug => !string.IsNullOrWhiteSpace(slug))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (slugsInOrder.Count == 0)
+        {
+            slugsInOrder = lastWatchCards
+                .Select(card => card.Slug)
+                .Where(slug => !string.IsNullOrWhiteSpace(slug))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        if (slugsInOrder.Count == 0)
+            return [];
+
+        var watches = await _context.Watches
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .AsNoTracking()
+            .Where(w => slugsInOrder.Contains(w.Slug))
+            .ToListAsync();
+
+        if (excludedBrandIds?.Count > 0)
+            watches = watches.Where(watch => !excludedBrandIds.Contains(watch.BrandId)).ToList();
+
+        return slugsInOrder
+            .Select(slug => watches.FirstOrDefault(watch => string.Equals(watch.Slug, slug, StringComparison.OrdinalIgnoreCase)))
+            .Where(watch => watch != null)
+            .Cast<Watch>()
+            .ToList();
+    }
+
+    private static List<Watch> SelectSessionShortlistWatches(
+        List<Watch> sessionWatches,
+        List<string> directions,
+        string query,
+        int maxCount)
+    {
+        if (sessionWatches.Count == 0)
+            return [];
+
+        var requestedPerDirection = Regex.IsMatch(query, @"\bwhich\s+two\b|\btwo\s+are\b", RegexOptions.IgnoreCase)
+            ? 2
+            : 1;
+        var selected = new List<Watch>();
+
+        if (directions.Count >= 2)
+        {
+            foreach (var direction in directions)
+            {
+                foreach (var watch in sessionWatches.Where(watch => WatchMatchesDirection(watch, direction)).Take(requestedPerDirection))
+                {
+                    if (selected.All(existing => existing.Id != watch.Id))
+                        selected.Add(watch);
+                    if (selected.Count >= maxCount)
+                        return selected;
+                }
+            }
+        }
+
+        if (selected.Count == 0 && LooksLikeSessionShortlistSelection(query))
+            selected.AddRange(sessionWatches.Take(Math.Min(maxCount, 4)));
+
+        if (selected.Count == 0)
+            selected.AddRange(sessionWatches.Take(Math.Min(maxCount, DiscoveryCardLimit)));
+
+        return selected
+            .DistinctBy(watch => watch.Id)
+            .Take(maxCount)
+            .ToList();
     }
 
     private async Task<List<Watch>> LoadWatchesByIdsAsync(List<int> ids)
@@ -3021,6 +3225,7 @@ public class ChatService
                 {
                     var maxDist = canonical.Length >= 5 ? 2 : 1;
                     if (word[0] != canonical[0]) continue;
+                    if (maxDist > 1 && word[^1] != canonical[^1]) continue;
                     if (Math.Abs(word.Length - canonical.Length) > maxDist) continue;
                     var distance = EditDistance(word.AsSpan(), canonical.AsSpan());
                     if (distance > maxDist || distance >= bestDistance) continue;
@@ -3251,7 +3456,7 @@ public class ChatService
 
         return Regex.IsMatch(
             query,
-            @"\b(?:show me something else|show me another|what else|anything else|another option|different option|different direction|not what i meant|not really|not quite|don't like|do not like|dislike|hate|skip these|skip those|avoid these|avoid those|those are not|these are not|they are not|isn't right|aren't right|wrong direction|too sporty|too dressy|too expensive|too big|too small|more artistic|more art|less sporty|less dressy|more formal|more casual|more refined|more elegant|more modern|more classic|more luxurious|dressier|sportier|fancier|classier|simpler|bolder|slimmer|something (?:more )?(?:dressy|sporty|formal|casual|elegant|refined|classic|modern|luxurious|artistic|simple|bold|slim)|(?:what|how) about (?:something|a |an )|make the list richer|richer list|separate the .* direction|split by intent|group(?:ed)? guidance|introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|strongest final shortlist)\b",
+            @"\b(?:show me something else|show me another|what else|anything else|another option|different option|different direction|not what i meant|not really|not quite|don't like|do not like|dislike|hate|skip these|skip those|avoid these|avoid those|those are not|these are not|they are not|isn't right|aren't right|wrong direction|too sporty|too dressy|too expensive|too big|too small|too generic|more artistic|more art|less sporty|less dressy|more formal|more casual|more refined|more elegant|more modern|more classic|more luxurious|dressier|sportier|fancier|classier|simpler|bolder|slimmer|something (?:more )?(?:dressy|sporty|formal|casual|elegant|refined|classic|modern|luxurious|artistic|simple|bold|slim)|(?:what|how) about (?:something|a |an )|make the list richer|richer list|separate the .* direction|split by intent|group(?:ed)? guidance|introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|strongest final shortlist|revise(?: the shortlist| it)?|rework(?: the shortlist)?|redo(?: the shortlist)?|rebalance(?: the shortlist)?|keep one true|not just \w+ this time|not .* enough|still feel)\b",
             RegexOptions.IgnoreCase);
     }
 
@@ -3259,6 +3464,22 @@ public class ChatService
         Regex.IsMatch(
             query,
             @"\b(?:introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|final answer|mixed shortlist|which two are the clearest|art-led pick|dive-led pick|not just \w+ this time|compare the strongest)\b",
+            RegexOptions.IgnoreCase);
+
+    private static bool LooksLikeSessionShortlistSelection(string query) =>
+        Regex.IsMatch(
+            query,
+            @"\b(?:strongest|clearest|best|final answer|final shortlist|curated shortlist|curated list|which two|top picks?|split by intent|separate the .* lane|separate the .* direction|group(?:ed)? guidance|introduce the brands|introduce the collections|shortlist only)\b",
+            RegexOptions.IgnoreCase);
+
+    private static bool LooksLikeDirectionalCompareFollowUp(string query) =>
+        Regex.IsMatch(
+            query,
+            @"\b(?:compare|against|versus|vs\.?)\b",
+            RegexOptions.IgnoreCase)
+        && Regex.IsMatch(
+            query,
+            @"\b(?:strongest|clearest|best|pick)\b",
             RegexOptions.IgnoreCase);
 
     // Detects explicit "show me more / expand the list" intent, used to avoid re-echoing

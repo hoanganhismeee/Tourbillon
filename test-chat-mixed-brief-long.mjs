@@ -23,18 +23,18 @@ const RED = '\x1b[31m';
 const MAGENTA = '\x1b[35m';
 
 const MIXED_FLOW = [
-  { label: 'Initial mixed brief', message: 'i want dive watches and art watches, recommend me some' },
-  { label: 'Ask for richer structure', message: 'make the list richer and separate the dive direction from the art direction before you give final picks' },
-  { label: 'Reject weak art fit', message: 'those are not art watches related' },
-  { label: 'Force a revised shortlist', message: 'revise the shortlist and keep at least one true art-led direction and one real dive direction' },
-  { label: 'Ask for grouped guidance', message: 'introduce the brands or collections briefly, then narrow to the best models' },
-  { label: 'Request shortlist only', message: 'give me the strongest final shortlist only' },
-  { label: 'Add budget pressure', message: 'keep it under 25,000 where possible' },
-  { label: 'Split by intent', message: 'which two are the clearest dive picks and which two are the clearest art picks' },
-  { label: 'Reject omega-only drift', message: 'not just omega this time' },
-  { label: 'Ask for a final mixed shortlist', message: 'final answer: give me the best mixed shortlist again' },
-  { label: 'Cross-compare the directions', message: 'compare the strongest art-led pick with the strongest dive-led pick' },
-  { label: 'One last curated list', message: 'one final curated mixed shortlist please' },
+  { label: 'Initial mixed brief', message: 'i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist' },
+  { label: 'Ask for richer structure', message: 'separate the dive lane from the art lane first, then give me the strongest combined row' },
+  { label: 'Reject weak art fit', message: 'these still feel too generic, the art side is not design-forward enough' },
+  { label: 'Force a revised shortlist', message: 'revise it and keep one true diver direction plus one proper art-led direction, not just colourful sport watches' },
+  { label: 'Ask for grouped guidance', message: 'introduce the brands or collections briefly, then narrow to the best actual models' },
+  { label: 'Request shortlist only', message: 'now give me the strongest shortlist only, no extra waffle' },
+  { label: 'Add budget pressure', message: 'keep most of it under 25,000 but allow one stretch option if it really earns the place' },
+  { label: 'Split by intent', message: 'which two are the clearest dive picks and which two are the clearest art-led picks' },
+  { label: 'Reject omega-only drift', message: 'and do not collapse back into omega-only options this time' },
+  { label: 'Ask for a final mixed shortlist', message: 'final answer: give me the cleanest mixed shortlist again' },
+  { label: 'Cross-compare the directions', message: 'compare the strongest art-led pick against the strongest diver pick' },
+  { label: 'One last curated list', message: 'last pass: give me the one curated mixed shortlist you would actually buy from' },
 ];
 
 async function fetchJson(url, options = {}) {
