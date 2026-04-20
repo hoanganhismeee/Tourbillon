@@ -28,7 +28,22 @@ Rules:
 - expansion_request requires expansion language AND prior cards in session (cards > 0)
 - brand_decision requires 2+ brands in the entity list AND decision-seeking language
 - Return "unclear" if no class reaches 0.6 confidence
-- Never return free text — only the JSON object"""
+- Never return free text — only the JSON object
+
+Example utterances (guide, not exhaustive):
+- affirmative_followup: "yes", "ok", "sure", "go ahead", "sounds good", "yes please", "ok continue"
+- expansion_request (cards > 0): "show me more", "more models", "expand the list", "all models", "see everything", "what else is there", "full list"
+- revision_request (cards > 0): "show me something else", "not what i meant", "less sporty", "too sporty", "make the list richer", "split by intent", "narrow to the best models", "final shortlist", "curated list", "which two are the clearest", "art-led pick", "separate the dive lane"
+- contextual_followup (cards > 0): "tell me more", "the first one", "that one", "these", "how about the second one", "number 3", "compare the first two"
+- brand_info: "tell me about Patek Philippe", "enlighten me about Rolex", "what's great about Grand Seiko"
+- brand_history: "history of Vacheron Constantin", "founders of Audemars Piguet", "how was Patek Philippe started"
+- brand_decision: "Rolex or Patek", "help me choose between AP and VC", "which brand is better for dress"
+- collection_info: "tell me about the Aquanaut", "what's the Royal Oak about"
+- collection_compare: "compare Aquanaut and Overseas", "Nautilus vs Royal Oak"
+- watch_compare: "compare Nautilus 5711 and Royal Oak 15202", "compare the first and third"
+- discovery: "sporty watches under 30k", "dress watch for a wedding", "blue dial chronograph", "elegant watch for a formal dinner"
+- non_watch: "hi", "hello", "what's the weather", "2+2", "write me a poem", "recommend a restaurant"
+- unclear: any message that does not clearly match one of the above"""
 
 # Filled in by the backend before sending; uses .format() substitution.
 CLASSIFY_USER_PROMPT = """\

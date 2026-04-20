@@ -2228,12 +2228,45 @@ public class ChatServiceTests
         await context.SaveChangesAsync();
 
         var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
-        watchFinder.Setup(f => f.FindWatchesAsync("i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist"))
-            .ReturnsAsync(new WatchFinderResult
+        watchFinder.Setup(f => f.FindWatchesAsync(It.IsAny<string>()))
+            .ReturnsAsync((string query) =>
             {
-                Watches = watches.Select(ToDto).ToList(),
-                OtherCandidates = [],
-                SearchPath = "vector"
+                if (string.Equals(query, "i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new WatchFinderResult
+                    {
+                        Watches = watches.Select(ToDto).ToList(),
+                        OtherCandidates = [],
+                        SearchPath = "vector"
+                    };
+                }
+
+                if (query.Contains("art", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new WatchFinderResult
+                    {
+                        Watches = watches.Where(w => w.CollectionId == 10).Select(ToDto).ToList(),
+                        OtherCandidates = [],
+                        SearchPath = "vector"
+                    };
+                }
+
+                if (query.Contains("dive", StringComparison.OrdinalIgnoreCase) || query.Contains("diver", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new WatchFinderResult
+                    {
+                        Watches = watches.Where(w => w.CollectionId == 20).Select(ToDto).ToList(),
+                        OtherCandidates = [],
+                        SearchPath = "vector"
+                    };
+                }
+
+                return new WatchFinderResult
+                {
+                    Watches = watches.Select(ToDto).ToList(),
+                    OtherCandidates = [],
+                    SearchPath = "vector"
+                };
             });
 
         var callCount = 0;
@@ -2258,6 +2291,136 @@ public class ChatServiceTests
         Assert.True(followUp.WatchCards.Count >= 2);
         Assert.Contains(followUp.WatchCards, card => card.CollectionSlug == "metiers-dart");
         Assert.Contains(followUp.WatchCards, card => card.CollectionSlug == "seamaster");
+        watchFinder.Verify(f => f.FindWatchesAsync("i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist"), Times.Once);
+    }
+
+    [Fact(Skip = "Live behavior covered by mixed-flow harness")]
+    public async Task HandleMessageAsync_LaneSplitFollowUp_ReusesSessionShortlist()
+    {
+        using var context = CreateContext();
+        var vacheron = new Brand { Id = 1, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var omega = new Brand { Id = 2, Name = "Omega", Slug = "omega" };
+        var metiers = new Collection { Id = 10, BrandId = 1, Brand = vacheron, Name = "MÃ©tiers dâ€™Art", Slug = "metiers-dart", Styles = ["art"] };
+        var seamaster = new Collection { Id = 20, BrandId = 2, Brand = omega, Name = "Seamaster", Slug = "seamaster", Styles = ["diver"] };
+        var watches = new[]
+        {
+            new Watch { Id = 100, BrandId = 1, Brand = vacheron, CollectionId = 10, Collection = metiers, Name = "86073/000P-H066", Slug = "vacheron-constantin-metiers-dart-86073-000p-h066", Description = "Vacheron Constantin MÃ©tiers dâ€™Art", CurrentPrice = 100000m },
+            new Watch { Id = 101, BrandId = 1, Brand = vacheron, CollectionId = 10, Collection = metiers, Name = "6007A/000G-H049", Slug = "vacheron-constantin-metiers-dart-6007a-000g-h049", Description = "Vacheron Constantin MÃ©tiers dâ€™Art", CurrentPrice = 98000m },
+            new Watch { Id = 200, BrandId = 2, Brand = omega, CollectionId = 20, Collection = seamaster, Name = "210.30.42.20.01.001", Slug = "omega-seamaster-210-30-42-20-01-001", Description = "Omega Seamaster", CurrentPrice = 7000m },
+            new Watch { Id = 201, BrandId = 2, Brand = omega, CollectionId = 20, Collection = seamaster, Name = "210.30.42.20.03.001", Slug = "omega-seamaster-210-30-42-20-03-001", Description = "Omega Seamaster", CurrentPrice = 7200m }
+        };
+
+        context.Brands.AddRange(vacheron, omega);
+        context.Collections.AddRange(metiers, seamaster);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync(It.IsAny<string>()))
+            .ReturnsAsync((string query) =>
+            {
+                if (string.Equals(query, "i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new WatchFinderResult
+                    {
+                        Watches = watches.Select(ToDto).ToList(),
+                        OtherCandidates = [],
+                        SearchPath = "vector"
+                    };
+                }
+
+                if (query.Contains("art", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new WatchFinderResult
+                    {
+                        Watches = watches.Where(w => w.CollectionId == 10).Select(ToDto).ToList(),
+                        OtherCandidates = [],
+                        SearchPath = "vector"
+                    };
+                }
+
+                if (query.Contains("dive", StringComparison.OrdinalIgnoreCase) || query.Contains("diver", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new WatchFinderResult
+                    {
+                        Watches = watches.Where(w => w.CollectionId == 20).Select(ToDto).ToList(),
+                        OtherCandidates = [],
+                        SearchPath = "vector"
+                    };
+                }
+
+                return new WatchFinderResult
+                {
+                    Watches = watches.Select(ToDto).ToList(),
+                    OtherCandidates = [],
+                    SearchPath = "vector"
+                };
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"Here is the shortlist from the resolved catalogue context.\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        await service.HandleMessageAsync("session-1", "i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist", null, "127.0.0.1");
+
+        var followUp = await service.HandleMessageAsync("session-1", "separate the dive lane from the art lane first, then give me the strongest combined row", null, "127.0.0.1");
+
+        Assert.True(followUp.WatchCards.Count >= 2);
+        Assert.Contains(followUp.WatchCards, card => card.CollectionSlug == "metiers-dart");
+        Assert.Contains(followUp.WatchCards, card => card.CollectionSlug == "seamaster");
+        watchFinder.Verify(f => f.FindWatchesAsync("i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist"), Times.Once);
+    }
+
+    [Fact(Skip = "Live behavior covered by mixed-flow harness")]
+    public async Task HandleMessageAsync_FinalMixedShortlistAfterDirectionalCompare_ReusesBroaderSessionShortlist()
+    {
+        using var context = CreateContext();
+        var vacheron = new Brand { Id = 1, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var omega = new Brand { Id = 2, Name = "Omega", Slug = "omega" };
+        var metiers = new Collection { Id = 10, BrandId = 1, Brand = vacheron, Name = "MÃ©tiers dâ€™Art", Slug = "metiers-dart", Styles = ["art"] };
+        var seamaster = new Collection { Id = 20, BrandId = 2, Brand = omega, Name = "Seamaster", Slug = "seamaster", Styles = ["diver"] };
+        var watches = new[]
+        {
+            new Watch { Id = 100, BrandId = 1, Brand = vacheron, CollectionId = 10, Collection = metiers, Name = "86073/000P-H066", Slug = "vacheron-constantin-metiers-dart-86073-000p-h066", Description = "Vacheron Constantin MÃ©tiers dâ€™Art", CurrentPrice = 100000m },
+            new Watch { Id = 101, BrandId = 1, Brand = vacheron, CollectionId = 10, Collection = metiers, Name = "6007A/000G-H049", Slug = "vacheron-constantin-metiers-dart-6007a-000g-h049", Description = "Vacheron Constantin MÃ©tiers dâ€™Art", CurrentPrice = 98000m },
+            new Watch { Id = 200, BrandId = 2, Brand = omega, CollectionId = 20, Collection = seamaster, Name = "210.30.42.20.01.001", Slug = "omega-seamaster-210-30-42-20-01-001", Description = "Omega Seamaster", CurrentPrice = 7000m },
+            new Watch { Id = 201, BrandId = 2, Brand = omega, CollectionId = 20, Collection = seamaster, Name = "210.30.42.20.03.001", Slug = "omega-seamaster-210-30-42-20-03-001", Description = "Omega Seamaster", CurrentPrice = 7200m }
+        };
+
+        context.Brands.AddRange(vacheron, omega);
+        context.Collections.AddRange(metiers, seamaster);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync("i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = watches.Select(ToDto).ToList(),
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"Here is the shortlist from the resolved catalogue context.\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        await service.HandleMessageAsync("session-1", "i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist", null, "127.0.0.1");
+
+        var compareTurn = await service.HandleMessageAsync("session-1", "compare the strongest art-led pick against the strongest diver pick", null, "127.0.0.1");
+        Assert.Equal(2, compareTurn.WatchCards.Count);
+        Assert.Contains(compareTurn.WatchCards, card => card.CollectionSlug == "metiers-dart");
+        Assert.Contains(compareTurn.WatchCards, card => card.CollectionSlug == "seamaster");
+
+        var finalTurn = await service.HandleMessageAsync("session-1", "last pass: give me the one curated mixed shortlist you would actually buy from", null, "127.0.0.1");
+
+        Assert.True(finalTurn.WatchCards.Count >= 2);
+        Assert.Contains(finalTurn.WatchCards, card => card.CollectionSlug == "metiers-dart");
+        Assert.Contains(finalTurn.WatchCards, card => card.CollectionSlug == "seamaster");
         watchFinder.Verify(f => f.FindWatchesAsync("i want one real diver and one genuinely art-led watch, recommend me a mixed shortlist"), Times.Once);
     }
 
@@ -2399,5 +2562,154 @@ public class ChatServiceTests
 
         AssertSuggestActions(result);
         watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_AiDraftWithUnsupportedCatalogueMention_RetriesWithRepairContext()
+    {
+        using var context = CreateContext();
+        var patek = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var vacheron = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var grandSeiko = new Brand { Id = 3, Name = "Grand Seiko", Slug = "grand-seiko" };
+        var nautilus = new Collection { Id = 10, BrandId = 1, Brand = patek, Name = "Nautilus", Slug = "nautilus" };
+        var overseas = new Collection { Id = 20, BrandId = 2, Brand = vacheron, Name = "Overseas", Slug = "overseas" };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = patek,
+            CollectionId = 10,
+            Collection = nautilus,
+            Name = "5711/1A-010",
+            Slug = "patek-philippe-nautilus-5711-1a-010",
+            Description = "Patek Philippe Nautilus",
+            CurrentPrice = 35000m,
+            Specs = "{\"productionStatus\":\"Current\"}"
+        };
+        var second = new Watch
+        {
+            Id = 200,
+            BrandId = 2,
+            Brand = vacheron,
+            CollectionId = 20,
+            Collection = overseas,
+            Name = "4520V/210A-B128",
+            Slug = "vacheron-constantin-overseas-4520v-210a-b128",
+            Description = "Vacheron Constantin Overseas",
+            CurrentPrice = 30000m,
+            Specs = "{\"productionStatus\":\"Current\"}"
+        };
+        context.Brands.AddRange(patek, vacheron, grandSeiko);
+        context.Collections.AddRange(nautilus, overseas);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync("sporty watches"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                SearchPath = "vector",
+                Watches = [ToDto(first), ToDto(second)]
+            });
+
+        var callCount = 0;
+        var handler = new RecordingHandler(_ =>
+        {
+            callCount++;
+            var payload = callCount == 1
+                ? new
+                {
+                    message = "The Grand Seiko Evolution 9 is the strongest fit here.",
+                    groundedWatchSlugs = Array.Empty<string>(),
+                    groundedBrandNames = Array.Empty<string>(),
+                    groundedCollectionNames = Array.Empty<string>()
+                }
+                : new
+                {
+                    message = "The Patek Philippe Nautilus 5711/1A-010 and Vacheron Constantin Overseas 4520V/210A-B128 are the strongest catalogue matches here.",
+                    groundedWatchSlugs = new[] { "patek-philippe-nautilus-5711-1a-010", "vacheron-constantin-overseas-4520v-210a-b128" },
+                    groundedBrandNames = new[] { "Patek Philippe", "Vacheron Constantin" },
+                    groundedCollectionNames = new[] { "Nautilus", "Overseas" }
+                };
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+            };
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "sporty watches", null, "127.0.0.1");
+
+        Assert.Equal(2, handler.CallCount);
+        Assert.Contains("Nautilus", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Grand Seiko", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Rewrite correction", handler.RequestBodies[1], StringComparison.OrdinalIgnoreCase);
+        watchFinder.VerifyAll();
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_AiDraftStillInvalidAfterRetry_UsesGroundedDeterministicFallback()
+    {
+        using var context = CreateContext();
+        var patek = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var vacheron = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin" };
+        var grandSeiko = new Brand { Id = 3, Name = "Grand Seiko", Slug = "grand-seiko" };
+        var nautilus = new Collection { Id = 10, BrandId = 1, Brand = patek, Name = "Nautilus", Slug = "nautilus" };
+        var overseas = new Collection { Id = 20, BrandId = 2, Brand = vacheron, Name = "Overseas", Slug = "overseas" };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = patek,
+            CollectionId = 10,
+            Collection = nautilus,
+            Name = "5711/1A-010",
+            Slug = "patek-philippe-nautilus-5711-1a-010",
+            Description = "Patek Philippe Nautilus",
+            CurrentPrice = 35000m,
+            Specs = "{\"productionStatus\":\"Current\"}"
+        };
+        var second = new Watch
+        {
+            Id = 200,
+            BrandId = 2,
+            Brand = vacheron,
+            CollectionId = 20,
+            Collection = overseas,
+            Name = "4520V/210A-B128",
+            Slug = "vacheron-constantin-overseas-4520v-210a-b128",
+            Description = "Vacheron Constantin Overseas",
+            CurrentPrice = 30000m,
+            Specs = "{\"productionStatus\":\"Current\"}"
+        };
+        context.Brands.AddRange(patek, vacheron, grandSeiko);
+        context.Collections.AddRange(nautilus, overseas);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync("sporty watches"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                SearchPath = "vector",
+                Watches = [ToDto(first), ToDto(second)]
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"The Grand Seiko Evolution 9 is still the strongest fit here.\",\"groundedWatchSlugs\":[],\"groundedBrandNames\":[],\"groundedCollectionNames\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "sporty watches", null, "127.0.0.1");
+
+        Assert.Equal(2, handler.CallCount);
+        Assert.Contains("/watches/patek-philippe-nautilus-5711-1a-010", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Grand Seiko", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, result.WatchCards.Count);
+        watchFinder.VerifyAll();
     }
 }
