@@ -50,6 +50,7 @@
 | Chat Concierge Reliability Refactor (backend orchestration + typed compose contract) | Done | 13.5 |
 | AI Intent Classifier (POST /classify replaces 9 regex routing predicates; "unclear" falls back to regex) | Done | 14 |
 | Chat Concierge — Flexible Routing + Token-Optimized Search (SQL brand path, semantic router, descriptor blacklist fallback, 200-word limit, cursor fallback, explicit dispatcher messages) | Done | 14.5 |
+| Chat Concierge — Planner Chips + Classifier-First Follow-Ups (`/plan-actions`, backend validation, deterministic fallback) | Done | 14.6 |
 | Storage Abstraction + S3 + CloudFront Migration | Planned | 15 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | ? |
 
@@ -661,6 +662,24 @@ Reduced AI token spend for simple brand queries and made the routing layer resil
 - `ai-service/prompts/chat.py` — word cap 130 → 200
 - `ai-service/routes/chat.py` — truncation default 130 → 200
 - `test-chat-long.mjs` — 3 new flows (SQL brand path, cursor edge cases, brand info cards) + `checkCards` / `checkCursorHelp` assertion types
+
+### Phase 14.6: Chat Concierge — Planner Chips + Classifier-First Follow-Ups (COMPLETE)
+
+Split concierge AI into two parallel layers: `/chat` for wording and `/plan-actions` for optional follow-up chips. Semantic follow-up routing now trusts `/classify` instead of the old semantic regex helpers, while structural safeguards stay deterministic.
+
+**Design rules**
+- LLM plans, backend validates. Tool calls are hints only; slug validation, chip cap, and dedup stay in backend code.
+- Planner is optional. If `/plan-actions` times out, fails, or returns unusable output, `BuildSuggestionActions()` still guarantees the old deterministic fallback.
+- Navigation, cursor control, and rate-limit handling remain backend-only. The planner cannot emit privileged structural actions.
+- Semantic routing stays classifier-first, with regex reserved for structural parsing and unreachable-service fallbacks like `_watchDescriptorPattern`.
+- `/chat` and `/plan-actions` run in parallel. There is no serial LLM chaining inside one reply.
+
+**Files involved**
+- `ai-service/core/schemas.py` — pydantic models for `IntentClassification`, `SuggestedAction`, and `PlanActionsResponse`
+- `ai-service/routes/classify.py`, `ai-service/prompts/classify.py` — structured classifier validation and expanded follow-up examples
+- `ai-service/prompts/plan_actions.py`, `ai-service/routes/plan_actions.py`, `ai-service/tests/test_plan_actions.py` — planner prompt, tool-call route, and unit coverage
+- `backend/Services/ChatService.cs`, `IActionPlanner.cs`, `ActionPlannerService.cs`, `ActionPlannerFake.cs` — planner seam, backend merge/validation, and deterministic fallback
+- `backend.Tests/Services/ChatServiceTests.cs` — planner fallback coverage and alternate-compare suggestion checks
 
 ### Slug-Based URLs + Cloudinary Public ID Sync (IN PROGRESS)
 

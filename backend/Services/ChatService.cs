@@ -87,8 +87,8 @@ public class ChatService
     private readonly IIntentClassifier _classifier;
     private readonly IActionPlanner _planner;
 
-    // Set by ResolveWatchScopedAsync once /classify returns. Read by the retired
-    // regex helpers so they can defer to the classifier instead of duplicating it.
+    // Set by ResolveWatchScopedAsync once /classify returns. Read by follow-up
+    // routing branches that now trust the classifier instead of semantic regexes.
     // ChatService is scoped per request, so this is safe as an instance field.
     private IntentClassification? _lastClassification;
 
@@ -448,7 +448,7 @@ public class ChatService
         // there are no cards (greeting, refusal, cursor command) the planner has nothing to
         // ground slugs against, so we skip it.
         var plannerTask = (resolution.UseAi && watchCards.Count > 0)
-            ? _planner.PlanAsync(await BuildPlannerInputAsync(resolution, message, watchCards, actions, sessionState))
+            ? PlanSuggestedActionsAsync(resolution, message, watchCards, actions, sessionState)
             : Task.FromResult<IReadOnlyList<PlannedAction>>(Array.Empty<PlannedAction>());
 
         if (resolution.UseAi)
@@ -514,7 +514,7 @@ public class ChatService
         await SaveCompareScopeAsync(sessionId, await BuildCompareScopeAsync(actions));
         var nextSessionState = resolution.SessionState ?? BuildFallbackSessionState(watchCards);
         if (string.Equals(nextSessionState.FollowUpMode, "watch_cards", StringComparison.OrdinalIgnoreCase)
-            && (LooksLikeShortlistContinuation(message) || LooksLikeSessionShortlistSelection(message)))
+            && ClassifierMatchesAny(ChatIntent.ContextualFollowUp, ChatIntent.RevisionRequest, ChatIntent.WatchCompare))
         {
             nextSessionState = PreserveBroaderWatchCardSessionState(sessionState, nextSessionState);
         }
@@ -577,9 +577,6 @@ public class ChatService
                 Message = "I am here to help with Tourbillon watches and horology only. If you want, ask about a watch, brand, comparison, or product search.",
                 RoutingPath = "abusive"
             };
-
-        if (IsGreetingQuery(repairedMessage))
-            return new ChatResolution { Message = GreetingMessage, RoutingPath = "greeting" };
 
         // Deterministic off-topic guard: catches clear programming / translation queries before
         // entity resolution assigns spurious watch-domain signals to them.
@@ -667,7 +664,7 @@ public class ChatService
             lastWatchCards.Count,
             sessionState?.BrandIds ?? []);
 
-        // Cache the classification so the retired regex helpers can defer to it.
+        // Cache the classification so downstream follow-up routing can reuse it.
         _lastClassification = classification;
 
         _logger.LogInformation(
@@ -711,7 +708,8 @@ public class ChatService
         var hasWatchScope = mentions.HasAny
             || referencedWatches.Count > 0
             || WatchFinderService.HasWatchDomainSignal(canonicalMessage)
-            || (sessionState?.WatchSlugs.Count > 0 && LooksLikeContextualFollowUp(message))
+            || (sessionState?.WatchSlugs.Count > 0
+                && ClassifierMatchesAny(ChatIntent.ContextualFollowUp, ChatIntent.AffirmativeFollowUp))
             || (hasSessionContext && LooksLikePriceFollowUp(canonicalMessage))
             || (hasSessionContext && LooksLikeStyleFollowUp(canonicalMessage));
 
@@ -744,9 +742,10 @@ public class ChatService
             return r;
         }
 
-        var skipDirectEntityResolution = LooksLikeRecommendationRevision(canonicalMessage, lastWatchCards, sessionState)
-            || LooksLikeShortlistContinuation(canonicalMessage)
-            || LooksLikeSessionShortlistSelection(canonicalMessage);
+        var skipDirectEntityResolution = ClassifierMatchesAny(
+            ChatIntent.RevisionRequest,
+            ChatIntent.ContextualFollowUp,
+            ChatIntent.WatchCompare);
         if (!skipDirectEntityResolution)
         {
             var directEntityResolution = await TryResolveDirectEntityResolutionAsync(
@@ -1227,7 +1226,7 @@ public class ChatService
         if (excludedBrandIds?.Count > 0)
             lastWatchCards = lastWatchCards.Where(c => !excludedBrandIds.Contains(c.BrandId)).ToList();
 
-        if (IsAffirmativeFollowUp(query))
+        if (ClassifierMatches(ChatIntent.AffirmativeFollowUp))
         {
             if (lastWatchCards.Count > 0)
                 return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: true, sessionState?.FollowUpMode, sessionState);
@@ -1239,7 +1238,7 @@ public class ChatService
 
         if (sessionState?.WatchSlugs.Count > 0
             && string.Equals(sessionState.FollowUpMode, "watch_cards", StringComparison.OrdinalIgnoreCase)
-            && (LooksLikeShortlistContinuation(query) || LooksLikeSessionShortlistSelection(query)))
+            && ClassifierMatchesAny(ChatIntent.ContextualFollowUp, ChatIntent.RevisionRequest, ChatIntent.WatchCompare))
         {
             var sessionShortlist = await BuildSessionShortlistFollowUpResolutionAsync(
                 query,
@@ -1254,18 +1253,14 @@ public class ChatService
         // Instead, reload all models from the session's collections excluding already-shown slugs.
         if (string.Equals(sessionState?.FollowUpMode, "compare", StringComparison.OrdinalIgnoreCase)
             && sessionState?.CollectionIds.Count > 0
-            && LooksLikeExplicitMoreRequest(query))
+            && ClassifierMatches(ChatIntent.ExpansionRequest))
         {
             return await BuildCompareExpandResolutionAsync(query, lastWatchCards, sessionState);
         }
 
-        if (!LooksLikeContextualFollowUp(query) || lastWatchCards.Count == 0)
-        {
-            if (lastWatchCards.Count > 0 && LooksLikeShortlistContinuation(query))
-                return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false, sessionState?.FollowUpMode, sessionState);
-
+        if (!ClassifierMatchesAny(ChatIntent.ContextualFollowUp, ChatIntent.AffirmativeFollowUp)
+            || lastWatchCards.Count == 0)
             return null;
-        }
 
         return await BuildCardContinuationResolutionAsync(query, lastWatchCards, affirmative: false, sessionState?.FollowUpMode, sessionState);
     }
@@ -1281,7 +1276,7 @@ public class ChatService
             return null;
 
         var directions = DetectDiscoveryDirections($"{sessionState.DiscoveryQuery} {query}");
-        if (LooksLikeDirectionalCompareFollowUp(query))
+        if (ClassifierMatches(ChatIntent.WatchCompare) || IsExplicitCompareQuery(query))
         {
             var compareWatches = SelectSessionShortlistWatches(sessionWatches, directions, query, maxCount: 2);
             if (compareWatches.Count >= 2)
@@ -1398,7 +1393,7 @@ public class ChatService
 
     // Dispatches to the appropriate resolution builder based on the AI classifier's intent.
     // Returns null when the intent cannot be resolved (e.g. missing entities for brand_decision),
-    // which causes the caller to fall through to legacy regex routing.
+    // which causes the caller to fall through to the remaining structural/backend routing.
     private async Task<ChatResolution?> DispatchByIntentAsync(
         string intent,
         string message,
@@ -1518,6 +1513,14 @@ public class ChatService
             }
 
             case ChatIntent.NonWatch:
+                if (CountWords(message) <= 3
+                    && !mentions.HasAny
+                    && !WatchFinderService.HasWatchDomainSignal(message)
+                    && Regex.IsMatch(message, @"^[\p{L}\s'!.?-]+$"))
+                {
+                    return new ChatResolution { Message = GreetingMessage, RoutingPath = "greeting" };
+                }
+
                 return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
 
             default:
@@ -1535,7 +1538,8 @@ public class ChatService
         if (excludedBrandIds.Count > 0)
             lastWatchCards = lastWatchCards.Where(card => !excludedBrandIds.Contains(card.BrandId)).ToList();
 
-        if (!LooksLikeRecommendationRevision(canonicalMessage, lastWatchCards, sessionState))
+        var hasRevisionContext = lastWatchCards.Count > 0 || !string.IsNullOrWhiteSpace(sessionState?.DiscoveryQuery);
+        if (!hasRevisionContext || !ClassifierMatches(ChatIntent.RevisionRequest))
             return null;
 
         var accumulatedRejectedSlugs = (sessionState?.RejectedWatchSlugs ?? [])
@@ -2070,9 +2074,6 @@ public class ChatService
                 }
             }
         }
-
-        if (selected.Count == 0 && LooksLikeSessionShortlistSelection(query))
-            selected.AddRange(sessionWatches.Take(Math.Min(maxCount, 4)));
 
         if (selected.Count == 0)
             selected.AddRange(sessionWatches.Take(Math.Min(maxCount, DiscoveryCardLimit)));
@@ -3671,96 +3672,8 @@ public class ChatService
             && c.Confidence >= minConfidence;
     }
 
-    private bool IsAffirmativeFollowUp(string query)
-    {
-        if (ClassifierMatches("affirmative_followup")) return true;
-
-        var q = query.Trim();
-        if (Regex.IsMatch(q, @"^(?:yes|yeah|yep|sure|ok|okay|please do|go ahead|sounds good|do it)[!.]*$", RegexOptions.IgnoreCase))
-            return true;
-        return Regex.IsMatch(q, @"^(?:yes|yeah|yep|sure|ok|okay)\s+please\b", RegexOptions.IgnoreCase);
-    }
-
-    // Runs in ResolveMessageAsync before the classifier, so _lastClassification is always
-    // null here on the first call. Pattern stays regex-only as a structural pre-gate;
-    // the classifier's non_watch coverage is the backstop for anything the regex misses.
-    private static bool IsGreetingQuery(string query) =>
-        Regex.IsMatch(query.Trim(), @"^(?:hi|hello|hey(?:\s+there)?|yo|hiya|sup|what'?s up|good morning|good afternoon|good evening)[!.]*$", RegexOptions.IgnoreCase);
-
-    private bool LooksLikeContextualFollowUp(string query)
-    {
-        if (ClassifierMatches("contextual_followup")) return true;
-        if (ClassifierMatches("affirmative_followup")) return true;
-        return Regex.IsMatch(query,
-            @"\b(?:yes|yeah|yep|sure|ok|okay|please|those|these|them|that|this|first|second|third|fourth|fifth|more|details|tell me|show me|compare|go ahead|sounds good|do it|what about|how about|something|instead|rather|another|other)\b",
-            RegexOptions.IgnoreCase);
-    }
-
-    private bool LooksLikeRecommendationRevision(
-        string query,
-        List<ChatWatchCard> lastWatchCards,
-        ChatSessionState? sessionState)
-    {
-        if (lastWatchCards.Count == 0 && string.IsNullOrWhiteSpace(sessionState?.DiscoveryQuery))
-            return false;
-
-        if (!string.Equals(sessionState?.FollowUpMode, "watch_cards", StringComparison.OrdinalIgnoreCase)
-            && string.IsNullOrWhiteSpace(sessionState?.DiscoveryQuery))
-            return false;
-
-        if (IsExplicitCompareQuery(query) || IsAffirmativeFollowUp(query))
-            return false;
-
-        if (ClassifierMatches("revision_request")) return true;
-
-        return Regex.IsMatch(
-            query,
-            @"\b(?:show me something else|show me another|what else|anything else|another option|different option|different direction|not what i meant|not really|not quite|don't like|do not like|dislike|hate|skip these|skip those|avoid these|avoid those|those are not|these are not|they are not|isn't right|aren't right|wrong direction|too sporty|too dressy|too expensive|too big|too small|too generic|more artistic|more art|less sporty|less dressy|more formal|more casual|more refined|more elegant|more modern|more classic|more luxurious|dressier|sportier|fancier|classier|simpler|bolder|slimmer|something (?:more )?(?:dressy|sporty|formal|casual|elegant|refined|classic|modern|luxurious|artistic|simple|bold|slim)|(?:what|how) about (?:something|a |an )|make the list richer|richer list|separate the .* direction|split by intent|group(?:ed)? guidance|introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|strongest final shortlist|revise(?: the shortlist| it)?|rework(?: the shortlist)?|redo(?: the shortlist)?|rebalance(?: the shortlist)?|keep one true|not just \w+ this time|not .* enough|still feel)\b",
-            RegexOptions.IgnoreCase);
-    }
-
-    private bool LooksLikeShortlistContinuation(string query)
-    {
-        if (ClassifierMatches("revision_request")) return true;
-        return Regex.IsMatch(
-            query,
-            @"\b(?:introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|final answer|mixed shortlist|which two are the clearest|art-led pick|dive-led pick|not just \w+ this time|compare the strongest)\b",
-            RegexOptions.IgnoreCase);
-    }
-
-    private bool LooksLikeSessionShortlistSelection(string query)
-    {
-        if (ClassifierMatches("contextual_followup")) return true;
-        if (ClassifierMatches("revision_request")) return true;
-        return Regex.IsMatch(
-            query,
-            @"\b(?:strongest|clearest|best|final answer|final shortlist|curated shortlist|curated list|which two|top picks?|split by intent|separate the .* lane|separate the .* direction|group(?:ed)? guidance|introduce the brands|introduce the collections|shortlist only)\b",
-            RegexOptions.IgnoreCase);
-    }
-
-    private bool LooksLikeDirectionalCompareFollowUp(string query)
-    {
-        if (ClassifierMatches("watch_compare")) return true;
-        return Regex.IsMatch(
-            query,
-            @"\b(?:compare|against|versus|vs\.?)\b",
-            RegexOptions.IgnoreCase)
-        && Regex.IsMatch(
-            query,
-            @"\b(?:strongest|clearest|best|pick)\b",
-            RegexOptions.IgnoreCase);
-    }
-
-    // Detects explicit "show me more / expand the list" intent, used to avoid re-echoing
-    // the same watch cards when the user wants additional models rather than a continuation.
-    private bool LooksLikeExplicitMoreRequest(string query)
-    {
-        if (ClassifierMatches("expansion_request")) return true;
-        return Regex.IsMatch(
-            query,
-            @"\b(?:show me more|more models?|more result|more watches?|more options?|expand|see more|all models?|full list|other models?|what else is there|what other)\b",
-            RegexOptions.IgnoreCase);
-    }
+    private bool ClassifierMatchesAny(params string[] intents) =>
+        intents.Any(intent => ClassifierMatches(intent));
 
     // Detects refinement queries that contain only price/budget signals — no watch vocabulary.
     // Used to keep pure price follow-ups ("under 10k", "what about 20,000?") in the discovery
@@ -3819,7 +3732,7 @@ public class ChatService
     // Drops any chip whose slugs/hrefs were hallucinated, dedupes near-duplicates,
     // and caps the list at 3. Returns an empty list when nothing is usable — the
     // caller falls back to the deterministic rule tree so zero regression is guaranteed.
-    private static List<ChatAction> MergePlannerSuggestions(
+    private static List<ChatAction> MergeSuggestedActions(
         IReadOnlyList<PlannedAction>? plannedActions,
         List<ChatWatchCard> watchCards,
         List<ChatAction> primaryActions)
@@ -3879,12 +3792,9 @@ public class ChatService
                     .ToList();
                 if (slugs.Count < 2) return null;
 
-                if (string.IsNullOrEmpty(label))
-                {
-                    var a = watchCards.First(c => string.Equals(c.Slug, slugs[0], StringComparison.OrdinalIgnoreCase));
-                    var b = watchCards.First(c => string.Equals(c.Slug, slugs[1], StringComparison.OrdinalIgnoreCase));
-                    label = $"Compare {CardShortLabel(a)} and {CardShortLabel(b)} side by side";
-                }
+                var a = watchCards.First(c => string.Equals(c.Slug, slugs[0], StringComparison.OrdinalIgnoreCase));
+                var b = watchCards.First(c => string.Equals(c.Slug, slugs[1], StringComparison.OrdinalIgnoreCase));
+                label = BuildCompareChipLabel(a, b);
                 return new ChatAction { Type = "compare", Label = label, Slugs = slugs };
             }
             case "search":
@@ -3942,6 +3852,25 @@ public class ChatService
 
     // Assembles the planner payload: query + already-drafted intent + visible cards +
     // rejected brands (session-persisted) so the LLM can steer around them.
+    private async Task<IReadOnlyList<PlannedAction>> PlanSuggestedActionsAsync(
+        ChatResolution resolution,
+        string message,
+        List<ChatWatchCard> watchCards,
+        List<ChatAction> primaryActions,
+        ChatSessionState? sessionState)
+    {
+        try
+        {
+            var input = await BuildPlannerInputAsync(resolution, message, watchCards, primaryActions, sessionState);
+            return await _planner.PlanAsync(input);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Planner suggestion build failed");
+            return Array.Empty<PlannedAction>();
+        }
+    }
+
     private async Task<PlanActionsInput> BuildPlannerInputAsync(
         ChatResolution resolution,
         string message,
@@ -4738,12 +4667,16 @@ public class ChatService
         // Planner path: validate every slug against the visible cards, dedupe against
         // primary actions, cap at 3. If the planner returned usable chips, it wins —
         // the rule tree below is the fallback.
-        var merged = MergePlannerSuggestions(plannedActions, watchCards, primaryActions);
-        if (merged.Count > 0)
+        var merged = MergeSuggestedActions(plannedActions, watchCards, primaryActions);
+        if (merged.Count >= 3)
             return merged;
 
-        var suggestions = new List<ChatAction>();
-        var hasCompareAction = primaryActions.Any(a =>
+        var suggestions = new List<ChatAction>(merged);
+        var effectivePrimaryActions = primaryActions.Concat(merged).ToList();
+        var primaryFingerprints = new HashSet<string>(
+            primaryActions.Select(ChipFingerprint),
+            StringComparer.OrdinalIgnoreCase);
+        var hasCompareAction = effectivePrimaryActions.Any(a =>
             string.Equals(a.Type, "compare", StringComparison.OrdinalIgnoreCase));
         var compareCards = (suggestedCompareSlugs ?? [])
             .Select(slug => watchCards.FirstOrDefault(card => string.Equals(card.Slug, slug, StringComparison.OrdinalIgnoreCase)))
@@ -4754,19 +4687,16 @@ public class ChatService
         if (compareCards.Count < 2)
             compareCards = watchCards.Take(2).ToList();
 
-        // Suggest comparing first two when no compare action was already generated
+        // Suggest comparing first two when no compare action was already generated.
         if (!suppressCompareSuggestion && !hasCompareAction && compareCards.Count >= 2)
         {
-            var label1 = CardShortLabel(compareCards[0]);
-            var label2 = CardShortLabel(compareCards[1]);
             suggestions.Add(new ChatAction
             {
                 Type = "compare",
-                Label = $"Compare {label1} and {label2} side by side",
+                Label = BuildCompareChipLabel(compareCards[0], compareCards[1]),
                 Slugs = [compareCards[0].Slug, compareCards[1].Slug]
             });
         }
-
         // For compare responses with cards from two different brands: suggest one chip per brand.
         // For everything else: suggest the primary brand + primary collection.
         var distinctBrands = watchCards
@@ -4781,7 +4711,7 @@ public class ChatService
             // Two different brands in a compare: suggest one brand chip per brand
             foreach (var card in distinctBrands)
             {
-                if (suggestions.Count >= 2) break;
+                if (suggestions.Count >= 3) break;
                 suggestions.Add(new ChatAction
                 {
                     Type = "navigate",
@@ -4794,7 +4724,7 @@ public class ChatService
         {
             // Single brand or discovery: suggest the primary brand then primary collection
             var firstWithBrand = distinctBrands.FirstOrDefault();
-            if (firstWithBrand != null && suggestions.Count < 2)
+            if (firstWithBrand != null && suggestions.Count < 3)
             {
                 suggestions.Add(new ChatAction
                 {
@@ -4804,7 +4734,7 @@ public class ChatService
                 });
             }
 
-            if (suggestions.Count < 2)
+            if (suggestions.Count < 3)
             {
                 var firstWithCollection = watchCards.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.CollectionSlug));
                 if (firstWithCollection != null)
@@ -4819,8 +4749,17 @@ public class ChatService
             }
         }
 
-        return suggestions;
+        var deduped = suggestions
+            .Where(action => !primaryFingerprints.Contains(ChipFingerprint(action)))
+            .GroupBy(ChipFingerprint, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+        return deduped.Take(3).ToList();
     }
+
+    private static string BuildCompareChipLabel(ChatWatchCard first, ChatWatchCard second) =>
+        $"Compare {CardShortLabel(first)} and {CardShortLabel(second)}";
 
     // Returns the collection name with any leading generic word stripped for use in chip labels.
     // e.g. "Collection Convexe" → "Convexe", "Aquanaut" → "Aquanaut"

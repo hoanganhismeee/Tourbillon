@@ -1,12 +1,10 @@
 # Chat intent classifier endpoint.
 # Receives query + session summary + entity mentions; returns {"intent": str, "confidence": float}.
-# Classifier failure is non-fatal — the backend falls back to regex routing on "unclear".
-import json
-
+# Classifier failure is non-fatal - the backend falls back to regex routing on "unclear".
 from flask import jsonify, request
 
 from core.runtime import Runtime
-from core.schemas import IntentClassification, safe_parse
+from core.schemas import IntentClassification, VALID_INTENTS, parse_model_json
 from prompts.classify import CLASSIFY_SYSTEM_PROMPT, CLASSIFY_USER_PROMPT
 
 
@@ -34,17 +32,7 @@ def _safe_classify(runtime: Runtime, query: str, session: dict, last_cards: list
             temperature=0.0,
         )
         raw = (response.choices[0].message.content or "").strip()
-
-        # Strip markdown fences if the model wraps anyway
-        if raw.startswith("```"):
-            raw = raw.strip("`").strip()
-            if raw.lower().startswith("json"):
-                raw = raw[4:].strip()
-
-        result = json.loads(raw)
-        parsed = safe_parse(IntentClassification, result)
-        if parsed is None:
-            return {"intent": "unclear", "confidence": 0.0}
+        parsed = parse_model_json(IntentClassification, raw, source="/classify")
         return parsed.model_dump()
     except Exception as exc:
         return {"intent": "unclear", "confidence": 0.0, "error": str(exc)}
@@ -53,17 +41,7 @@ def _safe_classify(runtime: Runtime, query: str, session: dict, last_cards: list
 def register_routes(app, runtime: Runtime) -> None:
     @app.route("/classify", methods=["POST"])
     def classify_intent():
-        """AI intent classifier for chat routing.
-
-        Request body:
-          query          str   — user message
-          sessionState   dict  — {followUpMode, brandIds}
-          lastWatchCards list  — cards from the previous turn
-          entityMentions dict  — {brands: [str], collections: [str]}
-
-        Response:
-          {"intent": str, "confidence": float}
-        """
+        """AI intent classifier for chat routing."""
         data = request.get_json(silent=True) or {}
         query = (data.get("query") or "").strip()
         if not query:

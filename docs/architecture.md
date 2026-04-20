@@ -272,6 +272,7 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 | `POST /embed` | Batch text -> float[768] embeddings via nomic-embed-text (no LLM) |
 | `POST /route` | Semantic query router — classifies a discovery query as `simple_brand` (pure SQL sufficient) or `descriptor_query` (full WatchFinder needed). Uses cosine similarity against pre-embedded example utterances (`core/route_layer.py`). Falls back to `descriptor_query` on any error. No LLM — embedding only. |
 | `POST /chat` | Conversational wording and composition from compact Tourbillon-first context, with optional limited web notes for approved brand-history questions. Returns the final message plus grounded watch, brand, and collection mentions extracted from the supplied catalogue context. Always returns an empty actions list — backend generates all compare/search/navigate/cursor/suggest actions before the reply reaches the frontend. |
+| `POST /plan-actions` | Follow-up chip planner. Uses tool-calling plus pydantic validation to propose up to 3 grounded compare/search/navigate chips from the already surfaced watch cards. Hallucinated or malformed tool output is dropped and the backend falls back to deterministic chip generation. |
 | `POST /parse-taste` | Free-text -> structured taste preferences JSON (LLM call) |
 | `POST /generate-dna-from-behavior` | Browsing events array -> structured taste preferences + `summary` string (LLM call) |
 | `GET /ready` | 503 until model warmup completes, 200 after |
@@ -280,6 +281,10 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 ### Chat Concierge Routing
 
 **Routing authority:** `ChatService` classifies the request and owns all app behavior. `WatchFinderService` is the source of truth for catalogue retrieval. `ai-service /chat` is a wording layer only — it never decides routing, compare, search, or navigation behavior.
+
+**Classifier-first follow-ups (April 2026):** Greeting, affirmative, expansion, revision, and contextual follow-up detection now comes from `POST /classify` rather than semantic regex helpers in `ChatService`. Structural fast paths remain deterministic: abuse, cursor commands, explicit compare confirmation, ordinal card lookup, fuzzy brand matching, and `_watchDescriptorPattern` as the `/route` fallback.
+
+**Parallel wording + chip planning:** For AI-backed replies with watch cards, `ChatService` now calls `/chat` and `/plan-actions` in parallel. Planner suggestions are merged only after slug/href validation against the visible cards; if planner output is unusable or the call fails, the old deterministic compare/brand/collection chip logic still runs.
 
 **Two-tier search routing (April 2026):**
 
