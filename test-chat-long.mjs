@@ -103,6 +103,12 @@ const FLOWS = [
     ]
   },
   {
+    name: 'Compare chips - alternate compare remains available on broad rows',
+    turns: [
+      { msg: 'Compare Aquanaut and Overseas collections', note: 'broad collection compare', checkCards: true, checkCompareChipWithExtraCards: true },
+    ]
+  },
+  {
     name: 'Off-topic resilience — AI stays on scope across 8 turns with distractions',
     turns: [
       { msg: "what's the weather today", note: 'off-topic 1', checkDecline: true },
@@ -203,7 +209,7 @@ async function runFlow(flow, flowIdx) {
   let prevCards = [];
 
   for (let t = 0; t < flow.turns.length; t++) {
-    const { msg, note, checkNoFC, checkDecline, checkCursor, checkCursorHelp, checkCompare, checkCards } = flow.turns[t];
+    const { msg, note, checkNoFC, checkDecline, checkCursor, checkCursorHelp, checkCompare, checkCards, checkCompareChipWithExtraCards } = flow.turns[t];
 
     process.stdout.write(`  ${DIM}T${t + 1} sending...${RESET}\r`);
 
@@ -305,6 +311,20 @@ async function runFlow(flow, flowIdx) {
         checks.pass++;
       } else {
         asserts.push(warn('no compare action or text'));
+        checks.warn++;
+      }
+    }
+
+    if (checkCompareChipWithExtraCards) {
+      const compareActions = actions.filter(a => a.type === 'compare');
+      if (cards.length > 2 && compareActions.length >= 1) {
+        asserts.push(pass('alternate compare chip present on broad compare row'));
+        checks.pass++;
+      } else if (cards.length > 2) {
+        asserts.push(fail('broad compare row returned no compare chip'));
+        checks.fail++;
+      } else {
+        asserts.push(warn('compare row was too small to verify alternate compare chips'));
         checks.warn++;
       }
     }

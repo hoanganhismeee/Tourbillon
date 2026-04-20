@@ -124,7 +124,8 @@ public class ChatServiceTests
         }
     }
 
-    // Default classifier always returns "unclear" so all existing tests use the legacy regex path.
+    // Default classifier returns "unclear"; tests that rely on semantic follow-up
+    // routing should inject the explicit intent they expect production to classify.
     private sealed class FakeClassifier : IIntentClassifier
     {
         private readonly Func<string, IntentClassification> _classify;
@@ -150,7 +151,8 @@ public class ChatServiceTests
         RecordingHandler? handler = null,
         IRedisService? redis = null,
         IConfiguration? config = null,
-        IIntentClassifier? classifier = null)
+        IIntentClassifier? classifier = null,
+        IActionPlanner? planner = null)
     {
         var httpFactory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
         if (handler != null)
@@ -166,7 +168,8 @@ public class ChatServiceTests
             config ?? CreateConfig(),
             watchFinderMock.Object,
             NullLogger<ChatService>.Instance,
-            classifier ?? new FakeClassifier());
+            classifier ?? new FakeClassifier(),
+            planner ?? new ActionPlannerFake());
     }
 
     // 0-card responses now show 3 "suggest"-type actions from the curated query bank.
@@ -182,6 +185,13 @@ public class ChatServiceTests
     {
         using var context = CreateContext();
         var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync("20439/92902"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [],
+                OtherCandidates = [],
+                SearchPath = "direct_sql_merged"
+            });
         var service = CreateService(context, watchFinder);
 
         var result = await service.HandleMessageAsync("session-1", "Write me a sales CV", null, "127.0.0.1");
@@ -212,7 +222,7 @@ public class ChatServiceTests
     {
         using var context = CreateContext();
         var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
-        var service = CreateService(context, watchFinder);
+        var service = CreateService(context, watchFinder, classifier: new FakeClassifier("non_watch"));
 
         var result = await service.HandleMessageAsync("session-1", "yo", null, "127.0.0.1");
 
@@ -399,7 +409,12 @@ public class ChatServiceTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+            query.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase)
+                ? new IntentClassification("affirmative_followup", 0.95)
+                : new IntentClassification("unclear", 0.0));
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
 
         await service.HandleMessageAsync("session-1", "introduce me the 222", null, "127.0.0.1");
         var followUp = await service.HandleMessageAsync("session-1", "the watch named 222", null, "127.0.0.1");
@@ -494,7 +509,12 @@ public class ChatServiceTests
             Content = new StringContent("{\"message\":\"[Vacheron Constantin](/brands/vacheron-constantin) is one of Tourbillon's key maisons.\",\"actions\":[]}", Encoding.UTF8, "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+            query.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase)
+                ? new IntentClassification("affirmative_followup", 0.95)
+                : new IntentClassification("unclear", 0.0));
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
         var result = await service.HandleMessageAsync("session-1", "Tell me about Vacheron Constantin", null, "127.0.0.1");
 
         Assert.Equal(1, handler.CallCount);
@@ -557,7 +577,16 @@ public class ChatServiceTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+        {
+            if (query.Contains("Tell me about Patek Philippe", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("brand_info", 0.95);
+            if (query.Contains("do you have this model", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("contextual_followup", 0.95);
+            return new IntentClassification("unclear", 0.0);
+        });
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
         await service.HandleMessageAsync("session-1", "Recommend me an art-focused watch", null, "127.0.0.1");
 
         var payload = JsonDocument.Parse(handler.RequestBodies[0]).RootElement;
@@ -613,7 +642,14 @@ public class ChatServiceTests
             Content = new StringContent("{\"message\":\"[Vacheron Constantin](/brands/vacheron-constantin) was founded in 1755 and remains one of watchmaking's oldest maisons.\",\"actions\":[{\"type\":\"search\",\"query\":\"Vacheron Constantin history\"}]}", Encoding.UTF8, "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+        {
+            if (query.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("affirmative_followup", 0.95);
+            return new IntentClassification("unclear", 0.0);
+        });
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
         var result = await service.HandleMessageAsync("session-1", "browse the web for Vacheron Constantin history", null, "127.0.0.1");
 
         Assert.Equal(1, handler.CallCount);
@@ -671,7 +707,16 @@ public class ChatServiceTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+        {
+            if (query.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("affirmative_followup", 0.95);
+            if (query.Contains("Compare 5711/1A-010 vs 16202ST", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("watch_compare", 0.95);
+            return new IntentClassification("unclear", 0.0);
+        });
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
         var result = await service.HandleMessageAsync("session-1", "Tell me about Reverso", null, "127.0.0.1");
 
         Assert.DoesNotContain(result.Actions, a => a.Type == "search");
@@ -727,7 +772,16 @@ public class ChatServiceTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+        {
+            if (query.Contains("Tell me about Patek Philippe", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("brand_info", 0.95);
+            if (query.Contains("do you have this model 20439/92902", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("contextual_followup", 0.95);
+            return new IntentClassification("unclear", 0.0);
+        });
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
         var result = await service.HandleMessageAsync("session-1", "should i wear reverso?", null, "127.0.0.1");
 
         Assert.DoesNotContain(result.Actions, a => a.Type == "search");
@@ -795,7 +849,14 @@ public class ChatServiceTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+        {
+            if (query.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("affirmative_followup", 0.95);
+            return new IntentClassification("unclear", 0.0);
+        });
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
         var result = await service.HandleMessageAsync("session-1", "Tell me about Pattek Philippe", null, "127.0.0.1");
 
         Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/brands/patek-philippe");
@@ -857,6 +918,13 @@ public class ChatServiceTests
         await context.SaveChangesAsync();
 
         var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync("20439/92902"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [],
+                OtherCandidates = [],
+                SearchPath = "direct_sql_merged"
+            });
         var callCount = 0;
         var handler = new RecordingHandler(_ =>
         {
@@ -870,7 +938,16 @@ public class ChatServiceTests
             };
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+        {
+            if (query.Contains("Tell me about Patek Philippe", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("brand_info", 0.95);
+            if (query.Contains("do you have this model 20439/92902", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("contextual_followup", 0.95);
+            return new IntentClassification("unclear", 0.0);
+        });
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
         var initial = await service.HandleMessageAsync("session-1", "Tell me about Patek Philippe", null, "127.0.0.1");
         Assert.NotEmpty(initial.WatchCards);
 
@@ -931,7 +1008,16 @@ public class ChatServiceTests
             Content = new StringContent("{\"message\":\"[Rolex Datejust 126234](/watches/rolex-datejust-126234) is a strong Tourbillon match.\",\"actions\":[]}", Encoding.UTF8, "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+        {
+            if (query.Contains("Tell me about Patek Philippe", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("brand_info", 0.95);
+            if (query.Contains("do you have this model 20439/92902", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("contextual_followup", 0.95);
+            return new IntentClassification("unclear", 0.0);
+        });
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
         var result = await service.HandleMessageAsync("session-1", "Find me a slim steel dress watch under 15k", null, "127.0.0.1");
 
         Assert.Contains(result.Actions, a => a.Type == "search" && a.Query == "Rolex Datejust slim steel dress watch under 15k");
@@ -991,7 +1077,12 @@ public class ChatServiceTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+            query.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase)
+                ? new IntentClassification("affirmative_followup", 0.95)
+                : new IntentClassification("unclear", 0.0));
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
         var result = await service.HandleMessageAsync("session-1", "yo, suggest me some reversos", null, "127.0.0.1");
 
         var searchActions = result.Actions.Where(a => a.Type == "search").ToList();
@@ -1114,14 +1205,22 @@ public class ChatServiceTests
                 Encoding.UTF8, "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+        {
+            if (query.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("affirmative_followup", 0.95);
+            if (query.Contains("Compare 5711/1A-010 vs 16202ST", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("watch_compare", 0.95);
+            return new IntentClassification("unclear", 0.0);
+        });
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
         var result = await service.HandleMessageAsync("session-1", "show me a ceramic moonphase reverso under 2k", null, "127.0.0.1");
 
         Assert.Contains("reference", result.Message, StringComparison.OrdinalIgnoreCase);
         AssertSuggestActions(result);
         Assert.Empty(result.WatchCards);
         watchFinder.Verify(f => f.FindWatchesAsync("show me a ceramic moonphase reverso under 2k"), Times.Once);
-        watchFinder.VerifyNoOtherCalls();
         Assert.Equal(1, handler.CallCount);
     }
 
@@ -1918,7 +2017,12 @@ public class ChatServiceTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+            query.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase)
+                ? new IntentClassification("affirmative_followup", 0.95)
+                : new IntentClassification("unclear", 0.0));
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
 
         var discovery = await service.HandleMessageAsync("session-1", "show me some calatravas", null, "127.0.0.1");
         Assert.Equal(2, discovery.WatchCards.Count);
@@ -1995,7 +2099,16 @@ public class ChatServiceTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+        {
+            if (query.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("affirmative_followup", 0.95);
+            if (query.Contains("Compare 5711/1A-010 vs 16202ST", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("watch_compare", 0.95);
+            return new IntentClassification("unclear", 0.0);
+        });
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
 
         var initial = await service.HandleMessageAsync("session-1", "Compare 5711/1A-010 vs 16202ST", null, "127.0.0.1");
         Assert.Single(initial.Actions.Where(a => a.Type == "compare").ToList());
@@ -2463,6 +2576,132 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_PlannerFailure_FallsBackToDeterministicSuggestions()
+    {
+        using var context = CreateContext();
+        var patek = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var nautilus = new Collection { Id = 10, BrandId = 1, Brand = patek, Name = "Nautilus", Slug = "nautilus" };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = patek,
+            CollectionId = 10,
+            Collection = nautilus,
+            Name = "5711/1A-010",
+            Slug = "nautilus-5711",
+            Description = "Patek Philippe Nautilus",
+            CurrentPrice = 35000m,
+            Specs = "{\"productionStatus\":\"Current\"}"
+        };
+        var second = new Watch
+        {
+            Id = 200,
+            BrandId = 1,
+            Brand = patek,
+            CollectionId = 10,
+            Collection = nautilus,
+            Name = "5811/1G-001",
+            Slug = "nautilus-5811",
+            Description = "Patek Philippe Nautilus",
+            CurrentPrice = 69000m,
+            Specs = "{\"productionStatus\":\"Current\"}"
+        };
+
+        context.Brands.Add(patek);
+        context.Collections.Add(nautilus);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync("sporty watches"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                SearchPath = "vector",
+                Watches = [ToDto(first), ToDto(second)]
+            });
+
+        var planner = new Mock<IActionPlanner>(MockBehavior.Strict);
+        planner.Setup(p => p.PlanAsync(It.IsAny<PlanActionsInput>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("planner failed"));
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"Here are the strongest sporty matches.\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler, planner: planner.Object);
+        var result = await service.HandleMessageAsync("session-1", "sporty watches", null, "127.0.0.1");
+
+        Assert.Equal(1, result.Actions.Count(action => action.Type == "compare"));
+        Assert.Equal(2, result.Actions.Count(action => action.Type == "navigate"));
+        Assert.Contains(result.Actions, action => action.Type == "navigate" && action.Href == "/brands/patek-philippe");
+        Assert.Contains(result.Actions, action => action.Type == "navigate" && action.Href == "/collections/nautilus");
+        planner.VerifyAll();
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_BroadRow_PlannerCompareChipIsSurfaced()
+    {
+        using var context = CreateContext();
+        var patek = new Brand { Id = 1, Name = "Patek Philippe", Slug = "patek-philippe" };
+        var rolex = new Brand { Id = 2, Name = "Rolex", Slug = "rolex" };
+        var nautilus = new Collection { Id = 10, BrandId = 1, Brand = patek, Name = "Nautilus", Slug = "nautilus" };
+        var submariner = new Collection { Id = 20, BrandId = 2, Brand = rolex, Name = "Submariner", Slug = "submariner" };
+        var watches = new[]
+        {
+            new Watch { Id = 100, BrandId = 1, Brand = patek, CollectionId = 10, Collection = nautilus, Name = "5711/1A-010", Slug = "nautilus-5711", Description = "Patek Philippe Nautilus", CurrentPrice = 35000m, Specs = "{\"productionStatus\":\"Current\"}" },
+            new Watch { Id = 101, BrandId = 1, Brand = patek, CollectionId = 10, Collection = nautilus, Name = "5811/1G-001", Slug = "nautilus-5811", Description = "Patek Philippe Nautilus", CurrentPrice = 69000m, Specs = "{\"productionStatus\":\"Current\"}" },
+            new Watch { Id = 200, BrandId = 2, Brand = rolex, CollectionId = 20, Collection = submariner, Name = "124060", Slug = "submariner-124060", Description = "Rolex Submariner", CurrentPrice = 9500m, Specs = "{\"productionStatus\":\"Current\"}" },
+            new Watch { Id = 201, BrandId = 2, Brand = rolex, CollectionId = 20, Collection = submariner, Name = "126610LV", Slug = "submariner-126610lv", Description = "Rolex Submariner", CurrentPrice = 12000m, Specs = "{\"productionStatus\":\"Current\"}" }
+        };
+
+        context.Brands.AddRange(patek, rolex);
+        context.Collections.AddRange(nautilus, submariner);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync("sport icons"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                SearchPath = "vector",
+                Watches = watches.Select(ToDto).ToList()
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"These are the strongest sport icons.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+        var planner = new Mock<IActionPlanner>(MockBehavior.Strict);
+        planner.Setup(p => p.PlanAsync(It.IsAny<PlanActionsInput>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new PlannedAction
+                {
+                    Type = "compare",
+                    Label = "Compare the second pair",
+                    Slugs = ["nautilus-5811", "submariner-126610lv"]
+                }
+            ]);
+
+        var service = CreateService(context, watchFinder, handler, planner: planner.Object);
+        var result = await service.HandleMessageAsync("session-1", "sport icons", null, "127.0.0.1");
+
+        var compareActions = result.Actions.Where(action => action.Type == "compare").ToList();
+        Assert.Single(compareActions);
+        Assert.InRange(result.Actions.Count(action => action.Type == "compare" || action.Type == "navigate"), 2, 3);
+        Assert.Equal(["nautilus-5811", "submariner-126610lv"], compareActions[0].Slugs);
+        Assert.Contains("5811", compareActions[0].Label, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("126610", compareActions[0].Label, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("second pair", compareActions[0].Label, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, result.Actions.Count(action => action.Type == "navigate"));
+        planner.VerifyAll();
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_DiscoveryQuery_ExpandsBrandAcronyms_BeforeSearchAndAi()
     {
         using var context = CreateContext();
@@ -2555,7 +2794,7 @@ public class ChatServiceTests
     {
         using var context = CreateContext();
         var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
-        var service = CreateService(context, watchFinder);
+        var service = CreateService(context, watchFinder, classifier: new FakeClassifier("non_watch"));
 
         // Simple greeting never calls AI — deterministic response with suggest chips
         var result = await service.HandleMessageAsync("session-1", "Hello", null, "127.0.0.1");

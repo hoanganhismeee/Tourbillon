@@ -7,7 +7,7 @@ import json
 from flask import jsonify, request
 
 from core.runtime import Runtime
-from core.schemas import PlanActionsResponse, SuggestedAction, safe_parse
+from core.schemas import PlanActionsResponse, safe_parse
 from prompts.plan_actions import (
     PLAN_ACTIONS_SYSTEM_PROMPT,
     PLAN_ACTIONS_TOOLS,
@@ -138,7 +138,7 @@ def _plan_actions(
     primary_action_types: list[str],
     cards: list[dict],
     rejected_brand_slugs: list[str],
-) -> list[dict]:
+) -> tuple[list[dict], str | None]:
     user_prompt = build_plan_actions_user_prompt(
         query=query,
         assistant_reply=assistant_reply,
@@ -161,19 +161,20 @@ def _plan_actions(
             max_tokens=PLANNER_MAX_TOKENS,
             temperature=PLANNER_TEMPERATURE,
         )
-    except Exception:
-        return []
+    except Exception as exc:
+        return [], f"/plan-actions call failed: {exc}"
 
     choice = response.choices[0] if response.choices else None
     if choice is None:
-        return []
+        return [], "/plan-actions returned no choice"
 
     tool_calls = getattr(choice.message, "tool_calls", None) or []
     if not tool_calls:
-        return []
+        return [], None
 
     watch_slugs, brand_slugs, collection_slugs = _build_card_indexes(cards)
     actions: list[dict] = []
+    errors: list[str] = []
 
     for call in tool_calls:
         fn = getattr(call, "function", None)
@@ -184,17 +185,20 @@ def _plan_actions(
         try:
             args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
             if not isinstance(args, dict):
+                errors.append(f"tool {name} returned non-object arguments")
                 continue
         except json.JSONDecodeError:
+            errors.append(f"tool {name} returned malformed arguments JSON")
             continue
 
         action = _tool_call_to_action(name, args, watch_slugs, brand_slugs, collection_slugs)
         if action is None:
+            errors.append(f"tool {name} returned unusable arguments")
             continue
         actions.append(action)
 
     actions = _dedup_actions(actions)
-    return actions[:MAX_SUGGESTIONS]
+    return actions[:MAX_SUGGESTIONS], (errors[0] if errors and not actions else None)
 
 
 def register_routes(app, runtime: Runtime) -> None:
@@ -229,7 +233,7 @@ def register_routes(app, runtime: Runtime) -> None:
             # fallback handles the no-cards case (static suggestion bank for refusals).
             return jsonify(PlanActionsResponse().model_dump())
 
-        raw_actions = _plan_actions(
+        raw_actions, planner_error = _plan_actions(
             runtime=runtime,
             query=query,
             assistant_reply=assistant_reply,
@@ -243,6 +247,12 @@ def register_routes(app, runtime: Runtime) -> None:
         payload = {"suggestedActions": raw_actions}
         parsed = safe_parse(PlanActionsResponse, payload)
         if parsed is None:
-            return jsonify(PlanActionsResponse().model_dump())
+            return jsonify({
+                **PlanActionsResponse().model_dump(),
+                "error": "planner returned invalid suggested action shape",
+            })
 
-        return jsonify(parsed.model_dump(exclude_none=True))
+        response = parsed.model_dump(exclude_none=True)
+        if planner_error:
+            response["error"] = planner_error
+        return jsonify(response)

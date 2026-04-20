@@ -122,9 +122,17 @@ public class ChatServiceRecommendationTests
             })
             .Build();
 
-    // Default classifier always returns "unclear" so all existing tests use the legacy regex path.
+    // Default classifier returns "unclear"; tests that rely on semantic follow-up
+    // routing should inject the explicit intent they expect production to classify.
     private sealed class FakeClassifier : IIntentClassifier
     {
+        private readonly Func<string, IntentClassification> _classify;
+
+        public FakeClassifier()
+            : this(_ => new IntentClassification("unclear", 0.0)) { }
+
+        public FakeClassifier(Func<string, IntentClassification> classify) => _classify = classify;
+
         public Task<IntentClassification> ClassifyAsync(
             string query,
             IReadOnlyList<string> entityBrands,
@@ -132,14 +140,15 @@ public class ChatServiceRecommendationTests
             string followUpMode,
             int lastCardCount,
             IReadOnlyList<int> sessionBrandIds)
-            => Task.FromResult(new IntentClassification("unclear", 0.0));
+            => Task.FromResult(_classify(query));
     }
 
     private static ChatService CreateService(
         TourbillonContext context,
         Mock<IWatchFinderService> watchFinderMock,
         RecordingHandler handler,
-        IIntentClassifier? classifier = null)
+        IIntentClassifier? classifier = null,
+        IActionPlanner? planner = null)
     {
         var httpFactory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
         var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5000") };
@@ -152,7 +161,8 @@ public class ChatServiceRecommendationTests
             CreateConfig(),
             watchFinderMock.Object,
             NullLogger<ChatService>.Instance,
-            classifier ?? new FakeClassifier());
+            classifier ?? new FakeClassifier(),
+            planner ?? new ActionPlannerFake());
     }
 
     private static WatchDto ToDto(Watch watch) => WatchDto.FromWatch(watch);
@@ -202,7 +212,12 @@ public class ChatServiceRecommendationTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+            query.Contains("show me something else", StringComparison.OrdinalIgnoreCase)
+                ? new IntentClassification("revision_request", 0.95)
+                : new IntentClassification("unclear", 0.0));
+
+        var service = CreateService(context, watchFinder, handler, classifier);
         var result = await service.HandleMessageAsync("session-1", "Recommend me a versatile Omega", null, "127.0.0.1");
 
         Assert.Equal(6, result.WatchCards.Count);
@@ -269,7 +284,12 @@ public class ChatServiceRecommendationTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+            query.Contains("show me something else", StringComparison.OrdinalIgnoreCase)
+                ? new IntentClassification("revision_request", 0.95)
+                : new IntentClassification("unclear", 0.0));
+
+        var service = CreateService(context, watchFinder, handler, classifier);
         var result = await service.HandleMessageAsync("session-1", "yo, suggest me a couple of reversos for me under 50k", null, "127.0.0.1");
 
         Assert.Contains(result.Actions, action => action.Type == "search" && action.Query == "Jaeger-LeCoultre Reverso under 50k");
@@ -334,7 +354,12 @@ public class ChatServiceRecommendationTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+            query.Contains("show me something else", StringComparison.OrdinalIgnoreCase)
+                ? new IntentClassification("revision_request", 0.95)
+                : new IntentClassification("unclear", 0.0));
+
+        var service = CreateService(context, watchFinder, handler, classifier);
         var result = await service.HandleMessageAsync("session-1", "yo, suggest me a couple of reversos for me under 50k", null, "127.0.0.1");
 
         var searchAction = Assert.Single(result.Actions.Where(action => action.Type == "search"));
@@ -388,7 +413,12 @@ public class ChatServiceRecommendationTests
                 "application/json")
         });
 
-        var service = CreateService(context, watchFinder, handler);
+        var classifier = new FakeClassifier(query =>
+            query.Contains("show me something else", StringComparison.OrdinalIgnoreCase)
+                ? new IntentClassification("revision_request", 0.95)
+                : new IntentClassification("unclear", 0.0));
+
+        var service = CreateService(context, watchFinder, handler, classifier);
 
         var initial = await service.HandleMessageAsync("session-1", "Recommend me sporty watches", null, "127.0.0.1");
         var revised = await service.HandleMessageAsync("session-1", "show me something else", null, "127.0.0.1");
