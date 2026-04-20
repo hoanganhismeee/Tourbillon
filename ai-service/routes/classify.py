@@ -6,23 +6,8 @@ import json
 from flask import jsonify, request
 
 from core.runtime import Runtime
+from core.schemas import IntentClassification, safe_parse
 from prompts.classify import CLASSIFY_SYSTEM_PROMPT, CLASSIFY_USER_PROMPT
-
-VALID_INTENTS = {
-    "watch_compare",
-    "collection_compare",
-    "brand_decision",
-    "affirmative_followup",
-    "expansion_request",
-    "revision_request",
-    "contextual_followup",
-    "brand_info",
-    "collection_info",
-    "brand_history",
-    "discovery",
-    "non_watch",
-    "unclear",
-}
 
 
 def _safe_classify(runtime: Runtime, query: str, session: dict, last_cards: list, entities: dict) -> dict:
@@ -57,14 +42,10 @@ def _safe_classify(runtime: Runtime, query: str, session: dict, last_cards: list
                 raw = raw[4:].strip()
 
         result = json.loads(raw)
-        intent = str(result.get("intent") or "unclear")
-        confidence = float(result.get("confidence") or 0.0)
-
-        if intent not in VALID_INTENTS:
-            intent = "unclear"
-            confidence = 0.0
-
-        return {"intent": intent, "confidence": confidence}
+        parsed = safe_parse(IntentClassification, result)
+        if parsed is None:
+            return {"intent": "unclear", "confidence": 0.0}
+        return parsed.model_dump()
     except Exception as exc:
         return {"intent": "unclear", "confidence": 0.0, "error": str(exc)}
 

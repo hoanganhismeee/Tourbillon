@@ -613,6 +613,7 @@ Addressed the main reliability gap in the concierge: overlapping decision-makers
 - `ChatService` classifies routes (search, compare, entity info, continuation, revision, general advice) before any wording call
 - Backend builds all watch cards and compare/search/navigate/cursor actions before the frontend sees the reply
 - `ai-service /chat` is the wording layer only — system prompt forbids action emission; endpoint returns empty actions list
+- Backend now validates `/chat` drafts against the allowed watches, brands, and collections, retries once with a correction when the draft drifts, and falls back to deterministic catalogue wording if the second draft still fails
 
 **What was removed:**
 - `_extract_actions()` and `_filter_actions()` removed from `ai-service/routes/chat.py`

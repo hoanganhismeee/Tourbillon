@@ -210,6 +210,20 @@ public class ChatService
         public List<string> GroundedCollectionNames { get; set; } = [];
     }
 
+    private sealed class AiDraftValidation
+    {
+        public bool IsValid { get; set; }
+        public string? FailureReason { get; set; }
+    }
+
+    private sealed class AllowedCatalogueContext
+    {
+        public List<string> WatchTitles { get; set; } = [];
+        public List<string> WatchSlugs { get; set; } = [];
+        public List<string> BrandNames { get; set; } = [];
+        public List<string> CollectionNames { get; set; } = [];
+    }
+
     // Intent class constants returned by the AI classifier — single source of truth for routing.
     private static class ChatIntent
     {
@@ -430,10 +444,11 @@ public class ChatService
                 resolution.Context.Add("Stay within Tourbillon's catalogue and watch expertise. No relevant catalogue records were resolved.");
 
             var responseLanguage = resolution.ResponseLanguage ?? ResolveResponseLanguage(message, preferredLanguage);
-            var aiDraft = await CallAiServiceAsync(
+            var aiDraft = await ComposeValidatedAiDraftAsync(
                 history,
                 resolution.Query,
                 resolution.Context,
+                resolution,
                 responseLanguage,
                 resolution.AllowWebEnrichment,
                 resolution.WebQuery);
@@ -767,6 +782,57 @@ public class ChatService
         };
     }
 
+    private async Task<AiChatDraft> ComposeValidatedAiDraftAsync(
+        List<ChatHistoryEntry> history,
+        string query,
+        List<string> context,
+        ChatResolution resolution,
+        string? responseLanguage = null,
+        bool allowWebEnrichment = false,
+        string? webQuery = null)
+    {
+        var aiDraft = await CallAiServiceAsync(
+            history,
+            query,
+            context,
+            responseLanguage,
+            allowWebEnrichment,
+            webQuery);
+
+        var validation = await ValidateAiDraftAsync(aiDraft, resolution);
+        if (validation.IsValid)
+            return aiDraft;
+
+        var retryContext = BuildAiRewriteContext(validation.FailureReason ?? "left the allowed catalogue scope", resolution);
+        retryContext.AddRange(context);
+
+        _logger.LogInformation(
+            "Chat ai draft retry path={RoutingPath} reason={Reason}",
+            resolution.RoutingPath,
+            validation.FailureReason ?? "unknown");
+
+        var correctedDraft = await CallAiServiceAsync(
+            history,
+            query,
+            retryContext,
+            responseLanguage,
+            allowWebEnrichment,
+            webQuery);
+
+        var correctedValidation = await ValidateAiDraftAsync(correctedDraft, resolution);
+        if (correctedValidation.IsValid)
+            return correctedDraft;
+
+        var fallbackMessage = BuildDeterministicAiFallbackMessage(resolution);
+        _logger.LogWarning(
+            "Chat ai draft fallback path={RoutingPath} firstReason={FirstReason} secondReason={SecondReason}",
+            resolution.RoutingPath,
+            validation.FailureReason ?? "unknown",
+            correctedValidation.FailureReason ?? "unknown");
+
+        return new AiChatDraft { Message = fallbackMessage };
+    }
+
     private async Task<AiChatDraft> CallAiServiceAsync(
         List<ChatHistoryEntry> history,
         string query,
@@ -820,6 +886,147 @@ public class ChatService
             _logger.LogWarning(ex, "Chat ai-service call threw before producing a response");
             return new AiChatDraft { Message = ProcessingFallbackMessage };
         }
+    }
+
+    private async Task<AiDraftValidation> ValidateAiDraftAsync(AiChatDraft draft, ChatResolution resolution)
+    {
+        if (string.IsNullOrWhiteSpace(draft.Message))
+            return new AiDraftValidation { FailureReason = "returned an empty message" };
+
+        if (IsGenericAiFallbackMessage(draft.Message))
+            return new AiDraftValidation { FailureReason = "fell back to a generic refusal instead of using the supplied catalogue context" };
+
+        if (resolution.WatchCards.Count == 0)
+            return new AiDraftValidation { IsValid = true };
+
+        var allowedContext = BuildAllowedCatalogueContext(resolution);
+        if (draft.GroundedWatchSlugs.Any(slug => !allowedContext.WatchSlugs.Contains(slug, StringComparer.OrdinalIgnoreCase)))
+            return new AiDraftValidation { FailureReason = "grounded itself to watches outside the allowed shortlist" };
+
+        if (draft.GroundedBrandNames.Any(name => !allowedContext.BrandNames.Contains(name, StringComparer.OrdinalIgnoreCase)))
+            return new AiDraftValidation { FailureReason = "grounded itself to brands outside the allowed shortlist" };
+
+        if (draft.GroundedCollectionNames.Any(name => !allowedContext.CollectionNames.Contains(name, StringComparer.OrdinalIgnoreCase)))
+            return new AiDraftValidation { FailureReason = "grounded itself to collections outside the allowed shortlist" };
+
+        if (!string.Equals(resolution.RoutingPath, "referenced_watch", StringComparison.Ordinal)
+            && await MentionsUnsupportedResolvedEntitiesAsync(draft.Message, resolution))
+        {
+            return new AiDraftValidation { FailureReason = "mentioned catalogue entities outside the allowed shortlist" };
+        }
+
+        return new AiDraftValidation { IsValid = true };
+    }
+
+    private static AllowedCatalogueContext BuildAllowedCatalogueContext(ChatResolution resolution)
+    {
+        var allowed = new AllowedCatalogueContext
+        {
+            WatchTitles = resolution.WatchCards
+                .Select(BuildWatchCardTitle)
+                .Where(title => !string.IsNullOrWhiteSpace(title))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            WatchSlugs = resolution.WatchCards
+                .Select(card => card.Slug)
+                .Where(slug => !string.IsNullOrWhiteSpace(slug))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            BrandNames = resolution.WatchCards
+                .Select(card => card.BrandName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Cast<string>()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            CollectionNames = resolution.WatchCards
+                .Select(card => card.CollectionName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Cast<string>()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+        };
+
+        foreach (var item in resolution.Context)
+        {
+            var watchMatch = Regex.Match(item, "Watch \"([^\"]+)\" \\(Slug: ([\\w-]+)\\)");
+            if (watchMatch.Success)
+            {
+                if (!allowed.WatchTitles.Contains(watchMatch.Groups[1].Value, StringComparer.OrdinalIgnoreCase))
+                    allowed.WatchTitles.Add(watchMatch.Groups[1].Value);
+                if (!allowed.WatchSlugs.Contains(watchMatch.Groups[2].Value, StringComparer.OrdinalIgnoreCase))
+                    allowed.WatchSlugs.Add(watchMatch.Groups[2].Value);
+            }
+
+            var brandMatch = Regex.Match(item, "Brand \"([^\"]+)\" \\(Slug: [\\w-]+\\)");
+            if (brandMatch.Success && !allowed.BrandNames.Contains(brandMatch.Groups[1].Value, StringComparer.OrdinalIgnoreCase))
+                allowed.BrandNames.Add(brandMatch.Groups[1].Value);
+
+            var collectionMatch = Regex.Match(item, "Collection \"([^\"]+)\" \\(Slug: [\\w-]+\\)");
+            if (collectionMatch.Success && !allowed.CollectionNames.Contains(collectionMatch.Groups[1].Value, StringComparer.OrdinalIgnoreCase))
+                allowed.CollectionNames.Add(collectionMatch.Groups[1].Value);
+        }
+
+        return allowed;
+    }
+
+    private static List<string> BuildAiRewriteContext(string failureReason, ChatResolution resolution)
+    {
+        var allowed = BuildAllowedCatalogueContext(resolution);
+        var context = new List<string>
+        {
+            $"Rewrite correction: the previous draft was rejected because it {failureReason}. Rewrite the reply from the supplied Tourbillon catalogue context only.",
+            "Grounding rule: mention only watches, brands, and collections that appear in the supplied context. Do not introduce substitutes, adjacent icons, or famous references that are not explicitly present."
+        };
+
+        if (allowed.WatchTitles.Count > 0)
+            context.Add($"Allowed watches: {string.Join(" | ", allowed.WatchTitles.Take(8))}.");
+        if (allowed.BrandNames.Count > 0)
+            context.Add($"Allowed brands: {string.Join(", ", allowed.BrandNames.Take(6))}.");
+        if (allowed.CollectionNames.Count > 0)
+            context.Add($"Allowed collections: {string.Join(", ", allowed.CollectionNames.Take(6))}.");
+        if (resolution.Actions.Any(action => string.Equals(action.Type, "compare", StringComparison.OrdinalIgnoreCase)))
+            context.Add("Compare handling: the compare action is already prepared client-side, so keep the prose focused on the supplied pair instead of inventing more options.");
+
+        return context;
+    }
+
+    private static string BuildDeterministicAiFallbackMessage(ChatResolution resolution)
+    {
+        if (!string.IsNullOrWhiteSpace(resolution.Message) && !IsGenericAiFallbackMessage(resolution.Message))
+            return resolution.Message;
+
+        if (resolution.WatchCards.Count == 0)
+            return ProcessingFallbackMessage;
+
+        var compareCards = resolution.Actions
+            .Where(action => string.Equals(action.Type, "compare", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(action => action.Slugs ?? [])
+            .Select(slug => resolution.WatchCards.FirstOrDefault(card => string.Equals(card.Slug, slug, StringComparison.OrdinalIgnoreCase)))
+            .Where(card => card != null)
+            .Cast<ChatWatchCard>()
+            .DistinctBy(card => card.Slug)
+            .Take(2)
+            .ToList();
+        if (compareCards.Count >= 2)
+        {
+            var leftLink = $"[{BuildWatchCardTitle(compareCards[0])}](/watches/{compareCards[0].Slug})";
+            var rightLink = $"[{BuildWatchCardTitle(compareCards[1])}](/watches/{compareCards[1].Slug})";
+            return $"Tourbillon resolved this comparison set: {leftLink} and {rightLink}. The compare view will open with these watches preloaded.";
+        }
+
+        var first = resolution.WatchCards[0];
+        var firstLink = $"[{BuildWatchCardTitle(first)}](/watches/{first.Slug})";
+        if (resolution.WatchCards.Count == 1)
+        {
+            var brandLink = !string.IsNullOrWhiteSpace(first.BrandSlug)
+                ? $"[{first.BrandName}](/brands/{first.BrandSlug})"
+                : first.BrandName ?? "its brand";
+            return $"{firstLink} from {brandLink} is the clearest catalogue match Tourbillon has in this context. If you want, ask about size, material, or a nearby alternative.";
+        }
+
+        var second = resolution.WatchCards[1];
+        var secondLink = $"[{BuildWatchCardTitle(second)}](/watches/{second.Slug})";
+        return $"{firstLink} and {secondLink} are the strongest catalogue matches Tourbillon has in this context. If you want, compare them side by side or narrow by size, material, or budget.";
     }
 
     private static List<string> ReadStringArray(JsonElement json, string propertyName)
@@ -3777,6 +3984,19 @@ public class ChatService
         return prefix.Contains(watch.Name, StringComparison.OrdinalIgnoreCase)
             ? prefix
             : $"{prefix} {watch.Name}".Trim();
+    }
+
+    private static string BuildWatchCardTitle(ChatWatchCard card)
+    {
+        var prefix = !LooksLikeEditorialDescription(card.Description)
+            ? card.Description!.Trim()
+            : string.Join(" ", new[] { card.BrandName, card.CollectionName }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        if (string.IsNullOrWhiteSpace(prefix))
+            return card.Name;
+
+        return prefix.Contains(card.Name, StringComparison.OrdinalIgnoreCase)
+            ? prefix
+            : $"{prefix} {card.Name}".Trim();
     }
 
     private static bool LooksLikeEditorialDescription(string? description)
