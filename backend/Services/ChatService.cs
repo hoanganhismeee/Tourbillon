@@ -85,6 +85,12 @@ public class ChatService
     private readonly IWatchFinderService _watchFinderService;
     private readonly ILogger<ChatService> _logger;
     private readonly IIntentClassifier _classifier;
+    private readonly IActionPlanner _planner;
+
+    // Set by ResolveWatchScopedAsync once /classify returns. Read by the retired
+    // regex helpers so they can defer to the classifier instead of duplicating it.
+    // ChatService is scoped per request, so this is safe as an instance field.
+    private IntentClassification? _lastClassification;
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(1);
@@ -287,7 +293,8 @@ public class ChatService
         IConfiguration config,
         IWatchFinderService watchFinderService,
         ILogger<ChatService> logger,
-        IIntentClassifier classifier)
+        IIntentClassifier classifier,
+        IActionPlanner planner)
     {
         _httpClientFactory = httpClientFactory;
         _context = context;
@@ -296,6 +303,7 @@ public class ChatService
         _watchFinderService = watchFinderService;
         _logger = logger;
         _classifier = classifier;
+        _planner = planner;
     }
 
     private async Task<List<ChatMessage>> GetSessionHistoryAsync(string sessionId)
@@ -435,6 +443,14 @@ public class ChatService
         var actions = resolution.Actions;
         var watchCards = resolution.WatchCards;
 
+        // Planner runs in parallel with the wording draft when we have watch cards. Covers the
+        // common path: discovery / compare / info responses where chip variety matters. When
+        // there are no cards (greeting, refusal, cursor command) the planner has nothing to
+        // ground slugs against, so we skip it.
+        var plannerTask = (resolution.UseAi && watchCards.Count > 0)
+            ? _planner.PlanAsync(await BuildPlannerInputAsync(resolution, message, watchCards, actions, sessionState))
+            : Task.FromResult<IReadOnlyList<PlannedAction>>(Array.Empty<PlannedAction>());
+
         if (resolution.UseAi)
         {
             if (!string.IsNullOrWhiteSpace(behaviorSummary))
@@ -444,7 +460,7 @@ public class ChatService
                 resolution.Context.Add("Stay within Tourbillon's catalogue and watch expertise. No relevant catalogue records were resolved.");
 
             var responseLanguage = resolution.ResponseLanguage ?? ResolveResponseLanguage(message, preferredLanguage);
-            var aiDraft = await ComposeValidatedAiDraftAsync(
+            var aiDraftTask = ComposeValidatedAiDraftAsync(
                 history,
                 resolution.Query,
                 resolution.Context,
@@ -452,6 +468,12 @@ public class ChatService
                 responseLanguage,
                 resolution.AllowWebEnrichment,
                 resolution.WebQuery);
+
+            // Await both the wording draft and the planner together — planner is best-effort so
+            // its result is either a usable list or an empty fallback; it never throws out here.
+            await Task.WhenAll(aiDraftTask, plannerTask);
+
+            var aiDraft = await aiDraftTask;
             var aiResult = aiDraft.Message;
             // Skip unsupported-entity rejection for referenced_watch — the AI naturally
             // weaves in related entities from conversation history, which is correct behaviour
@@ -468,13 +490,20 @@ public class ChatService
                 watchCards = await ExtractWatchCardsAsync(aiMessage, actions);
         }
 
+        // Drain the planner task (no-op fallback if UseAi is false / no cards / planner errored).
+        var plannedActions = plannerTask.IsCompletedSuccessfully
+            ? plannerTask.Result
+            : await plannerTask;
+
         // Append 1–2 contextual follow-up suggestion chips grounded in the resolved watch cards.
-        // Skipped for greetings, refusals, and cursor commands where no cards are present.
+        // Planner picks chips first when it returned usable results; otherwise the deterministic
+        // rule tree below runs unchanged so the fallback path always produces chips.
         var suggestions = BuildSuggestionActions(
             watchCards,
             actions,
             resolution.SuggestedCompareSlugs,
-            resolution.SuppressCompareSuggestion);
+            resolution.SuppressCompareSuggestion,
+            plannedActions);
         if (suggestions.Count > 0)
             actions = [..actions, ..suggestions];
 
@@ -637,6 +666,9 @@ public class ChatService
             sessionState?.FollowUpMode ?? "",
             lastWatchCards.Count,
             sessionState?.BrandIds ?? []);
+
+        // Cache the classification so the retired regex helpers can defer to it.
+        _lastClassification = classification;
 
         _logger.LogInformation(
             "Chat classify intent={Intent} confidence={Confidence:F2}",
@@ -3750,6 +3782,168 @@ public class ChatService
             .Select(q => new ChatAction { Type = "suggest", Label = q, Query = q })
             .ToList();
 
+    // Validates planner output against the actual watch cards and primary actions.
+    // Drops any chip whose slugs/hrefs were hallucinated, dedupes near-duplicates,
+    // and caps the list at 3. Returns an empty list when nothing is usable — the
+    // caller falls back to the deterministic rule tree so zero regression is guaranteed.
+    private static List<ChatAction> MergePlannerSuggestions(
+        IReadOnlyList<PlannedAction>? plannedActions,
+        List<ChatWatchCard> watchCards,
+        List<ChatAction> primaryActions)
+    {
+        if (plannedActions == null || plannedActions.Count == 0)
+            return [];
+
+        var cardSlugs = new HashSet<string>(
+            watchCards.Select(c => c.Slug ?? "").Where(s => !string.IsNullOrEmpty(s)),
+            StringComparer.OrdinalIgnoreCase);
+        var brandSlugs = new HashSet<string>(
+            watchCards.Select(c => c.BrandSlug ?? "").Where(s => !string.IsNullOrEmpty(s)),
+            StringComparer.OrdinalIgnoreCase);
+        var collectionSlugs = new HashSet<string>(
+            watchCards.Select(c => c.CollectionSlug ?? "").Where(s => !string.IsNullOrEmpty(s)),
+            StringComparer.OrdinalIgnoreCase);
+
+        var primaryFingerprints = new HashSet<string>(
+            primaryActions.Select(ChipFingerprint),
+            StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var merged = new List<ChatAction>();
+        foreach (var planned in plannedActions)
+        {
+            if (merged.Count >= 3) break;
+
+            var chip = ConvertPlannedAction(planned, cardSlugs, brandSlugs, collectionSlugs, watchCards);
+            if (chip == null) continue;
+
+            var fp = ChipFingerprint(chip);
+            if (primaryFingerprints.Contains(fp)) continue;
+            if (!seen.Add(fp)) continue;
+
+            merged.Add(chip);
+        }
+
+        return merged;
+    }
+
+    private static ChatAction? ConvertPlannedAction(
+        PlannedAction planned,
+        HashSet<string> cardSlugs,
+        HashSet<string> brandSlugs,
+        HashSet<string> collectionSlugs,
+        List<ChatWatchCard> watchCards)
+    {
+        var label = (planned.Label ?? "").Trim();
+        switch ((planned.Type ?? "").Trim().ToLowerInvariant())
+        {
+            case "compare":
+            {
+                var slugs = (planned.Slugs ?? [])
+                    .Where(s => !string.IsNullOrWhiteSpace(s) && cardSlugs.Contains(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(2)
+                    .ToList();
+                if (slugs.Count < 2) return null;
+
+                if (string.IsNullOrEmpty(label))
+                {
+                    var a = watchCards.First(c => string.Equals(c.Slug, slugs[0], StringComparison.OrdinalIgnoreCase));
+                    var b = watchCards.First(c => string.Equals(c.Slug, slugs[1], StringComparison.OrdinalIgnoreCase));
+                    label = $"Compare {CardShortLabel(a)} and {CardShortLabel(b)} side by side";
+                }
+                return new ChatAction { Type = "compare", Label = label, Slugs = slugs };
+            }
+            case "search":
+            {
+                var query = (planned.Query ?? "").Trim();
+                if (string.IsNullOrEmpty(query)) return null;
+                if (string.IsNullOrEmpty(label)) label = query;
+                return new ChatAction { Type = "search", Label = label, Query = query };
+            }
+            case "navigate":
+            {
+                var href = (planned.Href ?? "").Trim();
+                if (string.IsNullOrEmpty(href)) return null;
+
+                // Only accept navigate chips that target brand/collection slugs in the visible cards.
+                // Anything else (arbitrary route) gets dropped as a safety measure.
+                var parts = href.TrimStart('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+                var isBrand = parts.Length == 2 && parts[0] == "brands" && brandSlugs.Contains(parts[1]);
+                var isCollection = parts.Length == 2 && parts[0] == "collections" && collectionSlugs.Contains(parts[1]);
+                if (!isBrand && !isCollection) return null;
+
+                if (string.IsNullOrEmpty(label))
+                {
+                    if (isBrand)
+                    {
+                        var brand = watchCards.First(c => string.Equals(c.BrandSlug, parts[1], StringComparison.OrdinalIgnoreCase));
+                        label = $"Tell me more about {brand.BrandName}";
+                    }
+                    else
+                    {
+                        var coll = watchCards.First(c => string.Equals(c.CollectionSlug, parts[1], StringComparison.OrdinalIgnoreCase));
+                        label = $"Explore the {FormatCollectionChipName(coll.CollectionName)} collection";
+                    }
+                }
+                return new ChatAction { Type = "navigate", Label = label, Href = "/" + string.Join('/', parts) };
+            }
+            default:
+                return null;
+        }
+    }
+
+    // Stable dedup key across primary and planner chips so they do not collide.
+    private static string ChipFingerprint(ChatAction action)
+    {
+        var type = (action.Type ?? "").Trim().ToLowerInvariant();
+        return type switch
+        {
+            "compare" => "compare|" + string.Join(",", (action.Slugs ?? []).OrderBy(s => s, StringComparer.OrdinalIgnoreCase)),
+            "search"  => "search|" + (action.Query ?? "").Trim().ToLowerInvariant(),
+            "navigate" => "navigate|" + (action.Href ?? "").Trim().ToLowerInvariant(),
+            "set_cursor" => "set_cursor|" + (action.Cursor ?? "").Trim().ToLowerInvariant(),
+            _ => type + "|" + (action.Label ?? "").Trim().ToLowerInvariant(),
+        };
+    }
+
+    // Assembles the planner payload: query + already-drafted intent + visible cards +
+    // rejected brands (session-persisted) so the LLM can steer around them.
+    private async Task<PlanActionsInput> BuildPlannerInputAsync(
+        ChatResolution resolution,
+        string message,
+        List<ChatWatchCard> watchCards,
+        List<ChatAction> primaryActions,
+        ChatSessionState? sessionState)
+    {
+        var rejectedSlugs = Array.Empty<string>() as IReadOnlyList<string>;
+        var excludedIds = sessionState?.ExcludedBrandIds;
+        if (excludedIds != null && excludedIds.Count > 0)
+        {
+            var slugs = await _context.Brands
+                .Where(b => excludedIds.Contains(b.Id) && b.Slug != null)
+                .Select(b => b.Slug!)
+                .ToListAsync();
+            if (slugs.Count > 0) rejectedSlugs = slugs;
+        }
+
+        var primaryTypes = primaryActions
+            .Select(a => (a.Type ?? "").Trim().ToLowerInvariant())
+            .Where(t => t.Length > 0)
+            .Distinct()
+            .ToList();
+
+        return new PlanActionsInput
+        {
+            Query = message,
+            AssistantReply = resolution.Message ?? "",
+            Intent = _lastClassification?.Intent ?? "unclear",
+            PrimaryActionTypes = primaryTypes,
+            WatchCards = watchCards,
+            RejectedBrandSlugs = rejectedSlugs,
+        };
+    }
+
     private static bool IsExplicitCompareQuery(string query) =>
         Regex.IsMatch(query,
             @"\b(?:compare|versus|vs\.?|against|difference between|which should i buy|should i buy| or )\b",
@@ -4489,11 +4683,15 @@ public class ChatService
 
     // Generates 0–2 contextual follow-up suggestion chips grounded in the resolved watch cards.
     // Appended after primary actions so they appear as secondary prompts, not main CTAs.
+    //
+    // Order of preference: planner-suggested chips (validated against watchCards) first,
+    // deterministic rule-tree below as fallback when the planner returned nothing usable.
     private static List<ChatAction> BuildSuggestionActions(
         List<ChatWatchCard> watchCards,
         List<ChatAction> primaryActions,
         IReadOnlyCollection<string>? suggestedCompareSlugs = null,
-        bool suppressCompareSuggestion = false)
+        bool suppressCompareSuggestion = false,
+        IReadOnlyList<PlannedAction>? plannedActions = null)
     {
         if (watchCards.Count == 0)
         {
@@ -4503,6 +4701,13 @@ public class ChatService
                 return GetStaticSuggestions();
             return [];
         }
+
+        // Planner path: validate every slug against the visible cards, dedupe against
+        // primary actions, cap at 3. If the planner returned usable chips, it wins —
+        // the rule tree below is the fallback.
+        var merged = MergePlannerSuggestions(plannedActions, watchCards, primaryActions);
+        if (merged.Count > 0)
+            return merged;
 
         var suggestions = new List<ChatAction>();
         var hasCompareAction = primaryActions.Any(a =>
