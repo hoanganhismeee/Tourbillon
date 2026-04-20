@@ -37,6 +37,11 @@ Key guidance:
     null if ambiguous. Bracelet preference alone is NOT sport.
 - material: array from ["Steel", "Titanium", "Rose Gold", "Yellow Gold", "White Gold", "Platinum", "Ceramic", "Carbon"]. Only when user explicitly names the material. Never infer from style.
 - maxPrice / minPrice: number in USD. "under 10k" → maxPrice: 10000. "exactly 5000" → both maxPrice and minPrice: 5000. null if not stated.
+    Explicit numbers ALWAYS take priority. When no number is given but the phrasing still implies a budget bracket, translate it into the numeric intent that best fits a luxury watch boutique. Use your own judgement:
+      - Low-entry / student / starter / accessible / cheap / affordable phrasing → a modest maxPrice that still fits Tourbillon's lower tier.
+      - Mid-range / reasonable / without breaking the bank → a moderate maxPrice.
+      - High-end / flagship / grail / ultra-luxury / no budget / money no object → set a high minPrice instead of a cap, so the search reaches the top of the catalogue.
+    Leave both fields null only if the phrasing carries no budget cue at all.
 - maxThicknessMm: number. Only when user says "thin", "slim", "ultra-thin" → 9. null otherwise.
 - minDiameterMm / maxDiameterMm: ONLY when user explicitly states a size in mm ("38mm", "40mm") or explicit size language ("small wrist" → maxDiameterMm: 38). Never infer from style or gender alone.
 - movement: "Automatic", "Manual-winding", or "Quartz". ONLY when user explicitly states movement type ("automatic watch", "I want manual winding"). Complications (e.g. tourbillon, chronograph) and watch style do NOT imply movement type — leave null.

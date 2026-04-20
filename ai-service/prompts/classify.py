@@ -41,7 +41,7 @@ Example utterances (guide, not exhaustive):
 - collection_info: "tell me about the Aquanaut", "what's the Royal Oak about"
 - collection_compare: "compare Aquanaut and Overseas", "Nautilus vs Royal Oak"
 - watch_compare: "compare Nautilus 5711 and Royal Oak 15202", "compare the first and third"
-- discovery: "sporty watches under 30k", "dress watch for a wedding", "blue dial chronograph", "elegant watch for a formal dinner"
+- discovery: "sporty watches under 30k", "dress watch for a wedding", "blue dial chronograph", "elegant watch for a formal dinner", "affordable watch for a student", "something cheap", "entry-level luxury", "budget-friendly starter piece", "what's in your lineup for a tight budget", "I want my first nice watch", "looking for accessible options", "the cheapest one you carry", "most expensive piece you have", "high-end grail watch", "something for under 5k"
 - non_watch: "hi", "hello", "hello again", "good evening", "what's the weather", "2+2", "write me a poem", "recommend a restaurant"
 - unclear: any message that does not clearly match one of the above"""
 
