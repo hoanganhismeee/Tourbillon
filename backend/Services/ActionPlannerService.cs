@@ -18,7 +18,11 @@ public sealed class ActionPlannerService : IActionPlanner
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    private static readonly TimeSpan PlannerTimeout = TimeSpan.FromSeconds(25);
+    // Planner runs concurrently with the wording draft (Task.WhenAll in ChatService),
+    // so whichever is slower pins the user-visible reply latency. Keep this tight — the
+    // fallback path is cheap and the user-visible impact of a missed planner call is
+    // "slightly less clever chips," not correctness.
+    private static readonly TimeSpan PlannerTimeout = TimeSpan.FromSeconds(4);
 
     public ActionPlannerService(IHttpClientFactory httpClientFactory, ILogger<ActionPlannerService> logger)
     {
@@ -29,7 +33,10 @@ public sealed class ActionPlannerService : IActionPlanner
     public async Task<IReadOnlyList<PlannedAction>> PlanAsync(PlanActionsInput input, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(input.Query) || input.WatchCards.Count == 0)
+        {
+            LogOutcome("skipped", 0, input, null);
             return Array.Empty<PlannedAction>();
+        }
 
         try
         {
@@ -59,23 +66,44 @@ public sealed class ActionPlannerService : IActionPlanner
             using var response = await client.PostAsJsonAsync("/plan-actions", payload, _jsonOptions, timeoutCts.Token);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogDebug("plan-actions non-success status {Status}", (int)response.StatusCode);
+                LogOutcome("error_status", 0, input, $"http {(int)response.StatusCode}");
                 return Array.Empty<PlannedAction>();
             }
 
             var parsed = await response.Content.ReadFromJsonAsync<PlanActionsResponse>(_jsonOptions, timeoutCts.Token);
-            return parsed?.SuggestedActions ?? (IReadOnlyList<PlannedAction>)Array.Empty<PlannedAction>();
+            var suggestions = parsed?.SuggestedActions ?? [];
+            LogOutcome(suggestions.Count > 0 ? "used" : "empty", suggestions.Count, input, null);
+            return suggestions;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            LogOutcome("cancelled", 0, input, null);
+            return Array.Empty<PlannedAction>();
         }
         catch (OperationCanceledException)
         {
-            _logger.LogDebug("plan-actions call cancelled or timed out");
+            LogOutcome("timeout", 0, input, null);
             return Array.Empty<PlannedAction>();
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "plan-actions call failed");
+            LogOutcome("error", 0, input, ex.GetType().Name);
             return Array.Empty<PlannedAction>();
         }
+    }
+
+    // Single structured log line per planner call. Outcome is one of
+    // skipped | used | empty | error_status | timeout | cancelled | error.
+    // Emitted at Information so planner health shows up at default log level.
+    private void LogOutcome(string outcome, int count, PlanActionsInput input, string? detail)
+    {
+        _logger.LogInformation(
+            "plan-actions outcome={Outcome} count={Count} cards={CardCount} intent={Intent} detail={Detail}",
+            outcome,
+            count,
+            input.WatchCards.Count,
+            input.Intent,
+            detail ?? "-");
     }
 
     private sealed class PlanActionsResponse
