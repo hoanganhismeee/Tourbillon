@@ -3660,25 +3660,43 @@ public class ChatService
             .ToListAsync();
     }
 
-    private static bool IsAffirmativeFollowUp(string query)
+    // True when the classifier (cached in _lastClassification from the current request)
+    // resolved the message to the given intent at or above minConfidence. Returns false
+    // when the classifier hasn't run yet — callers then fall back to their regex body.
+    private bool ClassifierMatches(string intent, double minConfidence = 0.6)
     {
+        var c = _lastClassification;
+        return c is not null
+            && string.Equals(c.Intent, intent, StringComparison.OrdinalIgnoreCase)
+            && c.Confidence >= minConfidence;
+    }
+
+    private bool IsAffirmativeFollowUp(string query)
+    {
+        if (ClassifierMatches("affirmative_followup")) return true;
+
         var q = query.Trim();
-        // Bare affirmatives: "yes", "yeah!", "sure.", etc.
         if (Regex.IsMatch(q, @"^(?:yes|yeah|yep|sure|ok|okay|please do|go ahead|sounds good|do it)[!.]*$", RegexOptions.IgnoreCase))
             return true;
-        // "yes/yeah/sure please [optional trailing words]" — e.g. "yes please show me the details"
         return Regex.IsMatch(q, @"^(?:yes|yeah|yep|sure|ok|okay)\s+please\b", RegexOptions.IgnoreCase);
     }
 
+    // Runs in ResolveMessageAsync before the classifier, so _lastClassification is always
+    // null here on the first call. Pattern stays regex-only as a structural pre-gate;
+    // the classifier's non_watch coverage is the backstop for anything the regex misses.
     private static bool IsGreetingQuery(string query) =>
         Regex.IsMatch(query.Trim(), @"^(?:hi|hello|hey(?:\s+there)?|yo|hiya|sup|what'?s up|good morning|good afternoon|good evening)[!.]*$", RegexOptions.IgnoreCase);
 
-    private static bool LooksLikeContextualFollowUp(string query) =>
-        Regex.IsMatch(query,
+    private bool LooksLikeContextualFollowUp(string query)
+    {
+        if (ClassifierMatches("contextual_followup")) return true;
+        if (ClassifierMatches("affirmative_followup")) return true;
+        return Regex.IsMatch(query,
             @"\b(?:yes|yeah|yep|sure|ok|okay|please|those|these|them|that|this|first|second|third|fourth|fifth|more|details|tell me|show me|compare|go ahead|sounds good|do it|what about|how about|something|instead|rather|another|other)\b",
             RegexOptions.IgnoreCase);
+    }
 
-    private static bool LooksLikeRecommendationRevision(
+    private bool LooksLikeRecommendationRevision(
         string query,
         List<ChatWatchCard> lastWatchCards,
         ChatSessionState? sessionState)
@@ -3693,26 +3711,37 @@ public class ChatService
         if (IsExplicitCompareQuery(query) || IsAffirmativeFollowUp(query))
             return false;
 
+        if (ClassifierMatches("revision_request")) return true;
+
         return Regex.IsMatch(
             query,
             @"\b(?:show me something else|show me another|what else|anything else|another option|different option|different direction|not what i meant|not really|not quite|don't like|do not like|dislike|hate|skip these|skip those|avoid these|avoid those|those are not|these are not|they are not|isn't right|aren't right|wrong direction|too sporty|too dressy|too expensive|too big|too small|too generic|more artistic|more art|less sporty|less dressy|more formal|more casual|more refined|more elegant|more modern|more classic|more luxurious|dressier|sportier|fancier|classier|simpler|bolder|slimmer|something (?:more )?(?:dressy|sporty|formal|casual|elegant|refined|classic|modern|luxurious|artistic|simple|bold|slim)|(?:what|how) about (?:something|a |an )|make the list richer|richer list|separate the .* direction|split by intent|group(?:ed)? guidance|introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|strongest final shortlist|revise(?: the shortlist| it)?|rework(?: the shortlist)?|redo(?: the shortlist)?|rebalance(?: the shortlist)?|keep one true|not just \w+ this time|not .* enough|still feel)\b",
             RegexOptions.IgnoreCase);
     }
 
-    private static bool LooksLikeShortlistContinuation(string query) =>
-        Regex.IsMatch(
+    private bool LooksLikeShortlistContinuation(string query)
+    {
+        if (ClassifierMatches("revision_request")) return true;
+        return Regex.IsMatch(
             query,
             @"\b(?:introduce the brands|introduce the collections|narrow to the best models|best models|final shortlist|final list|curated shortlist|curated list|final answer|mixed shortlist|which two are the clearest|art-led pick|dive-led pick|not just \w+ this time|compare the strongest)\b",
             RegexOptions.IgnoreCase);
+    }
 
-    private static bool LooksLikeSessionShortlistSelection(string query) =>
-        Regex.IsMatch(
+    private bool LooksLikeSessionShortlistSelection(string query)
+    {
+        if (ClassifierMatches("contextual_followup")) return true;
+        if (ClassifierMatches("revision_request")) return true;
+        return Regex.IsMatch(
             query,
             @"\b(?:strongest|clearest|best|final answer|final shortlist|curated shortlist|curated list|which two|top picks?|split by intent|separate the .* lane|separate the .* direction|group(?:ed)? guidance|introduce the brands|introduce the collections|shortlist only)\b",
             RegexOptions.IgnoreCase);
+    }
 
-    private static bool LooksLikeDirectionalCompareFollowUp(string query) =>
-        Regex.IsMatch(
+    private bool LooksLikeDirectionalCompareFollowUp(string query)
+    {
+        if (ClassifierMatches("watch_compare")) return true;
+        return Regex.IsMatch(
             query,
             @"\b(?:compare|against|versus|vs\.?)\b",
             RegexOptions.IgnoreCase)
@@ -3720,14 +3749,18 @@ public class ChatService
             query,
             @"\b(?:strongest|clearest|best|pick)\b",
             RegexOptions.IgnoreCase);
+    }
 
     // Detects explicit "show me more / expand the list" intent, used to avoid re-echoing
     // the same watch cards when the user wants additional models rather than a continuation.
-    private static bool LooksLikeExplicitMoreRequest(string query) =>
-        Regex.IsMatch(
+    private bool LooksLikeExplicitMoreRequest(string query)
+    {
+        if (ClassifierMatches("expansion_request")) return true;
+        return Regex.IsMatch(
             query,
             @"\b(?:show me more|more models?|more result|more watches?|more options?|expand|see more|all models?|full list|other models?|what else is there|what other)\b",
             RegexOptions.IgnoreCase);
+    }
 
     // Detects refinement queries that contain only price/budget signals — no watch vocabulary.
     // Used to keep pure price follow-ups ("under 10k", "what about 20,000?") in the discovery
