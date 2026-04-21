@@ -196,7 +196,7 @@ public class ChatServiceTests
 
         var result = await service.HandleMessageAsync("session-1", "Write me a sales CV", null, "127.0.0.1");
 
-        Assert.Contains("rephrase", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Tourbillon is your concierge", result.Message, StringComparison.OrdinalIgnoreCase);
         AssertSuggestActions(result);
         Assert.Empty(result.WatchCards);
         watchFinder.VerifyNoOtherCalls();
@@ -1178,17 +1178,16 @@ public class ChatServiceTests
         var service = CreateService(context, watchFinder);
         var result = await service.HandleMessageAsync("session-1", "watch podcast recommendations", null, "127.0.0.1");
 
-        Assert.Contains("rephrase", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Tourbillon is your concierge", result.Message, StringComparison.OrdinalIgnoreCase);
         AssertSuggestActions(result);
         Assert.Empty(result.WatchCards);
         watchFinder.Verify(f => f.FindWatchesAsync("watch podcast recommendations"), Times.Once);
     }
 
     [Fact]
-    public async Task HandleMessageAsync_NoCloseCatalogueMatch_RoutesToAiWithHelpfulContext()
+    public async Task HandleMessageAsync_NoCloseCatalogueMatch_KeepsHardcodedFallback()
     {
-        // When the watch finder returns 0 results, the concierge now routes to AI so it can
-        // give a helpful "try narrowing the brief" response instead of a dead-end refusal.
+        // Genuine zero-hit discovery should keep the deterministic refusal as the last resort.
         using var context = CreateContext();
         var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
         watchFinder.Setup(f => f.FindWatchesAsync("show me a ceramic moonphase reverso under 2k"))
@@ -1196,7 +1195,7 @@ public class ChatServiceTests
             {
                 Watches = [],
                 OtherCandidates = [],
-                SearchPath = "vector"
+                SearchPath = "vector_empty"
             });
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
@@ -1217,11 +1216,154 @@ public class ChatServiceTests
         var service = CreateService(context, watchFinder, handler, classifier: classifier);
         var result = await service.HandleMessageAsync("session-1", "show me a ceramic moonphase reverso under 2k", null, "127.0.0.1");
 
-        Assert.Contains("reference", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Nothing in the current Tourbillon catalogue lines up with that brief. Try one of the starters below, or rework the request with a specific brand, collection, reference, size, material, or budget and I'll find the closest matches.", result.Message);
         AssertSuggestActions(result);
         Assert.Empty(result.WatchCards);
         watchFinder.Verify(f => f.FindWatchesAsync("show me a ceramic moonphase reverso under 2k"), Times.Once);
+        Assert.Equal(0, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_WidenedDiscovery_AddsBudgetNoticeToAiContext()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Frederique Constant", Slug = "frederique-constant" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Classics", Slug = "frederique-constant-classics" };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "FC-303MC5B6",
+            Slug = "frederique-constant-classics-fc-303mc5b6",
+            Description = "Frederique Constant Classics",
+            CurrentPrice = 3950m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "FC-706S4S6",
+            Slug = "frederique-constant-classics-fc-706s4s6",
+            Description = "Frederique Constant Classics",
+            CurrentPrice = 5200m
+        };
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync("something affordable for a student"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(first), ToDto(second)],
+                OtherCandidates = [],
+                SearchPath = "vector_llm_rerank+widened:price"
+            });
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"Tourbillon starts above that budget, but [Frederique Constant Classics FC-303MC5B6](/watches/frederique-constant-classics-fc-303mc5b6) and [Frederique Constant Classics FC-706S4S6](/watches/frederique-constant-classics-fc-706s4s6) are the closest entry-tier fits.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "something affordable for a student", null, "127.0.0.1");
+
+        Assert.NotEmpty(result.WatchCards);
+        Assert.DoesNotContain("Nothing in the current Tourbillon catalogue lines up with that brief.", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(1, handler.CallCount);
+        watchFinder.Verify(f => f.FindWatchesAsync("something affordable for a student"), Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_WidenedDiscoveryFollowUp_StaysOnSessionShortlist()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Frederique Constant", Slug = "frederique-constant" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Classics", Slug = "frederique-constant-classics" };
+        var first = new Watch
+        {
+            Id = 100,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "FC-303MC5B6",
+            Slug = "frederique-constant-classics-fc-303mc5b6",
+            Description = "Frederique Constant Classics",
+            CurrentPrice = 3950m
+        };
+        var second = new Watch
+        {
+            Id = 101,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = "FC-706S4S6",
+            Slug = "frederique-constant-classics-fc-706s4s6",
+            Description = "Frederique Constant Classics",
+            CurrentPrice = 5200m
+        };
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var redis = new FakeRedis();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        watchFinder.Setup(f => f.FindWatchesAsync("something affordable for a student"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = [ToDto(first), ToDto(second)],
+                OtherCandidates = [],
+                SearchPath = "vector_llm_rerank+widened:price"
+            });
+
+        var handlerCall = 0;
+        var handler = new RecordingHandler(_ =>
+        {
+            handlerCall++;
+            var body = handlerCall == 1
+                ? "{\"message\":\"Tourbillon starts above that budget, but [Frederique Constant Classics FC-303MC5B6](/watches/frederique-constant-classics-fc-303mc5b6) and [Frederique Constant Classics FC-706S4S6](/watches/frederique-constant-classics-fc-706s4s6) are the closest entry-tier fits.\",\"actions\":[]}"
+                : "{\"message\":\"The [Frederique Constant Classics FC-303MC5B6](/watches/frederique-constant-classics-fc-303mc5b6) is the most accessible place to start from this shortlist, with the [Frederique Constant Classics FC-706S4S6](/watches/frederique-constant-classics-fc-706s4s6) as the step-up option.\",\"actions\":[]}";
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            };
+        });
+
+        var classifier = new FakeClassifier(query =>
+        {
+            if (query.Equals("something affordable for a student", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("discovery", 0.95);
+            if (query.Equals("which of these is the most accessible place to start?", StringComparison.OrdinalIgnoreCase))
+                return new IntentClassification("discovery", 0.95);
+            return new IntentClassification("unclear", 0.0);
+        });
+
+        var service = CreateService(context, watchFinder, handler, redis: redis, classifier: classifier);
+
+        var firstTurn = await service.HandleMessageAsync("session-1", "something affordable for a student", null, "127.0.0.1");
+        var secondTurn = await service.HandleMessageAsync("session-1", "which of these is the most accessible place to start?", null, "127.0.0.1");
+
+        Assert.NotEmpty(firstTurn.WatchCards);
+        Assert.NotEmpty(secondTurn.WatchCards);
+        Assert.DoesNotContain("Nothing in the current Tourbillon catalogue lines up with that brief.", secondTurn.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            ["frederique-constant-classics-fc-303mc5b6", "frederique-constant-classics-fc-706s4s6"],
+            secondTurn.WatchCards.Select(card => card.Slug).ToList());
+        Assert.Equal(2, handler.CallCount);
+        watchFinder.Verify(f => f.FindWatchesAsync("something affordable for a student"), Times.Once);
     }
 
     [Fact]

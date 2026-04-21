@@ -667,6 +667,8 @@ Reduced AI token spend for simple brand queries and made the routing layer resil
 
 Split concierge AI into two parallel layers: `/chat` for wording and `/plan-actions` for optional follow-up chips. Semantic follow-up routing now trusts `/classify` instead of the old semantic regex helpers, while structural safeguards stay deterministic.
 
+Discovery now also widens one over-constrained vector search path before refusing: if a hard price cap empties the candidate pool, `WatchFinderService` retries once without that cap, tags the search path as widened, and `ChatService` tells the wording layer to acknowledge the mismatch and pivot to the closest entry-tier catalogue matches. True post-widening misses still fall back to the hardcoded `NoCloseMatchMessage`.
+
 **Design rules**
 - LLM plans, backend validates. Tool calls are hints only; slug validation, chip cap, and dedup stay in backend code.
 - Planner is optional. If `/plan-actions` times out, fails, or returns unusable output, `BuildSuggestionActions()` still guarantees the old deterministic fallback.

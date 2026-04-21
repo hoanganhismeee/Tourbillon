@@ -546,6 +546,18 @@ public class WatchFinderServiceTests
     }
 
     [Fact]
+    public void HasWatchDomainSignal_ReturnsTrueForQualitativeBudgetShoppingPhrase()
+    {
+        Assert.True(WatchFinderService.HasWatchDomainSignal("something affordable for a student"));
+    }
+
+    [Fact]
+    public void HasWatchDomainSignal_ReturnsTrueForDigitalWatchBrief()
+    {
+        Assert.True(WatchFinderService.HasWatchDomainSignal("purple Casio digital from the 80s"));
+    }
+
+    [Fact]
     public void BuildFilterStateForDiagnostics_MapsMultiBrandAndCollectionIds()
     {
         var intent = new QueryIntent
