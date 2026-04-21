@@ -580,8 +580,7 @@ public class ChatService
 
         // Deterministic off-topic guard: catches clear programming / translation queries before
         // entity resolution assigns spurious watch-domain signals to them.
-        if (IsObviouslyOffTopicQuery(repairedMessage)
-            || Regex.IsMatch(repairedMessage, @"\b(?:cv|resume|curriculum\s+vitae|cover\s+letter)\b", RegexOptions.IgnoreCase))
+        if (IsObviouslyOffTopicQuery(repairedMessage))
             return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
 
         var cursorResolution = TryResolveCursorCommand(repairedMessage);
@@ -671,15 +670,6 @@ public class ChatService
         _logger.LogInformation(
             "Chat classify intent={Intent} confidence={Confidence:F2}",
             classification.Intent, classification.Confidence);
-
-        if (LooksLikeSessionShortlistFollowUp(message, sessionState, lastWatchCards.Count)
-            && sessionState?.WatchSlugs.Count > 0
-            && string.Equals(sessionState.FollowUpMode, "watch_cards", StringComparison.OrdinalIgnoreCase)
-            && (string.Equals(classification.Intent, ChatIntent.Discovery, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(classification.Intent, ChatIntent.Unclear, StringComparison.OrdinalIgnoreCase)))
-        {
-            classification = new IntentClassification(ChatIntent.ContextualFollowUp, Math.Max(classification.Confidence, 0.95));
-        }
 
         if (classification.Intent != ChatIntent.Unclear && classification.Confidence >= 0.6)
         {
@@ -809,12 +799,18 @@ public class ChatService
             return r;
         }
 
-        // No catalogue match but query is watch-scoped — let AI handle it as a helpful concierge
-        // response (e.g. "recommend me watch models", "what should I look for first?").
+        // No catalogue match but query is watch-scoped — let the AI wording layer handle it as a
+        // helpful concierge response (e.g. "recommend me watch models", "what should I look for
+        // first?"). The hardcoded NoCloseMatchMessage remains as an ai-service-unreachable fallback.
         return new ChatResolution
         {
-            Message = NoCloseMatchMessage,
-            RoutingPath = "no_close_match"
+            UseAi = true,
+            Query = canonicalMessage,
+            Context = new List<string>
+            {
+                "No specific Tourbillon catalogue records were resolved for this query. Respond as a helpful boutique concierge: invite the user to narrow the brief by style, brand, or price range, and offer two or three concrete starters drawn from Tourbillon's catalogue. Stay concise, warm, and within Tourbillon's scope."
+            },
+            RoutingPath = "ai_no_match"
         };
     }
 
@@ -1227,8 +1223,6 @@ public class ChatService
         ChatSessionState? sessionState,
         List<int>? excludedBrandIds = null)
     {
-        var shortlistFollowUp = LooksLikeSessionShortlistFollowUp(query, sessionState, lastWatchCards.Count);
-
         // Strip cards from rejected brands so follow-up paths never re-surface them.
         if (excludedBrandIds?.Count > 0)
             lastWatchCards = lastWatchCards.Where(c => !excludedBrandIds.Contains(c.BrandId)).ToList();
@@ -1245,8 +1239,7 @@ public class ChatService
 
         if (sessionState?.WatchSlugs.Count > 0
             && string.Equals(sessionState.FollowUpMode, "watch_cards", StringComparison.OrdinalIgnoreCase)
-            && (ClassifierMatchesAny(ChatIntent.ContextualFollowUp, ChatIntent.RevisionRequest, ChatIntent.WatchCompare)
-                || shortlistFollowUp))
+            && ClassifierMatchesAny(ChatIntent.ContextualFollowUp, ChatIntent.RevisionRequest, ChatIntent.WatchCompare))
         {
             var sessionShortlist = await BuildSessionShortlistFollowUpResolutionAsync(
                 query,
@@ -1267,7 +1260,6 @@ public class ChatService
         }
 
         if (!ClassifierMatchesAny(ChatIntent.ContextualFollowUp, ChatIntent.AffirmativeFollowUp)
-            && !shortlistFollowUp
             || lastWatchCards.Count == 0)
             return null;
 
@@ -1470,6 +1462,16 @@ public class ChatService
 
             case ChatIntent.ContextualFollowUp:
                 if (lastWatchCards.Count == 0) return null;
+                // Session-aware path first: preserves the broader shortlist and handles
+                // direction-aware selection. Falls through to the simpler continuation
+                // when no session shortlist exists or the rich handler declines.
+                if (sessionState?.WatchSlugs.Count > 0
+                    && string.Equals(sessionState.FollowUpMode, "watch_cards", StringComparison.OrdinalIgnoreCase))
+                {
+                    var shortlist = await BuildSessionShortlistFollowUpResolutionAsync(
+                        message, lastWatchCards, sessionState, excludedBrandIds);
+                    if (shortlist != null) return shortlist;
+                }
                 return await BuildCardContinuationResolutionAsync(
                     message, lastWatchCards, affirmative: false, sessionState?.FollowUpMode, sessionState);
 
@@ -3015,13 +3017,11 @@ public class ChatService
     {
         var widenKinds = WatchFinderService.GetWidenedSearchKinds(searchPath);
         var constraintLabel = FormatWidenedConstraintLabel(widenKinds);
+        var pivot = widenKinds.Contains("price", StringComparer.OrdinalIgnoreCase)
+            ? "Acknowledge the user's budget in one short phrase, explain briefly that Tourbillon starts above that cap, and pivot to the entry-tier pieces below without refusing."
+            : "Acknowledge the mismatch in one short phrase and pivot to the closest catalogue alternatives below without refusing.";
 
-        if (widenKinds.Contains("price", StringComparer.OrdinalIgnoreCase))
-        {
-            return $"Widened search notice: nothing in Tourbillon's catalogue matched the user's exact {constraintLabel} constraint. The surfaced cards are the closest catalogue matches. Acknowledge the user's budget in one short phrase, explain briefly that Tourbillon starts above that cap, and pivot to the entry-tier pieces below without refusing.";
-        }
-
-        return $"Widened search notice: nothing in Tourbillon's catalogue matched the user's exact {constraintLabel} constraint. The surfaced cards are the closest catalogue matches. Acknowledge the mismatch in one short phrase and pivot to the closest catalogue alternatives below without refusing.";
+        return $"Widened search notice: nothing in Tourbillon's catalogue matched the user's exact {constraintLabel} constraint. The surfaced cards are the closest catalogue matches. {pivot}";
     }
 
     private static string FormatWidenedConstraintLabel(IReadOnlyList<string> widenKinds)
@@ -3751,24 +3751,6 @@ public class ChatService
             @"\b(?:dressier|sportier|fancier|classier|simpler|bolder|slimmer|dressy|sporty|formal|casual|elegant|refined|classic|modern|artistic|luxurious)"
             + @"|(?:something|how about|what about)\s+(?:more\s+)?(?:dressy|sporty|formal|casual|elegant|refined|classic|modern|artistic|luxurious|simple|bold|slim)\b",
             RegexOptions.IgnoreCase);
-
-    private static bool LooksLikeSessionShortlistFollowUp(
-        string query,
-        ChatSessionState? sessionState,
-        int lastWatchCardCount)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-            return false;
-
-        var hasShortlistContext = (sessionState?.WatchSlugs.Count ?? 0) > 0 || lastWatchCardCount > 0;
-        if (!hasShortlistContext)
-            return false;
-
-        return Regex.IsMatch(
-            query,
-            @"\b(?:which\s+of\s+(?:these|those|them)|which\s+one|which\s+is\s+better|best\s+(?:one|option|pick|fit)|better\s+(?:one|option|fit)|most\s+accessible|place\s+to\s+start|start\s+with|strongest\s+next\s+step|go\s+for\s+first)\b",
-            RegexOptions.IgnoreCase);
-    }
 
     private static bool LooksLikeEntityInfoRequest(string query, EntityMentions mentions)
     {
