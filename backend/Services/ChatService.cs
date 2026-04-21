@@ -3011,6 +3011,17 @@ public class ChatService
     private static string BuildWidenedSearchNotice(string? searchPath)
     {
         var widenKinds = WatchFinderService.GetWidenedSearchKinds(searchPath);
+        var onlyRelevance = widenKinds.Count == 1
+            && widenKinds[0].Equals("relevance", StringComparison.OrdinalIgnoreCase);
+
+        if (onlyRelevance)
+        {
+            // Vague / low-signal query — no explicit constraint was relaxed. Tell the AI
+            // the surfaced cards are approximate matches and steer the user toward a
+            // sharper brief rather than apologising.
+            return "Widened search notice: the user's brief was broad, so the surfaced cards are Tourbillon's closest approximate matches. Acknowledge the brief in one short phrase, introduce the picks below as starting points, and invite the user to narrow with a brand, collection, style, or budget.";
+        }
+
         var constraintLabel = FormatWidenedConstraintLabel(widenKinds);
         var pivot = widenKinds.Contains("price", StringComparer.OrdinalIgnoreCase)
             ? "Acknowledge the user's budget in one short phrase, explain briefly that Tourbillon starts above that cap, and pivot to the entry-tier pieces below without refusing."
