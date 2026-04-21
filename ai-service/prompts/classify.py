@@ -34,7 +34,7 @@ Example utterances (guide, not exhaustive):
 - affirmative_followup: "yes", "ok", "sure", "go ahead", "sounds good", "yes please", "ok continue", "works for me", "please continue", "yep let's do that"
 - expansion_request (cards > 0): "show me more", "more models", "expand the list", "all models", "see everything", "what else is there", "full list", "give me a few more from that lane", "show the rest of the shortlist", "what else do you have here"
 - revision_request (cards > 0): "show me something else", "not what i meant", "less sporty", "too sporty", "make the list richer", "split by intent", "narrow to the best models", "final shortlist", "curated list", "which two are the clearest", "art-led pick", "separate the dive lane", "same budget but cleaner", "that row feels off", "give me something bolder"
-- contextual_followup (cards > 0): "tell me more", "the first one", "that one", "these", "how about the second one", "number 3", "compare the first two", "walk me through the second one", "what's different about the last one", "which brand is the first from"
+- contextual_followup (cards > 0): "tell me more", "the first one", "that one", "these", "how about the second one", "number 3", "compare the first two", "walk me through the second one", "what's different about the last one", "which brand is the first from", "which of these should I pick", "which one is best for me", "which is better", "which is the strongest pick", "best option here", "most accessible place to start", "where should I start", "which one first", "go with the first one", "strongest next step"
 - brand_info: "tell me about Patek Philippe", "enlighten me about Rolex", "what's great about Grand Seiko"
 - brand_history: "history of Vacheron Constantin", "founders of Audemars Piguet", "how was Patek Philippe started"
 - brand_decision: "Rolex or Patek", "help me choose between AP and VC", "which brand is better for dress"
@@ -42,7 +42,7 @@ Example utterances (guide, not exhaustive):
 - collection_compare: "compare Aquanaut and Overseas", "Nautilus vs Royal Oak"
 - watch_compare: "compare Nautilus 5711 and Royal Oak 15202", "compare the first and third"
 - discovery: "sporty watches under 30k", "dress watch for a wedding", "blue dial chronograph", "elegant watch for a formal dinner", "affordable watch for a student", "something cheap", "entry-level luxury", "budget-friendly starter piece", "what's in your lineup for a tight budget", "I want my first nice watch", "looking for accessible options", "the cheapest one you carry", "most expensive piece you have", "high-end grail watch", "something for under 5k"
-- non_watch: "hi", "hello", "hello again", "good evening", "what's the weather", "2+2", "write me a poem", "recommend a restaurant"
+- non_watch: "hi", "hello", "hello again", "good evening", "what's the weather", "2+2", "write me a poem", "recommend a restaurant", "write my CV", "update my resume", "help me with a cover letter", "my curriculum vitae needs work", "translate this to French", "fix my code"
 - unclear: any message that does not clearly match one of the above"""
 
 # Filled in by the backend before sending; uses .format() substitution.
