@@ -273,6 +273,17 @@ public class WatchFinderService : IWatchFinderService
                 var (widenedCandidates, widenedBestDistance) = await VectorSearchAsync(queryEmbedding, widenedIntent);
                 if (widenedCandidates.Count > 0)
                 {
+                    // When the relaxed constraint was price, reorder toward the cheapest
+                    // catalogue pieces so the "entry-tier" narrative in the Widened search
+                    // notice actually matches what the user sees. Price-on-Request (0) last.
+                    if (widenKinds.Contains("price", StringComparer.OrdinalIgnoreCase))
+                    {
+                        widenedCandidates = widenedCandidates
+                            .OrderBy(w => w.CurrentPrice == 0 ? 1 : 0)
+                            .ThenBy(w => w.CurrentPrice == 0 ? decimal.MaxValue : w.CurrentPrice)
+                            .ToList();
+                    }
+
                     candidates = widenedCandidates;
                     bestDistance = widenedBestDistance;
                     widenedSearchKinds = widenKinds;

@@ -766,8 +766,20 @@ public class ChatService
             : await _watchFinderService.FindWatchesAsync(canonicalMessage);
         searchResult ??= new WatchFinderResult();
 
+        // WatchFinder detected no watch-domain signal but the classifier routed us here as discovery —
+        // hand to the AI wording layer with a redirect context rather than refusing outright. Hardcoded
+        // UnsupportedQueryMessage remains available only via the explicit NonWatch intent path.
         if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
-            return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
+            return new ChatResolution
+            {
+                UseAi = true,
+                Query = canonicalMessage,
+                Context = new List<string>
+                {
+                    "The user's message did not carry a clear watch-domain signal. Steer them back to Tourbillon in one short sentence with two or three concrete starters drawn from the catalogue (a brand, a collection, a comparison, or a budget bracket). Match the language of the user's message."
+                },
+                RoutingPath = "ai_redirect"
+            };
 
         var exactWatch = await TryResolveExactWatchAsync(canonicalMessage, searchResult);
         if (exactWatch != null)
@@ -1515,7 +1527,16 @@ public class ChatService
                     : await _watchFinderService.FindWatchesAsync(canonicalMessage);
                 searchResult ??= new WatchFinderResult();
                 if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
-                    return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
+                    return new ChatResolution
+                    {
+                        UseAi = true,
+                        Query = canonicalMessage,
+                        Context = new List<string>
+                        {
+                            "The user's message did not carry a clear watch-domain signal. Steer them back to Tourbillon in one short sentence with two or three concrete starters drawn from the catalogue (a brand, a collection, a comparison, or a budget bracket). Match the language of the user's message."
+                        },
+                        RoutingPath = "ai_redirect"
+                    };
                 if (searchResult.Watches.Count == 0) return null;
                 var r = await BuildDiscoveryResolutionAsync(
                     canonicalMessage, searchResult, excludedBrandIds, mentions: mentions);
