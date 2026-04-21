@@ -486,6 +486,7 @@ public class ChatService
             aiMessage = keepDeterministic && !string.IsNullOrWhiteSpace(resolution.Message)
                 ? resolution.Message
                 : aiResult;
+            aiMessage = UnwrapNestedMarkdownLinks(aiMessage);
             if (watchCards.Count == 0)
                 watchCards = await ExtractWatchCardsAsync(aiMessage, actions);
         }
@@ -3650,6 +3651,29 @@ public class ChatService
         "best|top|popular|iconic|rare|limited|new|latest|cheapest|priciest" +
         @")\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Matches `[outer-before[inner](inner-url)outer-after](outer-url)` — nested markdown links
+    // the prompt forbids but the LLM occasionally still emits. We unwrap by keeping the outer
+    // link destination and inlining the inner link's label as plain text.
+    private static readonly Regex _nestedMarkdownLinkPattern = new(
+        @"\[([^\[\]]*?)\[([^\[\]]+)\]\(([^)]+)\)([^\[\]]*?)\]\(([^)]+)\)",
+        RegexOptions.Compiled);
+
+    // Safety net for nested markdown links that survive the prompt rule. Standard markdown
+    // renderers break on link-inside-link syntax, so we collapse them before saving history
+    // or returning to the client. Loops because one pass may reveal further nesting.
+    private static string UnwrapNestedMarkdownLinks(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return message;
+        string previous;
+        var current = message;
+        do
+        {
+            previous = current;
+            current = _nestedMarkdownLinkPattern.Replace(current, "[$1$2$4]($5)");
+        } while (!ReferenceEquals(current, previous) && current != previous);
+        return current;
+    }
 
     // Structured response from the ai-service /route endpoint.
     private sealed record RouteResult(string Route, double Confidence, bool Fallback = false);
