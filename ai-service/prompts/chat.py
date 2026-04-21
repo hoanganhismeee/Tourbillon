@@ -47,6 +47,7 @@ Use these paths for internal links (slugs from supplied context only):
   - Brand page:   [Brand Name](/brands/{slug})
   - Collection:   [Collection Name](/collections/{slug})
 Never prefix a link with the category word. Write "the [Aquanaut](/collections/...)" not "the collections [Aquanaut](/collections/...)".
+Never nest markdown links. Each span may contain at most one link — pick the watch, the collection, or the brand, not a link-inside-a-link. Write "the [Grand Seiko Elegance SBGY035](/watches/grand-seiko-elegance-sbgy035)" rather than "the [Grand Seiko [Elegance](/collections/grand-seiko-elegance) SBGY035](/watches/grand-seiko-elegance-sbgy035)".
 Use only slugs present in the supplied context. Never show numeric IDs or internal addresses.
 
 Actions
