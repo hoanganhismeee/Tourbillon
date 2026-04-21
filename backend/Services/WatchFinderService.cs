@@ -290,6 +290,26 @@ public class WatchFinderService : IWatchFinderService
                 }
             }
 
+            // Second structural widening pass: if the pool is still empty, the most likely
+            // cause is the MinRelevance gate rejecting a low-signal unconstrained query
+            // (HasWatchDomainSignal already filtered non-watch queries upstream). Retry once
+            // with the gate bypassed so we surface best-effort approximate matches instead
+            // of a flat refusal.
+            if (candidates.Count == 0)
+            {
+                var (looseCandidates, looseBestDistance) =
+                    await VectorSearchAsync(queryEmbedding, queryIntent, allowLooseMatches: true);
+                if (looseCandidates.Count > 0)
+                {
+                    candidates = looseCandidates;
+                    bestDistance = looseBestDistance;
+                    widenedSearchKinds = [..widenedSearchKinds, "relevance"];
+                    _logger.LogInformation(
+                        "WatchFinder widen=relevance applied query={QueryPreview}",
+                        query.Length > 60 ? query[..60] + "..." : query);
+                }
+            }
+
             // Brand fallback: if vector search returned nothing but a specific brand was requested,
             // the query embedding likely diverged from watch descriptions (e.g. unusual phrasing).
             // Load watches for that brand directly so the user sees something to rerank.
@@ -911,7 +931,10 @@ public class WatchFinderService : IWatchFinderService
     // Phase 3B retrieval: cosine similarity search against watch chunk embeddings.
     // Applies hard SQL pre-filters from QueryIntent (brand/collection/price) before cosine ranking.
     // Deduplicates chunks per watch in memory and returns best distance.
-    private async Task<(List<Watch> Watches, float BestDistance)> VectorSearchAsync(float[] queryEmbedding, QueryIntent? intent)
+    private async Task<(List<Watch> Watches, float BestDistance)> VectorSearchAsync(
+        float[] queryEmbedding,
+        QueryIntent? intent,
+        bool allowLooseMatches = false)
     {
         var queryVector = new Vector(queryEmbedding);
 
@@ -980,7 +1003,11 @@ public class WatchFinderService : IWatchFinderService
             || (intent?.CollectionsDerivedFromStyle != true && intent?.CollectionIds?.Count > 0)
             || styleCollectionIds.Count > 0;
 
-        if (topIds.Count == 0 || (!hasHardFilters && bestDist >= MinRelevance))
+        // Relevance gate rejects unconstrained queries whose best match is too distant —
+        // a second widening pass passes allowLooseMatches=true to surface best-effort
+        // alternatives instead of refusing on embedding noise (e.g. "watches for women"
+        // vs "watch for women" where singular/plural tips the distance across the gate).
+        if (topIds.Count == 0 || (!hasHardFilters && !allowLooseMatches && bestDist >= MinRelevance))
             return ([], float.MaxValue);
 
         // Load Watch objects and restore similarity order (IN has no guaranteed order)
