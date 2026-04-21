@@ -1,11 +1,12 @@
 // test-chat-context-resilience.mjs — Context retention, off-topic resilience, and unclear-intent handling.
 //
-// Three focused flows:
+// Four focused flows:
 //   1. Long discovery session interrupted by off-topic questions at random turns — context must survive.
 //   2. Ambiguous / unclear queries throughout — AI should ask clarifying questions or surface suggestions,
 //      not hallucinate a watch list with no brief.
 //   3. Unexpected topic switches mid-session (cuisine, code, travel) with immediate recovery messages —
 //      AI must decline gracefully and pick up the watch thread on the very next on-topic turn.
+//   4. Over-constrained luxury discovery should widen to nearby catalogue matches before refusing.
 //
 // Usage:
 //   node test-chat-context-resilience.mjs
@@ -24,6 +25,7 @@ const GREEN   = '\x1b[32m';
 const MAGENTA = '\x1b[35m';
 const RED     = '\x1b[31m';
 const BLUE    = '\x1b[34m';
+const NO_CLOSE_MATCH_MESSAGE = "Nothing in the current Tourbillon catalogue lines up with that brief. Try one of the starters below, or rework the request with a specific brand, collection, reference, size, material, or budget and I'll find the closest matches.";
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 
@@ -148,6 +150,33 @@ function assertClarificationOrSuggestions(data, query) {
 }
 
 // ── Flows ────────────────────────────────────────────────────────────────────
+
+function assertWidenedDiscovery(data) {
+  const cards = data.watchCards ?? [];
+  const exactRefusal = (data.message ?? '').trim() === NO_CLOSE_MATCH_MESSAGE;
+
+  if (exactRefusal)
+    return fail('fell through to NoCloseMatchMessage instead of widening to nearby catalogue matches');
+  if (cards.length === 0)
+    return fail('returned no cards for the widened discovery path');
+
+  return pass(`returned ${cards.length} closest-match card(s) before refusal`);
+}
+
+function assertNoCloseMatchFallback(data) {
+  const exactRefusal = (data.message ?? '').trim() === NO_CLOSE_MATCH_MESSAGE;
+  return exactRefusal
+    ? pass('kept the hardcoded no-close-match fallback for a true catalogue miss')
+    : fail(`expected NoCloseMatchMessage, got "${truncate(data.message, 100)}"`);
+}
+
+function assertWidenedShortlistFollowUp(data, priorSlugs) {
+  const exactRefusal = (data.message ?? '').trim() === NO_CLOSE_MATCH_MESSAGE;
+  if (exactRefusal)
+    return fail('follow-up fell back to NoCloseMatchMessage instead of staying on the widened shortlist');
+
+  return assertContextSurvived(data, priorSlugs);
+}
 
 const FLOWS = [
   {
@@ -378,6 +407,27 @@ const FLOWS = [
         msg: 'Give me a final recommendation',
         note: 'wrap-up after all interruptions',
         assert: (d) => [assertNonEmpty(d), d.watchCards?.length > 0 || /(recommend|suggest|consider|nautilus|overseas)/i.test(d.message ?? '') ? pass('meaningful final recommendation') : warn('final recommendation seems thin')],
+      },
+    ],
+  },
+  {
+    name: 'Graceful degrade before refusal (3 turns)',
+    description: 'Verifies over-tight luxury discovery widens to nearby catalogue matches, while a genuine off-catalogue brief still hits the hardcoded refusal.',
+    turns: [
+      {
+        msg: 'something affordable for a student',
+        note: 'budget phrasing should widen instead of refusing',
+        assert: (d) => [assertNonEmpty(d), assertWidenedDiscovery(d)],
+      },
+      {
+        msg: 'which of these is the most accessible place to start?',
+        note: 'follow-up stays grounded on the widened shortlist',
+        assert: (d, priorSlugs) => [assertNonEmpty(d), assertWidenedShortlistFollowUp(d, priorSlugs)],
+      },
+      {
+        msg: 'purple Casio digital from the 80s',
+        note: 'true catalogue miss should still refuse',
+        assert: (d) => [assertNonEmpty(d), assertNoCloseMatchFallback(d)],
       },
     ],
   },

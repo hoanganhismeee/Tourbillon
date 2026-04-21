@@ -254,10 +254,30 @@ public class WatchFinderService : IWatchFinderService
         // frontend filter bar but does not remove candidates from the pool.
         List<Watch> candidates;
         float bestDistance = float.MaxValue;
+        List<string> widenedSearchKinds = [];
 
         if (queryEmbedding != null)
         {
             (candidates, bestDistance) = await VectorSearchAsync(queryEmbedding, queryIntent);
+
+            // One structural widening pass: if a hard vector filter empties the pool,
+            // retry once without the relaxable price cap before surfacing a refusal.
+            if (candidates.Count == 0
+                && TryBuildRelaxedVectorIntent(queryIntent, out var widenedIntent, out var widenKinds))
+            {
+                _logger.LogInformation(
+                    "WatchFinder widen={WidenKinds} applied query={QueryPreview}",
+                    string.Join("|", widenKinds),
+                    query.Length > 60 ? query[..60] + "..." : query);
+
+                var (widenedCandidates, widenedBestDistance) = await VectorSearchAsync(queryEmbedding, widenedIntent);
+                if (widenedCandidates.Count > 0)
+                {
+                    candidates = widenedCandidates;
+                    bestDistance = widenedBestDistance;
+                    widenedSearchKinds = widenKinds;
+                }
+            }
 
             // Brand fallback: if vector search returned nothing but a specific brand was requested,
             // the query embedding likely diverged from watch descriptions (e.g. unusual phrasing).
@@ -337,7 +357,9 @@ public class WatchFinderService : IWatchFinderService
             OtherCandidates = candidates.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList(),
             MatchDetails = [],
             ParsedIntent = null,
-            SearchPath = bestDistance < SkipLlmDistance ? "vector" : "vector_llm_candidate"
+            SearchPath = AppendWidenedSearchPath(
+                bestDistance < SkipLlmDistance ? "vector" : "vector_llm_candidate",
+                widenedSearchKinds)
         };
 
         result.QueryIntent = queryIntent;
@@ -361,7 +383,7 @@ public class WatchFinderService : IWatchFinderService
 
             result.Watches = structuredOrdered.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList();
             result.OtherCandidates = structuredOrdered.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList();
-            result.SearchPath = "vector_structured_skip_rerank";
+            result.SearchPath = AppendWidenedSearchPath("vector_structured_skip_rerank", widenedSearchKinds);
             return result;
         }
 
@@ -448,7 +470,7 @@ public class WatchFinderService : IWatchFinderService
                         {
                             Score = scoreMap[w.Id].Score
                         });
-                    result.SearchPath = "vector_llm_rerank";
+                    result.SearchPath = AppendWidenedSearchPath("vector_llm_rerank", widenedSearchKinds);
                 }
             }
         }
@@ -491,6 +513,79 @@ public class WatchFinderService : IWatchFinderService
         QueryIntent = intent,
         SearchPath = searchPath
     };
+
+    private static bool TryBuildRelaxedVectorIntent(
+        QueryIntent? intent,
+        out QueryIntent? widenedIntent,
+        out List<string> widenKinds)
+    {
+        widenedIntent = null;
+        widenKinds = [];
+        if (intent == null)
+            return false;
+
+        var clone = CloneIntent(intent);
+
+        // Price is the only relaxable hard filter in the current vector path.
+        // Diameter and water-resistance stay as soft discovery hints in QueryIntent.
+        if (clone.MaxPrice != null || clone.MinPrice != null)
+        {
+            clone.MaxPrice = null;
+            clone.MinPrice = null;
+            widenKinds.Add("price");
+        }
+
+        if (widenKinds.Count == 0)
+            return false;
+
+        widenedIntent = clone;
+        return true;
+    }
+
+    private static QueryIntent CloneIntent(QueryIntent intent) => new()
+    {
+        BrandId = intent.BrandId,
+        CollectionId = intent.CollectionId,
+        CollectionIds = [.. intent.CollectionIds],
+        CollectionsDerivedFromStyle = intent.CollectionsDerivedFromStyle,
+        MaxPrice = intent.MaxPrice,
+        MinPrice = intent.MinPrice,
+        MinDiameterMm = intent.MinDiameterMm,
+        MaxDiameterMm = intent.MaxDiameterMm,
+        CaseMaterial = intent.CaseMaterial,
+        MovementType = intent.MovementType,
+        WaterResistance = intent.WaterResistance,
+        Style = intent.Style,
+        BrandIds = [.. intent.BrandIds],
+        ExcludedBrandIds = [.. intent.ExcludedBrandIds],
+        Complications = [.. intent.Complications],
+        PowerReserves = [.. intent.PowerReserves],
+        WaterResistanceBuckets = [.. intent.WaterResistanceBuckets],
+    };
+
+    private static string AppendWidenedSearchPath(string searchPath, IReadOnlyCollection<string> widenKinds) =>
+        widenKinds.Count == 0
+            ? searchPath
+            : $"{searchPath}+widened:{string.Join(",", widenKinds)}";
+
+    internal static bool HasWidenedSearchPath(string? searchPath) =>
+        !string.IsNullOrWhiteSpace(searchPath)
+        && searchPath.Contains("+widened:", StringComparison.OrdinalIgnoreCase);
+
+    internal static IReadOnlyList<string> GetWidenedSearchKinds(string? searchPath)
+    {
+        if (!HasWidenedSearchPath(searchPath))
+            return [];
+
+        var markerIndex = searchPath!.IndexOf("+widened:", StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0)
+            return [];
+
+        return searchPath[(markerIndex + "+widened:".Length)..]
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
 
     internal static bool HasBrandIntent(QueryIntent? intent) =>
         intent?.BrandId != null || intent?.BrandIds.Count > 0;
@@ -1371,7 +1466,10 @@ public class WatchFinderService : IWatchFinderService
         IsLikelyReferenceQuery(query)
         || IsLikelyReferenceFragment(query)
         || Regex.IsMatch(query,
-            @"\b(?:watch|watches|timepiece|timepieces|horology|luxury|wrist|diameter|dial|case|bracelet|strap|movement|automatic|manual|quartz|dress|dressy|dressier|dresswatch|sport|sportwatch|sporty|sportier|diver|diverwatch|diving|water[\s-]?resist(?:ant|ance)?|waterproof|gmt|chronograph|perpetual|annual|calendar|moonphase|tourbillon|repeater|steel|gold|titanium|ceramic|platinum|fancier|classier|refined|elegant)\b",
+            @"\b(?:watch|watches|timepiece|timepieces|horology|luxury|wrist|diameter|dial|case|bracelet|strap|movement|automatic|manual|quartz|digital|analog|analogue|dress|dressy|dressier|dresswatch|sport|sportwatch|sporty|sportier|diver|diverwatch|diving|water[\s-]?resist(?:ant|ance)?|waterproof|gmt|chronograph|perpetual|annual|calendar|moonphase|tourbillon|repeater|steel|gold|titanium|ceramic|platinum|fancier|classier|refined|elegant)\b",
+            RegexOptions.IgnoreCase)
+        || Regex.IsMatch(query,
+            @"\b(?:affordable|budget[-\s]?friendly|entry[-\s]?level|accessible|starter)\b|\bstudent\b",
             RegexOptions.IgnoreCase)
         || Regex.IsMatch(query, @"\b(?:under|below|over|above|between)\s*\$?\s*\d[\d,]*\s*k?\b", RegexOptions.IgnoreCase)
         || Regex.IsMatch(query, @"\b\d+(?:\.\d+)?\s*mm\b", RegexOptions.IgnoreCase);
