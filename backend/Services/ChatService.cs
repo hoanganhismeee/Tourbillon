@@ -766,20 +766,8 @@ public class ChatService
             : await _watchFinderService.FindWatchesAsync(canonicalMessage);
         searchResult ??= new WatchFinderResult();
 
-        // WatchFinder detected no watch-domain signal but the classifier routed us here as discovery —
-        // hand to the AI wording layer with a redirect context rather than refusing outright. Hardcoded
-        // UnsupportedQueryMessage remains available only via the explicit NonWatch intent path.
         if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
-            return new ChatResolution
-            {
-                UseAi = true,
-                Query = canonicalMessage,
-                Context = new List<string>
-                {
-                    "The user's message did not carry a clear watch-domain signal. Steer them back to Tourbillon in one short sentence with two or three concrete starters drawn from the catalogue (a brand, a collection, a comparison, or a budget bracket). Match the language of the user's message."
-                },
-                RoutingPath = "ai_redirect"
-            };
+            return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
 
         var exactWatch = await TryResolveExactWatchAsync(canonicalMessage, searchResult);
         if (exactWatch != null)
@@ -811,18 +799,13 @@ public class ChatService
             return r;
         }
 
-        // No catalogue match but query is watch-scoped — let the AI wording layer handle it as a
-        // helpful concierge response (e.g. "recommend me watch models", "what should I look for
-        // first?"). The hardcoded NoCloseMatchMessage remains as an ai-service-unreachable fallback.
+        // No catalogue match — hardcoded refusal as the genuine last resort. The graceful-degrade
+        // widening pass in WatchFinder already gives the AI a chance to handle over-constrained
+        // discovery queries before we land here.
         return new ChatResolution
         {
-            UseAi = true,
-            Query = canonicalMessage,
-            Context = new List<string>
-            {
-                "No specific Tourbillon catalogue records were resolved for this query. Respond as a helpful boutique concierge: invite the user to narrow the brief by style, brand, or price range, and offer two or three concrete starters drawn from Tourbillon's catalogue. Stay concise, warm, and within Tourbillon's scope."
-            },
-            RoutingPath = "ai_no_match"
+            Message = NoCloseMatchMessage,
+            RoutingPath = "no_close_match"
         };
     }
 
@@ -1527,16 +1510,7 @@ public class ChatService
                     : await _watchFinderService.FindWatchesAsync(canonicalMessage);
                 searchResult ??= new WatchFinderResult();
                 if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
-                    return new ChatResolution
-                    {
-                        UseAi = true,
-                        Query = canonicalMessage,
-                        Context = new List<string>
-                        {
-                            "The user's message did not carry a clear watch-domain signal. Steer them back to Tourbillon in one short sentence with two or three concrete starters drawn from the catalogue (a brand, a collection, a comparison, or a budget bracket). Match the language of the user's message."
-                        },
-                        RoutingPath = "ai_redirect"
-                    };
+                    return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
                 if (searchResult.Watches.Count == 0) return null;
                 var r = await BuildDiscoveryResolutionAsync(
                     canonicalMessage, searchResult, excludedBrandIds, mentions: mentions);

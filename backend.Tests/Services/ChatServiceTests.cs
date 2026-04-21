@@ -192,7 +192,8 @@ public class ChatServiceTests
                 OtherCandidates = [],
                 SearchPath = "direct_sql_merged"
             });
-        var service = CreateService(context, watchFinder);
+        // Production classifier covers CV / resume / translation phrasing via non_watch exemplars.
+        var service = CreateService(context, watchFinder, classifier: new FakeClassifier("non_watch"));
 
         var result = await service.HandleMessageAsync("session-1", "Write me a sales CV", null, "127.0.0.1");
 
@@ -1346,8 +1347,9 @@ public class ChatServiceTests
         {
             if (query.Equals("something affordable for a student", StringComparison.OrdinalIgnoreCase))
                 return new IntentClassification("discovery", 0.95);
+            // Production classifier covers shortlist-pick phrasing via contextual_followup exemplars.
             if (query.Equals("which of these is the most accessible place to start?", StringComparison.OrdinalIgnoreCase))
-                return new IntentClassification("discovery", 0.95);
+                return new IntentClassification("contextual_followup", 0.95);
             return new IntentClassification("unclear", 0.0);
         });
 
