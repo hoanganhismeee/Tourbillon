@@ -3,6 +3,7 @@
 
 using backend.Database;
 using backend.DTOs;
+using backend.Jobs;
 using backend.Models;
 using backend.Services;
 using Hangfire;
@@ -1177,7 +1178,7 @@ public class AdminController : ControllerBase
     {
         try
         {
-            var cloudinaryService = HttpContext.RequestServices.GetRequiredService<ICloudinaryService>();
+            var storageService = HttpContext.RequestServices.GetRequiredService<IStorageService>();
             var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
 
             var watches = await context.Watches
@@ -1224,7 +1225,7 @@ public class AdminController : ControllerBase
                 }
                 else if (watch.Image.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 {
-                    // External URL (e.g. Vacheron website) — image not yet in Cloudinary
+                    // External URL (e.g. Vacheron website) — image not yet in storage
                     currentPublicId = null;
                     isExternalUrl = true;
                 }
@@ -1244,9 +1245,9 @@ public class AdminController : ControllerBase
 
                 if (isExternalUrl)
                 {
-                    // Download from external URL and upload to Cloudinary with the target name
+                    // Download from external URL and upload to storage with the target name
                     var targetWithoutFolder = target.Substring("watches/".Length);
-                    var newId = await cloudinaryService.UploadImageFromUrlAsync(watch.Image, targetWithoutFolder, "watches");
+                    var newId = await storageService.UploadImageFromUrlAsync(watch.Image, targetWithoutFolder, "watches");
                     if (!string.IsNullOrEmpty(newId))
                         watch.Image = target;
                     else
@@ -1259,11 +1260,11 @@ public class AdminController : ControllerBase
                 }
                 else
                 {
-                    var ok = await cloudinaryService.RenameAssetAsync(currentPublicId!, target);
+                    var ok = await storageService.RenameAssetAsync(currentPublicId!, target);
                     if (ok)
                         watch.Image = target;
                     else
-                        failures.Add(new { watch.Id, watch.Name, watch.Image, Reason = $"Cloudinary rename failed ({currentPublicId} → {target})" });
+                        failures.Add(new { watch.Id, watch.Name, watch.Image, Reason = $"Storage rename failed ({currentPublicId} → {target})" });
                 }
             }
 
@@ -1307,7 +1308,7 @@ public class AdminController : ControllerBase
 
         try
         {
-            var cloudinaryService = HttpContext.RequestServices.GetRequiredService<ICloudinaryService>();
+            var storageService = HttpContext.RequestServices.GetRequiredService<IStorageService>();
             var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
 
             // Extract public ID from Cloudinary URL: skip optional version segment, capture path, strip extension
@@ -1326,7 +1327,7 @@ public class AdminController : ControllerBase
                     continue;
                 }
 
-                // Attempt Cloudinary rename: newImage → original public ID derived from oldImage
+                // Attempt storage rename: newImage → original public ID derived from oldImage
                 string? targetPublicId = null;
 
                 if (change.OldImage.StartsWith("https://res.cloudinary.com", StringComparison.OrdinalIgnoreCase))
@@ -1344,13 +1345,13 @@ public class AdminController : ControllerBase
                     // Root-level filename like "PP5227G.png"
                     targetPublicId = Path.GetFileNameWithoutExtension(change.OldImage);
                 }
-                // else: external URL (e.g. VC website) — skip Cloudinary rename, just restore DB
+                // else: external URL (e.g. VC website) — skip storage rename, just restore DB
 
                 if (targetPublicId != null && change.NewImage.StartsWith("watches/", StringComparison.OrdinalIgnoreCase))
                 {
-                    var ok = await cloudinaryService.RenameAssetAsync(change.NewImage, targetPublicId);
+                    var ok = await storageService.RenameAssetAsync(change.NewImage, targetPublicId);
                     if (!ok)
-                        failures.Add(new { change.WatchId, change.OldImage, change.NewImage, Reason = "Cloudinary rename failed — DB still restored" });
+                        failures.Add(new { change.WatchId, change.OldImage, change.NewImage, Reason = "Storage rename failed — DB still restored" });
                 }
 
                 // Always restore the DB value
@@ -1374,6 +1375,16 @@ public class AdminController : ControllerBase
             _logger.LogError(ex, "Error reverting image names");
             return StatusCode(500, new { Message = ex.Message });
         }
+    }
+
+    /// Enqueues a Hangfire job to copy all watch images from Cloudinary to S3.
+    /// Safe to re-run — S3 PutObject is idempotent (overwrites).
+    /// POST: api/admin/migrate-to-s3
+    [HttpPost("migrate-to-s3")]
+    public IActionResult MigrateImagesToS3()
+    {
+        var jobId = BackgroundJob.Enqueue<MigrateToS3Job>(job => job.RunAsync());
+        return Ok(new { Message = "Migration job enqueued", JobId = jobId });
     }
 
     // Sanitizes a string for use as a Cloudinary public ID segment (collection/brand name).
