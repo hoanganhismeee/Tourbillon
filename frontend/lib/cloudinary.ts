@@ -1,18 +1,17 @@
-// Browser-compatible Cloudinary utilities for image optimization.
-// Accepts EITHER a Cloudinary public_id (recommended) OR a direct image URL.
-// If a URL is provided, we use Cloudinary "fetch" to normalize, crop, and optimize on the fly.
+// Browser-compatible storage utilities for watch media.
+// Cloudinary remains available for transforms; S3/CloudFront serves plain public IDs.
 
 const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dcd9lcdoj';
 const CLOUDINARY_UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 const STORAGE_PROVIDER = (process.env.NEXT_PUBLIC_STORAGE_PROVIDER || 'cloudinary').toLowerCase();
 const CLOUDFRONT_DOMAIN = process.env.NEXT_PUBLIC_CLOUDFRONT_DOMAIN || '';
 
-// Bump this whenever images are replaced in Cloudinary to force CDN cache invalidation.
+// Bump this whenever images are replaced to force CDN cache invalidation.
 // The version is appended as a query param (?v=N), which creates a new CDN cache key.
 const IMAGE_CACHE_VERSION = 2;
 const VIDEO_CACHE_VERSION = 2;
 
-// Test function to verify Cloudinary connection
+// Test function to verify the active media provider configuration.
 export const testCloudinaryConnection = () => {
   if (STORAGE_PROVIDER === 's3') {
     if (!CLOUDFRONT_DOMAIN) {
@@ -191,7 +190,7 @@ export const imageTransformations = {
   },
 };
 
-// Returns the Cloudinary URL for a video uploaded to the tourbillon/videos folder.
+// Returns the active provider URL for a video uploaded to the tourbillon/videos folder.
 // Usage: videoUrl('JLC') → https://res.cloudinary.com/.../tourbillon/videos/JLC.mp4
 export const videoUrl = (name: string) =>
   STORAGE_PROVIDER === 's3'
