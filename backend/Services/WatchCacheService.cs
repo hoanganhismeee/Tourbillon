@@ -12,16 +12,16 @@ public class WatchCacheService
 {
     private readonly TourbillonContext _context;
     private readonly ILogger<WatchCacheService> _logger;
-    private readonly ICloudinaryService _cloudinaryService;
+    private readonly IStorageService _storageService;
 
     public WatchCacheService(
         TourbillonContext context,
         ILogger<WatchCacheService> logger,
-        ICloudinaryService cloudinaryService)
+        IStorageService storageService)
     {
         _context = context;
         _logger = logger;
-        _cloudinaryService = cloudinaryService;
+        _storageService = storageService;
     }
 
     /// Caches a list of already-scraped watches to the database
@@ -140,7 +140,7 @@ public class WatchCacheService
                 // Only delete if image is a Cloudinary public_id (starts with "watches/")
                 if (!string.IsNullOrEmpty(watch.Image) && watch.Image.StartsWith("watches/"))
                 {
-                    var deleted = await _cloudinaryService.DeleteImageAsync(watch.Image);
+                    var deleted = await _storageService.DeleteImageAsync(watch.Image);
                     if (deleted)
                     {
                         imagesDeleted++;

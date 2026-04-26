@@ -16,14 +16,14 @@ namespace backend.Services;
 public class SitemapScraperService
 {
     private readonly ILogger<SitemapScraperService> _logger;
-    private readonly ICloudinaryService _cloudinaryService;
+    private readonly IStorageService _storageService;
 
     public SitemapScraperService(
         ILogger<SitemapScraperService> logger,
-        ICloudinaryService cloudinaryService)
+        IStorageService storageService)
     {
         _logger = logger;
-        _cloudinaryService = cloudinaryService;
+        _storageService = storageService;
     }
 
     /// Scrapes a single watch product page by URL

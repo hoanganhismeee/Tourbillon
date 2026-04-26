@@ -13,17 +13,20 @@ public class RegisterInterestService : IRegisterInterestService
     private readonly UserManager<User> _userManager;
     private readonly IConfiguration _configuration;
     private readonly ILogger<RegisterInterestService> _logger;
+    private readonly IStorageService _storage;
 
     public RegisterInterestService(
         TourbillonContext context,
         UserManager<User> userManager,
         IConfiguration configuration,
-        ILogger<RegisterInterestService> logger)
+        ILogger<RegisterInterestService> logger,
+        IStorageService storage)
     {
         _context = context;
         _userManager = userManager;
         _configuration = configuration;
         _logger = logger;
+        _storage = storage;
     }
 
     public async Task<RegisterInterest> RegisterAsync(int? userId, CreateRegisterInterestDto dto)
@@ -89,7 +92,7 @@ public class RegisterInterestService : IRegisterInterestService
             TimeSpan.FromMinutes(30));
 
         // Enqueue emails as durable Hangfire jobs — retried automatically on SMTP failure
-        var userBody = BuildUserConfirmationBody(entry, watch);
+        var userBody = BuildUserConfirmationBody(entry, watch, _storage);
         BackgroundJob.Enqueue<BackgroundEmailService>(x =>
             x.SendAsync(entry.CustomerEmail, "Your Tourbillon Registration of Interest", userBody));
 
@@ -120,7 +123,7 @@ public class RegisterInterestService : IRegisterInterestService
         await _context.SaveChangesAsync();
     }
 
-    private static string BuildUserConfirmationBody(RegisterInterest entry, Watch? watch)
+    private static string BuildUserConfirmationBody(RegisterInterest entry, Watch? watch, IStorageService storage)
     {
         var displayName = !string.IsNullOrEmpty(entry.CustomerFirstName) ? entry.CustomerFirstName : "there";
         var fullName = $"{entry.CustomerFirstName} {entry.CustomerLastName}".Trim();
@@ -132,7 +135,7 @@ public class RegisterInterestService : IRegisterInterestService
         var watchCard = "";
         if (watch != null)
         {
-            var imageUrl = watch.GetImageUrl();
+            var imageUrl = storage.GetPublicUrl(watch.Image, watch.ImageVersion);
             var brandName = System.Net.WebUtility.HtmlEncode(watch.Brand?.Name ?? "");
             var collectionName = System.Net.WebUtility.HtmlEncode(watch.Collection?.Name ?? "");
             var refNumber = System.Net.WebUtility.HtmlEncode(watch.Name);
