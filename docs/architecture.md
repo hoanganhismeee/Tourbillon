@@ -20,8 +20,9 @@ Current system architecture as of March 2026. This document exists to provide co
                     +-------------+-------------+
                     v             v             v
              +------------+ +----------+ +------------+
-             | PostgreSQL | |ai-service| | Cloudinary |
-             | (pgvector) | | (Flask)  | |  (Images)  |
+             | PostgreSQL | |ai-service| | Image CDN  |
+             | (pgvector) | | (Flask)  | | Cloudinary |
+             |            | |          | | or CF/S3   |
              +------------+ +----------+ +------------+
                                   |
                             +-----v------+
@@ -90,7 +91,8 @@ Entry point: `backend/Program.cs`
 - `FavouritesService` — Favourites + named collections CRUD with optimistic UI support
 
 **Infrastructure:**
-- `CloudinaryService` — Image upload/delete behind `ICloudinaryService` interface
+- `IStorageService` — Provider-neutral image storage interface. `CloudinaryStorageService` wraps the existing Cloudinary implementation; `S3StorageService` stores images in S3 and serves them through CloudFront. `Storage:Provider` selects the active backend.
+- `CloudinaryService` — Cloudinary upload/delete implementation kept for the Cloudinary storage provider and rollback path.
 - `EmailService` — SMTP sending via MailKit with detailed diagnostics
 - `BackgroundEmailService` — Hangfire-compatible wrapper for fire-and-forget email dispatch with retry
 - `RedisService` — Distributed state: auth codes, rate limits, chat sessions. Abstracts atomic INCR, string KV, and hash operations.
@@ -100,7 +102,7 @@ Entry point: `backend/Program.cs`
 
 | Model | Notes |
 |---|---|
-| `Watch` | Name = reference number, Description = brand subtitle, Specs = JSON string, Image = Cloudinary public ID |
+| `Watch` | Name = reference number, Description = brand subtitle, Specs = JSON string, Image = provider public ID |
 | `Brand` | 13 brands (IDs: 1-10, 12, 13, 15) |
 | `Collection` | ~51 collections with Style column for SQL pre-filtering |
 | `User` | ASP.NET Identity user |
@@ -208,7 +210,7 @@ Email: `TestEmailDto`
 | File | Purpose |
 |---|---|
 | `lib/api.ts` | Centralized API client, 100+ exported functions. All backend calls go through here. |
-| `lib/cloudinary.ts` | Image URL builder. Card (400x400), detail (1200x1200), thumbnail (200x200). AVIF/WebP with auto DPR. |
+| `lib/cloudinary.ts` | Media URL builder. Cloudinary mode keeps transforms; S3 mode returns plain CloudFront URLs and relies on Next.js image optimization. |
 | `lib/behaviorTracker.ts` | Client-side event tracker for Watch DNA. Generates `tourbillon-anon-id` UUID; stores up to 100 events in `tourbillon-behavior` localStorage buffer. All access is SSR-safe (try/catch). Existing-account sign-ins flush + merge via `AuthContext`; new-account completions and logout reset the anonymous browser state. |
 | `lib/states.ts` | Global state management |
 
@@ -227,6 +229,7 @@ Email: `TestEmailDto`
 ### Image Configuration (next.config.ts)
 
 - Cloudinary: `res.cloudinary.com`
+- CloudFront: `*.cloudfront.net`
 - Brand CDNs whitelisted: Patek, VC, AP, ALS, Breguet, Rolex, Omega, Grand Seiko, Frederique Constant (Blancpain removed — brand deleted from DB)
 - Local backend: `http://localhost:5248/images/**`
 - Formats: AVIF + WebP with auto DPR
@@ -399,7 +402,7 @@ Both tables carry HNSW indexes on their vector columns. Approximate nearest-neig
 2. **Listing Page + Selenium + Claude Haiku** — `POST /api/admin/scrape-listing`. For brands blocking sitemap access.
 3. **Single URL** — `POST /api/admin/scrape-url`. Paste one product page URL.
 
-Flow: Selenium renders page -> HtmlAgilityPack strips to ~20-30KB HTML -> Claude Haiku extracts JSON -> Image uploaded to Cloudinary -> Watch saved to DB with duplicate check. Max 25 watches per collection (cost-conscious limit).
+Flow: Selenium renders page -> HtmlAgilityPack strips to ~20-30KB HTML -> Claude Haiku extracts JSON -> image uploaded through the active storage provider -> Watch saved to DB with duplicate check. Max 25 watches per collection (cost-conscious limit).
 
 Once scraping is complete, `SitemapScraperService`, `BrandScraperService`, scrape endpoints in `AdminController`, and the `/scrape` frontend page will all be removed.
 
@@ -410,7 +413,7 @@ Once scraping is complete, `SitemapScraperService`, `BrandScraperService`, scrap
 - `Watch.Name` = Reference number (e.g., "5711/1A-010")
 - `Watch.Description` = Brand model subtitle (e.g., "Patek Philippe Nautilus")
 - `Watch.Specs` = JSON string with sections: `{dial:{}, case:{}, movement:{}, strap:{}}`
-- `Watch.Image` = Cloudinary public ID, not a full URL
+- `Watch.Image` = provider public ID, not a full URL
 - `Watch.Slug`, `Brand.Slug`, `Collection.Slug` = URL-safe slugs used in all public routes (e.g., `patek-philippe-nautilus-5811-1g-blue-dial`). Auto-generated on startup from names. Unique indexed.
 - **Price = 0 means "Price on Request"** — valid for luxury watches, never treat as error
 - Watch image filenames: `brand+model.png` (e.g., `PP6119G.png`)
@@ -436,7 +439,7 @@ Frontend runs locally (`npm run dev`) — intentionally excluded from Docker for
 - **CORS**: Configurable via `ALLOWED_ORIGINS` env var
 - **Caching**: Persistent semantic query cache (QueryCaches in PostgreSQL). Redis (`redis:7-alpine`) for auth codes, rate limiting, and chat sessions via `IRedisService`.
 - **Background work**: Hangfire with PostgreSQL storage. Dashboard at `/hangfire`. All fire-and-forget patterns use `BackgroundJob.Enqueue<T>` for durability and retry.
-- **CDN**: Cloudinary handles image delivery
+- **CDN**: Cloudinary remains available; S3 + CloudFront is supported behind the storage abstraction and can be enabled after migration.
 - **CI/CD**: GitHub Actions (`.github/workflows/ci.yml`) — backend build + test, frontend type-check on push/PR
 - **IaC**: None
 

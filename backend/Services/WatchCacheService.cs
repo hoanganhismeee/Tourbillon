@@ -133,11 +133,11 @@ public class WatchCacheService
                 return (true, message, 0);
             }
 
-            // Clean up Cloudinary images first (before database deletion)
+            // Clean up stored images first (before database deletion)
             int imagesDeleted = 0;
             foreach (var watch in watchesToDelete)
             {
-                // Only delete if image is a Cloudinary public_id (starts with "watches/")
+                // Only delete if image is a storage public ID (starts with "watches/")
                 if (!string.IsNullOrEmpty(watch.Image) && watch.Image.StartsWith("watches/"))
                 {
                     var deleted = await _storageService.DeleteImageAsync(watch.Image);
@@ -148,7 +148,7 @@ public class WatchCacheService
                 }
             }
 
-            _logger.LogInformation("Deleted {ImagesDeleted} images from Cloudinary out of {TotalWatches} watches", 
+            _logger.LogInformation("Deleted {ImagesDeleted} images from storage out of {TotalWatches} watches", 
                 imagesDeleted, deletedCount);
 
             // Delete all price trends for these watches first (foreign key constraint)
@@ -443,4 +443,3 @@ public class WatchCacheService
 
     #endregion
 }
-

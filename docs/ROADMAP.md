@@ -51,7 +51,7 @@
 | AI Intent Classifier (POST /classify replaces 9 regex routing predicates; "unclear" falls back to regex) | Done | 14 |
 | Chat Concierge — Flexible Routing + Token-Optimized Search (SQL brand path, semantic router, descriptor blacklist fallback, 200-word limit, cursor fallback, explicit dispatcher messages) | Done | 14.5 |
 | Chat Concierge — Planner Chips + Classifier-First Follow-Ups (`/plan-actions`, backend validation, deterministic fallback) | Done | 14.6 |
-| Storage Abstraction + S3 + CloudFront Migration | Planned | 15 |
+| Storage Abstraction + S3 + CloudFront Migration | In Progress | 15 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | ? |
 
 ## Model Strategy
@@ -728,9 +728,9 @@ Extend `/trend` beyond Watch DNA into a live product-signals surface using the b
 - Reuse `UserBrowsingEvent` and related engagement data instead of introducing a parallel tracking system
 - Keep Watch DNA as the anchor, then layer product-trend sections around it
 
-### Phase 13: Storage Abstraction + S3 + CloudFront
+### Phase 15: Storage Abstraction + S3 + CloudFront
 
-Generic `IStorageService` interface with `CloudinaryStorageService` and `S3StorageService` implementations. Swappable via configuration. S3 bucket for image storage, CloudFront CDN for global delivery with 30-day edge caching.
+Generic `IStorageService` interface with `CloudinaryStorageService` and `S3StorageService` implementations. Backend image URLs now flow through the storage abstraction, frontend media URLs can switch with `NEXT_PUBLIC_STORAGE_PROVIDER`, and `POST /api/admin/migrate-to-s3` copies existing `watches/` public IDs to S3 without changing `Watch.Image`. Cloudinary remains the default provider until the S3 image copy, manual video upload, and CloudFront spot checks are complete.
 
 ### Phase 14: Kubernetes (Optional)
 

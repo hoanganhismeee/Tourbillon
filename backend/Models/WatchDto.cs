@@ -2,7 +2,7 @@ using backend.Services;
 namespace backend.Models;
 
 /// Data Transfer Object for Watch API responses
-/// Includes computed ImageUrl for complete Cloudinary URLs
+/// Includes computed ImageUrl from the active storage provider
 public class WatchDto
 {
     public int Id { get; set; }
