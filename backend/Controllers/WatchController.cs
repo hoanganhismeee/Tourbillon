@@ -17,12 +17,14 @@ public class WatchController : ControllerBase
     private readonly TourbillonContext _context;
     private readonly WatchFinderService _watchFinderService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IStorageService _storage;
 
-    public WatchController(TourbillonContext context, WatchFinderService watchFinderService, IHttpClientFactory httpClientFactory)
+    public WatchController(TourbillonContext context, WatchFinderService watchFinderService, IHttpClientFactory httpClientFactory, IStorageService storageService)
     {
         _context = context;
         _watchFinderService = watchFinderService;
         _httpClientFactory = httpClientFactory;
+        _storage = storageService;
     }
 
     [HttpPost("find")]
@@ -167,7 +169,7 @@ public class WatchController : ControllerBase
             if (watch != null) watches.Add(watch);
         }
 
-        var dtos = watches.Select(w => WatchDto.FromWatch(w, editorial: w.EditorialLink?.EditorialContent)).ToList();
+        var dtos = watches.Select(w => WatchDto.FromWatch(w, _storage, editorial: w.EditorialLink?.EditorialContent)).ToList();
         return Ok(dtos);
     }
 
@@ -177,7 +179,7 @@ public class WatchController : ControllerBase
         var watches = _context.Watches
             .Include(w => w.Brand).Include(w => w.Collection)
             .ToList();
-        var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
+        var watchDtos = watches.Select(w => WatchDto.FromWatch(w, _storage)).ToList();
         return Ok(watchDtos);
     }
 
@@ -193,7 +195,7 @@ public class WatchController : ControllerBase
 
         if (watch == null) return NotFound();
 
-        var watchDto = WatchDto.FromWatch(watch, editorial: watch.EditorialLink?.EditorialContent);
+        var watchDto = WatchDto.FromWatch(watch, _storage, editorial: watch.EditorialLink?.EditorialContent);
         return Ok(watchDto);
     }
 
@@ -208,7 +210,7 @@ public class WatchController : ControllerBase
 
         if (watch == null) return NotFound();
 
-        var watchDto = WatchDto.FromWatch(watch, editorial: watch.EditorialLink?.EditorialContent);
+        var watchDto = WatchDto.FromWatch(watch, _storage, editorial: watch.EditorialLink?.EditorialContent);
         return Ok(watchDto);
     }
 
@@ -222,7 +224,7 @@ public class WatchController : ControllerBase
         var watches = _context.Watches
             .Include(w => w.Brand).Include(w => w.Collection)
             .Where(w => w.CollectionId == collection.Id).ToList();
-        var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
+        var watchDtos = watches.Select(w => WatchDto.FromWatch(w, _storage)).ToList();
         return Ok(watchDtos);
     }
 
@@ -232,7 +234,7 @@ public class WatchController : ControllerBase
         var watches = _context.Watches
             .Include(w => w.Brand).Include(w => w.Collection)
             .Where(w => w.CollectionId == collectionId).ToList();
-        var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
+        var watchDtos = watches.Select(w => WatchDto.FromWatch(w, _storage)).ToList();
         return Ok(watchDtos);
     }
 
@@ -246,7 +248,7 @@ public class WatchController : ControllerBase
         var watches = _context.Watches
             .Include(w => w.Brand).Include(w => w.Collection)
             .Where(w => w.BrandId == brand.Id).ToList();
-        var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
+        var watchDtos = watches.Select(w => WatchDto.FromWatch(w, _storage)).ToList();
         return Ok(watchDtos);
     }
 
@@ -256,7 +258,7 @@ public class WatchController : ControllerBase
         var watches = _context.Watches
             .Include(w => w.Brand).Include(w => w.Collection)
             .Where(w => w.BrandId == brandId).ToList();
-        var watchDtos = watches.Select(w => WatchDto.FromWatch(w)).ToList();
+        var watchDtos = watches.Select(w => WatchDto.FromWatch(w, _storage)).ToList();
         return Ok(watchDtos);
     }
 

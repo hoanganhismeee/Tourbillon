@@ -141,6 +141,13 @@ builder.Services.AddSingleton<CurrencyConverter>();
 // Register Cloudinary service for image uploads
 builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 
+// Register the active storage provider (Cloudinary or S3) based on configuration
+var storageProvider = builder.Configuration["Storage:Provider"] ?? "Cloudinary";
+if (storageProvider.Equals("S3", StringComparison.OrdinalIgnoreCase))
+    builder.Services.AddSingleton<IStorageService, S3StorageService>();
+else
+    builder.Services.AddSingleton<IStorageService, CloudinaryStorageService>();
+
 // Register watch cache service for database operations
 builder.Services.AddScoped<WatchCacheService>();
 

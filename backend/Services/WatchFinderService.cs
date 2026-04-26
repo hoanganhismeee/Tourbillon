@@ -125,6 +125,7 @@ public class WatchFinderService : IWatchFinderService
     private readonly WatchFilterMapper _mapper;
     private readonly QueryCacheService _queryCache;
     private readonly ILogger<WatchFinderService> _logger;
+    private readonly IStorageService _storage;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -147,7 +148,8 @@ public class WatchFinderService : IWatchFinderService
         TourbillonContext context,
         WatchFilterMapper mapper,
         QueryCacheService queryCache,
-        ILogger<WatchFinderService> logger)
+        ILogger<WatchFinderService> logger,
+        IStorageService storageService)
     {
         _httpClientFactory = httpClientFactory;
         _deterministicSearch = deterministicSearch;
@@ -155,6 +157,7 @@ public class WatchFinderService : IWatchFinderService
         _mapper = mapper;
         _queryCache = queryCache;
         _logger = logger;
+        _storage = storageService;
     }
 
     /// Strips excluded brand IDs from inclusion lists and stores them for SQL NOT IN filtering.
@@ -384,8 +387,8 @@ public class WatchFinderService : IWatchFinderService
         // Returned as-is for Tier 2 (strong vector match) and as LLM-fail fallback.
         var result = new WatchFinderResult
         {
-            Watches = candidates.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList(),
-            OtherCandidates = candidates.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList(),
+            Watches = candidates.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
+            OtherCandidates = candidates.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
             MatchDetails = [],
             ParsedIntent = null,
             SearchPath = AppendWidenedSearchPath(
@@ -412,8 +415,8 @@ public class WatchFinderService : IWatchFinderService
                 .Select(x => x.Watch)
                 .ToList();
 
-            result.Watches = structuredOrdered.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList();
-            result.OtherCandidates = structuredOrdered.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList();
+            result.Watches = structuredOrdered.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList();
+            result.OtherCandidates = structuredOrdered.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList();
             result.SearchPath = AppendWidenedSearchPath("vector_structured_skip_rerank", widenedSearchKinds);
             return result;
         }
@@ -485,14 +488,14 @@ public class WatchFinderService : IWatchFinderService
 
                     var topMatchIds = new HashSet<int>(topMatches.Select(w => w.Id));
 
-                    result.Watches = topMatches.Select(w => WatchDto.FromWatch(w)).ToList();
+                    result.Watches = topMatches.Select(w => WatchDto.FromWatch(w, _storage)).ToList();
 
                     // Non-top reranked candidates (lower-scored first), then the vector-tail that was never reranked
                     result.OtherCandidates = rerankCandidates
                         .Where(w => !topMatchIds.Contains(w.Id))
                         .OrderByDescending(w => scoreMap.ContainsKey(w.Id) ? scoreMap[w.Id].Score : -1)
                         .Concat(unscoredCandidates)
-                        .Select(w => WatchDto.FromWatch(w))
+                        .Select(w => WatchDto.FromWatch(w, _storage))
                         .ToList();
 
                     result.MatchDetails = topMatches.ToDictionary(

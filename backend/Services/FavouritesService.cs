@@ -23,11 +23,12 @@ public interface IFavouritesService
 public class FavouritesService : IFavouritesService
 {
     private readonly TourbillonContext _context;
-    private const string CloudName = "dcd9lcdoj";
+    private readonly IStorageService _storage;
 
-    public FavouritesService(TourbillonContext context)
+    public FavouritesService(TourbillonContext context, IStorageService storage)
     {
         _context = context;
+        _storage = storage;
     }
 
     // Returns the full favourites state: all favourite watch IDs + all collection summaries.
@@ -190,7 +191,7 @@ public class FavouritesService : IFavouritesService
 
         return new FavouriteWatchesResponseDto
         {
-            Watches = paged.Select(w => WatchDto.FromWatch(w, CloudName)).ToList(),
+            Watches = paged.Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
             WatchCollectionMembership = membership,
             TotalCount = totalCount,
             Page = page,
