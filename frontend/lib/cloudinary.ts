@@ -79,6 +79,10 @@ export const getOptimizedImageUrl = (
     return publicId;
   }
 
+  if (STORAGE_PROVIDER === 's3') {
+    return getPlainStorageUrl(publicId);
+  }
+
   // Build transformation string
   const transformations: string[] = [];
   // Always prefer device pixel ratio and automatic quality/format for performance
@@ -118,7 +122,9 @@ export const imageTransformations = {
         format: 'auto'
       });
     } catch {
-      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
+      return STORAGE_PROVIDER === 's3'
+        ? getPlainStorageUrl(normalizedValue)
+        : `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
     }
   },
 
@@ -134,7 +140,9 @@ export const imageTransformations = {
         format: 'auto'
       });
     } catch {
-      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
+      return STORAGE_PROVIDER === 's3'
+        ? getPlainStorageUrl(normalizedValue)
+        : `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
     }
   },
 
@@ -150,7 +158,9 @@ export const imageTransformations = {
         format: 'auto'
       });
     } catch {
-      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
+      return STORAGE_PROVIDER === 's3'
+        ? getPlainStorageUrl(normalizedValue)
+        : `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
     }
   },
 
@@ -166,21 +176,27 @@ export const imageTransformations = {
         format: 'auto'
       });
     } catch {
-      return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
+      return STORAGE_PROVIDER === 's3'
+        ? getPlainStorageUrl(normalizedValue)
+        : `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
     }
   },
 
   // For brand logos
   logo: (value: string) => {
     const normalizedValue = normalizePublicId(value);
-    return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
+    return STORAGE_PROVIDER === 's3'
+      ? getPlainStorageUrl(normalizedValue)
+      : `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${normalizedValue}?v=${IMAGE_CACHE_VERSION}`;
   },
 };
 
 // Returns the Cloudinary URL for a video uploaded to the tourbillon/videos folder.
 // Usage: videoUrl('JLC') → https://res.cloudinary.com/.../tourbillon/videos/JLC.mp4
 export const videoUrl = (name: string) =>
-  `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/tourbillon/videos/${name}.mp4?v=${VIDEO_CACHE_VERSION}`;
+  STORAGE_PROVIDER === 's3'
+    ? `https://${CLOUDFRONT_DOMAIN}/tourbillon/videos/${name}.mp4?v=${VIDEO_CACHE_VERSION}`
+    : `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/tourbillon/videos/${name}.mp4?v=${VIDEO_CACHE_VERSION}`;
 
 // Upload function with unique_filename: false to allow overwriting
 export const uploadImage = async (

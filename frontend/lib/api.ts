@@ -742,6 +742,17 @@ export const adminMigrateImageUrls = async (dryRun = true): Promise<{ dryRun: bo
 export const adminCleanCloudinaryOrphans = async (dryRun = true): Promise<CloudinaryOrphansResult> =>
   fetchWithTimeout(`${API_BASE_URL}/admin/cloudinary-orphans?dryRun=${dryRun}`, { method: 'DELETE', credentials: 'include' }).then(r => r.json());
 
+export interface MigrateToS3Result {
+  total?: number;
+  success?: number;
+  errors?: string[];
+  message?: string;
+  jobId?: string;
+}
+
+export const adminMigrateToS3 = async (inline = false): Promise<MigrateToS3Result> =>
+  fetchWithTimeout(`${API_BASE_URL}/admin/migrate-to-s3?inline=${inline}`, { method: 'POST', credentials: 'include' }).then(r => r.json());
+
 export interface NormalizeImageNamesResult {
   dryRun: boolean;
   message: string;

@@ -1381,10 +1381,21 @@ public class AdminController : ControllerBase
     /// Safe to re-run — S3 PutObject is idempotent (overwrites).
     /// POST: api/admin/migrate-to-s3
     [HttpPost("migrate-to-s3")]
-    public IActionResult MigrateImagesToS3()
+    public async Task<IActionResult> MigrateImagesToS3([FromQuery] bool inline = false)
     {
+        if (inline)
+        {
+            var job = HttpContext.RequestServices.GetRequiredService<MigrateToS3Job>();
+            var result = await job.RunAsync();
+            return Ok(result);
+        }
+
         var jobId = BackgroundJob.Enqueue<MigrateToS3Job>(job => job.RunAsync());
-        return Ok(new { Message = "Migration job enqueued", JobId = jobId });
+        return Ok(new
+        {
+            Message = "Migration job enqueued. Use ?inline=true only for small catalogues when you need the immediate result payload.",
+            JobId = jobId
+        });
     }
 
     // Sanitizes a string for use as a Cloudinary public ID segment (collection/brand name).
