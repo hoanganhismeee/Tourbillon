@@ -77,8 +77,6 @@ public class S3StorageService : IStorageService, IDisposable
         var key = publicId.Contains('/') ? publicId
                   : (string.IsNullOrEmpty(folder) ? publicId : $"{folder}/{publicId}");
 
-        var contentType = GuessContentType(imageUrl);
-
         try
         {
             using var httpClient = _httpClientFactory.CreateClient();
@@ -93,6 +91,7 @@ public class S3StorageService : IStorageService, IDisposable
             }
 
             await using var imageStream = await response.Content.ReadAsStreamAsync();
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? GuessContentType(imageUrl);
 
             var request = new PutObjectRequest
             {

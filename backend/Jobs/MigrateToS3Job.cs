@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace backend.Jobs;
 
+public sealed record MigrateToS3Result(int Total, int Success, IReadOnlyList<string> Errors);
+
 /// One-time Hangfire job to copy all watch images from Cloudinary to S3.
 /// Images are downloaded from the current Cloudinary CDN URL and uploaded to S3 at the same key path.
 /// Watch.Image in the database is NOT modified — the same public ID works for both providers.
@@ -26,7 +28,7 @@ public class MigrateToS3Job
         _configuration = configuration;
     }
 
-    public async Task RunAsync()
+    public async Task<MigrateToS3Result> RunAsync()
     {
         var watches = await _context.Watches
             .Where(w => w.Image != null && w.Image.StartsWith("watches/"))
@@ -58,5 +60,7 @@ public class MigrateToS3Job
         _logger.LogInformation(
             "S3 migration complete: {Success}/{Total} succeeded, {Errors} errors",
             success, watches.Count, errors.Count);
+
+        return new MigrateToS3Result(watches.Count, success, errors);
     }
 }
