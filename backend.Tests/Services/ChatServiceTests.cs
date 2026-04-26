@@ -45,7 +45,9 @@ public class ChatServiceTests
             })
             .Build();
 
-    private static WatchDto ToDto(Watch watch) => WatchDto.FromWatch(watch);
+    private static readonly IStorageService TestStorage = new TestStorageService();
+
+    private static WatchDto ToDto(Watch watch) => WatchDto.FromWatch(watch, TestStorage);
 
     private sealed class FakeRedis : IRedisService
     {
@@ -169,7 +171,8 @@ public class ChatServiceTests
             watchFinderMock.Object,
             NullLogger<ChatService>.Instance,
             classifier ?? new FakeClassifier(),
-            planner ?? new ActionPlannerFake());
+            planner ?? new ActionPlannerFake(),
+            TestStorage);
     }
 
     // 0-card responses now show 3 "suggest"-type actions from the curated query bank.
