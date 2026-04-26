@@ -1,4 +1,5 @@
 using backend.Database;
+using backend.Jobs;
 using backend.Models;
 using backend.Services;
 using backend.Middleware;
@@ -147,6 +148,13 @@ if (storageProvider.Equals("S3", StringComparison.OrdinalIgnoreCase))
     builder.Services.AddSingleton<IStorageService, S3StorageService>();
 else
     builder.Services.AddSingleton<IStorageService, CloudinaryStorageService>();
+
+// Always register both concrete storage implementations for admin jobs (migration uses both simultaneously)
+builder.Services.AddSingleton<CloudinaryStorageService>();
+builder.Services.AddSingleton<S3StorageService>();
+
+// Register migration job as transient — Hangfire creates one instance per execution
+builder.Services.AddTransient<MigrateToS3Job>();
 
 // Register watch cache service for database operations
 builder.Services.AddScoped<WatchCacheService>();
