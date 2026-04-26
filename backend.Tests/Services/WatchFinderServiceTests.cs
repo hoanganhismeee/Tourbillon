@@ -13,6 +13,8 @@ namespace backend.Tests.Services;
 
 public class WatchFinderServiceTests
 {
+    private static readonly IStorageService TestStorage = new TestStorageService();
+
     private sealed class TestTourbillonContext : TourbillonContext
     {
         public TestTourbillonContext(DbContextOptions<TourbillonContext> options) : base(options) { }
@@ -39,11 +41,12 @@ public class WatchFinderServiceTests
         var httpFactory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
         return new WatchFinderService(
             httpFactory.Object,
-            new DeterministicWatchSearchService(context, NullLogger<DeterministicWatchSearchService>.Instance),
+            new DeterministicWatchSearchService(context, NullLogger<DeterministicWatchSearchService>.Instance, TestStorage),
             context,
             new WatchFilterMapper(),
             new QueryCacheService(context, NullLogger<QueryCacheService>.Instance),
-            NullLogger<WatchFinderService>.Instance);
+            NullLogger<WatchFinderService>.Instance,
+            TestStorage);
     }
 
     public sealed record FilterCase(

@@ -13,6 +13,7 @@ public class WatchFinderServiceLocalIntegrationTests
 {
     private const string LocalConnection =
         "Host=localhost;Port=5432;Database=tourbillon;Username=tourbillon;Password=31012005";
+    private static readonly IStorageService TestStorage = new TestStorageService();
 
     public static IEnumerable<object[]> DeterministicQueryCases()
     {
@@ -120,11 +121,12 @@ public class WatchFinderServiceLocalIntegrationTests
         var httpFactory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
         return new WatchFinderService(
             httpFactory.Object,
-            new DeterministicWatchSearchService(context, NullLogger<DeterministicWatchSearchService>.Instance),
+            new DeterministicWatchSearchService(context, NullLogger<DeterministicWatchSearchService>.Instance, TestStorage),
             context,
             new WatchFilterMapper(),
             new QueryCacheService(context, NullLogger<QueryCacheService>.Instance),
-            NullLogger<WatchFinderService>.Instance);
+            NullLogger<WatchFinderService>.Instance,
+            TestStorage);
     }
 
     [Theory]

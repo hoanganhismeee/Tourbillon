@@ -142,16 +142,16 @@ builder.Services.AddSingleton<CurrencyConverter>();
 // Register Cloudinary service for image uploads
 builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 
-// Register the active storage provider (Cloudinary or S3) based on configuration
-var storageProvider = builder.Configuration["Storage:Provider"] ?? "Cloudinary";
-if (storageProvider.Equals("S3", StringComparison.OrdinalIgnoreCase))
-    builder.Services.AddSingleton<IStorageService, S3StorageService>();
-else
-    builder.Services.AddSingleton<IStorageService, CloudinaryStorageService>();
-
 // Always register both concrete storage implementations for admin jobs (migration uses both simultaneously)
 builder.Services.AddSingleton<CloudinaryStorageService>();
 builder.Services.AddSingleton<S3StorageService>();
+
+// Register the active storage provider (Cloudinary or S3) based on configuration
+var storageProvider = builder.Configuration["Storage:Provider"] ?? "Cloudinary";
+if (storageProvider.Equals("S3", StringComparison.OrdinalIgnoreCase))
+    builder.Services.AddSingleton<IStorageService>(sp => sp.GetRequiredService<S3StorageService>());
+else
+    builder.Services.AddSingleton<IStorageService>(sp => sp.GetRequiredService<CloudinaryStorageService>());
 
 // Register migration job as transient — Hangfire creates one instance per execution
 builder.Services.AddTransient<MigrateToS3Job>();
