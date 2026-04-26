@@ -10,21 +10,20 @@ namespace backend.Jobs;
 public class MigrateToS3Job
 {
     private readonly TourbillonContext _context;
-    private readonly CloudinaryStorageService _cloudinary;
     private readonly S3StorageService _s3;
     private readonly ILogger<MigrateToS3Job> _logger;
-    private const string CloudName = "dcd9lcdoj";
+    private readonly IConfiguration _configuration;
 
     public MigrateToS3Job(
         TourbillonContext context,
-        CloudinaryStorageService cloudinary,
         S3StorageService s3,
-        ILogger<MigrateToS3Job> logger)
+        ILogger<MigrateToS3Job> logger,
+        IConfiguration configuration)
     {
-        _context   = context;
-        _cloudinary = cloudinary;
-        _s3        = s3;
-        _logger    = logger;
+        _context       = context;
+        _s3            = s3;
+        _logger        = logger;
+        _configuration = configuration;
     }
 
     public async Task RunAsync()
@@ -36,11 +35,13 @@ public class MigrateToS3Job
         int success = 0;
         var errors  = new List<string>();
 
+        var cloudName = _configuration["Cloudinary:CloudName"] ?? "dcd9lcdoj";
+
         foreach (var watch in watches)
         {
             try
             {
-                var cloudinaryUrl = $"https://res.cloudinary.com/{CloudName}/image/upload/{watch.Image}";
+                var cloudinaryUrl = $"https://res.cloudinary.com/{cloudName}/image/upload/{watch.Image}";
                 var result = await _s3.UploadImageFromUrlAsync(cloudinaryUrl, watch.Image!);
                 if (!string.IsNullOrEmpty(result))
                     success++;

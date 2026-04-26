@@ -4,6 +4,8 @@
 
 const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dcd9lcdoj';
 const CLOUDINARY_UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+const STORAGE_PROVIDER = (process.env.NEXT_PUBLIC_STORAGE_PROVIDER || 'cloudinary').toLowerCase();
+const CLOUDFRONT_DOMAIN = process.env.NEXT_PUBLIC_CLOUDFRONT_DOMAIN || '';
 
 // Bump this whenever images are replaced in Cloudinary to force CDN cache invalidation.
 // The version is appended as a query param (?v=N), which creates a new CDN cache key.
@@ -12,6 +14,16 @@ const VIDEO_CACHE_VERSION = 2;
 
 // Test function to verify Cloudinary connection
 export const testCloudinaryConnection = () => {
+  if (STORAGE_PROVIDER === 's3') {
+    if (!CLOUDFRONT_DOMAIN) {
+      console.error('S3 storage is selected but NEXT_PUBLIC_CLOUDFRONT_DOMAIN is missing');
+      return false;
+    }
+
+    console.log('S3 storage configured with CloudFront domain:', CLOUDFRONT_DOMAIN);
+    return true;
+  }
+
   if (!CLOUDINARY_CLOUD_NAME) {
     console.error('❌ Cloudinary not configured: NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME is missing');
     return false;
@@ -30,6 +42,11 @@ const normalizePublicId = (value: string): string => {
 
 // Quick URL detector
 const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value);
+
+const getPlainStorageUrl = (publicId: string): string => {
+  if (isHttpUrl(publicId)) return publicId;
+  return `https://${CLOUDFRONT_DOMAIN}/${publicId}?v=${IMAGE_CACHE_VERSION}`;
+};
 
 // Check if URL is from a luxury watch brand (known to have CDN issues)
 const isWatchBrandUrl = (url: string): boolean => {

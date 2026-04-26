@@ -162,10 +162,13 @@ public class ChatServiceRecommendationTests
             watchFinderMock.Object,
             NullLogger<ChatService>.Instance,
             classifier ?? new FakeClassifier(),
-            planner ?? new ActionPlannerFake());
+            planner ?? new ActionPlannerFake(),
+            TestStorage);
     }
 
-    private static WatchDto ToDto(Watch watch) => WatchDto.FromWatch(watch);
+    private static readonly IStorageService TestStorage = new TestStorageService();
+
+    private static WatchDto ToDto(Watch watch) => WatchDto.FromWatch(watch, TestStorage);
 
     [Fact]
     public async Task HandleMessageAsync_BroadRecommendation_ShowsUpToTenMatchedProductsByDefault()
