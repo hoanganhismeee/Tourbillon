@@ -2,14 +2,14 @@
 
 > **Status: Deferred.** This feature has not been implemented. No backend models (PriceAlert, MarketInsight), controllers (TrendController), or services (PriceHistoryService, PriceAlertService) exist in the codebase.
 >
-> The active Phase 11 in ROADMAP.md is Storage Abstraction + S3 + CloudFront Migration.
+> The active storage work in ROADMAP.md is Phase 15: Storage Abstraction + S3 + CloudFront Migration.
 > This spec is kept for reference if Trend Intelligence is revisited.
 
 ## Context
 
 The `/trend` route exists but is a placeholder stub. Phase 11 transforms it into a data-driven intelligence hub combining four features: real-time popularity analytics, price history charting (model already exists), AI-generated market insights, and a price alert subscription system. All four features reuse existing infrastructure (Hangfire, Redis, EmailService, Claude API) — no new external services required.
 
-Phase 11 replaces the trend stub while pushing the original Phase 11 (S3/CloudFront) to Phase 12 and Kubernetes to Phase 13.
+Phase 11 replaces the trend stub. The storage migration has since moved to Phase 15 and Kubernetes remains a later optional infrastructure phase.
 
 ---
 
@@ -191,7 +191,7 @@ public class PriceTrend {
 | Popularity data | `UserFavourites` DbSet |
 | Price history storage | `PriceTrends` DbSet + `PriceTrend` model |
 | Auth-gated UI | Pattern from `FavouriteToggle.tsx` |
-| Watch DTO | `WatchDto.FromWatch(w, CloudName)` |
+| Watch DTO | `WatchDto.FromWatch(w, IStorageService)` |
 
 ---
 

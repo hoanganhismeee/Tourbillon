@@ -22,7 +22,7 @@ Tourbillon is a full-stack e-commerce platform for luxury watches, built with a 
 | **Backend** | ASP.NET Core Web API (.NET 8), Entity Framework Core |
 | **Database** | PostgreSQL (Npgsql) |
 | **AI** | Claude Haiku 4.5 (production) / Qwen 2.5 7B via Ollama (local) |
-| **Images** | Cloudinary |
+| **Images** | Storage abstraction with Cloudinary or S3, delivered through CloudFront |
 | **Auth** | ASP.NET Identity, HttpOnly cookies, role-based access |
 | **Infrastructure** | Docker, EC2, RDS, S3 + CloudFront, Vercel |
 
