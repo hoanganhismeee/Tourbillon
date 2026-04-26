@@ -14,13 +14,16 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
 {
     private readonly TourbillonContext _context;
     private readonly ILogger<DeterministicWatchSearchService> _logger;
+    private readonly IStorageService _storage;
 
     public DeterministicWatchSearchService(
         TourbillonContext context,
-        ILogger<DeterministicWatchSearchService> logger)
+        ILogger<DeterministicWatchSearchService> logger,
+        IStorageService storageService)
     {
         _context = context;
         _logger = logger;
+        _storage = storageService;
     }
 
     public async Task<WatchFinderResult?> TryDirectSqlSearchAsync(string query, QueryIntent? intent, string searchPath)
@@ -289,10 +292,10 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
         return BuildResult(ranked, intent, searchPath);
     }
 
-    private static WatchFinderResult BuildResult(List<Watch> ranked, QueryIntent? intent, string searchPath) => new()
+    private WatchFinderResult BuildResult(List<Watch> ranked, QueryIntent? intent, string searchPath) => new()
     {
-        Watches = ranked.Take(WatchFinderService.TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList(),
-        OtherCandidates = ranked.Skip(WatchFinderService.TopMatchLimit).Select(w => WatchDto.FromWatch(w)).ToList(),
+        Watches = ranked.Take(WatchFinderService.TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
+        OtherCandidates = ranked.Skip(WatchFinderService.TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
         MatchDetails = [],
         ParsedIntent = null,
         QueryIntent = intent,

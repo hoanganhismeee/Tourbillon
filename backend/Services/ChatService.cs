@@ -86,6 +86,7 @@ public class ChatService
     private readonly ILogger<ChatService> _logger;
     private readonly IIntentClassifier _classifier;
     private readonly IActionPlanner _planner;
+    private readonly IStorageService _storage;
 
     // Set by ResolveWatchScopedAsync once /classify returns. Read by follow-up
     // routing branches that now trust the classifier instead of semantic regexes.
@@ -94,7 +95,6 @@ public class ChatService
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(1);
-    private const string CloudName = "dcd9lcdoj";
     private const int DiscoveryCardLimit = 10;
 
     // Lazy-loaded catalogue roster — built once and reused for the service lifetime.
@@ -294,7 +294,8 @@ public class ChatService
         IWatchFinderService watchFinderService,
         ILogger<ChatService> logger,
         IIntentClassifier classifier,
-        IActionPlanner planner)
+        IActionPlanner planner,
+        IStorageService storageService)
     {
         _httpClientFactory = httpClientFactory;
         _context = context;
@@ -304,6 +305,7 @@ public class ChatService
         _logger = logger;
         _classifier = classifier;
         _planner = planner;
+        _storage = storageService;
     }
 
     private async Task<List<ChatMessage>> GetSessionHistoryAsync(string sessionId)
@@ -1299,7 +1301,7 @@ public class ChatService
             query,
             new WatchFinderResult
             {
-                Watches = selectedWatches.Select(watch => WatchDto.FromWatch(watch)).ToList(),
+                Watches = selectedWatches.Select(watch => WatchDto.FromWatch(watch, _storage)).ToList(),
                 SearchPath = "session_shortlist"
             },
             excludedBrandIds,
@@ -1494,7 +1496,7 @@ public class ChatService
                     {
                         var sqlResult = new WatchFinderResult
                         {
-                            Watches = sqlWatches.Select(w => WatchDto.FromWatch(w)).ToList(),
+                            Watches = sqlWatches.Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
                             SearchPath = "direct_sql_brand"
                         };
                         var sqlR = await BuildDiscoveryResolutionAsync(
@@ -4894,14 +4896,14 @@ public class ChatService
     private static string FormatPrice(decimal price) =>
         price == 0 ? "Price on Request" : $"${price:N0}";
 
-    private static ChatWatchCard ToChatWatchCard(Watch watch) => new()
+    private ChatWatchCard ToChatWatchCard(Watch watch) => new()
     {
         Id = watch.Id,
         Name = watch.Name,
         Slug = watch.Slug,
         Description = watch.Description,
         Image = watch.Image,
-        ImageUrl = watch.GetImageUrl(CloudName),
+        ImageUrl = _storage.GetPublicUrl(watch.Image, watch.ImageVersion),
         CurrentPrice = watch.CurrentPrice,
         BrandId = watch.BrandId,
         BrandName = watch.Brand?.Name,

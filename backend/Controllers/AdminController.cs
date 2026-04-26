@@ -760,6 +760,7 @@ public class AdminController : ControllerBase
         try
         {
             var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+            var storage = HttpContext.RequestServices.GetRequiredService<IStorageService>();
             var watches = (await context.Watches
                 .OrderBy(w => w.Id)
                 .ToListAsync())
@@ -769,7 +770,7 @@ public class AdminController : ControllerBase
                     w.Name,
                     w.CurrentPrice,
                     w.Image,
-                    ImageUrl = w.GetImageUrl(),
+                    ImageUrl = storage.GetPublicUrl(w.Image, w.ImageVersion),
                     w.BrandId,
                     w.CollectionId
                 })
@@ -792,6 +793,7 @@ public class AdminController : ControllerBase
         try
         {
             var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+            var storage = HttpContext.RequestServices.GetRequiredService<IStorageService>();
             var watch = await context.Watches
                 .Include(w => w.EditorialLink)
                     .ThenInclude(l => l!.EditorialContent)
@@ -799,7 +801,7 @@ public class AdminController : ControllerBase
 
             if (watch == null) return NotFound(new { Message = "Watch not found" });
 
-            var dto = WatchDto.FromWatch(watch, editorial: watch.EditorialLink?.EditorialContent);
+            var dto = WatchDto.FromWatch(watch, storage, editorial: watch.EditorialLink?.EditorialContent);
             return Ok(dto);
         }
         catch (Exception ex)
@@ -948,7 +950,7 @@ public class AdminController : ControllerBase
                 return BadRequest(new { Message = "Only PNG, JPG, and WEBP files are allowed" });
 
             var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
-            var cloudinaryService = HttpContext.RequestServices.GetRequiredService<ICloudinaryService>();
+            var storageService = HttpContext.RequestServices.GetRequiredService<IStorageService>();
 
             var watch = await context.Watches
                 .Include(w => w.Brand)
@@ -967,14 +969,14 @@ public class AdminController : ControllerBase
                 && !watch.Image.Equals(canonical, StringComparison.OrdinalIgnoreCase);
 
             using var stream = file.OpenReadStream();
-            var (publicId, version) = await cloudinaryService.UploadImageAsync(stream, $"{canonical.Substring("watches/".Length)}{ext}");
+            var (publicId, version) = await storageService.UploadImageAsync(stream, $"{canonical.Substring("watches/".Length)}{ext}");
 
             if (string.IsNullOrEmpty(publicId))
-                return StatusCode(500, new { Message = "Failed to upload image to Cloudinary" });
+                return StatusCode(500, new { Message = "Failed to upload image to storage" });
 
             // Delete orphaned asset if we just corrected a bad public ID
             if (currentIsOrphan)
-                await cloudinaryService.DeleteImageAsync(watch.Image!);
+                await storageService.DeleteImageAsync(watch.Image!);
 
             // Persist canonical ID + version — all API responses now serve the new versioned URL
             watch.Image = canonical;
@@ -1007,13 +1009,13 @@ public class AdminController : ControllerBase
             if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp")
                 return BadRequest(new { Message = "Only PNG, JPG, and WEBP files are allowed" });
 
-            var cloudinaryService = HttpContext.RequestServices.GetRequiredService<ICloudinaryService>();
+            var storageService = HttpContext.RequestServices.GetRequiredService<IStorageService>();
             using var stream = file.OpenReadStream();
             string filenameToUse = !string.IsNullOrEmpty(slug) ? $"{slug}{ext}" : file.FileName;
-            var (publicId, version) = await cloudinaryService.UploadImageAsync(stream, filenameToUse);
+            var (publicId, version) = await storageService.UploadImageAsync(stream, filenameToUse);
 
             if (string.IsNullOrEmpty(publicId))
-                return StatusCode(500, new { Message = "Failed to upload image to Cloudinary" });
+                return StatusCode(500, new { Message = "Failed to upload image to storage" });
 
             return Ok(new { Success = true, PublicId = publicId, Version = version });
         }
@@ -1120,11 +1122,11 @@ public class AdminController : ControllerBase
     {
         try
         {
-            var cloudinaryService = HttpContext.RequestServices.GetRequiredService<ICloudinaryService>();
+            var storageService = HttpContext.RequestServices.GetRequiredService<IStorageService>();
             var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
 
-            // Fetch all asset public IDs in the watches folder from Cloudinary
-            var cloudinaryAssets = await cloudinaryService.ListAssetsByPrefixAsync("watches/");
+            // Fetch all asset public IDs in the watches folder from storage
+            var cloudinaryAssets = await storageService.ListAssetsByPrefixAsync("watches/");
 
             // Fetch all Watch.Image values that use the watches/ prefix
             var dbImages = (await context.Watches
@@ -1133,7 +1135,7 @@ public class AdminController : ControllerBase
                 .ToListAsync())
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            // Orphans: exist in Cloudinary but not referenced by any watch
+            // Orphans: exist in storage but not referenced by any watch
             var orphans = cloudinaryAssets.Where(id => !dbImages.Contains(id)).ToList();
 
             int deleted = 0;
@@ -1141,10 +1143,10 @@ public class AdminController : ControllerBase
             {
                 foreach (var orphan in orphans)
                 {
-                    if (await cloudinaryService.DeleteImageAsync(orphan))
+                    if (await storageService.DeleteImageAsync(orphan))
                         deleted++;
                 }
-                _logger.LogInformation("Deleted {Count}/{Total} orphaned Cloudinary assets", deleted, orphans.Count);
+                _logger.LogInformation("Deleted {Count}/{Total} orphaned storage assets", deleted, orphans.Count);
             }
 
             return Ok(new
