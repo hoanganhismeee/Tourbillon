@@ -17,17 +17,17 @@ public class BrandScraperService : IDisposable
 {
     private readonly ILogger<BrandScraperService> _logger;
     private readonly CurrencyConverter _currencyConverter;
-    private readonly ICloudinaryService _cloudinaryService;
+    private readonly IStorageService _storageService;
     private readonly Dictionary<string, BrandScraperConfig> _brandConfigs;
 
     public BrandScraperService(
         ILogger<BrandScraperService> logger,
         CurrencyConverter currencyConverter,
-        ICloudinaryService cloudinaryService)
+        IStorageService storageService)
     {
         _logger = logger;
         _currencyConverter = currencyConverter;
-        _cloudinaryService = cloudinaryService;
+        _storageService = storageService;
         _brandConfigs = new Dictionary<string, BrandScraperConfig>();
 
         // Load brand configurations from JSON file
@@ -1628,7 +1628,7 @@ public class BrandScraperService : IDisposable
             var publicId = $"{sanitizedBrand}_{sanitizedRef}";
 
             // Upload to Cloudinary (method name is DownloadImageLocallyAsync for backward compatibility)
-            var cloudinaryPublicId = await _cloudinaryService.UploadImageFromUrlAsync(imageUrl, publicId, "watches");
+            var cloudinaryPublicId = await _storageService.UploadImageFromUrlAsync(imageUrl, publicId, "watches");
 
             if (!string.IsNullOrEmpty(cloudinaryPublicId))
             {

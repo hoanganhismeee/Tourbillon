@@ -8,25 +8,27 @@ namespace backend.Services;
 /// IStorageService implementation backed by AWS S3 + CloudFront CDN.
 /// Credentials and bucket details are read from AWS:* configuration keys (user-secrets in dev).
 /// Object keys follow the pattern "folder/publicId" — no file extensions stored.
-public class S3StorageService : IStorageService
+public class S3StorageService : IStorageService, IDisposable
 {
     private readonly IAmazonS3 _s3Client;
     private readonly ILogger<S3StorageService> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _bucketName;
     private readonly string _cloudFrontDomain;
 
     // Cache-buster suffix appended when no explicit version is supplied
     private const int _globalVersion = 2;
 
-    public S3StorageService(IConfiguration configuration, ILogger<S3StorageService> logger)
+    public S3StorageService(IConfiguration configuration, ILogger<S3StorageService> logger, IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
 
-        var accessKeyId     = configuration["AWS:AccessKeyId"]     ?? "";
-        var secretAccessKey = configuration["AWS:SecretAccessKey"] ?? "";
-        var region          = configuration["AWS:Region"]          ?? "ap-southeast-2";
-        _bucketName         = configuration["AWS:BucketName"]      ?? "";
-        _cloudFrontDomain   = configuration["AWS:CloudFrontDomain"] ?? "";
+        var accessKeyId     = configuration["AWS:AccessKeyId"]      ?? throw new InvalidOperationException("AWS:AccessKeyId is not configured.");
+        var secretAccessKey = configuration["AWS:SecretAccessKey"]  ?? throw new InvalidOperationException("AWS:SecretAccessKey is not configured.");
+        var region          = configuration["AWS:Region"]           ?? "ap-southeast-2";
+        _bucketName         = configuration["AWS:BucketName"]       ?? throw new InvalidOperationException("AWS:BucketName is not configured.");
+        _cloudFrontDomain   = configuration["AWS:CloudFrontDomain"] ?? throw new InvalidOperationException("AWS:CloudFrontDomain is not configured.");
 
         var credentials = new BasicAWSCredentials(accessKeyId, secretAccessKey);
         var s3Config    = new AmazonS3Config
@@ -79,7 +81,8 @@ public class S3StorageService : IStorageService
 
         try
         {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(30);
             httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
 
             var response = await httpClient.GetAsync(imageUrl);
@@ -148,7 +151,7 @@ public class S3StorageService : IStorageService
 
             var response = await _s3Client.ListObjectsV2Async(request);
             keys.AddRange(response.S3Objects.Select(o => o.Key));
-            continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
+            continuationToken = response.IsTruncated == true ? response.NextContinuationToken : null;
         }
         while (continuationToken != null);
 
@@ -156,12 +159,12 @@ public class S3StorageService : IStorageService
         return keys;
     }
 
-    /// Copies fromPublicId to toPublicId then deletes the original. Returns true on success.
+    /// Copies fromPublicId to toPublicId then deletes the original.
+    /// Returns true if copy succeeded (even if delete fails); false only when copy itself fails.
     public async Task<bool> RenameAssetAsync(string fromPublicId, string toPublicId)
     {
         try
         {
-            // Copy to new key
             await _s3Client.CopyObjectAsync(new CopyObjectRequest
             {
                 SourceBucket      = _bucketName,
@@ -169,22 +172,29 @@ public class S3StorageService : IStorageService
                 DestinationBucket = _bucketName,
                 DestinationKey    = toPublicId
             });
+            _logger.LogInformation("Copied S3 object {From} → {To}", fromPublicId, toPublicId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to copy S3 object {From} → {To}", fromPublicId, toPublicId);
+            return false;
+        }
 
-            // Remove old key
+        try
+        {
             await _s3Client.DeleteObjectAsync(new DeleteObjectRequest
             {
                 BucketName = _bucketName,
                 Key        = fromPublicId
             });
-
-            _logger.LogInformation("Renamed S3 object {From} to {To}", fromPublicId, toPublicId);
-            return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error renaming S3 object {From} to {To}", fromPublicId, toPublicId);
-            return false;
+            // Copy succeeded — rename is logically complete. Log and return true; manual cleanup needed.
+            _logger.LogError(ex, "Copied {From} to {To} but failed to delete source", fromPublicId, toPublicId);
         }
+
+        return true;
     }
 
     /// Builds a CloudFront URL from a stored public ID.
@@ -204,6 +214,8 @@ public class S3StorageService : IStorageService
             ? $"{url}?v={version}"
             : $"{url}?v={_globalVersion}";
     }
+
+    public void Dispose() => _s3Client.Dispose();
 
     // Maps common image extensions to MIME types for S3 Content-Type headers
     private static string GuessContentType(string filename)

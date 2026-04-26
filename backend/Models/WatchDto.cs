@@ -1,3 +1,4 @@
+using backend.Services;
 namespace backend.Models;
 
 /// Data Transfer Object for Watch API responses
@@ -23,7 +24,7 @@ public class WatchDto
 
     /// Factory method to create DTO from Watch entity.
     /// Pass editorial when returning a single watch detail — omit for list endpoints.
-    public static WatchDto FromWatch(Watch watch, string cloudName = "dcd9lcdoj", WatchEditorialContent? editorial = null)
+    public static WatchDto FromWatch(Watch watch, IStorageService storage, WatchEditorialContent? editorial = null)
     {
         return new WatchDto
         {
@@ -32,7 +33,7 @@ public class WatchDto
             Slug = watch.Slug,
             Description = watch.Description,
             Image = watch.Image,
-            ImageUrl = watch.GetImageUrl(cloudName),
+            ImageUrl = storage.GetPublicUrl(watch.Image, watch.ImageVersion),
             ImageVersion = watch.ImageVersion,
             CurrentPrice = watch.CurrentPrice,
             BrandId = watch.BrandId,
