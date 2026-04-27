@@ -59,6 +59,8 @@ services:
       AiService__BaseUrl: http://ai-service:5000
       Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
       Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
+      AWS__AccessKeyId: ${AWS_ACCESS_KEY_ID:-}
+      AWS__SecretAccessKey: ${AWS_SECRET_ACCESS_KEY:-}
     volumes:
       - backend-images:/app/Images
     healthcheck:
