@@ -6,12 +6,12 @@ import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
+import { videoUrl } from '@/lib/cloudinary';
 
 gsap.registerPlugin(ScrollTrigger);
 
 const HERO_VIDEO_SOURCES = [
-  '/tourbillon.mp4',
-  'https://res.cloudinary.com/dcd9lcdoj/video/upload/tourbillon/videos/tourbillon.mp4',
+  videoUrl('tourbillon'),
 ];
 
 export default function VideoSection() {
