@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchBrands, fetchCollections } from '@/lib/api';
 import BrandNavPanel from '../components/layout/BrandNavPanel';
 import AllWatchesSection from './AllWatchesSection';
+import ScrollFade from '../scrollMotion/ScrollFade';
 
 const WatchesPage = () => {
   const router = useRouter();
@@ -108,13 +109,15 @@ const WatchesPage = () => {
 
       {/* Left: brand/collection tree */}
       <div className="pl-6 lg:pl-10 shrink-0">
-        <BrandNavPanel
-          selectedBrandIds={selectedBrandIds}
-          selectedCollectionIds={selectedCollectionIds}
-          onBrandToggle={handleBrandToggle}
-          onCollectionToggle={handleCollectionToggle}
-          onClearAll={handleClearAll}
-        />
+        <ScrollFade>
+          <BrandNavPanel
+            selectedBrandIds={selectedBrandIds}
+            selectedCollectionIds={selectedCollectionIds}
+            onBrandToggle={handleBrandToggle}
+            onCollectionToggle={handleCollectionToggle}
+            onClearAll={handleClearAll}
+          />
+        </ScrollFade>
       </div>
 
       {/* Right: watch grid */}

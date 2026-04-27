@@ -12,6 +12,7 @@ import { imageTransformations } from '@/lib/cloudinary';
 import { parseStructuredSpecs, getAllLabelsForSection } from '@/lib/specs';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
+import ScrollFade from '../scrollMotion/ScrollFade';
 
 const sectionKeys = ['case', 'dial', 'movement', 'strap'] as const;
 const sectionTitles: Record<string, string> = { case: 'Case', dial: 'Dial', movement: 'Movement', strap: 'Strap' };
@@ -170,15 +171,17 @@ const ComparePage = () => {
       </div>
 
       {/* Page title + Clear all */}
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-4xl font-playfair font-bold text-[#f0e6d2]">Compare Watches</h1>
-        <button
-          onClick={() => { clearCompare(); router.push('/watches'); }}
-          className="text-base text-white/40 hover:text-white/70 transition-colors font-inter"
-        >
-          Clear all
-        </button>
-      </div>
+      <ScrollFade>
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-4xl font-playfair font-bold text-[#f0e6d2]">Compare Watches</h1>
+          <button
+            onClick={() => { clearCompare(); router.push('/watches'); }}
+            className="text-base text-white/40 hover:text-white/70 transition-colors font-inter"
+          >
+            Clear all
+          </button>
+        </div>
+      </ScrollFade>
 
       {/* Watch header cards — same grid as spec table so columns align */}
       <div className="pb-6">
@@ -207,7 +210,8 @@ const ComparePage = () => {
             const collectionName = rawCollection ? slugToTitle(rawCollection) : null;
 
             return (
-              <div key={watch.id} className="relative bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-5 text-center group flex flex-col">
+              <ScrollFade key={watch.id}>
+              <div className="relative bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-5 text-center group flex flex-col">
                 {/* Remove button */}
                 <button
                   onClick={() => removeFromCompare(watch.id)}
@@ -273,6 +277,7 @@ const ComparePage = () => {
                   {watch.currentPrice === 0 ? 'Price on Request' : `$${watch.currentPrice.toLocaleString()}`}
                 </p>
               </div>
+              </ScrollFade>
             );
           })}
         </div>
@@ -335,36 +340,38 @@ const ComparePage = () => {
           if (filteredRows.length === 0) return null;
 
           return (
-            <div key={section.key}>
-              <h2 className="text-[13px] font-semibold uppercase tracking-[0.35em] text-[#bfa68a] mb-3 font-inter">
-                {section.title}
-              </h2>
-              <div className="border border-white/8 rounded-xl overflow-hidden">
-                {filteredRows.map((row, rowIdx) => (
-                  <div
-                    key={row.label}
-                    className={`grid items-stretch ${rowIdx > 0 ? 'border-t border-white/5' : ''}`}
-                    style={{ gridTemplateColumns: colTemplate }}
-                  >
-                    <div className="px-4 py-3 text-sm text-white/40 font-inter flex items-center bg-white/[0.02]">
-                      {row.label}
-                    </div>
-                    {row.values.map((value, colIdx) => (
-                      <div
-                        key={colIdx}
-                        className={`px-4 py-3 text-sm font-inter font-medium flex items-center border-l ${
-                          row.isDifferent
-                            ? 'text-white/90 border-l-[#f0e6d2]/25 bg-[#f0e6d2]/[0.03]'
-                            : 'text-white/50 border-l-white/5'
-                        }`}
-                      >
-                        {value || <span className="text-white/15 italic">N/A</span>}
+            <ScrollFade key={section.key}>
+              <div>
+                <h2 className="text-[13px] font-semibold uppercase tracking-[0.35em] text-[#bfa68a] mb-3 font-inter">
+                  {section.title}
+                </h2>
+                <div className="border border-white/8 rounded-xl overflow-hidden">
+                  {filteredRows.map((row, rowIdx) => (
+                    <div
+                      key={row.label}
+                      className={`grid items-stretch ${rowIdx > 0 ? 'border-t border-white/5' : ''}`}
+                      style={{ gridTemplateColumns: colTemplate }}
+                    >
+                      <div className="px-4 py-3 text-sm text-white/40 font-inter flex items-center bg-white/[0.02]">
+                        {row.label}
                       </div>
-                    ))}
-                  </div>
-                ))}
+                      {row.values.map((value, colIdx) => (
+                        <div
+                          key={colIdx}
+                          className={`px-4 py-3 text-sm font-inter font-medium flex items-center border-l ${
+                            row.isDifferent
+                              ? 'text-white/90 border-l-[#f0e6d2]/25 bg-[#f0e6d2]/[0.03]'
+                              : 'text-white/50 border-l-white/5'
+                          }`}
+                        >
+                          {value || <span className="text-white/15 italic">N/A</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            </ScrollFade>
           );
         })}
       </div>

@@ -21,6 +21,7 @@ import {
 import { trackEvent } from '@/lib/behaviorTracker';
 import { calculateFitScores } from '@/lib/wristfit';
 import WatchCard from '@/app/watches/[slug]/WatchCard';
+import ScrollFade from '@/app/scrollMotion/ScrollFade';
 import {
   WatchFilters,
   EMPTY_WATCH_FILTERS,
@@ -471,6 +472,7 @@ export default function SmartSearchClient() {
     <div className="px-8 lg:px-16 py-8 pt-28 pb-28 text-white">
 
       {/* ── Header ── */}
+      <ScrollFade>
       <div className="mb-6">
         <button
           onClick={() => router.back()}
@@ -507,6 +509,7 @@ export default function SmartSearchClient() {
           </p>
         )}
       </div>
+      </ScrollFade>
 
       {/* ── Jump To: result-based brands/collections when AI loads, keyword-based during loading ── */}
       {(() => {
@@ -514,6 +517,7 @@ export default function SmartSearchClient() {
         const jumpCollections = result ? resultCollections  : kwCollections;
         if (jumpBrands.length === 0 && jumpCollections.length === 0) return null;
         return (
+          <ScrollFade>
           <div className="flex items-center gap-2 flex-wrap mb-5">
             <span className="text-xs font-inter text-white/30 uppercase tracking-widest mr-1 flex-shrink-0">
               Jump to
@@ -537,21 +541,24 @@ export default function SmartSearchClient() {
               </a>
             ))}
           </div>
+          </ScrollFade>
         );
       })()}
 
       {/* ── Filter Bar ── */}
-      <WatchFilterBar
-        filters={filters}
-        brands={brands}
-        collections={collections}
-        diameterOptions={diameterOptions}
-        wristFit={wristFit}
-        hasActiveFilters={hasActiveFilters}
-        onChange={setFilter}
-        onWristFitChange={setWristFit}
-        onClear={clearFilters}
-      />
+      <ScrollFade>
+        <WatchFilterBar
+          filters={filters}
+          brands={brands}
+          collections={collections}
+          diameterOptions={diameterOptions}
+          wristFit={wristFit}
+          hasActiveFilters={hasActiveFilters}
+          onChange={setFilter}
+          onWristFitChange={setWristFit}
+          onClear={clearFilters}
+        />
+      </ScrollFade>
 
       {/* ── Page tabs ── */}
       {status === 'success' && result && totalPages > 1 && (
@@ -611,12 +618,13 @@ export default function SmartSearchClient() {
           {currentGrid.length > 0 ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
               {currentGrid.map(w => (
-                <WatchCard
-                  key={w.id}
-                  watch={w}
-                  brandName={brands.find(b => b.id === w.brandId)?.name}
-                  hrefSuffix={wristFit ? `?wristFit=${encodeURIComponent(wristFit)}` : ''}
-                />
+                <ScrollFade key={w.id}>
+                  <WatchCard
+                    watch={w}
+                    brandName={brands.find(b => b.id === w.brandId)?.name}
+                    hrefSuffix={wristFit ? `?wristFit=${encodeURIComponent(wristFit)}` : ''}
+                  />
+                </ScrollFade>
               ))}
             </div>
           ) : (

@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { generateTasteProfile, saveTasteProfile } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { DYNAMIC_ROUTES } from '@/app/constants/routes';
+import ScrollFade from '@/app/scrollMotion/ScrollFade';
 
 export default function TrendWatchDnaStudio() {
   const { isAuthenticated } = useAuth();
@@ -59,6 +60,7 @@ export default function TrendWatchDnaStudio() {
 
   return (
     <section className="border-t border-[#bfa68a]/12 pt-12">
+      <ScrollFade>
       <div className="max-w-4xl">
         <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]">Your Watch DNA</p>
         <h2 className="mt-5 font-playfair font-light text-[#f0e6d2] leading-tight" style={{ fontSize: 'clamp(2rem, 4vw, 3.5rem)' }}>
@@ -144,6 +146,7 @@ export default function TrendWatchDnaStudio() {
           </div>
         )}
       </div>
+      </ScrollFade>
     </section>
   );
 }

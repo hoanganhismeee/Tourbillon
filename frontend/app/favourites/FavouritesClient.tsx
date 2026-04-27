@@ -18,6 +18,7 @@ import {
 } from '@/lib/api';
 import { CollectionCard, AddCollectionCard } from '@/app/components/favourites/CollectionCard';
 import WatchCard from '@/app/watches/[slug]/WatchCard';
+import ScrollFade from '@/app/scrollMotion/ScrollFade';
 import {
   WatchFilters,
   EMPTY_WATCH_FILTERS,
@@ -53,36 +54,40 @@ const SkeletonCard = () => (
 const GuestFavouritesFallback = () => (
   <main className="min-h-screen pt-32 pb-24 px-8 lg:px-16">
     <section className="max-w-5xl border-t border-[#bfa68a]/12 pt-12">
-      <div className="max-w-3xl border-l border-[#bfa68a]/35 pl-7 md:pl-10">
-        <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/80">
-          Favourites
-        </p>
-        <h1
-          className="mt-5 font-playfair font-light leading-tight text-[#f0e6d2]"
-          style={{ fontSize: 'clamp(2rem, 4.5vw, 4rem)' }}
-        >
-          Sign in to save your favourite timepieces.
-        </h1>
-        <p className="mt-6 max-w-2xl text-[14px] leading-relaxed text-white/48">
-          Keep the watches that caught your eye in one place, build personal collections, and return
-          to them whenever your shortlist sharpens.
-        </p>
-      </div>
+      <ScrollFade>
+        <div className="max-w-3xl border-l border-[#bfa68a]/35 pl-7 md:pl-10">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/80">
+            Favourites
+          </p>
+          <h1
+            className="mt-5 font-playfair font-light leading-tight text-[#f0e6d2]"
+            style={{ fontSize: 'clamp(2rem, 4.5vw, 4rem)' }}
+          >
+            Sign in to save your favourite timepieces.
+          </h1>
+          <p className="mt-6 max-w-2xl text-[14px] leading-relaxed text-white/48">
+            Keep the watches that caught your eye in one place, build personal collections, and return
+            to them whenever your shortlist sharpens.
+          </p>
+        </div>
+      </ScrollFade>
 
-      <div className="mt-10 flex flex-wrap items-center gap-4">
-        <Link
-          href={`${ROUTES.LOGIN}?redirect=/favourites`}
-          className="inline-flex items-center justify-center border border-[#bfa68a]/25 px-10 py-4 text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] transition-all duration-500 hover:border-[#bfa68a]/40 hover:bg-[#bfa68a]/8"
-        >
-          Sign in
-        </Link>
-        <Link
-          href={ROUTES.WATCHES}
-          className="text-[10px] uppercase tracking-[0.3em] text-white/35 transition-colors duration-300 hover:text-[#f0e6d2]"
-        >
-          Browse the catalogue first
-        </Link>
-      </div>
+      <ScrollFade>
+        <div className="mt-10 flex flex-wrap items-center gap-4">
+          <Link
+            href={`${ROUTES.LOGIN}?redirect=/favourites`}
+            className="inline-flex items-center justify-center border border-[#bfa68a]/25 px-10 py-4 text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] transition-all duration-500 hover:border-[#bfa68a]/40 hover:bg-[#bfa68a]/8"
+          >
+            Sign in
+          </Link>
+          <Link
+            href={ROUTES.WATCHES}
+            className="text-[10px] uppercase tracking-[0.3em] text-white/35 transition-colors duration-300 hover:text-[#f0e6d2]"
+          >
+            Browse the catalogue first
+          </Link>
+        </div>
+      </ScrollFade>
     </section>
   </main>
 );
@@ -262,6 +267,7 @@ export default function FavouritesClient() {
   return (
     <main className="min-h-screen pt-32 pb-24 px-8 lg:px-16">
       {/* Page header */}
+      <ScrollFade>
       <div className="mb-10">
         <h1 className="font-playfair text-4xl lg:text-5xl font-light text-[#f0e6d2] tracking-wide">
           My Favourites
@@ -272,8 +278,10 @@ export default function FavouritesClient() {
           </p>
         )}
       </div>
+      </ScrollFade>
 
       {/* Collections row — always shown so the Add card is visible even with no collections */}
+      <ScrollFade>
       <div className="mb-10">
         <h2 className="text-xs font-inter font-semibold text-[#bfa68a]/60 uppercase tracking-[0.15em] mb-4">
           Collections
@@ -305,19 +313,22 @@ export default function FavouritesClient() {
           />
         </div>
       </div>
+      </ScrollFade>
 
       {/* Filter bar */}
-      <WatchFilterBar
-        filters={watchFilters}
-        brands={brands}
-        collections={watchCollections}
-        diameterOptions={diameterOptions}
-        wristFit={wristFit}
-        hasActiveFilters={hasWatchFilters}
-        onChange={setFilter}
-        onWristFitChange={setWristFit}
-        onClear={clearWatchFilters}
-      />
+      <ScrollFade>
+        <WatchFilterBar
+          filters={watchFilters}
+          brands={brands}
+          collections={watchCollections}
+          diameterOptions={diameterOptions}
+          wristFit={wristFit}
+          hasActiveFilters={hasWatchFilters}
+          onChange={setFilter}
+          onWristFitChange={setWristFit}
+          onClear={clearWatchFilters}
+        />
+      </ScrollFade>
 
       {/* Heading + sort */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -368,13 +379,14 @@ export default function FavouritesClient() {
               const membershipIds = watchData?.watchCollectionMembership[watch.id] ?? [];
               const labels = membershipIds.map(id => getCollectionName(id)).filter(Boolean);
               return (
-                <WatchCard
-                  key={watch.id}
-                  watch={watch}
-                  brandName={brands.find(b => b.id === watch.brandId)?.name}
-                  collectionLabels={labels.length > 0 ? labels : undefined}
-                  collectionName={watch.collectionId ? watchCollectionNameMap.get(watch.collectionId) : undefined}
-                />
+                <ScrollFade key={watch.id}>
+                  <WatchCard
+                    watch={watch}
+                    brandName={brands.find(b => b.id === watch.brandId)?.name}
+                    collectionLabels={labels.length > 0 ? labels : undefined}
+                    collectionName={watch.collectionId ? watchCollectionNameMap.get(watch.collectionId) : undefined}
+                  />
+                </ScrollFade>
               );
             })}
           </div>

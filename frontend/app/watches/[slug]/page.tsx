@@ -18,6 +18,7 @@ import CompareToggle from '../../components/compare/CompareToggle';
 import WristFitWidget from '../../components/wristfit/WristFitWidget';
 import AppointmentPanel from '../../components/appointment/AppointmentPanel';
 import RegisterInterestPanel from '../../components/appointment/RegisterInterestPanel';
+import ScrollFade from '../../scrollMotion/ScrollFade';
 import Image from 'next/image';
 
 
@@ -187,44 +188,48 @@ const WatchDetailPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-24">
                 {/* Left Column: Watch Image */}
                 <div className="flex justify-center items-start">
-                    <div className="sticky top-32 w-full max-w-md bg-black/20 p-8 rounded-xl border border-white/10">
-                        <div className="aspect-square bg-white/5 flex items-center justify-center rounded-lg relative overflow-hidden">
-                            {watch.image && !imageError ? (
-                                <>
-                                    {imageLoading && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white/30"></div>
+                    <ScrollFade>
+                        <div className="sticky top-32 w-full max-w-md bg-black/20 p-8 rounded-xl border border-white/10">
+                            <div className="aspect-square bg-white/5 flex items-center justify-center rounded-lg relative overflow-hidden">
+                                {watch.image && !imageError ? (
+                                    <>
+                                        {imageLoading && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white/30"></div>
+                                            </div>
+                                        )}
+                                        <Image
+                                          src={imgSrc || watch.imageUrl || imageTransformations.detail(watch.image)}
+                                          alt={watch.name}
+                                          width={1200}
+                                          height={1200}
+                                          sizes="(min-width: 1024px) 600px, 90vw"
+                                          className={`w-full h-full object-contain rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+                                          onError={handleImageError}
+                                          onLoad={handleImageLoad}
+                                          priority
+                                          fetchPriority="high"
+                                          unoptimized
+                                        />
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center text-center p-8">
+                                        <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-4">
+                                            <svg className="w-10 h-10 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">                                        </svg>
                                         </div>
-                                    )}
-                                    <Image
-                                      src={imgSrc || watch.imageUrl || imageTransformations.detail(watch.image)}
-                                      alt={watch.name}
-                                      width={1200}
-                                      height={1200}
-                                      sizes="(min-width: 1024px) 600px, 90vw"
-                                      className={`w-full h-full object-contain rounded-lg transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
-                                      onError={handleImageError}
-                                      onLoad={handleImageLoad}
-                                      priority
-                                      fetchPriority="high"
-                                      unoptimized
-                                    />
-                                </>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center text-center p-8">
-                                    <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-4">
-                                        <svg className="w-10 h-10 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">                                        </svg>
+                                        <span className="text-white/40 text-lg font-medium">{watch.name}</span>
+                                        <span className="text-white/20 text-sm mt-2">Image unavailable</span>
                                     </div>
-                                    <span className="text-white/40 text-lg font-medium">{watch.name}</span>
-                                    <span className="text-white/20 text-sm mt-2">Image unavailable</span>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    </ScrollFade>
                 </div>
 
                 {/* Right Column: Details & Actions */}
                 <div className="pt-8">
+                    <ScrollFade>
+                        <div>
                     {/* Brand and Collection breadcrumb */}
                     {(brands.length > 0 || collections.length > 0) && (
                         <div className="flex items-center gap-2 mb-3 text-sm">
@@ -250,7 +255,10 @@ const WatchDetailPage = () => {
                     <p className="text-lg text-white/60 mb-8">
                         {watch.description || 'No description available.'}
                     </p>
+                        </div>
+                    </ScrollFade>
 
+                    <ScrollFade>
                     <div className="mb-8">
                         <span className="text-7xl font-bold text-white">
                             {watch.currentPrice > 0 ? `$${watch.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Price on request'}
@@ -268,7 +276,9 @@ const WatchDetailPage = () => {
                             </span>
                         )}
                     </div>
+                    </ScrollFade>
 
+                    <ScrollFade>
                     <div className="flex items-center gap-4 mb-10">
                         <motion.button
                             whileTap={{ scale: 0.97 }}
@@ -284,26 +294,31 @@ const WatchDetailPage = () => {
                         </motion.button>
                         <CompareToggle watch={watch} variant="button" />
                     </div>
+                    </ScrollFade>
 
                     {/* Specifications - Structured Format */}
                     {specSections.length > 0 && (
                         <div>
-                            <h2 className="text-2xl font-playfair font-semibold border-b border-white/10 pb-3 mb-6">Specifications</h2>
+                            <ScrollFade>
+                                <h2 className="text-2xl font-playfair font-semibold border-b border-white/10 pb-3 mb-6">Specifications</h2>
+                            </ScrollFade>
                             <div className="space-y-6">
                                 {specSections.map((section) => (
-                                    <div key={section.title}>
-                                        <h3 className="text-sm font-semibold uppercase tracking-widest text-white/40 mb-3">{section.title}</h3>
-                                        <table className="w-full text-left">
-                                            <tbody>
-                                                {section.rows.map((row) => (
-                                                    <tr key={row.label} className="border-b border-white/5">
-                                                        <td className="py-2.5 pr-6 text-white/50 text-sm w-2/5">{row.label}</td>
-                                                        <td className="py-2.5 text-white/90 font-medium text-sm">{row.value}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                    <ScrollFade key={section.title}>
+                                        <div>
+                                            <h3 className="text-sm font-semibold uppercase tracking-widest text-white/40 mb-3">{section.title}</h3>
+                                            <table className="w-full text-left">
+                                                <tbody>
+                                                    {section.rows.map((row) => (
+                                                        <tr key={row.label} className="border-b border-white/5">
+                                                            <td className="py-2.5 pr-6 text-white/50 text-sm w-2/5">{row.label}</td>
+                                                            <td className="py-2.5 text-white/90 font-medium text-sm">{row.value}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </ScrollFade>
                                 ))}
                             </div>
                         </div>
@@ -311,49 +326,63 @@ const WatchDetailPage = () => {
 
                     {/* Specifications - Legacy Flat Format */}
                     {flatSpecRows && flatSpecRows.length > 0 && (
-                        <div>
-                            <h2 className="text-2xl font-playfair font-semibold border-b border-white/10 pb-3 mb-4">Specifications</h2>
-                            <table className="w-full text-left">
-                                <tbody>
-                                    {flatSpecRows.map((spec) => (
-                                        <tr key={spec.label} className="border-b border-white/5">
-                                            <td className="py-2.5 pr-6 text-white/50 text-sm w-2/5">{spec.label}</td>
-                                            <td className="py-2.5 text-white/90 font-medium text-sm">{spec.value}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                        <ScrollFade>
+                            <div>
+                                <h2 className="text-2xl font-playfair font-semibold border-b border-white/10 pb-3 mb-4">Specifications</h2>
+                                <table className="w-full text-left">
+                                    <tbody>
+                                        {flatSpecRows.map((spec) => (
+                                            <tr key={spec.label} className="border-b border-white/5">
+                                                <td className="py-2.5 pr-6 text-white/50 text-sm w-2/5">{spec.label}</td>
+                                                <td className="py-2.5 text-white/90 font-medium text-sm">{spec.value}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </ScrollFade>
                     )}
 
-                    <WristFitWidget
-                        caseSpecs={structuredSpecs?.case as Record<string, unknown> | undefined}
-                        initialValue={searchParams.get('wristFit') ?? undefined}
-                    />
+                    <ScrollFade>
+                        <WristFitWidget
+                            caseSpecs={structuredSpecs?.case as Record<string, unknown> | undefined}
+                            initialValue={searchParams.get('wristFit') ?? undefined}
+                        />
+                    </ScrollFade>
                 </div>
             </div>
 
             {/* Story-first editorial sections — pre-generated, served from DB */}
             {watch.editorialContent && (
                 <div className="mt-20 border-t border-white/10 pt-14 max-w-3xl">
-                    <h2 className="text-3xl font-playfair font-semibold text-[#f0e6d2] mb-12">The Story</h2>
+                    <ScrollFade>
+                        <h2 className="text-3xl font-playfair font-semibold text-[#f0e6d2] mb-12">The Story</h2>
+                    </ScrollFade>
                     <div className="space-y-10">
-                        <div>
-                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Why This Watch Matters</h3>
-                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.whyItMatters}</p>
-                        </div>
-                        <div>
-                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Best For</h3>
-                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.bestFor}</p>
-                        </div>
-                        <div>
-                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Design Language</h3>
-                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.designLanguage}</p>
-                        </div>
-                        <div>
-                            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Collector Appeal</h3>
-                            <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.collectorAppeal}</p>
-                        </div>
+                        <ScrollFade>
+                            <div>
+                                <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Why This Watch Matters</h3>
+                                <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.whyItMatters}</p>
+                            </div>
+                        </ScrollFade>
+                        <ScrollFade>
+                            <div>
+                                <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Best For</h3>
+                                <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.bestFor}</p>
+                            </div>
+                        </ScrollFade>
+                        <ScrollFade>
+                            <div>
+                                <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Design Language</h3>
+                                <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.designLanguage}</p>
+                            </div>
+                        </ScrollFade>
+                        <ScrollFade>
+                            <div>
+                                <h3 className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-3">Collector Appeal</h3>
+                                <p className="text-white/80 leading-relaxed font-inter">{watch.editorialContent.collectorAppeal}</p>
+                            </div>
+                        </ScrollFade>
                     </div>
                 </div>
             )}

@@ -213,14 +213,15 @@ const CollectionPage = () => {
         ) : watches.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-16">
             {watches.map((watch, index) => (
-              <WatchCard
-                key={watch.id}
-                watch={watch}
-                brands={brandAsArray}
-                collections={[collection]}
-                isPriority={index < 4}
-                currentPage={1}
-              />
+              <ScrollFade key={watch.id}>
+                <WatchCard
+                  watch={watch}
+                  brands={brandAsArray}
+                  collections={[collection]}
+                  isPriority={index < 4}
+                  currentPage={1}
+                />
+              </ScrollFade>
             ))}
           </div>
         ) : (

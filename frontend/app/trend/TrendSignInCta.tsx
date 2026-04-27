@@ -5,6 +5,7 @@
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROUTES } from '@/app/constants/routes';
+import ScrollFade from '@/app/scrollMotion/ScrollFade';
 
 const TrendSignInCta = () => {
   const { isAuthenticated } = useAuth();
@@ -12,6 +13,7 @@ const TrendSignInCta = () => {
 
   return (
     <section className="mt-20 border-t border-[#bfa68a]/12 pt-12">
+      <ScrollFade>
       <div className="max-w-3xl border-l border-[#bfa68a]/35 pl-7 md:pl-10">
         <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/80">
           Watch DNA
@@ -23,7 +25,9 @@ const TrendSignInCta = () => {
           Keep your taste profile attached to your account so your browsing signals can shape the catalogue and carry back into the Trend page over time.
         </p>
       </div>
+      </ScrollFade>
 
+      <ScrollFade>
       <div className="mt-10 flex flex-wrap items-center gap-4">
         <Link
           href={`${ROUTES.LOGIN}?redirect=${ROUTES.TREND}`}
@@ -48,6 +52,7 @@ const TrendSignInCta = () => {
           </span>
         </Link>
       </div>
+      </ScrollFade>
     </section>
   );
 };

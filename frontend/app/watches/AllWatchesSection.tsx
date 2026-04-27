@@ -11,6 +11,7 @@ import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { WatchCard } from '../components/cards/WatchCard';
 import { SortOrder, WatchOrderingService } from './WatchOrderingService';
+import ScrollFade from '../scrollMotion/ScrollFade';
 
 interface AllWatchesSectionProps {
   brands: Brand[];
@@ -216,29 +217,31 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
 
   return (
     <section>
-      <div className="mb-16">
-        <div className="text-center">
-          <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2]">
-            {currentPage === 1 ? headingLabel : `${headingLabel} - Page ${currentPage}`}
-          </h2>
-        </div>
+      <ScrollFade>
+        <div className="mb-16">
+          <div className="text-center">
+            <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2]">
+              {currentPage === 1 ? headingLabel : `${headingLabel} - Page ${currentPage}`}
+            </h2>
+          </div>
 
-        {!watchesLoading && (
-          <>
-            <SortDropdown
-              sortOrder={sortOrder}
-              onSelect={handleSortChange}
-            />
-            {showPersonalizedHint && (
-              <div className="mt-4 max-w-md ml-auto text-right">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-white/32">
-                  {personalizedHintCopy}
-                </p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+          {!watchesLoading && (
+            <>
+              <SortDropdown
+                sortOrder={sortOrder}
+                onSelect={handleSortChange}
+              />
+              {showPersonalizedHint && (
+                <div className="mt-4 max-w-md ml-auto text-right">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-white/32">
+                    {personalizedHintCopy}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </ScrollFade>
 
       {watchesLoading ? (
         <div className="text-center py-16">
@@ -251,14 +254,15 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
             <div>
               <div className="grid grid-cols-4 gap-x-8 gap-y-20 mb-20">
                 {displayedWatches.map((watch, index) => (
-                  <WatchCard
-                    key={watch.id}
-                    watch={watch}
-                    brands={brands}
-                    collections={collections}
-                    isPriority={index < 4}
-                    currentPage={currentPage}
-                  />
+                  <ScrollFade key={watch.id}>
+                    <WatchCard
+                      watch={watch}
+                      brands={brands}
+                      collections={collections}
+                      isPriority={index < 4}
+                      currentPage={currentPage}
+                    />
+                  </ScrollFade>
                 ))}
               </div>
 
@@ -304,13 +308,14 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
             <div>
               <div className="grid grid-cols-4 gap-x-8 gap-y-20 mb-20">
                 {paginatedWatches.map(watch => (
-                  <WatchCard
-                    key={watch.id}
-                    watch={watch}
-                    brands={brands}
-                    collections={collections}
-                    currentPage={currentPage}
-                  />
+                  <ScrollFade key={watch.id}>
+                    <WatchCard
+                      watch={watch}
+                      brands={brands}
+                      collections={collections}
+                      currentPage={currentPage}
+                    />
+                  </ScrollFade>
                 ))}
               </div>
             </div>

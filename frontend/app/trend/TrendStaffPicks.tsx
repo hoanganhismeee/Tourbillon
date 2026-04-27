@@ -8,6 +8,7 @@ import { useQueries } from '@tanstack/react-query';
 import { fetchWatchBySlug, Watch } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { STAFF_PICKS, StaffPick } from './trendData';
+import ScrollFade from '@/app/scrollMotion/ScrollFade';
 
 function FeaturedCardSkeleton() {
   return (
@@ -115,6 +116,7 @@ export default function TrendStaffPicks() {
 
   return (
     <section className="border-t border-[#bfa68a]/12 pt-12">
+      <ScrollFade>
       <div>
         <p className="text-[10px] uppercase tracking-[0.45em] text-[#bfa68a]/80">
           Staff Picks
@@ -130,15 +132,17 @@ export default function TrendStaffPicks() {
           they carry.
         </p>
       </div>
+      </ScrollFade>
 
       <div className="mt-10 flex flex-col gap-20">
         {STAFF_PICKS.map((pick, idx) => (
-          <StaffPickPair
-            key={pick.slug}
-            pick={pick}
-            watch={results[idx]?.data}
-            isLoading={results[idx]?.isLoading ?? true}
-          />
+          <ScrollFade key={pick.slug}>
+            <StaffPickPair
+              pick={pick}
+              watch={results[idx]?.data}
+              isLoading={results[idx]?.isLoading ?? true}
+            />
+          </ScrollFade>
         ))}
       </div>
     </section>
