@@ -190,11 +190,11 @@ export const imageTransformations = {
   },
 };
 
-// Returns the active provider URL for a video uploaded to the tourbillon/videos folder.
-// Usage: videoUrl('JLC') → https://res.cloudinary.com/.../tourbillon/videos/JLC.mp4
+// Returns the active provider URL for a video asset.
+// S3 key convention: watches/{name}.mp4  |  Cloudinary: tourbillon/videos/{name}.mp4
 export const videoUrl = (name: string) =>
   STORAGE_PROVIDER === 's3'
-    ? `https://${CLOUDFRONT_DOMAIN}/tourbillon/videos/${name}.mp4?v=${VIDEO_CACHE_VERSION}`
+    ? `https://${CLOUDFRONT_DOMAIN}/watches/${name}.mp4?v=${VIDEO_CACHE_VERSION}`
     : `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/tourbillon/videos/${name}.mp4?v=${VIDEO_CACHE_VERSION}`;
 
 // Upload function with unique_filename: false to allow overwriting
