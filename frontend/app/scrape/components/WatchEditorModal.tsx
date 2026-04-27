@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Watch, adminFetchWatchById, adminUpdateWatch, adminUploadWatchImage, UpdateWatchDto } from '@/lib/api';
+import { Watch, adminFetchWatchById, adminUpdateWatch, adminUploadWatchImage, adminStageOnCloudinary, adminFinalizeFromCloudinary, UpdateWatchDto } from '@/lib/api';
 import { getOptimizedImageUrl } from '@/lib/cloudinary';
 import ImageCropper from './ImageCropper';
 
@@ -44,9 +44,13 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
     const [cropMode, setCropMode] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const stageFileInputRef = useRef<HTMLInputElement>(null);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [uploadError, setUploadError] = useState('');
     const [saveError, setSaveError] = useState('');
+    const [stagingOnCloudinary, setStagingOnCloudinary] = useState(false);
+    const [cloudinaryPublicIdInput, setCloudinaryPublicIdInput] = useState('');
+    const [finalizingFromCloudinary, setFinalizingFromCloudinary] = useState(false);
 
     // Revoke blob URL on unmount to prevent memory leaks
     useEffect(() => {
@@ -96,6 +100,43 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
                 ? queryClient.invalidateQueries({ queryKey: ['watches', 'collection-slug', currentCollectionSlug] })
                 : Promise.resolve(),
         ]);
+    };
+
+    const handleStageOnCloudinary = async (file: File) => {
+        setStagingOnCloudinary(true);
+        setUploadError('');
+        try {
+            const ext = file.name.includes('.') ? file.name.split('.').pop()! : 'png';
+            const safeFile = new File([file], `upload.${ext}`, { type: file.type });
+            const result = await adminStageOnCloudinary(safeFile);
+            if (result.success) {
+                setCloudinaryPublicIdInput(result.cloudinaryPublicId);
+                window.open(result.cloudinaryUrl, '_blank');
+            }
+        } catch (err: unknown) {
+            setUploadError(err instanceof Error ? err.message : 'Staging on Cloudinary failed');
+        } finally {
+            setStagingOnCloudinary(false);
+        }
+    };
+
+    const handleFinalizeFromCloudinary = async () => {
+        if (!cloudinaryPublicIdInput.trim()) return;
+        setFinalizingFromCloudinary(true);
+        setUploadError('');
+        try {
+            const result = await adminFinalizeFromCloudinary(watch.id, cloudinaryPublicIdInput.trim());
+            if (result.success && result.publicId) {
+                setImagePublicId(result.publicId);
+                setImageVersion(result.version ?? null);
+                setLocalBlobUrl(null);
+                await invalidatePublicWatchQueries();
+            }
+        } catch (err: unknown) {
+            setUploadError(err instanceof Error ? err.message : 'Finalize from Cloudinary failed');
+        } finally {
+            setFinalizingFromCloudinary(false);
+        }
     };
 
     // Stage file for preview (choose: use as-is or crop)
@@ -298,18 +339,38 @@ export default function WatchEditorModal({ watch, onClose, onSave }: WatchEditor
                                 <input className="w-full bg-black/50 border border-white/20 p-2 text-sm text-gray-300 rounded mb-4" value={imagePublicId} readOnly />
                             </div>
 
-                            <div
-                                className="border border-dashed border-white/30 rounded-lg p-6 text-center hover:bg-white/5 transition-colors cursor-pointer"
-                                onClick={() => fileInputRef.current?.click()}
-                            >
-                                {uploadingImage ? 'Uploading to Cloudinary...' : 'Click to Upload or Paste Image (Ctrl+V)'}
+                            <div className="flex gap-2">
+                                <div
+                                    className="flex-1 border border-dashed border-white/30 rounded-lg p-4 text-center hover:bg-white/5 transition-colors cursor-pointer text-sm"
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    {uploadingImage ? 'Uploading...' : 'Upload direct to S3'}
+                                    <input type="file" accept="image/png, image/jpeg, image/webp" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+                                </div>
+                                <div
+                                    className="flex-1 border border-dashed border-[#bfa68a]/40 rounded-lg p-4 text-center hover:bg-[#bfa68a]/5 transition-colors cursor-pointer text-sm text-[#bfa68a]"
+                                    onClick={() => stageFileInputRef.current?.click()}
+                                >
+                                    {stagingOnCloudinary ? 'Staging...' : 'Stage on Cloudinary'}
+                                    <input type="file" accept="image/png, image/jpeg, image/webp" className="hidden" ref={stageFileInputRef} onChange={e => { const f = e.target.files?.[0]; if (f) handleStageOnCloudinary(f); e.target.value = ''; }} />
+                                </div>
+                            </div>
+
+                            <div className="mt-3 flex gap-2">
                                 <input
-                                    type="file"
-                                    accept="image/png, image/jpeg, image/webp"
-                                    className="hidden"
-                                    ref={fileInputRef}
-                                    onChange={handleFileChange}
+                                    type="text"
+                                    placeholder="Cloudinary public ID (after editing)"
+                                    className="flex-1 bg-black/50 border border-white/20 rounded p-2 text-xs text-gray-300 placeholder-gray-600"
+                                    value={cloudinaryPublicIdInput}
+                                    onChange={e => setCloudinaryPublicIdInput(e.target.value)}
                                 />
+                                <button
+                                    className="px-3 py-2 bg-[#bfa68a] text-black rounded text-xs font-medium disabled:opacity-40"
+                                    onClick={handleFinalizeFromCloudinary}
+                                    disabled={finalizingFromCloudinary || !cloudinaryPublicIdInput.trim()}
+                                >
+                                    {finalizingFromCloudinary ? 'Saving...' : 'Finalize to S3'}
+                                </button>
                             </div>
                             {uploadError && <p className="text-red-400 text-sm mt-2">{uploadError}</p>}
                         </>

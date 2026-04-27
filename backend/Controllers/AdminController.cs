@@ -1027,6 +1027,122 @@ public class AdminController : ControllerBase
         }
     }
 
+    /// Uploads a raw file to Cloudinary so the user can edit it (background removal, resize) in the Cloudinary dashboard.
+    /// Returns the Cloudinary public ID and a direct URL to open in Cloudinary Media Library.
+    /// POST: api/admin/watches/stage-cloudinary
+    [HttpPost("watches/stage-cloudinary")]
+    public async Task<IActionResult> AdminStageOnCloudinary(IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { Message = "No file uploaded" });
+            if (file.Length > 10 * 1024 * 1024)
+                return BadRequest(new { Message = "File size exceeds 10MB limit" });
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp")
+                return BadRequest(new { Message = "Only PNG, JPG, and WEBP files are allowed" });
+
+            var cloudinaryService = HttpContext.RequestServices.GetRequiredService<ICloudinaryService>();
+            var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+            var cloudName = config["Cloudinary:CloudName"] ?? "dcd9lcdoj";
+
+            using var stream = file.OpenReadStream();
+            var (publicId, _) = await cloudinaryService.UploadImageAsync(stream, file.FileName, "watches");
+
+            if (string.IsNullOrEmpty(publicId))
+                return StatusCode(500, new { Message = "Failed to stage image on Cloudinary" });
+
+            var cloudinaryUrl = $"https://res.cloudinary.com/{cloudName}/image/upload/{publicId}";
+            return Ok(new { Success = true, CloudinaryPublicId = publicId, CloudinaryUrl = cloudinaryUrl });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error staging image on Cloudinary");
+            return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
+    /// Downloads a processed image from Cloudinary and stores it in S3 under the canonical key for this watch.
+    /// Use after editing the image in the Cloudinary dashboard (background removal, resize, etc.).
+    /// POST: api/admin/watches/{id}/image/from-cloudinary?publicId=watches/...
+    [HttpPost("watches/{id:int}/image/from-cloudinary")]
+    public async Task<IActionResult> AdminFinalizeFromCloudinary(int id, [FromQuery] string publicId)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(publicId))
+                return BadRequest(new { Message = "publicId query parameter is required" });
+
+            var context = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+            var storageService = HttpContext.RequestServices.GetRequiredService<IStorageService>();
+            var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+            var cloudName = config["Cloudinary:CloudName"] ?? "dcd9lcdoj";
+
+            var watch = await context.Watches
+                .Include(w => w.Brand)
+                .Include(w => w.Collection)
+                .FirstOrDefaultAsync(w => w.Id == id);
+
+            if (watch == null) return NotFound(new { Message = "Watch not found" });
+
+            var collectionPart = watch.Collection != null ? SanitizeSegment(watch.Collection.Name) : "NoCollection";
+            var canonical = $"watches/{GetBrandAcronym(watch.Brand.Name)}_{collectionPart}_{SanitizeWatchName(watch.Name)}";
+
+            var currentIsOrphan = !string.IsNullOrEmpty(watch.Image)
+                && watch.Image.StartsWith("watches/", StringComparison.OrdinalIgnoreCase)
+                && !watch.Image.Equals(canonical, StringComparison.OrdinalIgnoreCase);
+
+            var cloudinaryUrl = $"https://res.cloudinary.com/{cloudName}/image/upload/{publicId}";
+            var uploadedKey = await storageService.UploadImageFromUrlAsync(cloudinaryUrl, canonical);
+
+            if (string.IsNullOrEmpty(uploadedKey))
+                return StatusCode(500, new { Message = "Failed to download from Cloudinary or upload to S3" });
+
+            if (currentIsOrphan)
+                await storageService.DeleteImageAsync(watch.Image!);
+
+            watch.Image = canonical;
+            watch.ImageVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            await context.SaveChangesAsync();
+
+            return Ok(new { Success = true, PublicId = canonical, Version = watch.ImageVersion });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error finalizing image from Cloudinary for watch {Id}", id);
+            return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
+    /// Downloads an image from any URL and stages it in S3 as a temporary asset.
+    /// Used in AddWatchModal to import a Cloudinary-processed image before a watch ID exists.
+    /// POST: api/admin/watches/image-from-url
+    [HttpPost("watches/image-from-url")]
+    public async Task<IActionResult> AdminUploadImageFromUrl([FromBody] System.Text.Json.JsonDocument body)
+    {
+        try
+        {
+            var imageUrl = body.RootElement.GetProperty("imageUrl").GetString();
+            if (string.IsNullOrEmpty(imageUrl))
+                return BadRequest(new { Message = "imageUrl is required" });
+
+            var storageService = HttpContext.RequestServices.GetRequiredService<IStorageService>();
+            var tempKey = $"watches/temp-{Guid.NewGuid():N}";
+            var uploadedKey = await storageService.UploadImageFromUrlAsync(imageUrl, tempKey);
+
+            if (string.IsNullOrEmpty(uploadedKey))
+                return StatusCode(500, new { Message = "Failed to download or upload image" });
+
+            return Ok(new { Success = true, PublicId = uploadedKey });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading image from URL");
+            return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
     /// Bumps ImageVersion to the current Unix timestamp for all watches (or a single brand).
     /// Call this after replacing images directly in Cloudinary to bust CDN cache without re-uploading.
     /// POST: api/admin/watches/refresh-image-cache?brandId=4

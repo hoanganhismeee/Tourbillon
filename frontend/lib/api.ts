@@ -715,6 +715,58 @@ export const adminUploadWatchImageTemp = async (file: File, slug: string): Promi
   return response.json();
 };
 
+// Uploads a raw file to Cloudinary for editing (background removal, resize).
+// Returns the Cloudinary public ID + a direct URL the user can open in Cloudinary Media Library.
+export const adminStageOnCloudinary = async (file: File): Promise<{ success: boolean; cloudinaryPublicId: string; cloudinaryUrl: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(`${API_BASE_URL}/admin/watches/stage-cloudinary`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let message = `Cloudinary staging failed (${response.status})`;
+    try { message = JSON.parse(text)?.message || JSON.parse(text)?.Message || message; } catch { /* empty */ }
+    throw new Error(message);
+  }
+  return response.json();
+};
+
+// Downloads the edited Cloudinary image (after background removal / resize in dashboard) and stores it in S3.
+export const adminFinalizeFromCloudinary = async (watchId: number, cloudinaryPublicId: string): Promise<{ success: boolean; publicId: string; version: number }> => {
+  const response = await fetch(
+    `${API_BASE_URL}/admin/watches/${watchId}/image/from-cloudinary?publicId=${encodeURIComponent(cloudinaryPublicId)}`,
+    { method: 'POST', credentials: 'include' }
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    let message = `Finalize failed (${response.status})`;
+    try { message = JSON.parse(text)?.message || JSON.parse(text)?.Message || message; } catch { /* empty */ }
+    throw new Error(message);
+  }
+  return response.json();
+};
+
+// Downloads an image from any URL (e.g. a Cloudinary URL) and stages it in S3.
+// Used in AddWatchModal to import a processed image before a watch record exists.
+export const adminTempFromUrl = async (imageUrl: string): Promise<{ success: boolean; publicId: string }> => {
+  const response = await fetch(`${API_BASE_URL}/admin/watches/image-from-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageUrl }),
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let message = `Import failed (${response.status})`;
+    try { message = JSON.parse(text)?.message || JSON.parse(text)?.Message || message; } catch { /* empty */ }
+    throw new Error(message);
+  }
+  return response.json();
+};
+
 export const adminRefreshImageCache = async (brandId?: number): Promise<{ updated: number; version: number }> => {
   const url = brandId
     ? `${API_BASE_URL}/admin/watches/refresh-image-cache?brandId=${brandId}`
