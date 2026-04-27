@@ -50,11 +50,11 @@ export default function ContactPage() {
   }, [router, searchParams]);
 
   return (
-    <ScrollFade>
-      <>
+    <>
       <div className="min-h-screen text-white">
 
         {/* Hero */}
+        <ScrollFade>
         <div className="relative flex flex-col justify-end px-10 lg:px-24 pt-44 pb-20 border-b border-white/5">
           <motion.p
             initial={{ opacity: 0, y: 10 }}
@@ -83,11 +83,13 @@ export default function ContactPage() {
             and any enquiry about our collection.
           </motion.p>
         </div>
+        </ScrollFade>
 
         {/* Contact grid */}
         <div className="px-10 lg:px-24 py-20 grid grid-cols-1 lg:grid-cols-2 gap-0">
 
           {/* Left — contact details */}
+          <ScrollFade>
           <div className="lg:border-r border-[#bfa68a]/8 lg:pr-20 pb-16 lg:pb-0">
             <p className="text-[10px] uppercase tracking-[0.45em] text-[#bfa68a]/80 mb-10">Contact Information</p>
             <div>
@@ -120,8 +122,10 @@ export default function ContactPage() {
               ))}
             </div>
           </div>
+          </ScrollFade>
 
           {/* Right — advisory note */}
+          <ScrollFade>
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -168,6 +172,7 @@ export default function ContactPage() {
             </div>
 
           </motion.div>
+          </ScrollFade>
 
         </div>
       </div>
@@ -177,7 +182,6 @@ export default function ContactPage() {
         brandName="Tourbillon"
         redirectPath="/contact?panel=appointment"
       />
-      </>
-    </ScrollFade>
+    </>
   );
 }

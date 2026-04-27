@@ -128,16 +128,18 @@ export default function TrendMostViewed() {
         </div>
       </ScrollFade>
 
-      <div className="mt-12 inline-flex flex-wrap items-center gap-3 rounded-full border border-[#bfa68a]/15 bg-black/20 p-2">
-        {(Object.entries(RANGE_LABELS) as Array<[TimeRange, string]>).map(([range, label]) => (
-          <RangeButton
-            key={range}
-            label={label}
-            isActive={activeRange === range}
-            onClick={() => setActiveRange(range)}
-          />
-        ))}
-      </div>
+      <ScrollFade>
+        <div className="mt-12 inline-flex flex-wrap items-center gap-3 rounded-full border border-[#bfa68a]/15 bg-black/20 p-2">
+          {(Object.entries(RANGE_LABELS) as Array<[TimeRange, string]>).map(([range, label]) => (
+            <RangeButton
+              key={range}
+              label={label}
+              isActive={activeRange === range}
+              onClick={() => setActiveRange(range)}
+            />
+          ))}
+        </div>
+      </ScrollFade>
 
       <div className="mt-7 flex items-center justify-between border-b border-[#bfa68a]/10 pb-5">
         <p className="text-[10px] uppercase tracking-[0.3em] text-white/30">
@@ -164,14 +166,15 @@ export default function TrendMostViewed() {
         ) : activeWatches.length > 0 ? (
           <div className="grid grid-cols-1 gap-x-8 gap-y-12 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {activeWatches.map((watch, index) => (
-              <WatchCard
-                key={`${activeRange}-${watch.id}`}
-                watch={watch}
-                brands={brands}
-                collections={collections}
-                currentPage={1}
-                isPriority={index < 5}
-              />
+              <ScrollFade key={`${activeRange}-${watch.id}`}>
+                <WatchCard
+                  watch={watch}
+                  brands={brands}
+                  collections={collections}
+                  currentPage={1}
+                  isPriority={index < 5}
+                />
+              </ScrollFade>
             ))}
           </div>
         ) : (
