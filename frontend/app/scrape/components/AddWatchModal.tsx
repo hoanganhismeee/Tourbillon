@@ -2,7 +2,7 @@
 
 // Modal for manually adding a new watch to the database
 import React, { useState, useRef } from 'react';
-import { Brand, Collection, adminCreateWatch, adminUploadWatchImageTemp } from '@/lib/api';
+import { Brand, Collection, adminCreateWatch, adminUploadWatchImageTemp, adminTempFromUrl } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import ImageCropper from './ImageCropper';
 
@@ -30,6 +30,8 @@ export default function AddWatchModal({ brands, collections, onClose, onSave }: 
     const [uploadError, setUploadError] = useState('');
     const [saveError, setSaveError] = useState('');
     const [saving, setSaving] = useState(false);
+    const [cloudinaryUrlInput, setCloudinaryUrlInput] = useState('');
+    const [importingFromUrl, setImportingFromUrl] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,6 +75,23 @@ export default function AddWatchModal({ brands, collections, onClose, onSave }: 
             setUploadError(err instanceof Error ? err.message : 'Image upload failed');
         } finally {
             setUploadingImage(false);
+        }
+    };
+
+    const handleImportFromUrl = async () => {
+        if (!cloudinaryUrlInput.trim()) return;
+        setImportingFromUrl(true);
+        setUploadError('');
+        try {
+            const result = await adminTempFromUrl(cloudinaryUrlInput.trim());
+            if (result.success && result.publicId) {
+                setImagePublicId(result.publicId);
+                setCloudinaryUrlInput('');
+            }
+        } catch (err: unknown) {
+            setUploadError(err instanceof Error ? err.message : 'Import failed');
+        } finally {
+            setImportingFromUrl(false);
         }
     };
 
@@ -175,7 +194,7 @@ export default function AddWatchModal({ brands, collections, onClose, onSave }: 
                                 className="border border-dashed border-white/30 rounded-lg p-6 text-center hover:bg-white/5 transition-colors cursor-pointer"
                                 onClick={() => fileInputRef.current?.click()}
                             >
-                                {uploadingImage ? 'Uploading to Cloudinary...' : 'Click to Upload or Paste Image (Ctrl+V)'}
+                                {uploadingImage ? 'Uploading...' : 'Click to Upload or Paste Image (Ctrl+V)'}
                                 <input
                                     type="file"
                                     accept="image/png, image/jpeg, image/webp"
@@ -183,6 +202,23 @@ export default function AddWatchModal({ brands, collections, onClose, onSave }: 
                                     ref={fileInputRef}
                                     onChange={handleFileChange}
                                 />
+                            </div>
+
+                            <div className="mt-3 flex gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="Or paste Cloudinary URL to import"
+                                    className="flex-1 bg-black/50 border border-white/20 rounded p-2 text-xs text-gray-300 placeholder-gray-600"
+                                    value={cloudinaryUrlInput}
+                                    onChange={e => setCloudinaryUrlInput(e.target.value)}
+                                />
+                                <button
+                                    className="px-3 py-2 bg-[#bfa68a] text-black rounded text-xs font-medium disabled:opacity-40"
+                                    onClick={handleImportFromUrl}
+                                    disabled={importingFromUrl || !cloudinaryUrlInput.trim()}
+                                >
+                                    {importingFromUrl ? 'Importing...' : 'Import'}
+                                </button>
                             </div>
                             {uploadError && <p className="text-red-400 text-sm mt-2">{uploadError}</p>}
                         </>

@@ -5,19 +5,8 @@ const nextConfig: NextConfig = {
   transpilePackages: ['framer-motion'],
   allowedDevOrigins: ['*.ngrok-free.app', '*.ngrok-free.dev', '*.ngrok.io'],
   images: {
-    domains: [
-      'res.cloudinary.com',
-      '1000logos.net',
-      'www.vacheron-constantin.com',
-      'www.patek.com',
-      'www.audemarspiguet.com',
-      'www.glashuette-original.com',
-      'service.glashuette-original.com',
-      'patek-res.cloudinary.com',
-    ],
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [
-      { protocol: 'https', hostname: 'res.cloudinary.com' },
       { protocol: 'https', hostname: '*.cloudfront.net', pathname: '/**' },
       { protocol: 'http', hostname: 'localhost', port: '5248', pathname: '/images/**' },
       { protocol: 'http', hostname: 'backend', port: '8080', pathname: '/images/**' },
@@ -25,7 +14,6 @@ const nextConfig: NextConfig = {
       // Luxury watch brand CDNs for external image URLs
       { protocol: 'https', hostname: 'www.vacheron-constantin.com', pathname: '/dam/**' },
       { protocol: 'https', hostname: 'www.patek.com', pathname: '/**' },
-      { protocol: 'https', hostname: 'patek-res.cloudinary.com', pathname: '/**' },
       { protocol: 'https', hostname: 'www.audemarspiguet.com', pathname: '/**' },
       { protocol: 'https', hostname: 'dynamicmedia.audemarspiguet.com', pathname: '/**' },
       { protocol: 'https', hostname: 'www.glashuette-original.com', pathname: '/app/uploads/**' },

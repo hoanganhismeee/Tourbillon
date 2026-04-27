@@ -46,10 +46,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      {/* Preconnect to Cloudinary to reduce DNS+TLS latency on first image request */}
+      {/* Preconnect to CloudFront to reduce DNS+TLS latency on first image request */}
       <head>
-        <link rel="preconnect" href="https://res.cloudinary.com" crossOrigin="anonymous" />
-        <link rel="dns-prefetch" href="https://res.cloudinary.com" />
+        <link rel="preconnect" href="https://d2lauyid2w6u9c.cloudfront.net" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://d2lauyid2w6u9c.cloudfront.net" />
       </head>
       <body
         className={`${playfairDisplay.variable} ${inter.variable} antialiased`}
