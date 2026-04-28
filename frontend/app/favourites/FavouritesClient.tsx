@@ -63,11 +63,11 @@ const GuestFavouritesFallback = () => (
             className="mt-5 font-playfair font-light leading-tight text-[#f0e6d2]"
             style={{ fontSize: 'clamp(2rem, 4.5vw, 4rem)' }}
           >
-            Sign in to save your favourite timepieces.
+            Your shortlist, waiting for you.
           </h1>
           <p className="mt-6 max-w-2xl text-[14px] leading-relaxed text-white/48">
-            Keep the watches that caught your eye in one place, build personal collections, and return
-            to them whenever your shortlist sharpens.
+            Sign in to keep the watches that move you. Build curated collections,
+            track your considerations, and return to them as your eye sharpens.
           </p>
         </div>
       </ScrollFade>
@@ -75,7 +75,7 @@ const GuestFavouritesFallback = () => (
       <ScrollFade>
         <div className="mt-10 flex flex-wrap items-center gap-4">
           <Link
-            href={`${ROUTES.LOGIN}?redirect=/favourites`}
+            href={ROUTES.AUTH_START}
             className="inline-flex items-center justify-center border border-[#bfa68a]/25 px-10 py-4 text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] transition-all duration-500 hover:border-[#bfa68a]/40 hover:bg-[#bfa68a]/8"
           >
             Sign in
@@ -84,7 +84,7 @@ const GuestFavouritesFallback = () => (
             href={ROUTES.WATCHES}
             className="text-[10px] uppercase tracking-[0.3em] text-white/35 transition-colors duration-300 hover:text-[#f0e6d2]"
           >
-            Browse the catalogue first
+            Explore the catalogue
           </Link>
         </div>
       </ScrollFade>
