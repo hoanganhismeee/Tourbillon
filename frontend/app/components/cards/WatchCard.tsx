@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { Watch, Collection, Brand } from '@/lib/api';
-import { imageTransformations, getOptimizedImageUrl } from '@/lib/cloudinary';
+import { imageTransformations } from '@/lib/cloudinary';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useTilt } from '@/hooks/useTilt';
 import CompareToggle from '../compare/CompareToggle';
@@ -51,10 +51,7 @@ export const WatchCard = ({ watch, brands, collections, isPriority = false, curr
   const handleImgError = () => {
     if (retryCount < 1) {
       setRetryCount(1);
-      setSrc(
-        getOptimizedImageUrl(watch.image, { width: 800, height: 800, crop: 'fit', quality: 'auto', format: 'jpg' }) +
-        `?r=${Date.now()}`
-      );
+      setSrc(baseImageSrc + `?r=${Date.now()}`);
     }
   };
 
@@ -106,8 +103,6 @@ export const WatchCard = ({ watch, brands, collections, isPriority = false, curr
                 className="w-full h-full object-contain rounded-xl"
                 priority={isPriority}
                 fetchPriority={isPriority ? 'high' as const : 'auto'}
-                placeholder="blur"
-                blurDataURL={getOptimizedImageUrl(watch.image, { width: 16, height: 16, quality: 1, crop: 'fill', format: 'jpg' })}
                 onError={handleImgError}
               />
             ) : (

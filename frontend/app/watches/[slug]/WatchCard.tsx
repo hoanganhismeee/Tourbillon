@@ -46,20 +46,11 @@ const WatchCard = ({ watch, className = "", hrefSuffix = "", imageFit = 'contain
   }, [baseImageSrc]);
 
   const handleImageError = () => {
-    // Retry strategy: try 2 times with different approaches
     if (retryCount === 0) {
-      // First retry: add cache-busting query param to force reload
       setRetryCount(1);
       setImgSrc((watch.imageUrl || imageTransformations.showcase(watch.image)) + `?r=${Date.now()}`);
       return;
-    } else if (retryCount === 1) {
-      // Second retry: try with explicit format
-      setRetryCount(2);
-      const baseUrl = watch.imageUrl || imageTransformations.showcase(watch.image);
-      setImgSrc(baseUrl.replace('/f_auto', '/f_jpg') + `?r=${Date.now()}`);
-      return;
     }
-    // All retries exhausted
     setImageError(true);
     setImageLoading(false);
   };
