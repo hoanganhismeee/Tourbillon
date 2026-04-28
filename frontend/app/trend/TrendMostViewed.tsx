@@ -48,7 +48,7 @@ function RangeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative px-4 py-3 text-[10px] uppercase tracking-[0.28em] transition-all duration-300 ${
+      className={`relative px-4 py-3 text-[10px] uppercase tracking-[0.28em] transition-all duration-300 rounded-full ${
         isActive
           ? 'text-[#1e1512]'
           : 'text-[#bfa68a]/72 hover:bg-[#bfa68a]/8 hover:text-[#f0e6d2]'
@@ -74,7 +74,7 @@ function CardSkeleton() {
 }
 
 export default function TrendMostViewed() {
-  const [activeRange, setActiveRange] = useState<TimeRange>('30d');
+  const [activeRange, setActiveRange] = useState<TimeRange>('today');
 
   const { data: watches = [], isLoading: watchesLoading } = useQuery({
     queryKey: ['watches'],

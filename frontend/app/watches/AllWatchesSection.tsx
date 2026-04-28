@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { useLenis } from 'lenis/react';
 import { fetchWatches, fetchCollections, getTasteProfile, Brand } from '@/lib/api';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useAuth } from '@/contexts/AuthContext';
@@ -98,12 +99,10 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
   const { isAuthenticated } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const lenis = useLenis();
   const currentPage = Number(searchParams.get('page') ?? '1');
   const sortOrder = WatchOrderingService.parseSortOrder(searchParams.get('sort'));
-  const isUserPaging = useRef(false);
-
   const goToPage = (page: number) => {
-    isUserPaging.current = true;
     const params = new URLSearchParams(searchParams.toString());
     if (page === 1) {
       params.delete('page');
@@ -111,7 +110,10 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
       params.set('page', String(page));
     }
     const query = params.toString();
-    router.push(query ? `/watches?${query}` : '/watches', { scroll: false });
+    const href = query ? `/watches?${query}` : '/watches';
+
+    lenis?.scrollTo(0, { duration: 0.8 });
+    router.push(href, { scroll: false });
   };
 
   const [showAllWatches, setShowAllWatches] = useState(false);
@@ -201,11 +203,6 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
   const isReady = featuredWatches.length > 0 || (!watchesLoading && watches.length === 0);
   useScrollRestore(isReady);
 
-  useEffect(() => {
-    if (!isUserPaging.current) return;
-    isUserPaging.current = false;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [currentPage]);
 
   const initialWatches = sortedWatches.slice(0, 12);
   const additionalWatches = sortedWatches.slice(12, 20);
