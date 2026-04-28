@@ -301,7 +301,7 @@ export default function SmartSearchClient() {
     } catch { setWristFit(''); }
 
     const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
-    const cacheKey = `smartsearch:v8:${query}`;
+    const cacheKey = `smartsearch:v9:${query}`;
 
     try {
       const cached = sessionStorage.getItem(cacheKey);

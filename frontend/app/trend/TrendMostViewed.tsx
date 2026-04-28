@@ -120,11 +120,6 @@ export default function TrendMostViewed() {
               What the room is watching.
             </h2>
           </div>
-
-          <p className="max-w-xl text-[13px] leading-relaxed text-white/45 text-balance lg:text-right">
-            Three rolling windows across the catalogue, presented as a calmer product edit with the
-            same visual rhythm as the watches grid.
-          </p>
         </div>
       </ScrollFade>
 
