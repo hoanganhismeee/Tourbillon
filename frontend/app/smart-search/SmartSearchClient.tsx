@@ -476,10 +476,10 @@ export default function SmartSearchClient() {
       <div className="mb-6">
         <button
           onClick={() => router.back()}
-          className="inline-flex items-center text-white/50 hover:text-white transition-colors text-sm font-inter mb-4"
+          className="inline-flex items-center gap-2 text-white/50 hover:text-white/90 transition-colors duration-300 text-sm font-light tracking-wide mb-4"
         >
-          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
           </svg>
           Back
         </button>

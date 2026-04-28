@@ -31,7 +31,7 @@ const HeartNavLink = () => {
   return (
     <div className="relative">
       <a
-        href={isAuthenticated ? '/favourites' : '/auth/start?redirect=/favourites'}
+        href="/favourites"
         className="hover:opacity-70 transition-all duration-300 block"
       >
         {/* Stacked outline + solid, crossfade on hasSaved */}

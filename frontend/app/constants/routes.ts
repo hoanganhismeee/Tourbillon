@@ -8,6 +8,7 @@ export const ROUTES = {
   SEARCH: '/search',
   
   // Auth pages
+  AUTH_START: '/auth/start',
   LOGIN: '/login',
   REGISTER: '/register',
   ACCOUNT: '/account',

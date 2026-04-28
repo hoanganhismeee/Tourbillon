@@ -155,16 +155,16 @@ const ComparePage = () => {
   }
 
   return (
-    <div className="container mx-auto px-4 sm:px-8 py-8 pt-28">
+    <div className="container mx-auto px-8 sm:px-12 lg:px-16 py-8 pt-28">
 
       {/* Back button */}
-      <div className="mb-8 -ml-2">
+      <div className="mb-8">
         <button
           onClick={() => router.back()}
-          className="inline-flex items-center text-white/60 hover:text-white transition-colors duration-300 text-lg font-playfair font-medium"
+          className="inline-flex items-center gap-2 text-white/50 hover:text-white/90 transition-colors duration-300 text-sm font-light tracking-wide"
         >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
           </svg>
           Back
         </button>
