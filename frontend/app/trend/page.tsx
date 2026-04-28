@@ -8,8 +8,8 @@ export default function TrendPage() {
   return (
     <main className="relative overflow-hidden pt-10">
 
-      <section className="relative min-h-[calc(100svh-88px)] px-6 py-20 pt-20 md:px-10 lg:px-24">
-        <div className="mx-auto max-w-7xl">
+      <section className="relative min-h-[calc(100svh-88px)] px-10 py-20 pt-20 lg:px-24">
+        <div>
           <ScrollFade>
             <div className="max-w-5xl">
               <div className="w-10 h-px bg-[#bfa68a]/55 mb-10" />

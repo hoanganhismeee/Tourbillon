@@ -1,4 +1,5 @@
 import PocketWatch from "../components/decorations/PocketWatch";
+import ScrollFade from "../scrollMotion/ScrollFade";
 import { Mail, Phone, MapPin } from "lucide-react";
 
 // Brand icons — not available in this version of lucide-react.
@@ -99,16 +100,17 @@ export default function StoriesPage() {
           <div className="flex-1 min-w-0">
 
             {/* Page heading */}
-            <div className="mb-16">
+            <ScrollFade triggerOnce className="mb-16">
               <h1 className="text-5xl font-playfair font-bold tourbillon-text-color mb-4">The Maker</h1>
               <p className="text-lg tourbillon-text-color opacity-60 leading-relaxed max-w-3xl">
                 Welcome. This is where Tourbillon begins — not with the watches, but with the person who built it.
               </p>
-            </div>
+            </ScrollFade>
 
             <div className="space-y-20 pb-40">
 
               {/* ── About Me ── */}
+              <ScrollFade triggerOnce>
               <div className="border-t border-white/10 pt-12">
                 <p className="text-xs tracking-[0.2em] uppercase tourbillon-text-color opacity-30 mb-3">Profile</p>
                 <h2 className="font-playfair text-3xl tourbillon-text-color mb-6">About Me</h2>
@@ -137,8 +139,10 @@ export default function StoriesPage() {
                   </p>
                 </div>
               </div>
+              </ScrollFade>
 
               {/* ── What Tourbillon Is ── */}
+              <ScrollFade triggerOnce>
               <div className="border-t border-white/10 pt-12">
                 <p className="text-xs tracking-[0.2em] uppercase tourbillon-text-color opacity-30 mb-3">The Project</p>
                 <h2 className="font-playfair text-3xl tourbillon-text-color mb-6">What Tourbillon Is</h2>
@@ -230,7 +234,10 @@ export default function StoriesPage() {
                 </div>
               </div>
 
+              </ScrollFade>
+
               {/* ── Resume ── */}
+              <ScrollFade triggerOnce>
               <div className="border-t border-white/10 pt-12">
                 <p className="text-xs tracking-[0.2em] uppercase tourbillon-text-color opacity-30 mb-8">Resume</p>
 
@@ -393,6 +400,7 @@ export default function StoriesPage() {
                 </div>
 
               </div>
+              </ScrollFade>
             </div>
           </div>
 

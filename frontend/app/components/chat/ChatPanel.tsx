@@ -533,7 +533,9 @@ function AssistantMessage({
 
 export default function ChatPanel() {
   const { messages, isLoading, dailyUsed, dailyLimit, sendMessage, clearSession } = useChat();
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(() => {
+    try { return sessionStorage.getItem('chat-draft') ?? ''; } catch { return ''; }
+  });
   const [revealTick, setRevealTick] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -553,6 +555,7 @@ export default function ChatPanel() {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
+    try { sessionStorage.setItem('chat-draft', input); } catch { /* ignore */ }
   }, [input]);
 
   const handleSend = async () => {
@@ -560,6 +563,7 @@ export default function ChatPanel() {
     if (!text || isLoading || submitLockRef.current) return;
     submitLockRef.current = true;
     setInput('');
+    try { sessionStorage.removeItem('chat-draft'); } catch { /* ignore */ }
     try {
       await sendMessage(text);
     } finally {
