@@ -5,6 +5,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { useLenis } from 'lenis/react';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { EASE_LUXURY_CSS } from '@/lib/motion';
 
@@ -12,6 +13,9 @@ const STORAGE_KEY = 'tourbillon-nav';
 
 export function useScrollRestore(isReady: boolean) {
   const { clearNavigationState } = useNavigation();
+  // Lenis must be called with immediate:true so the position lands exactly —
+  // the default lerp easing would overshoot or undershoot the saved position.
+  const lenis = useLenis();
   const hasRun = useRef(false);
 
   useEffect(() => {
@@ -20,7 +24,6 @@ export function useScrollRestore(isReady: boolean) {
 
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
-      let restored = false;
       if (raw) {
         const saved = JSON.parse(raw);
         // Only restore if the checkpoint belongs to this page — not a stale checkpoint
@@ -29,19 +32,18 @@ export function useScrollRestore(isReady: boolean) {
           typeof saved.scrollPosition === 'number' &&
           saved.path === window.location.pathname + window.location.search
         ) {
-          window.scrollTo(0, saved.scrollPosition);
+          if (lenis) {
+            lenis.scrollTo(saved.scrollPosition, { immediate: true });
+          } else {
+            window.scrollTo(0, saved.scrollPosition);
+          }
           clearNavigationState();
-          restored = true;
         }
       }
-      // On fresh forward navigation (no matching checkpoint), force scroll to top.
-      // Browser scroll restoration can wrongly resume a prior position when the same
-      // URL still exists in the history stack.
-      if (!restored) window.scrollTo(0, 0);
+      // Forward navigation: AnimatedLayout's effect handles scroll-to-top.
     } catch { /* corrupt data — ignore */ }
 
-    // Let the scroll position settle for one frame, then fade the page in unhurriedly.
-    // expo-out easing (0.16, 1, 0.3, 1) — fast start, long gentle tail — feels premium.
+    // Fade the page in. Runs after the scroll position settles (rAF = next paint).
     requestAnimationFrame(() => {
       if (document.body.style.opacity === '0') {
         document.body.style.transition = `opacity 0.65s ${EASE_LUXURY_CSS}`;

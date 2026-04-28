@@ -85,7 +85,7 @@ export default function RootLayout({
         </LenisProvider>
         <script
           dangerouslySetInnerHTML={{
-            __html: `if ('scrollRestoration' in history) { history.scrollRestoration = 'auto'; }`,
+            __html: `if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; }`,
           }}
         />
       </body>
