@@ -426,4 +426,5 @@ cookies.txt;
 # Design session screenshots — local only
 *.jpeg
 *.jpg
+!frontend/public/tao-profile.jpg
 *.png.bak
