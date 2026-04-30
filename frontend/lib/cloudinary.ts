@@ -19,10 +19,22 @@ export const testCloudinaryConnection = () => {
   return true;
 };
 
-// Strips file extension from a public ID / filename.
-const normalizePublicId = (value: string): string => {
+// Normalizes a stored public ID into an S3 object key.
+// - Backend S3 keys are stored without extensions.
+// - Many assets live under a folder prefix (e.g. `watches/`).
+// - Some rows may still store a bare basename (e.g. `PP6119G`) — add a default folder when missing.
+const normalizePublicId = (value: string, options?: { defaultFolder?: string }): string => {
   if (!value) return '';
-  return value.replace(/\.[^/.]+$/, '');
+
+  // Full S3 key already (e.g. `watches/PP6119G`, `brands/rolex`)
+  if (value.includes('/')) return value;
+
+  // If caller knows the folder, apply it.
+  const defaultFolder = options?.defaultFolder?.trim();
+  if (defaultFolder) return `${defaultFolder}/${value}`;
+
+  // Otherwise keep as-is.
+  return value;
 };
 
 const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value);
@@ -49,17 +61,17 @@ export const getOptimizedImageUrl = (
   } = {}
 ): string => {
   if (!publicId) return '';
-  return getPlainStorageUrl(normalizePublicId(publicId));
+  return getPlainStorageUrl(normalizePublicId(publicId, { defaultFolder: 'watches' }));
 };
 
 // Preset aliases — all return plain CloudFront URLs.
 // Names are kept so call sites don't need updating.
 export const imageTransformations = {
-  card:      (value: string) => getPlainStorageUrl(normalizePublicId(value)),
-  showcase:  (value: string) => getPlainStorageUrl(normalizePublicId(value)),
-  detail:    (value: string) => getPlainStorageUrl(normalizePublicId(value)),
-  thumbnail: (value: string) => getPlainStorageUrl(normalizePublicId(value)),
-  logo:      (value: string) => getPlainStorageUrl(normalizePublicId(value)),
+  card:      (value: string) => getPlainStorageUrl(normalizePublicId(value, { defaultFolder: 'watches' })),
+  showcase:  (value: string) => getPlainStorageUrl(normalizePublicId(value, { defaultFolder: 'watches' })),
+  detail:    (value: string) => getPlainStorageUrl(normalizePublicId(value, { defaultFolder: 'watches' })),
+  thumbnail: (value: string) => getPlainStorageUrl(normalizePublicId(value, { defaultFolder: 'watches' })),
+  logo:      (value: string) => getPlainStorageUrl(normalizePublicId(value, { defaultFolder: 'brands' })),
 };
 
 // Returns the CloudFront URL for a video asset (watches folder, mp4).

@@ -227,10 +227,28 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend",
         policy =>
         {
-            policy.WithOrigins(allowedOrigins)
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials();
+            // Production: Vercel preview/prod deployments use unique subdomains (*.vercel.app).
+            // We also allow explicit origins via ALLOWED_ORIGINS for custom domains.
+            policy
+                .SetIsOriginAllowed(origin =>
+                {
+                    if (string.IsNullOrWhiteSpace(origin)) return false;
+
+                    // Exact-match allowlist (custom domains, local dev, etc.)
+                    if (allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)) return true;
+
+                    // Allow any Vercel deployment origin.
+                    if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                    {
+                        var host = uri.Host;
+                        if (host.EndsWith(".vercel.app", StringComparison.OrdinalIgnoreCase)) return true;
+                    }
+
+                    return false;
+                })
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
         });
 });
 
