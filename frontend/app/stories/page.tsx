@@ -56,7 +56,7 @@ const features = [
 const stackGroups = [
   {
     title: "Frontend",
-    items: ["Next.js 15", "React 19", "Tailwind CSS", "Framer Motion", "TanStack Query", "Zustand"],
+    items: ["Next.js 15", "React 19", "Tailwind CSS", "Framer Motion", "GSAP", "TanStack Query", "Zustand"],
   },
   {
     title: "Backend",
@@ -64,7 +64,7 @@ const stackGroups = [
   },
   {
     title: "AI and Search",
-    items: ["Python Flask service", "Claude Haiku", "Ollama for local dev", "pgvector", "nomic embeddings"],
+    items: ["Python Flask service", "Claude Haiku 4.5", "Ollama for local dev", "pgvector", "nomic embeddings"],
   },
   {
     title: "Data and Infrastructure",
@@ -77,7 +77,7 @@ const architectureDiagram = `               +------------------+
                |   Next.js 15     |
                |      :3000       |
                +--------+---------+
-                        | HTTP
+                        | REST / HTTP
                +--------v---------+
                |    Backend       |
                |   .NET 8 API     |
@@ -86,8 +86,8 @@ const architectureDiagram = `               +------------------+
                    |    |    |
         +----------v+ +-v----+ +---v----------+
         |PostgreSQL | |Flask | | Image CDN    |
-        |+ pgvector | | AI   | | Cloudinary / |
-        |           | |:5000 | | S3 + CF      |
+        |+ pgvector | | AI   | | S3+CloudFront|
+        |           | |:5000 | | / Cloudinary |
         +-----------+ +--+---+ +--------------+
                          |
                   +------v------+
@@ -95,8 +95,9 @@ const architectureDiagram = `               +------------------+
                   | or Ollama   |
                   +-------------+
 
- Redis: chat sessions, auth codes, rate limits
- Hangfire: emails, embeddings, admin background jobs`;
+ Redis          : chat sessions, auth codes, rate limits
+ Hangfire       : emails, embeddings, admin background jobs
+ GitHub Actions : CI / CD pipeline`;
 
 function Section({
   label,

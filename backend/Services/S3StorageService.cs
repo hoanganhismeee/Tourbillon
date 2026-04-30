@@ -216,7 +216,7 @@ public class S3StorageService : IStorageService, IDisposable
 
     /// Generates a presigned S3 PUT URL for direct browser upload.
     /// Key: folder/sanitizedBaseName+extension (spaces → hyphens).
-    public async Task<(string PresignedUrl, string Key)> GeneratePresignedUploadUrlAsync(string fileName, string folder, string contentType, int expiryMinutes = 15)
+    public Task<(string PresignedUrl, string Key)> GeneratePresignedUploadUrlAsync(string fileName, string folder, string contentType, int expiryMinutes = 15)
     {
         var sanitized = Path.GetFileNameWithoutExtension(fileName)
             .Replace(" ", "-")
@@ -237,12 +237,12 @@ public class S3StorageService : IStorageService, IDisposable
 
             var url = _s3Client.GetPreSignedURL(request);
             _logger.LogInformation("Generated presigned upload URL for key {Key}", key);
-            return (url, key);
+            return Task.FromResult((url, key));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating presigned URL for {Key}", key);
-            return (string.Empty, string.Empty);
+            return Task.FromResult((string.Empty, string.Empty));
         }
     }
 

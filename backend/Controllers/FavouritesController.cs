@@ -73,7 +73,7 @@ public class FavouritesController : ControllerBase
 
         try
         {
-            var collection = await _favouritesService.CreateCollectionAsync(userId.Value, dto.Name);
+            var collection = await _favouritesService.CreateCollectionAsync(userId.Value, dto.Name ?? string.Empty);
             return Ok(collection);
         }
         catch (InvalidOperationException ex)
