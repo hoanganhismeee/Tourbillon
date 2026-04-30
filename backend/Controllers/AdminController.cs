@@ -2199,6 +2199,150 @@ public class AdminController : ControllerBase
         return Ok(new { Success = true });
     }
 
+    // ── Brand CRUD ────────────────────────────────────────────────────────────
+
+    /// Creates a new brand.
+    /// POST: api/admin/brands
+    [HttpPost("brands")]
+    public async Task<IActionResult> CreateBrand([FromBody] CreateBrandDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return BadRequest(new { Message = "Name is required." });
+
+        var db   = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var slug = dto.Slug?.Trim().ToLower()
+            ?? dto.Name.Trim().ToLower().Replace(" ", "-").Replace("'", "");
+
+        if (await db.Brands.AnyAsync(b => b.Slug == slug))
+            return Conflict(new { Message = $"A brand with slug '{slug}' already exists." });
+
+        var brand = new Brand
+        {
+            Name        = dto.Name.Trim(),
+            Slug        = slug,
+            Description = dto.Description ?? "",
+            Summary     = dto.Summary,
+            Image       = dto.Image
+        };
+
+        db.Brands.Add(brand);
+        await db.SaveChangesAsync();
+        return Ok(brand);
+    }
+
+    /// Updates an existing brand.
+    /// PUT: api/admin/brands/{id}
+    [HttpPut("brands/{id:int}")]
+    public async Task<IActionResult> UpdateBrand(int id, [FromBody] CreateBrandDto dto)
+    {
+        var db    = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var brand = await db.Brands.FindAsync(id);
+        if (brand == null)
+            return NotFound(new { Message = $"Brand {id} not found." });
+
+        if (dto.Name  != null) brand.Name        = dto.Name.Trim();
+        if (dto.Slug  != null) brand.Slug         = dto.Slug.Trim().ToLower();
+        brand.Description = dto.Description ?? brand.Description;
+        brand.Summary     = dto.Summary     ?? brand.Summary;
+        if (dto.Image != null) brand.Image = dto.Image;
+
+        await db.SaveChangesAsync();
+        return Ok(brand);
+    }
+
+    /// Deletes a brand. Refuses if the brand has watches.
+    /// DELETE: api/admin/brands/{id}
+    [HttpDelete("brands/{id:int}")]
+    public async Task<IActionResult> DeleteBrand(int id)
+    {
+        var db    = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var brand = await db.Brands.Include(b => b.Watches).FirstOrDefaultAsync(b => b.Id == id);
+        if (brand == null)
+            return NotFound(new { Message = $"Brand {id} not found." });
+
+        if (brand.Watches?.Any() == true)
+            return BadRequest(new { Message = $"Cannot delete '{brand.Name}' — it has {brand.Watches.Count} watch(es). Remove all watches first." });
+
+        db.Brands.Remove(brand);
+        await db.SaveChangesAsync();
+        return Ok(new { Success = true });
+    }
+
+    // ── Collection CRUD ───────────────────────────────────────────────────────
+
+    /// Creates a new collection.
+    /// POST: api/admin/collections
+    [HttpPost("collections")]
+    public async Task<IActionResult> CreateCollection([FromBody] CreateCollectionDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name) || dto.BrandId == 0)
+            return BadRequest(new { Message = "Name and BrandId are required." });
+
+        var db = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+
+        if (!await db.Brands.AnyAsync(b => b.Id == dto.BrandId))
+            return BadRequest(new { Message = $"Brand {dto.BrandId} not found." });
+
+        var slug = dto.Slug?.Trim().ToLower()
+            ?? dto.Name.Trim().ToLower().Replace(" ", "-").Replace("'", "");
+
+        if (await db.Collections.AnyAsync(c => c.Slug == slug))
+            return Conflict(new { Message = $"A collection with slug '{slug}' already exists." });
+
+        var collection = new Collection
+        {
+            Name        = dto.Name.Trim(),
+            Slug        = slug,
+            Description = dto.Description ?? "",
+            BrandId     = dto.BrandId,
+            Styles      = dto.Styles ?? [],
+            Image       = dto.Image
+        };
+
+        db.Collections.Add(collection);
+        await db.SaveChangesAsync();
+        return Ok(collection);
+    }
+
+    /// Updates an existing collection.
+    /// PUT: api/admin/collections/{id}
+    [HttpPut("collections/{id:int}")]
+    public async Task<IActionResult> UpdateCollection(int id, [FromBody] CreateCollectionDto dto)
+    {
+        var db         = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var collection = await db.Collections.FindAsync(id);
+        if (collection == null)
+            return NotFound(new { Message = $"Collection {id} not found." });
+
+        if (dto.Name   != null) collection.Name        = dto.Name.Trim();
+        if (dto.Slug   != null) collection.Slug        = dto.Slug.Trim().ToLower();
+        if (dto.Styles != null) collection.Styles      = dto.Styles;
+        if (dto.Image  != null) collection.Image       = dto.Image;
+        if (dto.BrandId != 0)   collection.BrandId     = dto.BrandId;
+        collection.Description = dto.Description ?? collection.Description;
+
+        await db.SaveChangesAsync();
+        return Ok(collection);
+    }
+
+    /// Deletes a collection. Refuses if the collection has watches.
+    /// DELETE: api/admin/collections/{id}
+    [HttpDelete("collections/{id:int}")]
+    public async Task<IActionResult> DeleteCollection(int id)
+    {
+        var db         = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var collection = await db.Collections.Include(c => c.Watches).FirstOrDefaultAsync(c => c.Id == id);
+        if (collection == null)
+            return NotFound(new { Message = $"Collection {id} not found." });
+
+        if (collection.Watches?.Any() == true)
+            return BadRequest(new { Message = $"Cannot delete '{collection.Name}' — it has {collection.Watches.Count} watch(es). Remove all watches first." });
+
+        db.Collections.Remove(collection);
+        await db.SaveChangesAsync();
+        return Ok(new { Success = true });
+    }
+
 }
 
 public class UpdateEditorialDto
@@ -2229,6 +2373,25 @@ public class MediaImageConfirmDto
     public string? CloudinaryPublicId  { get; set; }
     public string  FileName            { get; set; } = "";
     public long    SizeBytes           { get; set; }
+}
+
+public class CreateBrandDto
+{
+    public string? Name        { get; set; }
+    public string? Slug        { get; set; }
+    public string? Description { get; set; }
+    public string? Summary     { get; set; }
+    public string? Image       { get; set; }
+}
+
+public class CreateCollectionDto
+{
+    public string?   Name        { get; set; }
+    public string?   Slug        { get; set; }
+    public string?   Description { get; set; }
+    public int       BrandId     { get; set; }
+    public string[]? Styles      { get; set; }
+    public string?   Image       { get; set; }
 }
 
 /// Request DTO for scraping multiple brands
