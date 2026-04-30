@@ -117,7 +117,7 @@ const CursorSelector = () => {
   }, [isOpen]);
 
   return (
-    <div ref={containerRef} className="fixed bottom-8 left-8 z-50 select-none">
+    <div ref={containerRef} className="fixed bottom-8 left-4 z-50 select-none">
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -194,30 +194,17 @@ const CursorSelector = () => {
         )}
       </AnimatePresence>
 
-      {/* Toggle pill */}
+      {/* Toggle pill — icon only */}
       <motion.button
         whileHover={{ scale: 1.04 }}
         whileTap={{ scale: 0.97 }}
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2.5 px-4 py-3 rounded-2xl border border-[#bfa68a]/20 shadow-xl shadow-black/40 cursor-pointer"
+        className="flex items-center justify-center p-2.5 rounded-xl border border-[#bfa68a]/20 shadow-xl shadow-black/40 cursor-pointer"
         style={{ background: 'linear-gradient(135deg, rgba(42,33,28,0.9) 0%, rgba(30,21,18,0.95) 100%)', backdropFilter: 'blur(20px)' }}
       >
-        {/* Current cursor preview */}
         <div className="w-7 h-7 rounded-lg border border-[#bfa68a]/20 bg-[#bfa68a]/8 flex items-center justify-center text-[#bfa68a]">
           <CursorPreview id={cursor} />
         </div>
-        <div className="flex flex-col items-start leading-none">
-          <span className="text-[9px] font-inter text-[#bfa68a]/50 uppercase tracking-[0.15em] mb-0.5">Cursor</span>
-          <span className="text-sm font-playfair font-medium text-[#f0e6d2]">
-            {CURSOR_OPTIONS.find(o => o.id === cursor)?.label}
-          </span>
-        </div>
-        <svg
-          width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#bfa68a" strokeOpacity="0.5" strokeWidth="1.5" strokeLinecap="round"
-          className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
-        >
-          <path d="M3 5l3 3 3-3" />
-        </svg>
       </motion.button>
     </div>
   );
