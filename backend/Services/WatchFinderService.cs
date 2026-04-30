@@ -24,6 +24,19 @@ public record WatchFinderRequest(string Query);
 
 public record ExplainWatchRequest(string Query, int WatchId);
 
+public record WatchFinderQuotaContext(string SubjectKey, bool IsAdmin);
+
+public class AiQuotaExceededException : Exception
+{
+    public AiQuotaStatus Status { get; }
+
+    public AiQuotaExceededException(AiQuotaStatus status)
+        : base($"AI quota exceeded: {status.DailyUsed}/{status.DailyLimit}")
+    {
+        Status = status;
+    }
+}
+
 /// LLM-parsed intent from /watch-finder/parse — full structured output from the model.
 /// All fields are optional; null means the query didn't mention or imply that constraint.
 public class ParsedIntent
@@ -126,6 +139,8 @@ public class WatchFinderService : IWatchFinderService
     private readonly QueryCacheService _queryCache;
     private readonly ILogger<WatchFinderService> _logger;
     private readonly IStorageService _storage;
+    private readonly IConfiguration _config;
+    private readonly IAiUsageQuotaService? _quota;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -149,7 +164,9 @@ public class WatchFinderService : IWatchFinderService
         WatchFilterMapper mapper,
         QueryCacheService queryCache,
         ILogger<WatchFinderService> logger,
-        IStorageService storageService)
+        IStorageService storageService,
+        IConfiguration? config = null,
+        IAiUsageQuotaService? quotaService = null)
     {
         _httpClientFactory = httpClientFactory;
         _deterministicSearch = deterministicSearch;
@@ -158,6 +175,8 @@ public class WatchFinderService : IWatchFinderService
         _queryCache = queryCache;
         _logger = logger;
         _storage = storageService;
+        _config = config ?? new ConfigurationBuilder().Build();
+        _quota = quotaService;
     }
 
     /// Strips excluded brand IDs from inclusion lists and stores them for SQL NOT IN filtering.
@@ -171,10 +190,40 @@ public class WatchFinderService : IWatchFinderService
     }
 
     // Single-arg overload — no brand exclusions (satisfies interface + keeps Moq tests simple)
-    public Task<WatchFinderResult> FindWatchesAsync(string query) => FindWatchesAsync(query, []);
+    public Task<WatchFinderResult> FindWatchesAsync(string query) => FindWatchesAsync(query, Array.Empty<int>());
 
-    public async Task<WatchFinderResult> FindWatchesAsync(string query, IReadOnlyList<int> excludedBrandIds)
+    public Task<WatchFinderResult> FindWatchesAsync(string query, WatchFinderQuotaContext quotaContext) =>
+        FindWatchesAsync(query, [], quotaContext);
+
+    public Task<WatchFinderResult> FindWatchesAsync(string query, IReadOnlyList<int> excludedBrandIds) =>
+        FindWatchesAsync(query, excludedBrandIds, null);
+
+    public async Task<WatchFinderResult> FindWatchesAsync(
+        string query,
+        IReadOnlyList<int> excludedBrandIds,
+        WatchFinderQuotaContext? quotaContext)
     {
+        var quotaCharged = false;
+        async Task EnsureQuotaChargedAsync()
+        {
+            if (quotaCharged || quotaContext == null)
+                return;
+            if (_quota == null)
+                throw new InvalidOperationException("Watch Finder quota context was supplied without IAiUsageQuotaService.");
+
+            var disabled = _config.GetValue<bool>("WatchFinderSettings:DisableLimitInDev");
+            var dailyLimit = _config.GetValue<int>("WatchFinderSettings:DailyLimit", 5);
+            var status = await _quota.ChargeAsync(
+                "watch_finder",
+                quotaContext.SubjectKey,
+                dailyLimit,
+                disabled,
+                quotaContext.IsAdmin);
+            if (status.RateLimited)
+                throw new AiQuotaExceededException(status);
+            quotaCharged = true;
+        }
+
         var normalizedQuery = NormalizeQueryPhrases(query);
         var deterministicIntent = await ParseQueryIntentAsync(normalizedQuery);
         ApplyBrandExclusions(deterministicIntent, excludedBrandIds);
@@ -211,15 +260,8 @@ public class WatchFinderService : IWatchFinderService
 
         var httpClient = _httpClientFactory.CreateClient("ai-service");
 
-        // Steps 0a + 0b run in parallel — LLM parse and embedding have similar latency (~200ms each).
-        // LLM parse replaces the old regex approach: the model understands nuanced phrasing,
-        // multi-brand queries, and all filter dimensions without hardcoded patterns.
-        var parseTask = ParseIntentFromLlmAsync(httpClient, normalizedQuery, deterministicIntent);
-        var embedTask = EmbedQueryAsync(httpClient, normalizedQuery);
-        await Task.WhenAll(parseTask, embedTask);
-
-        var queryIntent   = await parseTask;
-        var queryEmbedding = await embedTask;
+        var queryEmbedding = await EmbedQueryAsync(httpClient, normalizedQuery);
+        var queryIntent = deterministicIntent;
         // When the LLM returns null (no structured intent) but brand exclusions exist,
         // create a minimal QueryIntent so exclusions reach VectorSearchAsync and the
         // cache bypass check. Without this, hasHardFilters stays false and a cached
@@ -227,10 +269,6 @@ public class WatchFinderService : IWatchFinderService
         if (queryIntent == null && excludedBrandIds.Count > 0)
             queryIntent = new QueryIntent();
         ApplyBrandExclusions(queryIntent, excludedBrandIds);
-
-        var mergedDirectResult = await _deterministicSearch.TryDirectSqlSearchAsync(normalizedQuery, queryIntent, "direct_sql_merged");
-        if (mergedDirectResult != null)
-            return mergedDirectResult;
 
         // Skip cache when hard SQL filters are active (price, brand, or brand exclusions) — a cached
         // "dress watch" result must not be reused for "Vacheron dress watch" or when a brand is excluded.
@@ -250,6 +288,21 @@ public class WatchFinderService : IWatchFinderService
                 return cached;
             }
         }
+
+        // Past this point Smart Search needs model interpretation or reranking, so the
+        // user-facing Smart Search quota is charged once before the first paid LLM call.
+        await EnsureQuotaChargedAsync();
+
+        // LLM parse replaces the old regex approach: the model understands nuanced phrasing,
+        // multi-brand queries, and all filter dimensions without hardcoded patterns.
+        queryIntent = await ParseIntentFromLlmAsync(httpClient, normalizedQuery, deterministicIntent);
+        if (queryIntent == null && excludedBrandIds.Count > 0)
+            queryIntent = new QueryIntent();
+        ApplyBrandExclusions(queryIntent, excludedBrandIds);
+
+        var mergedDirectResult = await _deterministicSearch.TryDirectSqlSearchAsync(normalizedQuery, queryIntent, "direct_sql_merged");
+        if (mergedDirectResult != null)
+            return mergedDirectResult;
 
         // Step 1: retrieve candidates via vector similarity.
         // Hard SQL pre-filters: price, single-brand, and multi-brand constraints.
@@ -430,26 +483,27 @@ public class WatchFinderService : IWatchFinderService
         // Tier 3: LLM rerank — skipped when vector match is already decisive (Tier 2)
         if (bestDistance >= SkipLlmDistance)
         {
-        var rerankCandidates   = candidates.Take(RerankLimit).ToList();
-        var unscoredCandidates = candidates.Skip(RerankLimit).ToList();
+            await EnsureQuotaChargedAsync();
+            var rerankCandidates   = candidates.Take(RerankLimit).ToList();
+            var unscoredCandidates = candidates.Skip(RerankLimit).ToList();
 
-        var rerankSw = System.Diagnostics.Stopwatch.StartNew();
-        try
-        {
-            var payload = rerankCandidates.Select(w =>
+            var rerankSw = System.Diagnostics.Stopwatch.StartNew();
+            try
             {
-                var specs = DeserialiseSpecs(w.Specs);
-                return new
+                var payload = rerankCandidates.Select(w =>
                 {
-                    id = w.Id,
-                    name = w.Name,
-                    brand = w.Brand?.Name ?? "",
-                    collection = w.Collection?.Name ?? "",
-                    description = w.Description ?? "",
-                    price = (double)w.CurrentPrice,
-                    specs_summary = BuildSpecsSummary(specs)
-                };
-            });
+                    var specs = DeserialiseSpecs(w.Specs);
+                    return new
+                    {
+                        id = w.Id,
+                        name = w.Name,
+                        brand = w.Brand?.Name ?? "",
+                        collection = w.Collection?.Name ?? "",
+                        description = w.Description ?? "",
+                        price = (double)w.CurrentPrice,
+                        specs_summary = BuildSpecsSummary(specs)
+                    };
+                });
 
             var rerankResp = await httpClient.PostAsJsonAsync("/watch-finder/rerank", new { query, watches = payload });
             if (rerankResp.IsSuccessStatusCode)

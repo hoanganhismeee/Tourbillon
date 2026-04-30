@@ -2,10 +2,9 @@
 # Called by .NET ChatService in parallel with /chat. Uses OpenAI-style tool
 # calling to let the model pick which chips to surface. Slug validation is
 # enforced here AND again on the .NET side — never trust slugs blindly.
-import json
-
 from flask import jsonify, request
 
+from core.llm import call_llm_with_tools
 from core.runtime import Runtime
 from core.schemas import PlanActionsResponse, safe_parse
 from prompts.plan_actions import (
@@ -147,28 +146,18 @@ def _plan_actions(
         watch_cards=cards,
         rejected_brand_slugs=rejected_brand_slugs,
     )
-    messages = [
-        {"role": "system", "content": PLAN_ACTIONS_SYSTEM_PROMPT},
-        {"role": "user", "content": user_prompt},
-    ]
-
     try:
-        response = runtime.client.chat.completions.create(
-            model=runtime.llm_model,
-            messages=messages,
+        tool_calls = call_llm_with_tools(
+            runtime=runtime,
+            system=PLAN_ACTIONS_SYSTEM_PROMPT,
+            user_content=user_prompt,
             tools=PLAN_ACTIONS_TOOLS,
-            tool_choice="auto",
             max_tokens=PLANNER_MAX_TOKENS,
             temperature=PLANNER_TEMPERATURE,
         )
     except Exception as exc:
         return [], f"/plan-actions call failed: {exc}"
 
-    choice = response.choices[0] if response.choices else None
-    if choice is None:
-        return [], "/plan-actions returned no choice"
-
-    tool_calls = getattr(choice.message, "tool_calls", None) or []
     if not tool_calls:
         return [], None
 
@@ -177,18 +166,10 @@ def _plan_actions(
     errors: list[str] = []
 
     for call in tool_calls:
-        fn = getattr(call, "function", None)
-        if fn is None:
-            continue
-        name = getattr(fn, "name", "") or ""
-        raw_args = getattr(fn, "arguments", "") or "{}"
-        try:
-            args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-            if not isinstance(args, dict):
-                errors.append(f"tool {name} returned non-object arguments")
-                continue
-        except json.JSONDecodeError:
-            errors.append(f"tool {name} returned malformed arguments JSON")
+        name = call.get("name", "") or ""
+        args = call.get("arguments") or {}
+        if not isinstance(args, dict):
+            errors.append(f"tool {name} returned non-object arguments")
             continue
 
         action = _tool_call_to_action(name, args, watch_slugs, brand_slugs, collection_slugs)

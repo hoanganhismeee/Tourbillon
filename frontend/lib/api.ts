@@ -241,7 +241,10 @@ export const watchFinderSearch = async (query: string): Promise<WatchFinderResul
     body: JSON.stringify({ query }),
     timeoutMs: 120000,
   });
-  if (!response.ok) throw new Error('Watch finder search failed');
+  if (!response.ok) {
+    const data = await response.json().catch(() => null) as { message?: string; error?: string } | null;
+    throw new Error(data?.message || data?.error || 'Watch finder search failed');
+  }
   return response.json();
 };
 

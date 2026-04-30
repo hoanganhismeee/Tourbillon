@@ -44,6 +44,8 @@ def _mock_runtime(tool_calls=None, side_effect=None) -> MagicMock:
     completion.choices = [choice]
     runtime = MagicMock()
     runtime.llm_model = "test-model"
+    runtime.use_anthropic = False
+    runtime.rate_limiter = None
     runtime.client.chat.completions.create = MagicMock(side_effect=side_effect, return_value=completion)
     return runtime
 

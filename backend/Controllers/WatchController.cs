@@ -1,6 +1,7 @@
 // Manages individual watch products (specific models customers can buy).
 
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using backend.Database;
@@ -18,13 +19,23 @@ public class WatchController : ControllerBase
     private readonly WatchFinderService _watchFinderService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IStorageService _storage;
+    private readonly IAiUsageQuotaService _quota;
+    private readonly IConfiguration _config;
 
-    public WatchController(TourbillonContext context, WatchFinderService watchFinderService, IHttpClientFactory httpClientFactory, IStorageService storageService)
+    public WatchController(
+        TourbillonContext context,
+        WatchFinderService watchFinderService,
+        IHttpClientFactory httpClientFactory,
+        IStorageService storageService,
+        IAiUsageQuotaService quotaService,
+        IConfiguration config)
     {
         _context = context;
         _watchFinderService = watchFinderService;
         _httpClientFactory = httpClientFactory;
         _storage = storageService;
+        _quota = quotaService;
+        _config = config;
     }
 
     [HttpPost("find")]
@@ -33,8 +44,17 @@ public class WatchController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Query))
             return BadRequest(new { error = "Query is required" });
 
-        var result = await _watchFinderService.FindWatchesAsync(request.Query);
-        return Ok(result);
+        try
+        {
+            var result = await _watchFinderService.FindWatchesAsync(
+                request.Query,
+                new WatchFinderQuotaContext(GetQuotaSubjectKey(), IsAdminUser()));
+            return Ok(result);
+        }
+        catch (AiQuotaExceededException ex)
+        {
+            return StatusCode(429, BuildQuotaResponse(ex.Status));
+        }
     }
 
     // On-demand explanation for a single watch — called when user clicks "Why this?" in Smart Search
@@ -66,6 +86,15 @@ public class WatchController : ControllerBase
         var httpClient = _httpClientFactory.CreateClient("ai-service");
         try
         {
+            var quotaStatus = await _quota.ChargeAsync(
+                "watch_finder",
+                GetQuotaSubjectKey(),
+                _config.GetValue<int>("WatchFinderSettings:DailyLimit", 5),
+                _config.GetValue<bool>("WatchFinderSettings:DisableLimitInDev"),
+                IsAdminUser());
+            if (quotaStatus.RateLimited)
+                return StatusCode(429, BuildQuotaResponse(quotaStatus));
+
             var resp = await httpClient.PostAsJsonAsync("/watch-finder/explain", payload);
             if (!resp.IsSuccessStatusCode)
                 return StatusCode((int)resp.StatusCode, new { error = "AI service error" });
@@ -78,6 +107,30 @@ public class WatchController : ControllerBase
             return StatusCode(503, new { error = "AI service unavailable" });
         }
     }
+
+    private bool IsAdminUser() =>
+        User.Identity?.IsAuthenticated == true && User.IsInRole("Admin");
+
+    private string GetQuotaSubjectKey()
+    {
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrWhiteSpace(userId))
+                return userId;
+        }
+
+        return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "anon";
+    }
+
+    private static object BuildQuotaResponse(AiQuotaStatus status) => new
+    {
+        error = "watch_finder_quota_exceeded",
+        message = $"You have reached your daily Smart Search quota of {status.DailyLimit} AI-backed searches. Direct catalogue browsing and cached results remain available.",
+        rateLimited = true,
+        dailyUsed = status.DailyUsed,
+        dailyLimit = status.DailyLimit
+    };
 
     // Returns distinct spec values from the full catalog — used to populate Smart Search filter dropdowns
     [HttpGet("filter-options")]

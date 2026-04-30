@@ -29,6 +29,7 @@ public class ChatController : ControllerBase
             ? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             : null;
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var isAdmin = User.Identity?.IsAuthenticated == true && User.IsInRole("Admin");
 
         var result = await _chatService.HandleMessageAsync(
             request.SessionId,
@@ -36,7 +37,8 @@ public class ChatController : ControllerBase
             userId,
             ipAddress,
             request.BehaviorSummary,
-            request.PreferredLanguage);
+            request.PreferredLanguage,
+            isAdmin);
 
         if (result.RateLimited)
             return StatusCode(429, result);

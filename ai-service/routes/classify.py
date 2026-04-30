@@ -3,6 +3,7 @@
 # Classifier failure is non-fatal - the backend falls back to regex routing on "unclear".
 from flask import jsonify, request
 
+from core.llm import call_llm
 from core.runtime import Runtime
 from core.schemas import IntentClassification, VALID_INTENTS, parse_model_json
 from prompts.classify import CLASSIFY_SYSTEM_PROMPT, CLASSIFY_USER_PROMPT
@@ -19,20 +20,9 @@ def _safe_classify(runtime: Runtime, query: str, session: dict, last_cards: list
         query=query,
     )
 
-    messages = [
-        {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
-        {"role": "user", "content": user_content},
-    ]
-
     try:
-        response = runtime.client.chat.completions.create(
-            model=runtime.llm_model,
-            messages=messages,
-            max_tokens=60,
-            temperature=0.0,
-        )
-        raw = (response.choices[0].message.content or "").strip()
-        parsed = parse_model_json(IntentClassification, raw, source="/classify")
+        raw = call_llm(runtime, CLASSIFY_SYSTEM_PROMPT, user_content, max_tokens=60, temperature=0.0)
+        parsed = parse_model_json(IntentClassification, raw.strip(), source="/classify")
         return parsed.model_dump()
     except Exception as exc:
         return {"intent": "unclear", "confidence": 0.0, "error": str(exc)}
