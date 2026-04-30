@@ -114,7 +114,7 @@ export default function AdminScrapingPage() {
 
       {tab === 'brand' && (
         <div className="max-w-md space-y-3">
-          <p className="text-[#444] text-xs mb-3">Scrape watches from a brand's official website using legacy XPath config.</p>
+          <p className="text-[#444] text-xs mb-3">Scrape watches from a brand&apos;s official website using legacy XPath config.</p>
           <div><label className={labelCls}>Brand name</label><input className={inputCls} placeholder="e.g. Patek Philippe" value={brand} onChange={e => setBrand(e.target.value)} /></div>
           <div><label className={labelCls}>Collection name</label><input className={inputCls} placeholder="e.g. Calatrava" value={collection} onChange={e => setCollection(e.target.value)} /></div>
           <div><label className={labelCls}>Max watches</label><input className={smallInputCls} type="number" min="1" max="100" value={maxWatches} onChange={e => setMaxWatches(e.target.value)} /></div>
