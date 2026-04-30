@@ -19,6 +19,10 @@ internal sealed class TestStorageService : IStorageService
     public Task<bool> RenameAssetAsync(string fromPublicId, string toPublicId)
         => Task.FromResult(true);
 
+    public Task<(string PresignedUrl, string Key)> GeneratePresignedUploadUrlAsync(
+        string fileName, string folder, string contentType, int expiryMinutes = 15)
+        => Task.FromResult(($"https://s3.test/presigned/{folder}/{fileName}", $"{folder}/{fileName}"));
+
     public string? GetPublicUrl(string? publicId, long? version = null)
     {
         if (string.IsNullOrEmpty(publicId))

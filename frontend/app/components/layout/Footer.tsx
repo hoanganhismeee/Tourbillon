@@ -158,6 +158,9 @@ export default function Footer() {
               <span>Price on Request available</span>
             </div>
           </div>
+          <p className="text-white/18 tracking-[0.08em]">
+            All images and video assets are used for portfolio and demonstration purposes only. No commercial use is intended.
+          </p>
         </div>
       </div>
     </footer>
