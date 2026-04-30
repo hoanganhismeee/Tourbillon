@@ -27,7 +27,7 @@
     "intersection-observer": "^0.12.2",
     "lenis": "^1.3.21",
     "lucide-react": "^1.7.0",
-    "next": "15.3.3",
+    "next": "15.3.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-intersection-observer": "^9.16.0",
