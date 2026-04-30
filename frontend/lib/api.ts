@@ -1216,3 +1216,170 @@ export const mergeBehaviorEvents = async (anonymousId: string): Promise<void> =>
   }
 };
 
+// ── Media Library ─────────────────────────────────────────────────────────────
+
+export interface MediaAsset {
+  id: number;
+  key: string;
+  fileName: string;
+  mediaType: 'image' | 'video';
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  cloudinaryPublicId?: string | null;
+  cloudinaryUrl?: string | null;
+  url?: string | null;
+}
+
+export const adminFetchMediaAssets = async (): Promise<MediaAsset[]> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/media`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch media assets');
+  return res.json();
+};
+
+export const adminGetVideoPresignedUrl = async (
+  fileName: string,
+  contentType: string
+): Promise<{ presignedUrl: string; key: string }> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/media/video-presign`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ fileName, contentType }),
+  });
+  if (!res.ok) throw new Error('Failed to get presigned URL');
+  return res.json();
+};
+
+export const adminConfirmVideoUpload = async (
+  key: string,
+  fileName: string,
+  mimeType: string,
+  sizeBytes: number
+): Promise<MediaAsset> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/media/video-confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ key, fileName, mimeType, sizeBytes }),
+  });
+  if (!res.ok) throw new Error('Failed to confirm video upload');
+  return res.json();
+};
+
+export const adminConfirmMediaImageUpload = async (
+  cloudinaryUrl: string,
+  cloudinaryPublicId: string,
+  fileName: string,
+  sizeBytes: number
+): Promise<MediaAsset> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/media/image-confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ cloudinaryUrl, cloudinaryPublicId, fileName, sizeBytes }),
+  });
+  if (!res.ok) throw new Error('Failed to finalize media image');
+  return res.json();
+};
+
+export const adminDeleteMediaAsset = async (id: number): Promise<void> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/media/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error('Failed to delete media asset');
+};
+
+// ── Admin Brand CRUD ──────────────────────────────────────────────────────────
+
+export const adminCreateBrand = async (data: {
+  name: string; slug?: string; description?: string; summary?: string; image?: string;
+}): Promise<Brand> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/brands`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.Message || 'Failed to create brand');
+  }
+  return res.json();
+};
+
+export const adminUpdateBrand = async (
+  id: number,
+  data: { name?: string; slug?: string; description?: string; summary?: string; image?: string }
+): Promise<Brand> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/brands/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.Message || 'Failed to update brand');
+  }
+  return res.json();
+};
+
+export const adminDeleteBrand = async (id: number): Promise<void> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/brands/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.Message || 'Failed to delete brand');
+  }
+};
+
+// ── Admin Collection CRUD ─────────────────────────────────────────────────────
+
+export const adminCreateCollection = async (data: {
+  name: string; slug?: string; description?: string; brandId: number; styles?: string[]; image?: string;
+}): Promise<Collection> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/collections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.Message || 'Failed to create collection');
+  }
+  return res.json();
+};
+
+export const adminUpdateCollection = async (
+  id: number,
+  data: { name?: string; slug?: string; description?: string; brandId?: number; styles?: string[]; image?: string }
+): Promise<Collection> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/collections/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.Message || 'Failed to update collection');
+  }
+  return res.json();
+};
+
+export const adminDeleteCollection = async (id: number): Promise<void> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/collections/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.Message || 'Failed to delete collection');
+  }
+};
+
