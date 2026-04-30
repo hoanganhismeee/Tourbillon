@@ -161,11 +161,11 @@ const CompareIndicator = () => {
         whileHover={{ scale: 1.04 }}
         whileTap={{ scale: 0.97 }}
         onClick={() => setIsExpanded(!isExpanded)}
-        className="relative flex items-center gap-4 px-6 py-4 rounded-2xl border border-[#bfa68a]/25 shadow-xl shadow-black/50 cursor-pointer"
+        className="relative flex items-center gap-3 px-4 py-3 rounded-xl border border-[#bfa68a]/25 shadow-xl shadow-black/50 cursor-pointer"
         style={{ background: 'linear-gradient(135deg, rgba(42,33,28,0.95) 0%, rgba(30,21,18,0.97) 100%)', backdropFilter: 'blur(20px)' }}
       >
         {/* Scales icon */}
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#bfa68a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#bfa68a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 3v18" /><path d="M3 7h18" />
           <path d="M6 7l-3 9a5 5 0 0 0 6 0L6 7" />
           <path d="M18 7l-3 9a5 5 0 0 0 6 0L18 7" />
@@ -173,16 +173,16 @@ const CompareIndicator = () => {
 
         {/* Label + count */}
         <div className="flex flex-col items-start leading-none">
-          <span className="text-[11px] font-inter text-[#bfa68a]/60 uppercase tracking-[0.15em] mb-0.5">Compare</span>
-          <span className="text-lg font-playfair font-semibold text-[#f0e6d2]">{compareCount} <span className="text-white/30 text-base font-inter font-normal">/ 4</span></span>
+          <span className="text-[10px] font-inter text-[#bfa68a]/60 uppercase tracking-[0.15em] mb-0.5">Compare</span>
+          <span className="text-[15px] font-playfair font-semibold text-[#f0e6d2]">{compareCount} <span className="text-white/30 text-[13px] font-inter font-normal">/ 4</span></span>
         </div>
 
         {/* Thin divider */}
-        <div className="w-px h-7 bg-white/8" />
+        <div className="w-px h-5 bg-white/8" />
 
         {/* Chevron */}
         <svg
-          width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="#bfa68a" strokeOpacity="0.6" strokeWidth="1.5" strokeLinecap="round"
+          width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#bfa68a" strokeOpacity="0.6" strokeWidth="1.5" strokeLinecap="round"
           className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
         >
           <path d="M3 5l3 3 3-3" />
