@@ -55,4 +55,10 @@ public class CloudinaryStorageService : IStorageService
 
         return $"{baseUrl}/{publicId}?v={_globalVersion}";
     }
+
+    /// Cloudinary uses widget-based uploads; presigned PUT URLs are not supported.
+    public Task<(string PresignedUrl, string Key)> GeneratePresignedUploadUrlAsync(string fileName, string folder, string contentType, int expiryMinutes = 15)
+    {
+        return Task.FromResult((string.Empty, string.Empty));
+    }
 }

@@ -27,6 +27,7 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
     public DbSet<UserCollection> UserCollections { get; set; }
     public DbSet<UserCollectionWatch> UserCollectionWatches { get; set; }
     public DbSet<UserBrowsingEvent> UserBrowsingEvents { get; set; }
+    public DbSet<MediaAsset> MediaAssets { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

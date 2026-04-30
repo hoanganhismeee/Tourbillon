@@ -22,4 +22,8 @@ public interface IStorageService
 
     /// Builds the CDN URL for a stored public ID. Returns null for empty input. Passes through http/https URLs unchanged.
     string? GetPublicUrl(string? publicId, long? version = null);
+
+    /// Generates a presigned PUT URL for direct browser-to-S3 upload.
+    /// Returns (presignedUrl, key). Returns ("", "") if provider doesn't support presigned URLs.
+    Task<(string PresignedUrl, string Key)> GeneratePresignedUploadUrlAsync(string fileName, string folder, string contentType, int expiryMinutes = 15);
 }
