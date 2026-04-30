@@ -2,7 +2,7 @@ import json
 
 from flask import jsonify, request
 
-from core.llm import parse_llm_json
+from core.llm import call_llm, parse_llm_json
 from core.runtime import Runtime
 from prompts.editorial import (
     DISCOVERY_STRICT_PROMPT,
@@ -14,16 +14,7 @@ from prompts.editorial import (
 
 def register_routes(app, runtime: Runtime) -> None:
     def call_editorial_llm(system_prompt: str, user_content: str, temperature: float, max_tokens: int) -> str:
-        response = runtime.client.chat.completions.create(
-            model=runtime.llm_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return response.choices[0].message.content or ""
+        return call_llm(runtime, system_prompt, user_content, temperature=temperature, max_tokens=max_tokens)
 
     @app.route("/generate-editorial", methods=["POST"])
     def generate_editorial():

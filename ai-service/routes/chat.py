@@ -6,6 +6,7 @@ import urllib.request
 
 from flask import jsonify, request
 
+from core.llm import call_llm_chat
 from core.runtime import Runtime
 from prompts.chat import CHAT_SYSTEM_PROMPT
 
@@ -355,13 +356,7 @@ def register_routes(app, runtime: Runtime) -> None:
         messages.append({"role": "user", "content": query})
 
         try:
-            response = runtime.client.chat.completions.create(
-                model=runtime.llm_model,
-                messages=messages,
-                max_tokens=200,
-                temperature=0.3,
-            )
-            raw = (response.choices[0].message.content or "").strip()
+            raw = call_llm_chat(runtime, messages, max_tokens=200, temperature=0.3).strip()
             text_only = _strip_action_lines(raw)
 
             if response_language and not _response_matches_language(text_only, response_language):
@@ -375,13 +370,7 @@ def register_routes(app, runtime: Runtime) -> None:
                         ),
                     },
                 ]
-                retry = runtime.client.chat.completions.create(
-                    model=runtime.llm_model,
-                    messages=retry_messages,
-                    max_tokens=200,
-                    temperature=0.1,
-                )
-                raw = (retry.choices[0].message.content or "").strip()
+                raw = call_llm_chat(runtime, retry_messages, max_tokens=200, temperature=0.1).strip()
                 text_only = _strip_action_lines(raw)
 
             trimmed = _cleanup_markdown_artifacts(_truncate_chat_response(text_only))

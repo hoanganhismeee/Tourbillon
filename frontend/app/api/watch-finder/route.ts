@@ -9,16 +9,15 @@ export async function POST(request: NextRequest) {
 
     const response = await fetch(`${BACKEND_URL}/watch/find`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: request.headers.get('cookie') ?? '',
+      },
       body: JSON.stringify(body),
     });
 
-    if (!response.ok) {
-      throw new Error(`Backend responded with status: ${response.status}`);
-    }
-
     const data = await response.json();
-    return NextResponse.json(data);
+    return NextResponse.json(data, { status: response.status });
   } catch (error) {
     console.error('Watch finder error:', error);
     return NextResponse.json(

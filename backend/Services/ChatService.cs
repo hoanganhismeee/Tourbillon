@@ -87,6 +87,7 @@ public class ChatService
     private readonly IIntentClassifier _classifier;
     private readonly IActionPlanner _planner;
     private readonly IStorageService _storage;
+    private readonly IAiUsageQuotaService _quota;
 
     // Set by ResolveWatchScopedAsync once /classify returns. Read by follow-up
     // routing branches that now trust the classifier instead of semantic regexes.
@@ -295,7 +296,8 @@ public class ChatService
         ILogger<ChatService> logger,
         IIntentClassifier classifier,
         IActionPlanner planner,
-        IStorageService storageService)
+        IStorageService storageService,
+        IAiUsageQuotaService? quotaService = null)
     {
         _httpClientFactory = httpClientFactory;
         _context = context;
@@ -306,6 +308,7 @@ public class ChatService
         _classifier = classifier;
         _planner = planner;
         _storage = storageService;
+        _quota = quotaService ?? new AiUsageQuotaService(redis);
     }
 
     private async Task<List<ChatMessage>> GetSessionHistoryAsync(string sessionId)
@@ -392,28 +395,27 @@ public class ChatService
         string? userId,
         string? ipAddress,
         string? behaviorSummary = null,
-        string? preferredLanguage = null)
+        string? preferredLanguage = null,
+        bool isAdmin = false)
     {
         var disableLimit = _config.GetValue<bool>("ChatSettings:DisableLimitInDev");
         var dailyLimit = _config.GetValue<int>("ChatSettings:DailyLimit", 5);
-
-        if (!disableLimit)
+        var quotaSubject = userId ?? ipAddress ?? "anon";
+        AiQuotaStatus? quotaStatus = disableLimit || isAdmin
+            ? null
+            : await _quota.CheckAsync("chat", quotaSubject, dailyLimit, disabled: false, isAdmin: false);
+        if (quotaStatus?.RateLimited == true && !CanBypassChatQuotaBeforeRouting(message))
         {
-            var rlKey = $"chat_rl:{userId ?? ipAddress ?? "anon"}";
-            var used = (int)(await _redis.GetCounterAsync(rlKey) ?? 0);
-            if (used >= dailyLimit)
+            _logger.LogInformation(
+                "Chat quota hit userId={UserId} used={Used} limit={Limit}",
+                userId ?? "anonymous", quotaStatus.DailyUsed, quotaStatus.DailyLimit);
+            return new ChatApiResponse
             {
-                _logger.LogInformation(
-                    "Chat rate limit hit userId={UserId} used={Used} limit={Limit}",
-                    userId ?? "anonymous", used, dailyLimit);
-                return new ChatApiResponse
-                {
-                    RateLimited = true,
-                    DailyUsed = used,
-                    DailyLimit = dailyLimit,
-                    Message = DailyQuotaMessage.Replace("5", dailyLimit.ToString())
-                };
-            }
+                RateLimited = true,
+                DailyUsed = quotaStatus.DailyUsed,
+                DailyLimit = quotaStatus.DailyLimit,
+                Message = DailyQuotaMessage.Replace("5", quotaStatus.DailyLimit.ToString())
+            };
         }
 
         var routingSw = System.Diagnostics.Stopwatch.StartNew();
@@ -444,6 +446,37 @@ public class ChatService
         string aiMessage = resolution.Message;
         var actions = resolution.Actions;
         var watchCards = resolution.WatchCards;
+
+        if (resolution.UseAi && quotaStatus?.RateLimited == true)
+        {
+            _logger.LogInformation(
+                "Chat quota hit userId={UserId} used={Used} limit={Limit}",
+                userId ?? "anonymous", quotaStatus.DailyUsed, quotaStatus.DailyLimit);
+            return new ChatApiResponse
+            {
+                RateLimited = true,
+                DailyUsed = quotaStatus.DailyUsed,
+                DailyLimit = quotaStatus.DailyLimit,
+                Message = DailyQuotaMessage.Replace("5", quotaStatus.DailyLimit.ToString())
+            };
+        }
+        if (resolution.UseAi && !disableLimit && !isAdmin)
+        {
+            quotaStatus = await _quota.ChargeAsync("chat", quotaSubject, dailyLimit, disabled: false, isAdmin: false);
+            if (quotaStatus.RateLimited)
+            {
+                _logger.LogInformation(
+                    "Chat quota hit userId={UserId} used={Used} limit={Limit}",
+                    userId ?? "anonymous", quotaStatus.DailyUsed, quotaStatus.DailyLimit);
+                return new ChatApiResponse
+                {
+                    RateLimited = true,
+                    DailyUsed = quotaStatus.DailyUsed,
+                    DailyLimit = quotaStatus.DailyLimit,
+                    Message = DailyQuotaMessage.Replace("5", quotaStatus.DailyLimit.ToString())
+                };
+            }
+        }
 
         // Planner runs in parallel with the wording draft when we have watch cards. Covers the
         // common path: discovery / compare / info responses where chip variety matters. When
@@ -523,14 +556,6 @@ public class ChatService
         }
         await SaveSessionStateAsync(sessionId, nextSessionState);
 
-        var newUsed = 1;
-        if (!disableLimit)
-        {
-            var rlKey = $"chat_rl:{userId ?? ipAddress ?? "anon"}";
-            var ttlUntilMidnight = DateTime.UtcNow.Date.AddDays(1) - DateTime.UtcNow;
-            newUsed = (int)await _redis.IncrementAsync(rlKey, ttlUntilMidnight);
-        }
-
         routingSw.Stop();
         var actionSummary = string.Join(", ", actions
             .Where(a => a.Type is "compare" or "search" or "navigate" or "set_cursor")
@@ -556,13 +581,25 @@ public class ChatService
             Message = aiMessage,
             WatchCards = watchCards,
             Actions = actions,
-            DailyUsed = disableLimit ? null : newUsed,
-            DailyLimit = disableLimit ? null : dailyLimit,
+            DailyUsed = disableLimit || isAdmin ? null : quotaStatus?.DailyUsed,
+            DailyLimit = disableLimit || isAdmin ? null : dailyLimit,
         };
     }
 
     public async Task ClearSessionAsync(string sessionId) =>
         await _redis.RemoveHashAsync($"chat:session:{sessionId}");
+
+    private static bool CanBypassChatQuotaBeforeRouting(string message)
+    {
+        var trimmed = message.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return true;
+
+        return IsAbusiveQuery(trimmed)
+            || IsObviouslyOffTopicQuery(trimmed)
+            || Regex.IsMatch(trimmed, @"^\s*(?:yo|hey|hi|hello)\b[\s,!.?]*$", RegexOptions.IgnoreCase)
+            || Regex.IsMatch(trimmed, @"\b(?:change|set|switch)\s+(?:the\s+)?cursor\b", RegexOptions.IgnoreCase);
+    }
 
     private async Task<ChatResolution> ResolveMessageAsync(
         string message,

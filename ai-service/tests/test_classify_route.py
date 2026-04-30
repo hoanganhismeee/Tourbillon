@@ -38,6 +38,8 @@ def _mock_runtime(response_text: str) -> MagicMock:
     runtime = MagicMock()
     runtime.client = client
     runtime.llm_model = "test-model"
+    runtime.use_anthropic = False
+    runtime.rate_limiter = None
     return runtime
 
 
@@ -73,6 +75,8 @@ class ClassifyRouteTests(unittest.TestCase):
         runtime = MagicMock()
         runtime.client.chat.completions.create.side_effect = RuntimeError("LLM down")
         runtime.llm_model = "test-model"
+        runtime.use_anthropic = False
+        runtime.rate_limiter = None
         result = _safe_classify(runtime, "hello", {}, [], {})
         self.assertEqual("unclear", result["intent"])
         self.assertEqual(0.0, result["confidence"])

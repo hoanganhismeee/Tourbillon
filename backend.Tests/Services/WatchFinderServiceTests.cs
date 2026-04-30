@@ -6,6 +6,7 @@ using backend.Database;
 using backend.Services;
 using backend.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -47,6 +48,51 @@ public class WatchFinderServiceTests
             new QueryCacheService(context, NullLogger<QueryCacheService>.Instance),
             NullLogger<WatchFinderService>.Instance,
             TestStorage);
+    }
+
+    [Fact]
+    public async Task FindWatchesAsync_DirectSqlResult_DoesNotChargeSmartSearchQuota()
+    {
+        using var context = CreateContext();
+        var httpFactory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        var deterministic = new Mock<IDeterministicWatchSearchService>(MockBehavior.Strict);
+        var quota = new Mock<IAiUsageQuotaService>(MockBehavior.Strict);
+        deterministic
+            .Setup(s => s.TryDirectSqlSearchAsync(
+                It.IsAny<string>(),
+                It.IsAny<QueryIntent?>(),
+                "direct_sql_deterministic"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                SearchPath = "direct_sql_deterministic",
+                Watches = [new WatchDto { Id = 1, Name = "Aquanaut", Slug = "aquanaut" }]
+            });
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["WatchFinderSettings:DisableLimitInDev"] = "false",
+                ["WatchFinderSettings:DailyLimit"] = "5",
+            })
+            .Build();
+        var service = new WatchFinderService(
+            httpFactory.Object,
+            deterministic.Object,
+            context,
+            new WatchFilterMapper(),
+            new QueryCacheService(context, NullLogger<QueryCacheService>.Instance),
+            NullLogger<WatchFinderService>.Instance,
+            TestStorage,
+            config,
+            quota.Object);
+
+        var result = await service.FindWatchesAsync(
+            "sporty watches",
+            new WatchFinderQuotaContext("127.0.0.1", IsAdmin: false));
+
+        Assert.Equal("direct_sql_deterministic", result.SearchPath);
+        quota.VerifyNoOtherCalls();
+        httpFactory.VerifyNoOtherCalls();
     }
 
     public sealed record FilterCase(

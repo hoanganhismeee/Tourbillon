@@ -259,7 +259,7 @@ public class ChatServiceTests
         using var context = CreateContext();
         var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
         var redis = new FakeRedis();
-        await redis.SetStringAsync("chat_rl:127.0.0.1", "5");
+        await redis.SetStringAsync("ai_quota:chat:127.0.0.1", "5");
         var service = CreateService(
             context,
             watchFinder,
@@ -272,6 +272,29 @@ public class ChatServiceTests
         Assert.Equal(5, result.DailyUsed);
         Assert.Equal(5, result.DailyLimit);
         Assert.Contains("daily concierge quota of 5 messages", result.Message, StringComparison.OrdinalIgnoreCase);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_RateLimitedAdminRequest_BypassesQuota()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var redis = new FakeRedis();
+        await redis.SetStringAsync("ai_quota:chat:42", "5");
+        var service = CreateService(
+            context,
+            watchFinder,
+            redis: redis,
+            config: CreateConfig(disableLimit: false, dailyLimit: 5),
+            classifier: new FakeClassifier("non_watch"));
+
+        var result = await service.HandleMessageAsync("session-1", "hello", "42", "127.0.0.1", isAdmin: true);
+
+        Assert.False(result.RateLimited);
+        Assert.Null(result.DailyUsed);
+        Assert.Null(result.DailyLimit);
+        Assert.Contains("Tourbillon can help compare watches", result.Message, StringComparison.OrdinalIgnoreCase);
         watchFinder.VerifyNoOtherCalls();
     }
 

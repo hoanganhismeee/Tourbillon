@@ -171,6 +171,7 @@ export default function SmartSearchClient() {
   const activePage = Number(searchParams.get('page') ?? '1');
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [errorMessage, setErrorMessage] = useState('');
   const [result, setResult] = useState<WatchFinderResult | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -290,6 +291,7 @@ export default function SmartSearchClient() {
   useEffect(() => {
     if (!query) { setStatus('error'); return; }
     setStatus('loading');
+    setErrorMessage('');
     setResult(null);
     setFilters(EMPTY_WATCH_FILTERS);
     intentAppliedRef.current = null; // allow intent filters for the new query
@@ -376,7 +378,10 @@ export default function SmartSearchClient() {
           }
         }
       })
-      .catch(() => setStatus('error'));
+      .catch((error: unknown) => {
+        setErrorMessage(error instanceof Error ? error.message : '');
+        setStatus('error');
+      });
   }, [query]);
 
   const setFilter = useCallback(<K extends keyof WatchFilters>(key: K, value: WatchFilters[K]) => {
@@ -600,9 +605,9 @@ export default function SmartSearchClient() {
       {status === 'error' && (
         <div className="text-center py-20">
           <p className="text-white/40 font-inter text-sm">
-            {!result
+            {errorMessage || (!result
               ? 'AI service unavailable or still warming up. Please try again in a moment.'
-              : 'Something went wrong.'}
+              : 'Something went wrong.')}
           </p>
           <button
             onClick={() => router.push(`/smart-search?q=${encodeURIComponent(query)}`)}

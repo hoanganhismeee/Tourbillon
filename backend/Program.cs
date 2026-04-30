@@ -118,6 +118,7 @@ builder.Services.AddScoped<IPasswordChangeService, PasswordChangeService>();
 
 // Register rate limiting service
 builder.Services.AddScoped<IPasswordChangeRateLimitService, PasswordChangeRateLimitService>();
+builder.Services.AddScoped<IAiUsageQuotaService, AiUsageQuotaService>();
 
 // Register SOLID refactored services
 builder.Services.AddScoped<IUserRegistrationService, UserRegistrationService>();
