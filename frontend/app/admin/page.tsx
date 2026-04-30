@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
-export default function ScrapePage() {
+export default function AdminIndex() {
   redirect('/admin/watches');
 }

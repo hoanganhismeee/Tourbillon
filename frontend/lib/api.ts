@@ -1383,3 +1383,146 @@ export const adminDeleteCollection = async (id: number): Promise<void> => {
   }
 };
 
+// ── Admin Editorial ───────────────────────────────────────────────────────────
+
+export interface EditorialStatus {
+  total: number;
+  withEditorial: number;
+  coveragePct: number;
+}
+
+export const adminGetEditorialStatus = async (): Promise<EditorialStatus> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/editorial/status`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch editorial status');
+  return res.json();
+};
+
+export const adminSeedEditorial = async (): Promise<{ message: string }> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/editorial/seed`, { method: 'POST', credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to enqueue editorial seed');
+  return res.json();
+};
+
+export const adminClearEditorial = async (): Promise<{ deleted: number }> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/editorial`, { method: 'DELETE', credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to clear editorial');
+  return res.json();
+};
+
+// ── Admin Embeddings ──────────────────────────────────────────────────────────
+
+export interface EmbeddingStatus {
+  total: number;
+  embedded: number;
+  coveragePct: number;
+}
+
+export const adminGetEmbeddingStatus = async (): Promise<EmbeddingStatus> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/embeddings/status`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch embedding status');
+  return res.json();
+};
+
+export const adminGenerateEmbeddings = async (): Promise<EmbeddingStatus & { generated: number }> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/embeddings/generate`, { method: 'POST', credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to generate embeddings');
+  return res.json();
+};
+
+export const adminRegenerateEmbeddings = async (): Promise<EmbeddingStatus & { regenerated: number }> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/embeddings/regenerate`, { method: 'POST', credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to regenerate embeddings');
+  return res.json();
+};
+
+// ── Admin Query Cache ─────────────────────────────────────────────────────────
+
+export interface QueryCacheStatus {
+  entries: number;
+  sizeBytes: number;
+  message?: string;
+}
+
+export const adminGetQueryCacheStatus = async (): Promise<QueryCacheStatus> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/query-cache/status`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch query cache status');
+  return res.json();
+};
+
+export const adminSeedQueryCache = async (): Promise<{ message: string }> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/query-cache/seed`, { method: 'POST', credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to seed query cache');
+  return res.json();
+};
+
+export const adminClearQueryCache = async (): Promise<{ message: string }> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/query-cache`, { method: 'DELETE', credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to clear query cache');
+  return res.json();
+};
+
+// ── Admin Scraping ────────────────────────────────────────────────────────────
+
+export interface ScrapeStats {
+  totalBrands: number;
+  totalCollections: number;
+  totalWatches: number;
+  lastScrapedAt?: string | null;
+}
+
+export const adminGetScrapeStats = async (): Promise<ScrapeStats> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/scrape-stats`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch scrape stats');
+  return res.json();
+};
+
+export const adminScrapeBrand = async (brand: string, collection: string, maxWatches = 25): Promise<{
+  success: boolean; message: string; watchesScraped: number; watchesAdded: number;
+}> => {
+  const res = await fetchWithTimeout(
+    `${API_BASE_URL}/admin/scrape-brand-official?brand=${encodeURIComponent(brand)}&collection=${encodeURIComponent(collection)}&maxWatches=${maxWatches}`,
+    { method: 'POST', credentials: 'include' }
+  );
+  const data = await res.json();
+  return { success: data.Success ?? res.ok, message: data.Message ?? '', watchesScraped: data.WatchesScraped ?? 0, watchesAdded: data.WatchesAdded ?? 0 };
+};
+
+export const adminScrapeSitemap = async (brand: string, sitemapUrl: string, maxWatches = 25): Promise<{
+  success: boolean; message: string; watchesAdded: number;
+}> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/scrape-sitemap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ brand, sitemapUrl, maxWatches }),
+  });
+  const data = await res.json();
+  return { success: data.Success ?? res.ok, message: data.Message ?? '', watchesAdded: data.WatchesAdded ?? 0 };
+};
+
+export const adminScrapeListing = async (brand: string, listingUrl: string, maxWatches = 25): Promise<{
+  success: boolean; message: string; watchesAdded: number;
+}> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/scrape-listing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ brand, listingUrl, maxWatches }),
+  });
+  const data = await res.json();
+  return { success: data.Success ?? res.ok, message: data.Message ?? '', watchesAdded: data.WatchesAdded ?? 0 };
+};
+
+export const adminScrapeUrl = async (url: string, brand: string, collection: string): Promise<{
+  success: boolean; message: string; watchesAdded: number;
+}> => {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/admin/scrape-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ url, brand, collection }),
+  });
+  const data = await res.json();
+  return { success: data.Success ?? res.ok, message: data.Message ?? '', watchesAdded: data.WatchesAdded ?? 0 };
+};
+

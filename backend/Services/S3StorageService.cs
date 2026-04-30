@@ -214,6 +214,38 @@ public class S3StorageService : IStorageService, IDisposable
             : $"{url}?v={_globalVersion}";
     }
 
+    /// Generates a presigned S3 PUT URL for direct browser upload.
+    /// Key: folder/sanitizedBaseName+extension (spaces → hyphens).
+    public async Task<(string PresignedUrl, string Key)> GeneratePresignedUploadUrlAsync(string fileName, string folder, string contentType, int expiryMinutes = 15)
+    {
+        var sanitized = Path.GetFileNameWithoutExtension(fileName)
+            .Replace(" ", "-")
+            .Replace("/", "-");
+        var ext = Path.GetExtension(fileName);
+        var key = string.IsNullOrEmpty(folder) ? $"{sanitized}{ext}" : $"{folder}/{sanitized}{ext}";
+
+        try
+        {
+            var request = new GetPreSignedUrlRequest
+            {
+                BucketName  = _bucketName,
+                Key         = key,
+                Verb        = HttpVerb.PUT,
+                ContentType = contentType,
+                Expires     = DateTime.UtcNow.AddMinutes(expiryMinutes)
+            };
+
+            var url = _s3Client.GetPreSignedURL(request);
+            _logger.LogInformation("Generated presigned upload URL for key {Key}", key);
+            return (url, key);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating presigned URL for {Key}", key);
+            return (string.Empty, string.Empty);
+        }
+    }
+
     public void Dispose() => _s3Client.Dispose();
 
     // Maps common image extensions to MIME types for S3 Content-Type headers
