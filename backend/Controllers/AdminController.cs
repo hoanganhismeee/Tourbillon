@@ -2062,6 +2062,143 @@ public class AdminController : ControllerBase
         return Ok(new { Success = true });
     }
 
+    /// Lists all media assets ordered newest first.
+    /// GET: api/admin/media
+    [HttpGet("media")]
+    public async Task<IActionResult> GetMediaAssets()
+    {
+        var db = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var assets = await db.MediaAssets
+            .OrderByDescending(a => a.UploadedAt)
+            .ToListAsync();
+
+        var storage = HttpContext.RequestServices.GetRequiredService<IStorageService>();
+        var result = assets.Select(a => new
+        {
+            a.Id,
+            a.Key,
+            a.FileName,
+            a.MediaType,
+            a.MimeType,
+            a.SizeBytes,
+            a.UploadedAt,
+            a.CloudinaryPublicId,
+            a.CloudinaryUrl,
+            Url = storage.GetPublicUrl(a.Key)
+        });
+
+        return Ok(result);
+    }
+
+    /// Generates a presigned S3 PUT URL for direct browser video upload.
+    /// POST: api/admin/media/video-presign
+    [HttpPost("media/video-presign")]
+    public async Task<IActionResult> GetVideoPresignedUrl([FromBody] VideoPresignRequestDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.FileName) || string.IsNullOrWhiteSpace(dto.ContentType))
+            return BadRequest(new { Message = "FileName and ContentType are required." });
+
+        var storage = HttpContext.RequestServices.GetRequiredService<IStorageService>();
+        var (presignedUrl, key) = await storage.GeneratePresignedUploadUrlAsync(dto.FileName, "media/videos", dto.ContentType);
+
+        if (string.IsNullOrEmpty(presignedUrl))
+            return StatusCode(500, new { Message = "Failed to generate presigned URL." });
+
+        return Ok(new { presignedUrl, key });
+    }
+
+    /// Records a completed video upload in the MediaAssets table.
+    /// POST: api/admin/media/video-confirm
+    [HttpPost("media/video-confirm")]
+    public async Task<IActionResult> ConfirmVideoUpload([FromBody] VideoConfirmDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Key) || string.IsNullOrWhiteSpace(dto.FileName))
+            return BadRequest(new { Message = "Key and FileName are required." });
+
+        var db = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var asset = new MediaAsset
+        {
+            Key        = dto.Key,
+            FileName   = dto.FileName,
+            MediaType  = "video",
+            MimeType   = dto.MimeType ?? "video/mp4",
+            SizeBytes  = dto.SizeBytes,
+            UploadedAt = DateTime.UtcNow
+        };
+
+        db.MediaAssets.Add(asset);
+        await db.SaveChangesAsync();
+
+        var storage = HttpContext.RequestServices.GetRequiredService<IStorageService>();
+        return Ok(new
+        {
+            asset.Id, asset.Key, asset.FileName, asset.MediaType,
+            asset.MimeType, asset.SizeBytes, asset.UploadedAt,
+            Url = storage.GetPublicUrl(asset.Key)
+        });
+    }
+
+    /// Finalizes a Cloudinary-staged image into the media library: downloads from Cloudinary URL, uploads to S3 under media/images/, creates MediaAsset record.
+    /// POST: api/admin/media/image-confirm
+    [HttpPost("media/image-confirm")]
+    public async Task<IActionResult> ConfirmMediaImageUpload([FromBody] MediaImageConfirmDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.CloudinaryUrl) || string.IsNullOrWhiteSpace(dto.FileName))
+            return BadRequest(new { Message = "CloudinaryUrl and FileName are required." });
+
+        var storage = HttpContext.RequestServices.GetRequiredService<IStorageService>();
+        var sanitized = Path.GetFileNameWithoutExtension(dto.FileName).Replace(" ", "-");
+        var ext       = Path.GetExtension(dto.FileName);
+        var publicId  = $"{sanitized}{ext}";
+
+        var key = await storage.UploadImageFromUrlAsync(dto.CloudinaryUrl, publicId, "media/images");
+        if (string.IsNullOrEmpty(key))
+            return StatusCode(500, new { Message = "Failed to upload image to S3." });
+
+        var db = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var asset = new MediaAsset
+        {
+            Key                = key,
+            FileName           = dto.FileName,
+            MediaType          = "image",
+            MimeType           = "image/png",
+            SizeBytes          = dto.SizeBytes,
+            UploadedAt         = DateTime.UtcNow,
+            CloudinaryPublicId = dto.CloudinaryPublicId,
+            CloudinaryUrl      = dto.CloudinaryUrl
+        };
+
+        db.MediaAssets.Add(asset);
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            asset.Id, asset.Key, asset.FileName, asset.MediaType,
+            asset.MimeType, asset.SizeBytes, asset.UploadedAt,
+            asset.CloudinaryPublicId, asset.CloudinaryUrl,
+            Url = storage.GetPublicUrl(asset.Key)
+        });
+    }
+
+    /// Deletes a media asset from S3 and removes the MediaAsset record.
+    /// DELETE: api/admin/media/{id}
+    [HttpDelete("media/{id:int}")]
+    public async Task<IActionResult> DeleteMediaAsset(int id)
+    {
+        var db = HttpContext.RequestServices.GetRequiredService<TourbillonContext>();
+        var asset = await db.MediaAssets.FindAsync(id);
+        if (asset == null)
+            return NotFound(new { Message = $"MediaAsset {id} not found." });
+
+        var storage = HttpContext.RequestServices.GetRequiredService<IStorageService>();
+        await storage.DeleteImageAsync(asset.Key);
+
+        db.MediaAssets.Remove(asset);
+        await db.SaveChangesAsync();
+
+        return Ok(new { Success = true });
+    }
+
 }
 
 public class UpdateEditorialDto
@@ -2070,6 +2207,28 @@ public class UpdateEditorialDto
     public string CollectorAppeal { get; set; } = "";
     public string DesignLanguage  { get; set; } = "";
     public string BestFor         { get; set; } = "";
+}
+
+public class VideoPresignRequestDto
+{
+    public string FileName    { get; set; } = "";
+    public string ContentType { get; set; } = "";
+}
+
+public class VideoConfirmDto
+{
+    public string  Key       { get; set; } = "";
+    public string  FileName  { get; set; } = "";
+    public string? MimeType  { get; set; }
+    public long    SizeBytes { get; set; }
+}
+
+public class MediaImageConfirmDto
+{
+    public string  CloudinaryUrl       { get; set; } = "";
+    public string? CloudinaryPublicId  { get; set; }
+    public string  FileName            { get; set; } = "";
+    public long    SizeBytes           { get; set; }
 }
 
 /// Request DTO for scraping multiple brands
