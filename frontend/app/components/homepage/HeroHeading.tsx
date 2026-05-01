@@ -4,10 +4,7 @@
 
 import { useRef } from 'react';
 import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-
-gsap.registerPlugin(ScrollTrigger);
 
 const LINES = [
   ['Thirteen', 'Maisons.'],
@@ -31,11 +28,7 @@ export default function HeroHeading() {
         duration: 0.7,
         stagger: 0.08,
         ease: 'power3.out',
-        scrollTrigger: {
-          trigger: containerRef.current,
-          start: 'top 80%',
-          once: true,
-        },
+        delay: 0.2,
       }
     );
   }, { scope: containerRef });
