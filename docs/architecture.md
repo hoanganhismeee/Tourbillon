@@ -470,5 +470,35 @@ Frontend runs locally (`npm run dev`) — intentionally excluded from Docker for
 | Advisor CRM | Done — inquiry page, Hangfire status auto-advance |
 | Behavioural Watch DNA | Done — browser-scoped anonymous tracking, existing-account merge, clean new-account boundary, AI profile generation |
 | Analytics Dashboard | Planned |
-| S3 + CloudFront | Planned |
-| Kubernetes | Planned |
+| S3 + CloudFront | Done — `IStorageService` abstraction, CloudFront CDN, ECR images |
+| Production Deployment | Done — Railway + Neon + Upstash |
+
+---
+
+## Production Deployment
+
+### Stack
+
+```
+Browser
+  → Vercel (Next.js 15 — free tier)
+      → /api/backend/* Next.js proxy (same-origin, no CORS)
+          → Railway (backend + ai-service, auto-deploy on push to main)
+              Neon PostgreSQL  (external managed — free tier)
+              Upstash Redis    (external managed — free tier)
+  → AWS CloudFront (assets — d2lauyid2w6u9c.cloudfront.net)
+      → S3 bucket (ap-southeast-2)
+```
+
+### Services
+
+| Service | Host | Notes |
+|---|---|---|
+| Frontend | Vercel | Auto-deployed on push to main |
+| Backend (.NET 8) | Railway | Root dir: `backend/`, builds from `backend/Dockerfile` |
+| AI service (Flask) | Railway | Root dir: `ai-service/`, builds from `ai-service/Dockerfile.production` |
+| PostgreSQL | Neon | Managed, ap-southeast-2 |
+| Redis | Upstash | Managed, TLS, ap-southeast-2 |
+| Assets | AWS CloudFront + S3 | CDN-served images + videos |
+
+

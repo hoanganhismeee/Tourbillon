@@ -1,0 +1,11 @@
+# Production AI service — slim Python image, calls Anthropic API directly.
+# No Ollama or CUDA needed; swap LLM_BASE_URL + LLM_MODEL env vars at runtime.
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+
+EXPOSE 5000
+CMD ["python", "app.py"]
