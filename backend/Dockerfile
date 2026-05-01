@@ -14,7 +14,6 @@ ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin
 WORKDIR /app
 COPY --from=build /app/publish .
-COPY --from=build /src/Data ./Data
-RUN mkdir -p /app/Images
+RUN mkdir -p /app/Images /app/Data
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "backend.dll"]
