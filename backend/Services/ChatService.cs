@@ -1178,10 +1178,11 @@ public class ChatService
                 mentions.Collections.Add(collection);
         }
 
-        // Only do fuzzy collection resolution when the pool is already brand-scoped or the query
-        // has an explicit watch domain signal. Without either guard, single-token fuzzy matching
+        // Only do fuzzy collection resolution when the pool is already brand-scoped, at least one
+        // collection was already resolved (user is clearly in watch territory), or the query has
+        // an explicit watch domain signal. Without these guards, single-token fuzzy matching
         // produces false positives (e.g. "reverse" → "Reverso") on off-topic queries.
-        if (matchedBrandIds.Count > 0 || WatchFinderService.HasWatchDomainSignal(query))
+        if (matchedBrandIds.Count > 0 || matchedCollectionIds.Count > 0 || WatchFinderService.HasWatchDomainSignal(query))
         {
             var blockedCollectionTokens = WatchFinderService.BuildBlockedCollectionTokens(mentions.Brands);
             var fuzzyCollections = WatchFinderService.ResolveFuzzyCollections(
