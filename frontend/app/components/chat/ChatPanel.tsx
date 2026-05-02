@@ -82,9 +82,17 @@ function renderInlineMarkdown(
     }
 
     if (match[0].startsWith('**')) {
-      result.push(<strong key={`${keyPrefix}-strong-${match.index}`}>{match[2]}</strong>);
+      result.push(
+        <strong key={`${keyPrefix}-strong-${match.index}`}>
+          {renderInlineMarkdown(match[2], `${keyPrefix}-si-${match.index}`, onNavigate)}
+        </strong>
+      );
     } else if (match[0].startsWith('*')) {
-      result.push(<em key={`${keyPrefix}-em-${match.index}`}>{match[3]}</em>);
+      result.push(
+        <em key={`${keyPrefix}-em-${match.index}`}>
+          {renderInlineMarkdown(match[3], `${keyPrefix}-ei-${match.index}`, onNavigate)}
+        </em>
+      );
     } else {
       const href = match[5];
       const label = match[4];
@@ -455,6 +463,11 @@ function AssistantMessage({
   onSendMessage?: (text: string) => void;
   onRevealProgress?: () => void;
 }) {
+  const router = useRouter();
+  const onNavigate = useCallback((href: string) => {
+    startTransition(() => { router.push(href); });
+  }, [router]);
+
   const [visibleText, setVisibleText] = useState(animate ? '' : text);
   const [isComplete, setIsComplete] = useState(!animate);
   const onRevealProgressRef = useRef(onRevealProgress);
@@ -511,8 +524,8 @@ function AssistantMessage({
       {isComplete ? (
         <MarkdownMessage text={text} />
       ) : (
-        <div className="whitespace-pre-wrap">
-          {visibleText}
+        <div>
+          {renderMarkdown(visibleText, onNavigate)}
           <span className="ml-0.5 inline-block h-[1em] w-px translate-y-[2px] animate-pulse bg-[#bfa68a]/70 align-middle" />
         </div>
       )}
