@@ -165,6 +165,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [tasteProfile, setTasteProfile] = useState<TasteProfile | null>(null);
   // Init session ID synchronously on first render (client only) to avoid a race condition.
   const sessionIdRef = useRef<string>(initialSessionId);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !sessionIdRef.current) return;
@@ -216,6 +217,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
 
+    // Abort any in-flight request before starting a new one
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     const now = Date.now();
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -229,7 +235,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     try {
       const behaviorSummary = buildPersonalizationSummary(tasteProfile);
       const preferredLanguage = getPreferredLanguageHint();
-      const result = await sendChatMessage(sessionIdRef.current, text, behaviorSummary, preferredLanguage);
+      const result = await sendChatMessage(
+        sessionIdRef.current, text, behaviorSummary, preferredLanguage, controller.signal,
+      );
+      if (controller.signal.aborted) return;
       setDailyUsed(result.dailyUsed ?? null);
       setDailyLimit(result.dailyLimit ?? null);
 
@@ -242,17 +251,22 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         actions: result.actions?.length ? result.actions : undefined,
       };
       setMessages(prev => [...prev, assistantMessage]);
-    } catch {
+    } catch (err) {
+      // Ignore errors caused by the user intentionally clearing/aborting
+      if (err instanceof Error && err.name === 'AbortError') return;
       setMessages(prev => [
         ...prev,
         { role: 'assistant', content: 'Something went wrong. Please try again.' },
       ]);
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) setIsLoading(false);
     }
   }, [isLoading, tasteProfile]);
 
   const clearSession = useCallback(async () => {
+    // Cancel any in-flight request so it doesn't append to the cleared session
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     await clearChatSession(sessionIdRef.current).catch(() => {});
     // Generate a new session ID
     const newId = crypto.randomUUID();

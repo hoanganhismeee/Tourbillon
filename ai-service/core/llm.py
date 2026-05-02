@@ -1,7 +1,20 @@
 import json
 import re
+import sys
+import time
 
 from core.runtime import Runtime
+
+
+def _log(msg: str) -> None:
+    import tempfile, os
+    print(msg, file=sys.stderr, flush=True)
+    try:
+        log_path = os.path.join(tempfile.gettempdir(), "llm-timing.log")
+        with open(log_path, "a") as _f:
+            _f.write(msg + "\n")
+    except OSError:
+        pass
 
 
 def normalise(q: str) -> str:
@@ -57,6 +70,7 @@ def call_llm(
     if getattr(runtime, "use_anthropic", False) is True:
         _rate_limit(runtime)
         system_payload = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
+        t0 = time.perf_counter()
         response = runtime.anthropic_client.messages.create(
             model=runtime.llm_model,
             system=system_payload,
@@ -64,8 +78,17 @@ def call_llm(
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        ms = (time.perf_counter() - t0) * 1000
+        u = getattr(response, "usage", None)
+        cache_read = getattr(u, "cache_read_input_tokens", 0) or 0
+        cache_hit = " CACHE_HIT" if cache_read > 0 else ""
+        _log(
+            f"[LLM] {ms:.0f}ms | in={getattr(u,'input_tokens','?')} "
+            f"out={getattr(u,'output_tokens','?')} cache_read={cache_read}{cache_hit}"
+        )
         return response.content[0].text if response.content else ""
 
+    t0 = time.perf_counter()
     response = runtime.client.chat.completions.create(
         model=runtime.llm_model,
         messages=[
@@ -75,6 +98,8 @@ def call_llm(
         temperature=temperature,
         max_tokens=max_tokens,
     )
+    ms = (time.perf_counter() - t0) * 1000
+    _log(f"[LLM] {ms:.0f}ms | ollama")
     return response.choices[0].message.content or ""
 
 
@@ -96,6 +121,7 @@ def call_llm_chat(
             else:
                 chat_messages.append(msg)
         system_payload = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}] if system else []
+        t0 = time.perf_counter()
         response = runtime.anthropic_client.messages.create(
             model=runtime.llm_model,
             system=system_payload,
@@ -103,14 +129,25 @@ def call_llm_chat(
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        ms = (time.perf_counter() - t0) * 1000
+        u = getattr(response, "usage", None)
+        cache_read = getattr(u, "cache_read_input_tokens", 0) or 0
+        cache_hit = " CACHE_HIT" if cache_read > 0 else ""
+        _log(
+            f"[LLM chat] {ms:.0f}ms | in={getattr(u,'input_tokens','?')} "
+            f"out={getattr(u,'output_tokens','?')} cache_read={cache_read}{cache_hit}"
+        )
         return response.content[0].text if response.content else ""
 
+    t0 = time.perf_counter()
     response = runtime.client.chat.completions.create(
         model=runtime.llm_model,
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,
     )
+    ms = (time.perf_counter() - t0) * 1000
+    _log(f"[LLM chat] {ms:.0f}ms | ollama")
     return response.choices[0].message.content or ""
 
 
