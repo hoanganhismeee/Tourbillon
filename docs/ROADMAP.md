@@ -52,7 +52,7 @@
 | Chat Concierge — Flexible Routing + Token-Optimized Search (SQL brand path, semantic router, descriptor blacklist fallback, 200-word limit, cursor fallback, explicit dispatcher messages) | Done | 14.5 |
 | Chat Concierge — Planner Chips + Classifier-First Follow-Ups (`/plan-actions`, backend validation, deterministic fallback) | Done | 14.6 |
 | Storage Abstraction + S3 + CloudFront Migration | Done | 15 |
-| Production Deployment (Hetzner VPS + Neon + Upstash + GitHub Actions CD) | Done | 16 |
+| Production Deployment (Railway + Neon + Upstash + Vercel + GitHub Actions CD) | Done | 16 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | ? |
 
 ## Model Strategy
@@ -85,9 +85,6 @@ ai-service:
     LLM_API_KEY: ${ANTHROPIC_API_KEY}
 ```
 The warmup in `app.py` auto-detects non-Ollama URLs and skips model pull. No other changes needed.
-
-**When switching to Haiku — one prompt cleanup:**
-`ai-service/app.py` lines 171–175 contain hardcoded dress/sport/diver/chronograph narrative guidance for the reranker. These become redundant once Haiku handles them natively — remove after confirming correct scores in staging. Keep all scoring thresholds (`score 80+`). Do NOT remove `PARSE_SYSTEM_PROMPT` category lists (occasion, material, strap, etc.) — they constrain structured JSON output format and are model-agnostic.
 
 **Chat concierge prompt (`CHAT_SYSTEM_PROMPT`) — written for Haiku:**
 Style rules, word cap (200 words), and link format are expressed as plain instructions that Claude follows natively — no hardcoded narrative, no model-specific training. A server-side `_truncate_chat_response()` in `/chat` enforces the cap as a safety net for any model that overshoots. Do not add enumeration-heavy guidance; prose instructions are intentional and model-agnostic.
@@ -462,20 +459,12 @@ QueryCaches — cosine similarity >= 0.92
 | Service | Spec | Monthly |
 |---|---|---|
 | Vercel Hobby | Next.js frontend, CDN, SSL | $0.00 |
-| EC2 t3.micro (year 1, free tier) | 2 vCPU 1GB — .NET + Flask | $0.00 |
-| EC2 t3.micro (after free tier) | same | ~$7.59 |
-| EC2 t3.small (upgrade if needed) | 2 vCPU 2GB | ~$15.00 |
-| RDS db.t3.micro (free tier, year 1) | PostgreSQL 20GB Single-AZ | $0.00 |
-| RDS db.t3.micro (after free tier) | Same spec on-demand | ~$22.00 |
+| Railway Starter | .NET 8 backend + Flask ai-service | ~$5.00 |
+| Neon Free Tier | PostgreSQL, 0.5GB storage, ap-southeast-2 | $0.00 |
+| Upstash Free Tier | Redis, 10K commands/day, ap-southeast-2 | $0.00 |
 | S3 Standard | ~5GB watch images | ~$0.12 |
-| CloudFront Free plan | 100GB/mo egress, WAF, SSL | $0.00 |
-| Domain | .com annualised | ~$1.00 |
+| CloudFront Free plan | 100GB/mo egress, SSL | $0.00 |
 
-**Year 1 (free tier active): ~$3–6/month** · **After free tier: ~$40–45/month**
-
-Cost reduction option: run PostgreSQL directly on EC2 instead of RDS. Drops post-free-tier cost to ~$18/month.
-
-**EC2 t3.micro memory:** Without Selenium (scraping complete), idle footprint is ~560MB, leaving ~440MB headroom on the 1GB instance. Rate-limited AI features protect against concurrent-request spikes. If memory consistently exceeds 800MB under real traffic, upgrade to t3.small (~$15/month).
 
 ## Pre-generation Jobs
 
@@ -488,7 +477,7 @@ python generate_story_content.py    # ~$0.50 total for all watches
 python generate_discovery_pages.py  # ~$0.02 total for all themes
 ```
 
-**Do not run batch generation jobs on the production EC2 t3.micro instance.** This is the primary scenario that would push the instance past safe memory limits. Run generation locally or trigger via a scheduled job outside of peak traffic.
+**Do not run batch generation jobs against the production database.** Run generation locally against a local Postgres instance, then export and import the generated rows into Neon.
 
 ---
 

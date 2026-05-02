@@ -24,7 +24,7 @@ Tourbillon is a full-stack e-commerce platform for luxury watches, built with a 
 | **AI** | Claude Haiku 4.5 (production) / Qwen 2.5 7B via Ollama (local) |
 | **Images** | Storage abstraction with Cloudinary or S3, delivered through CloudFront |
 | **Auth** | ASP.NET Identity, HttpOnly cookies, role-based access |
-| **Infrastructure** | Docker, EC2, RDS, S3 + CloudFront, Vercel |
+| **Infrastructure** | Docker, Railway, Neon, Upstash, S3 + CloudFront, Vercel |
 
 ## Project Purpose
 
