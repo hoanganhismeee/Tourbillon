@@ -6,7 +6,10 @@ from core.runtime import Runtime
 def register_routes(app, runtime: Runtime) -> None:
     @app.route("/embed", methods=["POST"])
     def embed():
-        """Generate embeddings using nomic-embed-text."""
+        """Generate embeddings using nomic-embed-text (local) or a configured cloud provider."""
+        if runtime.embed_client is None:
+            return jsonify({"error": "No embed backend configured. Set EMBED_BASE_URL + EMBED_API_KEY env vars."}), 503
+
         body = request.get_json(silent=True) or {}
         texts = body.get("texts") or []
         if not texts:

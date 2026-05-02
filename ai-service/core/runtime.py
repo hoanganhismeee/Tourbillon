@@ -42,7 +42,7 @@ class Runtime:
     embed_base_url: str
     embed_model: str
     client: OpenAI
-    embed_client: OpenAI
+    embed_client: Any  # OpenAI | None — None when no embed backend is available
     cache: dict[str, dict] = field(default_factory=dict)
     model_ready: bool = False
     use_anthropic: bool = False
@@ -64,7 +64,8 @@ def create_runtime() -> Runtime:
     llm_api_key = os.getenv("LLM_API_KEY", "ollama")
 
     embed_base_url = os.getenv("EMBED_BASE_URL", "http://localhost:11434/v1")
-    embed_model = "nomic-embed-text"
+    embed_model = os.getenv("EMBED_MODEL", "nomic-embed-text")
+    embed_api_key = os.getenv("EMBED_API_KEY", "ollama")
 
     use_anthropic = _is_anthropic_url(llm_base_url)
     anthropic_client = None
@@ -77,6 +78,15 @@ def create_runtime() -> Runtime:
         if rate_limit_rpm > 0:
             rate_limiter = RateLimiter(max_calls=rate_limit_rpm, window_seconds=60.0)
 
+    # Embed client is None when running in production mode without a configured embed backend.
+    # Production (use_anthropic=True) with the default Ollama EMBED_BASE_URL means no embed service.
+    # Set EMBED_BASE_URL + EMBED_API_KEY env vars to enable cloud embeddings in production.
+    has_embed = not (use_anthropic and embed_base_url == "http://localhost:11434/v1")
+    embed_client = OpenAI(base_url=embed_base_url, api_key=embed_api_key) if has_embed else None
+
+    if use_anthropic and not has_embed:
+        print("No embed backend configured — /embed will return 503. Set EMBED_BASE_URL + EMBED_API_KEY to enable.")
+
     return Runtime(
         llm_base_url=llm_base_url,
         llm_model=llm_model,
@@ -84,7 +94,7 @@ def create_runtime() -> Runtime:
         embed_base_url=embed_base_url,
         embed_model=embed_model,
         client=OpenAI(base_url=llm_base_url, api_key=llm_api_key),
-        embed_client=OpenAI(base_url=embed_base_url, api_key="ollama"),
+        embed_client=embed_client,
         use_anthropic=use_anthropic,
         anthropic_client=anthropic_client,
         rate_limiter=rate_limiter,
