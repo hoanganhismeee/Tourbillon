@@ -3,16 +3,22 @@
 // creating a reusable and maintainable way to manage data fetching.
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5248/api';
 
-// Small helper to avoid hanging requests in dev when backend is down
-// Aborts the request after the given timeout (default 10s)
-const fetchWithTimeout = async (input: RequestInfo | URL, init?: RequestInit & { timeoutMs?: number }) => {
-  const { timeoutMs = 10000, ...rest } = init || {};
+// Small helper to avoid hanging requests in dev when backend is down.
+// Accepts an optional external AbortSignal so callers can cancel mid-flight.
+const fetchWithTimeout = async (
+  input: RequestInfo | URL,
+  init?: RequestInit & { timeoutMs?: number; externalSignal?: AbortSignal },
+) => {
+  const { timeoutMs = 10000, externalSignal, ...rest } = init || {};
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const onExternalAbort = () => controller.abort();
+  externalSignal?.addEventListener('abort', onExternalAbort);
   try {
     return await fetch(input, { ...rest, signal: controller.signal });
   } finally {
     clearTimeout(timeoutId);
+    externalSignal?.removeEventListener('abort', onExternalAbort);
   }
 };
 
@@ -1026,6 +1032,7 @@ export const sendChatMessage = async (
   message: string,
   behaviorSummary?: string,
   preferredLanguage?: string,
+  signal?: AbortSignal,
 ): Promise<ChatApiResponse> => {
   const response = await fetchWithTimeout(`${API_BASE_URL}/chat/message`, {
     method: 'POST',
@@ -1033,6 +1040,7 @@ export const sendChatMessage = async (
     body: JSON.stringify({ sessionId, message, behaviorSummary, preferredLanguage }),
     credentials: 'include',
     timeoutMs: 30000,
+    externalSignal: signal,
   });
   if (response.status === 429) {
     const data = await response.json().catch(() => ({}));
