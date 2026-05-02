@@ -14,9 +14,10 @@ def normalise(q: str) -> str:
 
 def parse_llm_json(raw: str):
     """
-    Strip conversational preamble before the first { or [ and parse JSON.
-    Defensive layer per AI_PLAN.md §10 — both Qwen and Haiku can add filler.
+    Strip markdown code fences and conversational preamble, then parse JSON.
+    Both Qwen and Haiku can wrap output in ```json ... ``` blocks or add filler text.
     """
+    raw = re.sub(r"```[\w]*\n?|```", "", raw)
     match = re.search(r"[\[{]", raw)
     if not match:
         raise ValueError(f"No JSON found in LLM response: {raw[:200]}")
