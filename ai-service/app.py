@@ -1,5 +1,6 @@
 from flask import Flask
 
+from core.cache_seed import load_cache_seed
 from core.runtime import create_runtime, start_warmup
 from routes.chat import register_routes as register_chat_routes
 from routes.classify import register_routes as register_classify_routes
@@ -14,6 +15,7 @@ from routes.watch_finder import register_routes as register_watch_finder_routes
 
 app = Flask(__name__)
 runtime = create_runtime()
+load_cache_seed(runtime)
 
 register_watch_finder_routes(app, runtime)
 register_embedding_routes(app, runtime)

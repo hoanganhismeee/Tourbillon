@@ -13,15 +13,17 @@ def normalise(q: str) -> str:
 
 
 def parse_llm_json(raw: str):
-    """
-    Strip markdown code fences and conversational preamble, then parse JSON.
-    Both Qwen and Haiku can wrap output in ```json ... ``` blocks or add filler text.
+    """Strip markdown code fences and preamble, then parse the first complete JSON value.
+
+    Uses raw_decode so trailing text after the JSON object/array is ignored — both Qwen
+    and Haiku can append filler sentences after the closing bracket.
     """
     raw = re.sub(r"```[\w]*\n?|```", "", raw)
     match = re.search(r"[\[{]", raw)
     if not match:
         raise ValueError(f"No JSON found in LLM response: {raw[:200]}")
-    return json.loads(raw[match.start():])
+    obj, _ = json.JSONDecoder().raw_decode(raw, match.start())
+    return obj
 
 
 def _rate_limit(runtime: Runtime) -> None:
@@ -54,9 +56,10 @@ def call_llm(
     """Single LLM call — returns raw text content."""
     if getattr(runtime, "use_anthropic", False) is True:
         _rate_limit(runtime)
+        system_payload = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
         response = runtime.anthropic_client.messages.create(
             model=runtime.llm_model,
-            system=system_prompt,
+            system=system_payload,
             messages=[{"role": "user", "content": user_content}],
             temperature=temperature,
             max_tokens=max_tokens,
@@ -92,9 +95,10 @@ def call_llm_chat(
                 system = msg.get("content") or ""
             else:
                 chat_messages.append(msg)
+        system_payload = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}] if system else []
         response = runtime.anthropic_client.messages.create(
             model=runtime.llm_model,
-            system=system,
+            system=system_payload,
             messages=chat_messages,
             temperature=temperature,
             max_tokens=max_tokens,
