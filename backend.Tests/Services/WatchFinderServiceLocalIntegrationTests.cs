@@ -11,8 +11,9 @@ namespace backend.Tests.Services;
 
 public class WatchFinderServiceLocalIntegrationTests
 {
-    private const string LocalConnection =
-        "Host=localhost;Port=5432;Database=tourbillon;Username=tourbillon;Password=31012005";
+    private static readonly string LocalConnection =
+        Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
+        ?? "Host=localhost;Port=5432;Database=tourbillon;Username=postgres";
     private static readonly IStorageService TestStorage = new TestStorageService();
 
     public static IEnumerable<object[]> DeterministicQueryCases()
