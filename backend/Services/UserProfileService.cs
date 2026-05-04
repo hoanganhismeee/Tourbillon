@@ -29,6 +29,7 @@ public class UserProfileService : IUserProfileService
             }
 
             var roles = await _userManager.GetRolesAsync(user);
+            var logins = await _userManager.GetLoginsAsync(user);
 
             return new UserProfileDto
             {
@@ -41,7 +42,9 @@ public class UserProfileService : IUserProfileService
                 City = user.City,
                 State = user.State,
                 Country = user.Country,
-                Roles = roles.ToList()
+                Roles = roles.ToList(),
+                HasPassword = user.PasswordHash != null,
+                HasGoogle = logins.Any(l => l.LoginProvider == "Google"),
             };
         }
         catch (Exception ex)
