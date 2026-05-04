@@ -15,4 +15,5 @@ public class UserProfileDto
     public List<string> Roles { get; set; } = new();
     public bool HasPassword { get; set; }
     public bool HasGoogle { get; set; }
-} 
+}
+ 
