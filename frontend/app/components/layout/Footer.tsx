@@ -82,8 +82,6 @@ function FooterCta({
 }
 
 export default function Footer() {
-  const currentYear = new Date().getFullYear();
-
   return (
     <footer className="relative overflow-hidden border-t border-white/[0.06] bg-[linear-gradient(180deg,rgba(255,255,255,0.012)_0%,rgba(255,255,255,0.004)_100%)]">
       <div className="pointer-events-none absolute inset-0">

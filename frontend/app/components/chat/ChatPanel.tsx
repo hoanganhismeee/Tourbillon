@@ -302,7 +302,7 @@ function ActionChips({
     } catch {
       setActionStatus(prev => ({ ...prev, [actionKey]: 'error' }));
     }
-  }, [actionStatus, addToCompare, clearCompare, getActionKey, router]);
+  }, [actionStatus, addToCompare, clearCompare, closeChat, getActionKey, router]);
 
   const handleCursor = useCallback((action: ChatAction) => {
     if (!action.cursor) return;
