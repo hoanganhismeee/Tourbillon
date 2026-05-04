@@ -148,17 +148,10 @@ export default function Footer() {
         </div>
 
         <div className="flex flex-col gap-4 py-6 text-[11px] tracking-[0.14em] text-white/22 font-inter md:py-7 lg:pr-56 xl:pr-64">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <p>Copyright {currentYear} Tourbillon. All rights reserved.</p>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <span>Private viewings in London</span>
-              <span className="h-1 w-1 rounded-full bg-[#bfa68a]/35" />
-              <span>Concierge-led discovery</span>
-              <span className="h-1 w-1 rounded-full bg-[#bfa68a]/35" />
-              <span>Price on Request available</span>
-            </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span>Price on Request available</span>
           </div>
-          <p className="text-white/18 tracking-[0.08em]">
+          <p className="text-white/45 text-[12px] tracking-[0.08em]">
             All images and video assets are used for portfolio and demonstration purposes only. No commercial use is intended.
           </p>
         </div>
