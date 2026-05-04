@@ -68,7 +68,7 @@ const stackGroups = [
   },
   {
     title: "Data and Infrastructure",
-    items: ["PostgreSQL", "Redis", "Docker Compose", "Cloudinary", "S3 + CloudFront", "GitHub Actions"],
+    items: ["PostgreSQL (Neon)", "Redis (Upstash)", "S3 + CloudFront", "Railway", "Vercel", "Docker Compose", "GitHub Actions"],
   },
 ];
 
