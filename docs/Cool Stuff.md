@@ -1,595 +1,274 @@
-# Tourbillon - Luxury Watch E-commerce Platform Documentation
+# Tourbillon — The Interesting Parts
 
-## 🎯 Project Overview
-
-**Tourbillon** is a full-stack e-commerce portfolio project focused on luxury watches, designed to reflect a refined, old money aesthetic. The project demonstrates clean architecture for scalable e-commerce with proper backend and database logic.
-
-*This documentation showcases the Tourbillon luxury watch e-commerce platform, highlighting advanced backend logic, smart UX/UI features, and technical implementation excellence.* 
+*A portfolio project built to production standards. This is the stuff worth knowing.*
 
 ---
 
-## 🏗️ **SOLID PRINCIPLES COMPLIANCE - CLEAN ARCHITECTURE**
+## Quick Revision — Key Concepts
 
-The project follows SOLID principles to ensure maintainable, scalable, and extensible code architecture!
+Things to have clear in your head before talking about this project.
 
-### **Cool Implementation:**
-- **Frontend: 90% SOLID Compliance** - Clean separation of concerns with proper abstractions
-- **Context Providers (AuthContext.tsx)** (lines 1-65): Single responsibility for state management
-- **API Layer (api.ts)** (lines 1-179): Interface segregation with focused data contracts
-- **Component Architecture (WatchCard.tsx)** (lines 1-50): Open/closed principle with extensible props
-- **Dependency Injection (AuthProvider)** (lines 1-81): Dependency injection with context providers
+**What's an embedding?**
+It's just a list of 768 numbers that represents the *meaning* of some text. You feed text into `nomic-embed-text`, it spits out numbers. Same text always gives the same numbers — the model doesn't learn or change from your usage.
 
-### **Why It's Cool:**
-- **Single Responsibility**: Each component/context has one clear purpose
-- **Open/Closed**: Easy to extend functionality without modifying existing code
-- **Liskov Substitution**: Proper TypeScript interfaces ensure type safety
-- **Interface Segregation**: Focused, minimal interfaces for each domain
-- **Dependency Inversion**: High-level modules depend on abstractions, not concretions
+```
+"sport luxury watch, steel, 41mm"  →  [0.12, -0.33, 0.87, ...]   768 numbers
+"sport watch steel bracelet"       →  [0.11, -0.31, 0.85, ...]   close to above
+"formal dress watch gold"          →  [-0.22, 0.90, -0.14, ...]  far from both
+```
+
+Similar text → similar numbers. That's the whole idea.
+
+**Cosine similarity / distance**
+A measure of how close two vectors are in that 768-number space. It's how the system ranks results.
+
+| Cosine similarity | What it means |
+|---|---|
+| 1.0 | Identical meaning |
+| 0.8 | Very similar |
+| 0.5 | Somewhat related |
+| 0.0 | Completely unrelated |
+
+Quick note: `WatchEmbeddings` uses cosine *distance* (lower = better match). `QueryCaches` uses cosine *similarity* (higher = better). They're the same thing, just flipped: `similarity = 1 − distance`.
+
+**Semantic search vs keyword search**
+Keyword search is dumb — "sport watch" only finds rows that literally contain those words. Semantic search finds meaning — it surfaces the Submariner, the Overseas, the Royal Oak even though none of them contain the phrase "sport watch", because the model learned those concepts belong in the same neighbourhood.
+
+**What actually makes search good or bad**
+The text you write when building each watch's chunks. That's the only lever. More user queries just grow the cache — they don't improve the embeddings. The model never learns from usage. If two watches have basically the same chunk text, their vectors are nearly identical and search can't tell them apart.
+
+**WatchEmbeddings vs QueryCaches — they're not the same thing**
+
+| | WatchEmbeddings | QueryCaches |
+|---|---|---|
+| What it stores | Pre-computed vectors for every watch | Full result JSON for past queries |
+| Purpose | Find semantically relevant watches | Skip the full pipeline for repeated queries |
+| Changes when | Admin re-embeds, or a new watch is scraped | A new query misses the cache |
+| Affected by user queries | Never | Yes — cache grows with traffic |
+
+QueryCaches is purely a speed thing. Delete it and you get identical results, just slower. It also goes stale when the catalogue changes, so clear it after any bulk update.
+
+**HNSW index**
+Without it, finding the nearest vector means comparing against every single entry — O(n). HNSW pre-builds a graph where each vector connects to its closest neighbours. Search jumps through layers from coarse to fine. Result: O(log n). Both `WatchEmbeddings` and `QueryCaches` use it.
+
+**Tokens — two different things, easy to mix up**
+Output tokens (`max_tokens=200`) control how long the model's reply can be. Input context tokens control how much data you can shove into the prompt. Bumping either one does nothing if the problem is happening *before* the AI gets called — which is usually where routing failures live.
+
+**Why the AI doesn't need to be trained on watch data**
+It already knows "PP" = Patek Philippe, "AP" = Audemars Piguet, what a tourbillon is, what an integrated bracelet looks like. What it *doesn't* know is which specific watches are in *this* catalogue, their slugs, their prices. So the backend fetches that from the database and injects it straight into the prompt at request time.
+
+```
+AI general knowledge:  "PP" = Patek Philippe, Nautilus = iconic sport watch
++
+Injected context:      Watch "5711/1A-011", Price: $35,000, Slug: nautilus-5711-steel
+=
+Accurate, grounded, linked answer — no code patch needed for "PP"
+```
+
+**Code-first routing vs backend-orchestrated routing**
+Code-first means you write a regex that looks for keywords before the AI gets involved. Every phrase pattern the regex misses needs a code patch. It never stops growing. Backend-orchestrated routing means the backend classifies intent, fetches the data, builds the actions — and only then hands things to the AI for wording. The AI never decides what happens. That's the current architecture.
+
+**Quick reference table**
+
+| Concept | Short version |
+|---|---|
+| Embedding | 768 numbers = meaning of text |
+| Cosine similarity | How close two vectors are (1.0 = identical, 0.0 = nothing in common) |
+| Semantic search | Find by meaning, not exact words |
+| WatchEmbeddings | Pre-computed vectors per watch — the semantic index |
+| QueryCaches | Cached results for past queries — the speed layer |
+| Hybrid search | SQL hard filters first, then semantic ranking |
+| Chunk | One of 4 text descriptions per watch, each targeting a different query style |
+| HNSW | Fast vector index, O(log n) |
+| Category taxonomy | dress/sport/diver/chrono — assigned by code, not AI |
+| nomic-embed-text | Fixed embedding model — same input always gives same output |
+| RAG | Retrieve from DB → augment prompt → generate grounded reply |
+| Backend orchestration | Backend owns routing and data; AI owns wording only |
 
 ---
 
-### Tech Stack
-- **Frontend**: Next.js 14 (React), TypeScript, TailwindCSS
-- **Backend**: ASP.NET Core Web API (.NET 8), Entity Framework Core
-- **Database**: PostgreSQL with pgAdmin4
-- **Styling**: Custom brown fade theme (soft brown and beige tones)
-- **Animations**: Framer Motion
-- **State Management**: React Context API
+## SOLID + Clean Architecture
+
+Applied across both layers, not just said on the readme.
+
+**Backend (ASP.NET Core)**
+- 15 controllers, each does one thing
+- 39 service files behind interfaces (`IWatchFinderService`, `IRedisService`, `IStorageService`, `IIntentClassifier`, `IActionPlanner`) — everything injected, nothing newed up directly
+- `IStorageService` wraps both Cloudinary and S3+CloudFront behind one interface — swap providers with one env var, zero code change
+- `IIntentClassifier` means tests can inject `FakeClassifier` while production uses the real ai-service
+
+**Frontend (Next.js 15)**
+- All backend calls go through `lib/api.ts` (100+ exported functions) — no scattered inline fetches anywhere
+- `ChatContext`, `AuthContext`, `WatchesPageContext`, `CursorContext` each own exactly one domain of state
+- Zustand stores use `skipHydration: true` for SSR safety; TanStack Query handles server state with localStorage persistence
 
 ---
 
-## 🚀 Cool Logic & Smart UX/UI Features Showcase
+## RAG — How the AI Actually Knows Anything
 
-## 🧠 **SMART BACK NAVIGATION WITH POSITION MEMORY**
+The LLM doesn't touch the database. The backend fetches everything and hands it over. This is the same pattern Perplexity, Notion AI, and Shopify's product search use.
 
-### **The Magic:**
-When you click a watch card from the middle of Page 3, then click "Back" - you return to the EXACT same position!
+```
+User query
+  → .NET backend figures out intent
+  → PostgreSQL + pgvector fetches relevant watches
+  → Backend formats results into prompt context
+  → LLM writes a natural-language response based on what it was given
+  → LLM literally cannot mention watches it wasn't given
+```
 
-### **Cool Implementation:**
-- **NavigationContext.tsx** (lines 1-60): Global state management for navigation memory
-- **WatchCard.tsx** `handleWatchClick()` (lines 40-50): Saves scroll position, page number, and timestamp
-- **AllWatchesSection.tsx** `WatchCard` (lines 25-35): Same logic for grid cards
-- **Watch Details Page** `handleBackClick()` (lines 25-45): Restores exact position with setTimeout
-
-### **Why It's Cool:**
-- Remembers scroll position down to the pixel
-- Preserves page number across navigation
-- Uses timestamp for state management
-- Fallback gracefully if no state exists
+If you just asked the LLM everything directly without this, it would hallucinate watch names, make up prices, be slow, and cost a lot. RAG keeps the AI as a writing layer — SQL and vectors stay as the source of truth.
 
 ---
 
-## 🎭 **DYNAMIC NAVBAR WITH INTELLIGENT SCROLL BEHAVIOR**
+## Hybrid SQL + Vector Search
 
-### **The Magic:**
-Navbar becomes transparent at top, solid when scrolling, hides on scroll down, shows on scroll up - just like Oura Ring!
+Smart Search doesn't pick one or the other — it runs both, in order.
 
-### **Cool Implementation:**
-- **NavBar.tsx** `handleScroll()` (lines 180-200): requestAnimationFrame throttling
-- **NavBar.tsx** Dynamic background (lines 220-240): `Math.min(scrollY / 25, 1)` opacity calculation
-- **NavBar.tsx** Search expansion (lines 250-270): 1000ms duration with backdrop blur
-- **NavBar.tsx** Animated underlines (lines 280-300): `scale-x-0` to `scale-x-100` effects
+**Step 1 — SQL hard filters**
+Anything structured in the query becomes a SQL constraint, applied before any vector work:
+- "Patek Philippe" → `WHERE BrandId = 1`
+- "under $20,000" → `WHERE CurrentPrice < 20000`
+- "40mm" → `WHERE CaseSize = 40`
+- "titanium" → `WHERE CaseMaterial LIKE '%titanium%'`
 
-### **Why It's Cool:**
-- Performance optimized with requestAnimationFrame
-- Smooth opacity transitions based on scroll distance
-- Search bar expands with glass morphism effect
-- Multiple animated underlines for depth
+**Step 2 — Semantic ranking via pgvector**
+Whatever meaning is left — "understated sport-luxury", "something for a board meeting" — doesn't map to a SQL column. The query gets embedded into a vector, and pgvector finds the watches closest in meaning space.
 
----
+**Why you need both:** A semantic model might rank a $50k watch highly if it's a great style fit. But "under $20,000" isn't a preference — it's a hard limit. SQL enforces it; vectors can't.
 
-## 🎲 **SMART SHUFFLING WITH SESSION PERSISTENCE**
-
-### **The Magic:**
-Watches shuffle randomly on first load, but stay in the same order when navigating back - no annoying re-shuffling!
-
-### **Cool Implementation:**
-- **AllWatchesSection.tsx** `hasShuffledWatches` (lines 80-100): Prevents re-shuffling
-- **AllWatchesSection.tsx** Filter logic (lines 110-130): Excludes Trinity Showcase watches
-- **WatchesPageContext.tsx** Global state (lines 15-25): Shuffle state management
-- **NavBar.tsx** `resetToPageOne()` (lines 200-210): Navbar navigation function
-
-### **Why It's Cool:**
-- Watches shuffle only once per session
-- Trinity watches (Patek, VC, AP) are hardcoded and excluded from main display
-- State persists across page navigation
-- No jarring re-shuffling when using back button
+Cache gets skipped the moment any hard filter is active (brand, collection, price, excluded brand), to avoid serving stale results.
 
 ---
 
-## 👑 **TRINITY SHOWCASE WITH DYNAMIC CONTENT**
+## Watch Embeddings — 4 Chunks Per Watch
 
-### **The Magic:**
-Specific luxury watches are showcased with dynamic brand summaries fetched from the database!
+Each watch doesn't get a single vector. It gets **4 separate ones**, each capturing a different angle:
 
-### **Cool Implementation:**
-- **TrinityShowcase.tsx** Hardcoded IDs (lines 20-30): Specific watch IDs for each brand
-- **TrinityShowcase.tsx** Dynamic tagline (lines 40-50): Brand summary fetching
-- **AllWatchesSection.tsx** Filter logic (lines 90-95): Excludes Trinity watches from main grid
-- **Brand.cs** Model (lines 10-15): Brand summary field for dynamic content
+| Chunk | What it covers |
+|---|---|
+| `full` | Brand + name + collection + spec summary + price |
+| `brand_style` | Dial colour, case material, strap, finish, indices, caseback |
+| `specs` | Diameter, thickness, water resistance, movement type, power reserve |
+| `use_case` | Category (dress/sport/diver/chrono) + occasions + price |
 
-### **Why It's Cool:**
-- Hardcoded specific watch IDs for each luxury brand
-- Brand summaries are fetched dynamically from database
-- Trinity watches don't appear in "All Watches" to avoid duplication
-- Creates exclusive showcase feeling
+So "thin dress watch" hits `use_case`, "blue dial steel bracelet" hits `brand_style`, "self-winding 40mm" hits `specs`. One blended vector trying to represent everything would be worse at all of them.
 
----
+**Demand-driven generation:** Watches aren't embedded upfront in a big batch. `GenerateBulkAsync()` runs in the background after each search result, filling in any watches that don't have vectors yet. The admin panel also has `GenerateMissingAsync()` and `RegenerateAllAsync()` for when you need to force it.
 
-## 📄 **INTELLIGENT PAGINATION WITH STATE MANAGEMENT**
-
-### **The Magic:**
-Page 1 shows 16 watches, "Show More" reveals 20, Pages 2+ show all 20 - with perfect state persistence!
-
-### **Cool Implementation:**
-- **AllWatchesSection.tsx** `showAllWatches` (lines 150-170): Controls display state
-- **AllWatchesSection.tsx** Conditional rendering (lines 180-200): Grid vs pagination logic
-- **WatchesPageContext.tsx** Global state (lines 10-20): Page state management
-- **AllWatchesSection.tsx** Pagination controls (lines 220-240): Smart visibility logic
-
-### **Why It's Cool:**
-- Page 1 has special "Show More" behavior
-- Pages 2+ automatically show full pagination
-- State persists when navigating between pages
-- Smooth transitions between different display modes
+**Editorial chunk:** After `make seed-editorial` generates collection prose via `gemma2:9b`, a fifth `editorial` chunk is created — the narrative voice of the collection gets its own vector.
 
 ---
 
-## 🎨 **LUXURY AESTHETICS WITH GLASS MORPHISM**
+## Chat Concierge — Two-Phase Orchestration
 
-### **The Magic:**
-Every component has subtle glass effects, luxury color scheme, and smooth animations!
+The backend decides everything. The AI just writes the reply.
 
-### **Cool Implementation:**
-- **NavBar.tsx** Backdrop blur (lines 230-250): Gradient backgrounds with glass effect
-- **WatchCard.tsx** Hover effects (lines 50-60): Scale and shadow transitions
-- **AllWatchesSection.tsx** Card styling (lines 15-25): Glass morphism implementation
-- **tailwind.config.ts** Color palette (lines 10-15): Custom luxury browns
+```
+Message
+  → rate limit check (Redis INCR, per IP per day)
+  → abuse check (deterministic, runs before anything semantic)
+  → cursor command handler (structural fast path)
+  → entity resolution (brands, collections — fuzzy Levenshtein matching)
+  → POST /classify (ai-service) → intent + confidence
+      < 0.6 confidence → regex fallback, zero regression
+  → dispatch by intent:
+      discovery → POST /route → "simple_brand" | "descriptor_query"
+          simple_brand → SQL catalogue sample (no LLM, no vector)
+          descriptor_query → hybrid SQL + vector + optional rerank
+      brand_info / collection_info → SQL cards + AI prose
+      watch_compare → fetch both watches, build compare action
+  → backend builds watchCards + primary actions
+  → in parallel:
+      POST /chat (ai-service) → wording only
+      POST /plan-actions (ai-service) → suggested follow-up chips
+  → backend validates chips; deterministic fallback if planner fails
+```
 
-### **Why It's Cool:**
-- Consistent glass morphism throughout the app
-- Luxury color scheme (soft browns and beiges)
-- Smooth hover animations with scale effects
-- Professional, refined aesthetic
+13 intent classes: `watch_compare`, `collection_compare`, `brand_decision`, `affirmative_followup`, `expansion_request`, `revision_request`, `contextual_followup`, `brand_info`, `collection_info`, `brand_history`, `discovery`, `non_watch`, `unclear`.
+
+The AI system prompt explicitly **forbids action emission** — it can't trigger searches, comparisons, or navigation. Only the backend does that. This stops the AI from hallucinating feature triggers.
 
 ---
 
-## 🔗 **SMART DATA RELATIONSHIPS WITH CASCADING DELETES**
+## Watch DNA — Taste Profiling
 
-### **The Magic:**
-Delete a brand and all its collections and watches are automatically removed - perfect data integrity!
+Anonymous browsing is tracked from the first page view, held in localStorage (up to 100 events), then flushed and merged when the user logs in.
 
-### **Cool Implementation:**
-- **TourbillonContext.cs** Relationships (lines 30-50): Entity Framework configuration
-- **Brand.cs** Navigation properties (lines 10-15): Collections relationship
-- **Collection.cs** Navigation properties (lines 10-15): Watches relationship
-- **BrandController.cs** Include() (lines 40-60): Efficient data fetching
+**The merge is intentionally careful:**
+- Fresh accounts start blank — anonymous history doesn't attach automatically
+- Only existing-account sign-ins can pull in that session's history
+- Prevents one person's browsing contaminating another's profile
 
-### **Why It's Cool:**
-- Automatic cascading deletes maintain data integrity
-- Single query fetches brand with all collections and watches
-- Foreign key constraints prevent orphaned data
-- Efficient data traversal with navigation properties
+**How the taste profile gets generated:** Once there are at least 3 behaviour events, `GenerateFromBehaviorAsync()` sends a summary to the ai-service. The model figures out preferred brands, materials, dial colours, price range, and occasions. That gets saved to `UserTasteProfile` and shows up on the Trend page.
+
+**Personalisation is an explicit sort mode, not forced re-ordering.** The watches listing applies capped boosts via `WatchOrderingService` — enough to surface relevant things, not enough to turn the feed into a single-brand wall.
 
 ---
 
-## 🎯 **INTELLIGENT ERROR HANDLING WITH GRACEFUL DEGRADATION**
+## Password Security
 
-### **The Magic:**
-Images fail gracefully, API errors show user-friendly messages, loading states are smooth!
-
-### **Cool Implementation:**
-- **WatchCard.tsx** Image error handling (lines 70-90): Fallback UI implementation
-- **Watch Details Page** Loading states (lines 50-70): Skeleton animations
-- **BrandController.cs** Try-catch (lines 80-100): Proper HTTP status codes
-- **api.ts** Error handling (lines 20-30): User-friendly error messages
-
-### **Why It's Cool:**
-- Images show elegant fallbacks instead of broken links
-- Loading states prevent layout shifts
-- API errors are handled gracefully
-- User experience remains smooth even with failures
+- `RequestSanitizationMiddleware` strips password fields from all structured logs — they never appear anywhere, even as hashes
+- `PasswordChangeRateLimitService` — 5 attempts per 15-minute window, auto-resets
+- Users have to prove they know their current password before changing it
+- ASP.NET Identity enforces complexity at the framework level
+- Error messages are deliberately vague — the API never confirms whether an email exists (prevents enumeration)
 
 ---
 
-## 🚀 **PERFORMANCE OPTIMIZATIONS WITH SMART CACHING**
+## Background Jobs — Hangfire
 
-### **The Magic:**
-Images lazy load, components memoize, API responses are optimized!
+All async work goes through Hangfire. No `Task.Run` fire-and-forget anywhere in the codebase.
 
-### **Cool Implementation:**
-- **WatchCard.tsx** Image loading (lines 30-40): Opacity transitions with loading states
-- **AllWatchesSection.tsx** useEffect (lines 60-80): Proper dependency arrays
-- **BrandController.cs** Include() (lines 20-30): Single-query data fetching
-- **api.ts** Credentials (lines 10-20): Session management
+What runs through it:
+- Watch embedding generation (triggered after admin edits)
+- Editorial content seeding
+- Inquiry status auto-advancement (advisor CRM)
+- Email dispatch
 
-### **Why It's Cool:**
-- Images load smoothly with loading states
-- Database queries are optimized with eager loading
-- Components only re-render when necessary
-- Session state is preserved across requests
+The dashboard at `/hangfire` shows job history, retry counts, and failure reasons. Jobs survive server restarts because state lives in PostgreSQL.
 
 ---
 
-## 🎪 **SMOOTH ANIMATIONS WITH FRAMER MOTION**
+## Redis — Three Things It Does
 
-### **The Magic:**
-Every page transition, card hover, and scroll effect is buttery smooth!
+`IRedisService` wraps all three patterns behind one interface:
 
-### **Cool Implementation:**
-- **ScrollFade.tsx** Intersection Observer (lines 10-20): Scroll-triggered animations
-- **StaggeredFade.tsx** Staggered delays (lines 15-25): Grid item animations
-- **MotionMain.tsx** Page transitions (lines 10-15): Smooth page changes
-- **WatchCard.tsx** Hover animations (lines 50-60): Scale and shadow effects
+| Use | Pattern | Example |
+|---|---|---|
+| Chat sessions | Hash + TTL | Session history per `sessionId`, 1-hour TTL |
+| Rate limiting | INCR + TTL | `ai_quota:chat:{ip}` increments per request |
+| Auth codes | KV + TTL | Magic login OTP, 10-minute expiry, single use |
 
-### **Why It's Cool:**
-- Scroll-triggered animations feel natural
-- Staggered animations create visual hierarchy
-- Page transitions are smooth and professional
-- Hover effects provide immediate feedback
+INCR for rate limiting is atomic — no race conditions when requests come in at the same time. Upstash Redis in production uses TLS (`rediss://`) and doesn't need persistent connection management.
 
 ---
 
-## 🔒 **COMPREHENSIVE PASSWORD SECURITY WITH ANONYMOUS LOGGING**
+## Production Infrastructure
 
-### **The Magic:**
-Passwords are completely anonymous - even administrators can never see them! Multi-layered security with rate limiting, current password verification, and comprehensive audit trails.
+| Layer | Service | Notes |
+|---|---|---|
+| Frontend | Vercel | Auto-deploy on push to `main` |
+| Backend (.NET 8) | Railway | Dockerfile build, root dir `backend/` |
+| AI service (Flask) | Railway | Separate service, root dir `ai-service/` |
+| Database | Neon (PostgreSQL) | Managed, ap-southeast-2, pgvector extension |
+| Cache / sessions | Upstash (Redis) | Managed, TLS, ap-southeast-2 |
+| Assets | S3 + CloudFront | `d2lauyid2w6u9c.cloudfront.net` |
+| CI | GitHub Actions | `dotnet test` + `npx tsc --noEmit` on every push |
 
-### **Cool Implementation:**
-- **PasswordChangeService.cs** (lines 1-50): Centralized secure password operations with anonymous logging
-- **RequestSanitizationMiddleware.cs** (lines 1-40): Automatically redacts password fields from all logs
-- **PasswordChangeRateLimitService.cs** (lines 1-35): Prevents brute force attacks with configurable limits
-- **AccountController.cs** Update method (lines 80-120): Secure password change with current password verification
+Switching between local Ollama and production Claude is one env var change — `LLM_BASE_URL` and `LLM_MODEL`. No code changes.
 
-### **Why It's Cool:**
-- **Anonymous Logging**: Passwords never logged in any form (plain text, hashed, or encrypted)
-- **Rate Limiting**: Maximum 5 attempts per 15-minute window prevents brute force attacks
-- **Current Password Verification**: Users must prove they know their current password
-- **Request Sanitization**: All password-related requests automatically redacted from logs
-- **Comprehensive Audit Trail**: Security events logged without sensitive data exposure
-- **Multi-Layer Security**: Rate limiting, validation, and secure service layer protection
-
-### **Security Features:**
-- **No Password Exposure**: Even administrators cannot see user passwords
-- **Brute Force Protection**: Rate limiting with automatic reset after time window
-- **Secure Validation**: ASP.NET Core Identity with password complexity requirements
-- **Anonymous Monitoring**: Security events tracked without password data
-- **Error Handling**: Generic messages prevent information disclosure
-- **Automatic Expiration**: Rate limit data expires automatically for security
+**AI cost:** Claude Haiku at $0.25/1M input · $1.25/1M output. Editorial content is generated once and stored — zero AI cost at runtime for product pages. Total estimated cost: under $5/month.
 
 ---
 
-## 🧩 **MODULAR COMPONENT ARCHITECTURE**
+## Storage Abstraction
 
-### **The Magic:**
-Every component is reusable, well-documented, and follows consistent patterns!
+`IStorageService` is one interface used everywhere. Two implementations sit behind it:
 
-### **Cool Implementation:**
-- **WatchCard.tsx** Documentation (lines 1-10): Comprehensive component docs
-- **AllWatchesSection.tsx** Separation (lines 1-15): Clear concerns separation
-- **AuthContext.tsx** Patterns (lines 1-20): Clean state management
-- **api.ts** Error handling (lines 1-15): Consistent typing and errors
+- `CloudinaryStorageService` — legacy, uses the Cloudinary SDK
+- `S3StorageService` — production, uses AWS SDK + pre-signed upload URLs
 
-### **Why It's Cool:**
-- Components are highly reusable across pages
-- Clear documentation makes maintenance easy
-- Consistent patterns reduce cognitive load
-- TypeScript ensures type safety throughout
+The frontend never builds asset URLs itself — it passes a `publicId` to `lib/cloudinary.ts` (misnamed, but it handles both providers). `GetPublicUrl()` on the backend builds the right CDN URL regardless of which provider is active.
 
----
-
-## 🔌 API Endpoints
-
-### Brand Endpoints
-- `GET /brand` - Get all brands
-- `GET /brand/{id}` - Get brand by ID
-- `POST /brand` - Create new brand
-- `PUT /brand/{id}` - Update brand
-- `DELETE /brand/{id}` - Delete brand
-
-### Collection Endpoints
-- `GET /collection` - Get all collections
-- `GET /collection/{id}` - Get collection by ID
-- `GET /collection/brand/{brandId}` - Get collections by brand
-- `POST /collection` - Create new collection
-- `PUT /collection/{id}` - Update collection
-- `DELETE /collection/{id}` - Delete collection
-
-### Watch Endpoints
-- `GET /watch` - Get all watches
-- `GET /watch/{id}` - Get watch by ID
-- `GET /watch/brand/{brandId}` - Get watches by brand
-- `GET /watch/collection/{collectionId}` - Get watches by collection
-- `POST /watch` - Create new watch
-- `PUT /watch/{id}` - Update watch
-- `DELETE /watch/{id}` - Delete watch
-
-### Authentication Endpoints
-- `POST /account/login` - User login
-- `POST /account/register` - User registration
-
----
-
-## 📊 Data Management
-
-### CSV Data Structure
-
-#### brands.csv
-```csv
-Id,Name,Description,Summary,Image
-1,Patek Philippe,Luxury Swiss watchmaker,Heritage of excellence,...
-```
-
-#### collections.csv
-```csv
-Id,Name,Description,Image,BrandId
-1,Calatrava,Classic dress watches,calatrava.jpg,1
-```
-
-#### watches.csv
-```csv
-Id,Name,Description,CurrentPrice,Image,Specs,BrandId,CollectionId
-1,6119G Clous de Paris,Classic elegance,84000,watch1.jpg,{...},1,1
-```
-
-### Data Relationships in Code
-
-#### Backend Relationships
-```csharp
-// Brand with collections
-var brandWithCollections = await context.Brands
-    .Include(b => b.Collections)
-    .ThenInclude(c => c.Watches)
-    .FirstOrDefaultAsync(b => b.Id == brandId);
-
-// Collection with watches
-var collectionWithWatches = await context.Collections
-    .Include(c => c.Watches)
-    .Include(c => c.Brand)
-    .FirstOrDefaultAsync(c => c.Id == collectionId);
-```
-
-#### Frontend Data Fetching
-```typescript
-// Fetch watches by brand
-export const fetchWatchesByBrand = async (brandId: number): Promise<Watch[]> => {
-  const response = await fetch(`${API_BASE_URL}/watch/brand/${brandId}`, { 
-    credentials: 'include' 
-  });
-  return response.json();
-};
-
-// Fetch collections by brand
-export const fetchCollectionsByBrand = async (brandId: number): Promise<Collection[]> => {
-  const response = await fetch(`${API_BASE_URL}/collection/brand/${brandId}`, { 
-    credentials: 'include' 
-  });
-  return response.json();
-};
-```
-
----
-
-## 🗄️ Database Design & Relationships
-
-### Entity Relationships
-
-#### 1. **Brand → Collection → Watch** (One-to-Many Chain)
-```
-Brand (1) → Collection (Many)
-Collection (1) → Watch (Many)
-```
-
-**Key Features:**
-- **Cascading Relationships**: Deleting a brand cascades to collections and watches
-- **Foreign Key Constraints**: Ensures data integrity
-- **Navigation Properties**: Enables easy data traversal
-
-#### 2. **User Authentication System**
-```
-User (1) → Login/Register DTOs
-```
-- **Simple User Model**: Expandable to JWT authentication
-- **DTO Pattern**: Separate data transfer objects for API communication
-
-#### 3. **Price Trend Tracking**
-```
-Watch (1) → PriceTrend (Many)
-```
-- **Historical Data**: Tracks price changes over time
-- **Future-Ready**: Prepared for data visualization (Plotly/Pandas)
-
-### Data Models
-
-#### Brand Model
-```csharp
-public class Brand
-{
-    public int Id { get; set; }
-    public string Name { get; set; }
-    public string Description { get; set; }
-    public string Summary { get; set; }
-    public string Image { get; set; }
-    public virtual ICollection<Collection> Collections { get; set; }
-}
-```
-
-#### Collection Model
-```csharp
-public class Collection
-{
-    public int Id { get; set; }
-    public string Name { get; set; }
-    public string Description { get; set; }
-    public string Image { get; set; }
-    public int BrandId { get; set; }
-    public virtual Brand Brand { get; set; }
-    public virtual ICollection<Watch> Watches { get; set; }
-}
-```
-
-#### Watch Model
-```csharp
-public class Watch
-{
-    public int Id { get; set; }
-    public string Name { get; set; }
-    public string Description { get; set; }
-    public decimal CurrentPrice { get; set; }
-    public string Image { get; set; }
-    public string Specs { get; set; }
-    public int BrandId { get; set; }
-    public int CollectionId { get; set; }
-    public virtual Brand Brand { get; set; }
-    public virtual Collection Collection { get; set; }
-    public virtual ICollection<PriceTrend> PriceTrends { get; set; }
-}
-```
-
----
-
-## 🔧 Technical Implementation
-
-### 1. **Entity Framework Core Configuration**
-
-#### DbContext Setup
-```csharp
-public class TourbillonContext : DbContext
-{
-    public DbSet<Brand> Brands { get; set; }
-    public DbSet<Collection> Collections { get; set; }
-    public DbSet<Watch> Watches { get; set; }
-    public DbSet<User> Users { get; set; }
-    public DbSet<PriceTrend> PriceTrends { get; set; }
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        // Configure relationships
-        modelBuilder.Entity<Collection>()
-            .HasOne(c => c.Brand)
-            .WithMany(b => b.Collections)
-            .HasForeignKey(c => c.BrandId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<Watch>()
-            .HasOne(w => w.Collection)
-            .WithMany(c => c.Watches)
-            .HasForeignKey(w => w.CollectionId)
-            .OnDelete(DeleteBehavior.Cascade);
-    }
-}
-```
-
-### 2. **API Controller Patterns**
-
-#### RESTful Endpoints
-```csharp
-[ApiController]
-[Route("[controller]")]
-public class BrandController : ControllerBase
-{
-    private readonly TourbillonContext _context;
-
-    public BrandController(TourbillonContext context)
-    {
-        _context = context;
-    }
-
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<Brand>>> GetBrands()
-    {
-        return await _context.Brands.ToListAsync();
-    }
-
-    [HttpGet("{id}")]
-    public async Task<ActionResult<Brand>> GetBrand(int id)
-    {
-        var brand = await _context.Brands
-            .Include(b => b.Collections)
-            .FirstOrDefaultAsync(b => b.Id == id);
-
-        if (brand == null)
-            return NotFound();
-
-        return brand;
-    }
-}
-```
-
-### 3. **Frontend State Management**
-
-#### Context Provider Pattern
-```typescript
-// WatchesPageContext for pagination
-export const WatchesPageProvider = ({ children }: { children: ReactNode }) => {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [hasShuffledWatches, setHasShuffledWatches] = useState(false);
-
-  const resetToPageOne = () => {
-    setCurrentPage(1);
-  };
-
-  return (
-    <WatchesPageContext.Provider value={{
-      currentPage,
-      setCurrentPage,
-      hasShuffledWatches,
-      setHasShuffledWatches,
-      resetToPageOne,
-    }}>
-      {children}
-    </WatchesPageContext.Provider>
-  );
-};
-```
-
-### 4. **Error Handling & Loading States**
-
-#### Backend Error Handling
-```csharp
-[HttpGet("{id}")]
-public async Task<ActionResult<Watch>> GetWatch(int id)
-{
-    try
-    {
-        var watch = await _context.Watches
-            .Include(w => w.Brand)
-            .Include(w => w.Collection)
-            .FirstOrDefaultAsync(w => w.Id == id);
-
-        if (watch == null)
-            return NotFound($"Watch with ID {id} not found");
-
-        return Ok(watch);
-    }
-    catch (Exception ex)
-    {
-        return StatusCode(500, "Internal server error");
-    }
-}
-```
-
-#### Frontend Error Handling
-```typescript
-const [error, setError] = useState<string | null>(null);
-const [loading, setLoading] = useState(true);
-
-useEffect(() => {
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const data = await fetchWatchById(id);
-      setWatch(data);
-    } catch (err) {
-      setError('Failed to fetch watch details');
-    } finally {
-      setLoading(false);
-    }
-  };
-  fetchData();
-}, [id]);
-```
-
----
-
-*This documentation showcases the Tourbillon luxury watch e-commerce platform, highlighting advanced backend logic, smart UX/UI features, and technical implementation excellence.* 
+Pre-signed uploads mean the browser uploads directly to S3 — the file never passes through the .NET server, which avoids memory pressure on large images.
