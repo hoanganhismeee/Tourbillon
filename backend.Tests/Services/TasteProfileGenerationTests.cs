@@ -14,47 +14,7 @@ namespace backend.Tests.Services;
 
 public class TasteProfileGenerationTests
 {
-    private sealed class TestTourbillonContext : TourbillonContext
-    {
-        public TestTourbillonContext(DbContextOptions<TourbillonContext> options) : base(options) { }
-
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
-            modelBuilder.Ignore<WatchEmbedding>();
-            modelBuilder.Ignore<QueryCache>();
-        }
-    }
-
-    private sealed class RecordingHandler : HttpMessageHandler
-    {
-        private readonly Func<HttpRequestMessage, HttpResponseMessage> _responder;
-
-        public RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responder)
-        {
-            _responder = responder;
-        }
-
-        public int CallCount { get; private set; }
-        public List<string> RequestBodies { get; } = [];
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            CallCount++;
-            if (request.Content != null)
-                RequestBodies.Add(await request.Content.ReadAsStringAsync(cancellationToken));
-            return _responder(request);
-        }
-    }
-
-    private static TourbillonContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<TourbillonContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-
-        return new TestTourbillonContext(options);
-    }
+    private static TourbillonContext CreateContext() => TestContextFactory.Create();
 
     private static TasteProfileService CreateService(
         TourbillonContext context,

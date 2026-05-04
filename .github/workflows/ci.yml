@@ -8,34 +8,32 @@ on:
 
 jobs:
   backend:
-    name: Backend (build + test)
+    name: Backend tests (.NET 8)
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET 8
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0'
+          dotnet-version: '8.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore Tourbillon.sln
+        run: dotnet restore backend.Tests/backend.Tests.csproj
 
       - name: Build
-        run: dotnet build backend/backend.csproj --no-restore --configuration Release
+        run: dotnet build backend.Tests/backend.Tests.csproj --no-restore --configuration Release
 
       - name: Run tests
-        run: dotnet test backend.Tests/backend.Tests.csproj --no-restore --configuration Release --verbosity normal
+        run: dotnet test backend.Tests/backend.Tests.csproj --no-build --configuration Release --verbosity normal
 
   frontend:
-    name: Frontend (type-check)
+    name: Frontend type-check (Next.js 15)
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
