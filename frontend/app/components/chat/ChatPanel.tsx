@@ -214,11 +214,13 @@ function renderMarkdown(text: string, onNavigate: NavigateFn): ReactNode[] {
 
 function MarkdownMessage({ text }: { text: string }) {
   const router = useRouter();
+  const { closeChat } = useChat();
   const handleNavigate = useCallback((href: string) => {
+    closeChat();
     startTransition(() => {
       router.push(href);
     });
-  }, [router]);
+  }, [router, closeChat]);
 
   return <div>{renderMarkdown(text, handleNavigate)}</div>;
 }
@@ -271,6 +273,7 @@ function ActionChips({
   onSendMessage?: (text: string) => void;
 }) {
   const router = useRouter();
+  const { closeChat } = useChat();
   const { addToCompare, clearCompare } = useCompare();
   const { setCursor } = useCursor();
   const [actionStatus, setActionStatus] = useState<Record<string, ActionStatus>>({});
@@ -294,6 +297,7 @@ function ActionChips({
       clearCompare();
       watches.forEach(watch => addToCompare(watch));
       setActionStatus(prev => ({ ...prev, [actionKey]: 'idle' }));
+      closeChat();
       router.push('/compare');
     } catch {
       setActionStatus(prev => ({ ...prev, [actionKey]: 'error' }));
@@ -380,7 +384,7 @@ function ActionChips({
           return (
             <button
               key={`${messageKey}-${idx}`}
-              onClick={() => router.push(`/smart-search?q=${encodeURIComponent(query)}`)}
+              onClick={() => { closeChat(); router.push(`/smart-search?q=${encodeURIComponent(query)}`); }}
               className={chipClass}
               style={chipStyle}
             >
@@ -411,7 +415,7 @@ function ActionChips({
           return (
             <button
               key={`${messageKey}-${idx}`}
-              onClick={() => action.href && router.push(action.href)}
+              onClick={() => { if (action.href) { closeChat(); router.push(action.href); } }}
               className={chipClass}
               style={chipStyle}
             >
