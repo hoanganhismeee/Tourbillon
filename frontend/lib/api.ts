@@ -77,6 +77,8 @@ export interface User {
     state?: string;
     country?: string;
     roles: string[];
+    hasPassword: boolean;
+    hasGoogle: boolean;
 }
 
 // API Fetch Functions
@@ -405,6 +407,55 @@ export const updateUser = async (data: UpdateUserData) => {
     } catch (err) {
         console.error('Network error:', err);
         return { error: 'Network error occurred' };
+    }
+};
+
+export const verifyCurrentPassword = async (password: string): Promise<{ valid: boolean }> => {
+    const response = await fetch(`${API_BASE_URL}/profile/verify-current-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+        credentials: 'include',
+    });
+    if (!response.ok) throw new Error('Failed to verify password');
+    return response.json();
+};
+
+export const resetPasswordAuthenticated = async (newPassword: string): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/profile/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword }),
+        credentials: 'include',
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to reset password');
+    }
+};
+
+export const requestPasswordSetup = async (): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/profile/setup-password/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to send setup code');
+    }
+};
+
+export const confirmPasswordSetup = async (code: string, newPassword: string): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/profile/setup-password/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, newPassword }),
+        credentials: 'include',
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to confirm password setup');
     }
 };
 

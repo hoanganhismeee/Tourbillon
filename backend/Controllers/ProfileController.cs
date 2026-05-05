@@ -1,5 +1,6 @@
 // This controller handles user profile management operations.
 // It follows Single Responsibility Principle by focusing only on profile concerns.
+using backend.DTOs;
 using backend.Models;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -16,17 +17,20 @@ public class ProfileController : ControllerBase
     private readonly UserManager<User> _userManager;
     private readonly IUserProfileService _userProfileService;
     private readonly IPasswordChangeService _passwordChangeService;
+    private readonly IPasswordSetupService _passwordSetupService;
     private readonly ILogger<ProfileController> _logger;
 
     public ProfileController(
         UserManager<User> userManager,
         IUserProfileService userProfileService,
         IPasswordChangeService passwordChangeService,
+        IPasswordSetupService passwordSetupService,
         ILogger<ProfileController> logger)
     {
         _userManager = userManager;
         _userProfileService = userProfileService;
         _passwordChangeService = passwordChangeService;
+        _passwordSetupService = passwordSetupService;
         _logger = logger;
     }
 
@@ -104,4 +108,81 @@ public class ProfileController : ControllerBase
 
         return Ok(new { Message = updateMessage });
     }
-} 
+
+    // POST: api/profile/verify-current-password
+    // Checks whether the provided password matches the current user's password; returns a boolean only.
+    [HttpPost("verify-current-password")]
+    public async Task<IActionResult> VerifyCurrentPassword([FromBody] VerifyPasswordDto dto)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _passwordChangeService.VerifyCurrentPasswordAsync(user, dto.Password);
+        return Ok(new { valid = result.Success });
+    }
+
+    // POST: api/profile/reset-password
+    // Sets a new password for the authenticated user without requiring the current password.
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] AuthenticatedResetPasswordDto dto)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _passwordChangeService.ResetPasswordAuthenticatedAsync(user, dto.NewPassword);
+        if (!result.Success)
+        {
+            return BadRequest(new { message = result.Message });
+        }
+
+        return Ok();
+    }
+
+    // POST: api/profile/setup-password/request
+    // Sends a one-time code to the user's email to initiate first-time password setup.
+    [HttpPost("setup-password/request")]
+    public async Task<IActionResult> RequestPasswordSetup()
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            await _passwordSetupService.RequestAsync(user);
+            return Ok();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    // POST: api/profile/setup-password/confirm
+    // Verifies the OTP code and sets the new password for the authenticated user.
+    [HttpPost("setup-password/confirm")]
+    public async Task<IActionResult> ConfirmPasswordSetup([FromBody] PasswordSetupConfirmDto dto)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _passwordSetupService.ConfirmAsync(user, dto.Code, dto.NewPassword);
+        if (!result.Success)
+        {
+            return BadRequest(new { message = result.Message });
+        }
+
+        return Ok();
+    }
+}
