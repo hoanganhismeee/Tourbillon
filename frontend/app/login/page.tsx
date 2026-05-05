@@ -72,6 +72,7 @@ function FocusInput({
         placeholder={placeholder}
         autoComplete={autoComplete}
         required
+        suppressHydrationWarning
         className={`w-full bg-transparent border-b border-white/20 py-2.5 text-white placeholder:text-white/30 focus:outline-none transition text-sm ${right ? 'pr-12' : ''}`}
       />
       <span

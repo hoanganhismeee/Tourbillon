@@ -124,10 +124,10 @@ public class ProfileController : ControllerBase
         return Ok(new { valid = result.Success });
     }
 
-    // POST: api/profile/reset-password
-    // Sets a new password for the authenticated user without requiring the current password.
-    [HttpPost("reset-password")]
-    public async Task<IActionResult> ResetPassword([FromBody] AuthenticatedResetPasswordDto dto)
+    // POST: api/profile/change-password
+    // Changes the authenticated user's password after verifying their current password.
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
     {
         var user = await _userManager.GetUserAsync(User);
         if (user == null)
@@ -135,13 +135,22 @@ public class ProfileController : ControllerBase
             return Unauthorized();
         }
 
-        var result = await _passwordChangeService.ResetPasswordAuthenticatedAsync(user, dto.NewPassword);
-        if (!result.Success)
+        if (string.IsNullOrWhiteSpace(dto.CurrentPassword) || string.IsNullOrWhiteSpace(dto.NewPassword))
         {
-            return BadRequest(new { message = result.Message });
+            return BadRequest(new { message = "Current password and new password are required." });
         }
 
-        return Ok();
+        var (success, message) = await _passwordChangeService.ChangePasswordAsync(
+            user,
+            dto.CurrentPassword,
+            dto.NewPassword);
+
+        if (!success)
+        {
+            return BadRequest(new { message });
+        }
+
+        return Ok(new { message });
     }
 
     // POST: api/profile/setup-password/request

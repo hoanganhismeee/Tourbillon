@@ -1,40 +1,51 @@
-// Sign-in methods card for the edit-details page.
-// Displays Google, Magic Link, and Password rows with status badges and inline flows.
+// Sign-in methods for the edit-details page.
 "use client";
-import { useState, useRef, useEffect } from "react";
+
+import Link from "next/link";
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 import {
   User,
-  verifyCurrentPassword as apiVerifyCurrentPassword,
-  resetPasswordAuthenticated,
-  requestPasswordSetup,
+  changePassword,
   confirmPasswordSetup,
+  requestPasswordSetup,
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { EASE_ENTER } from "@/lib/motion";
 
 const CODE_LENGTH = 6;
 const RESEND_COOLDOWN = 30;
 
-function validateNewPassword(pw: string, confirm: string): string | null {
+const panelMotion = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.28, ease: EASE_ENTER } },
+  exit: { opacity: 0, y: -6, transition: { duration: 0.18, ease: EASE_ENTER } },
+};
+
+function validateNewPassword(pw: string, confirm: string, current?: string): string | null {
   if (pw.length < 8) return "Password must be at least 8 characters";
   if (!/[A-Z]/.test(pw)) return "Must include an uppercase letter";
   if (!/\d/.test(pw)) return "Must include a number";
-  if (pw !== confirm) return "Passwords do not match";
+  if (current && pw === current) return "Choose a password different from your current password";
+  if (pw !== confirm) return "New passwords do not match";
   return null;
 }
 
-function StatusBadge({ label }: { label: string }) {
+function StatusBadge({ label, tone = "gold" }: { label: string; tone?: "gold" | "quiet" }) {
   return (
     <span
-      className="text-xs px-2.5 py-0.5 rounded-full font-medium"
-      style={{ background: "rgba(191,166,138,0.1)", color: "var(--primary-brown)" }}
+      className="rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em]"
+      style={{
+        background: tone === "gold" ? "rgba(191,166,138,0.12)" : "rgba(255,255,255,0.06)",
+        color: tone === "gold" ? "#bfa68a" : "rgba(255,255,255,0.45)",
+      }}
     >
       {label}
     </span>
   );
 }
 
-// Compact gradient button — used for form submit actions (Send code, Set password, Update password)
-function ActionButton({
+function GoldButton({
   type = "button",
   onClick,
   disabled,
@@ -50,17 +61,71 @@ function ActionButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="px-5 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[var(--primary-brown)] to-[var(--cream-gold)] text-[var(--dark-brown)] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+      className="w-full py-3 text-[9.5px] font-medium uppercase tracking-[0.28em] text-[#1e1206] transition-all duration-500 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:px-7"
+      style={{
+        background: "linear-gradient(105deg, #bfa68a 0%, #d4b898 50%, #bfa68a 100%)",
+        backgroundSize: "200% 100%",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundPosition = "100% 0";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundPosition = "0% 0";
+      }}
     >
       {children}
     </button>
   );
 }
 
-const inputClass =
-  "w-full h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none";
+function FieldInput({
+  label,
+  type = "text",
+  value,
+  onChange,
+  placeholder,
+  autoComplete,
+  autoFocus,
+  disabled,
+}: {
+  label: string;
+  type?: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  autoComplete?: string;
+  autoFocus?: boolean;
+  disabled?: boolean;
+}) {
+  const [focused, setFocused] = useState(false);
 
-// 6-box OTP input — alphanumeric, same interaction pattern as magic-login page
+  return (
+    <label className="block">
+      <span className="mb-2 block text-[8.5px] uppercase tracking-[0.28em] text-[#bfa68a]/65">
+        {label}
+      </span>
+      <span className="relative block">
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          autoFocus={autoFocus}
+          disabled={disabled}
+          className="w-full border-b border-white/15 bg-transparent py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none disabled:opacity-45"
+        />
+        <span
+          className="absolute bottom-0 left-0 h-px origin-left bg-[#bfa68a]/70 transition-transform duration-300"
+          style={{ width: "100%", transform: focused ? "scaleX(1)" : "scaleX(0)" }}
+        />
+      </span>
+    </label>
+  );
+}
+
 function OtpBoxes({
   chars,
   onChange,
@@ -114,17 +179,14 @@ function OtpBoxes({
           disabled={disabled}
           onChange={(e) => update(i, e.target.value)}
           onKeyDown={(e) => keyDown(i, e)}
-          className="w-10 h-11 text-center text-base font-medium text-[var(--light-cream)] bg-transparent border-b-2 focus:outline-none transition-colors duration-200 uppercase disabled:opacity-40"
-          style={{
-            borderColor: ch ? "rgba(191,166,138,0.65)" : "rgba(191,166,138,0.2)",
-          }}
+          className="h-12 w-10 border-b-2 bg-transparent text-center text-base font-medium uppercase text-white transition-colors duration-200 focus:outline-none disabled:opacity-40"
+          style={{ borderColor: ch ? "rgba(191,166,138,0.65)" : "rgba(255,255,255,0.14)" }}
         />
       ))}
     </div>
   );
 }
 
-// ---- Setup flow (no existing password): send OTP → enter code → set new password ----
 function SetupFlow({ user, onSuccess }: { user: User; onSuccess: () => void }) {
   const [phase, setPhase] = useState<"send" | "otp">("send");
   const [sending, setSending] = useState(false);
@@ -137,6 +199,8 @@ function SetupFlow({ user, onSuccess }: { user: User; onSuccess: () => void }) {
 
   const code = chars.join("");
   const codeComplete = code.length === CODE_LENGTH;
+  const passwordsMatch = confirmPw.length > 0 && newPw === confirmPw;
+  const passwordsMismatch = confirmPw.length > 0 && newPw !== confirmPw;
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -193,211 +257,195 @@ function SetupFlow({ user, onSuccess }: { user: User; onSuccess: () => void }) {
 
   if (phase === "send") {
     return (
-      <div className="space-y-3">
-        <p className="text-xs text-[var(--primary-brown)]/60">
-          We&apos;ll send a 6-digit code to{" "}
-          <span className="text-[var(--primary-brown)]">{user.email}</span>.
+      <motion.div {...panelMotion} className="space-y-4">
+        <p className="max-w-md text-xs leading-relaxed text-white/35">
+          We will send a setup code to <span className="text-[#bfa68a]/85">{user.email}</span>.
         </p>
-        {error && <p className="text-xs text-red-400">{error}</p>}
-        <ActionButton onClick={sendCode} disabled={sending}>
+        {error && <p className="text-xs text-[#e07575]">{error}</p>}
+        <GoldButton onClick={sendCode} disabled={sending}>
           {sending ? "Sending..." : "Send code"}
-        </ActionButton>
-      </div>
+        </GoldButton>
+      </motion.div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <motion.form {...panelMotion} onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-3">
-        <p className="text-xs text-[var(--primary-brown)]/60">
-          Code sent to{" "}
-          <span className="text-[var(--primary-brown)]">{user.email}</span>.
+        <p className="text-xs text-white/35">
+          Code sent to <span className="text-[#bfa68a]/85">{user.email}</span>.
         </p>
         <OtpBoxes chars={chars} onChange={setChars} disabled={submitting} />
         <button
           type="button"
           onClick={resend}
           disabled={cooldown > 0}
-          className="text-xs text-[var(--primary-brown)]/50 hover:text-[var(--primary-brown)] disabled:opacity-35 disabled:cursor-not-allowed transition"
+          className="text-xs text-white/32 transition hover:text-[#bfa68a] disabled:cursor-not-allowed disabled:opacity-35"
         >
           {cooldown > 0 ? `Resend code (${cooldown}s)` : "Resend code"}
         </button>
       </div>
 
-      {/* New password fades in once all 6 chars are entered */}
-      <div
-        className="overflow-hidden transition-all duration-200"
-        style={{ maxHeight: codeComplete ? 160 : 0, opacity: codeComplete ? 1 : 0 }}
-      >
-        <div className="space-y-3 pt-1">
-          <input
-            type="password"
-            value={newPw}
-            onChange={(e) => setNewPw(e.target.value)}
-            placeholder="New password"
-            autoComplete="new-password"
-            className={inputClass}
-          />
-          <input
-            type="password"
-            value={confirmPw}
-            onChange={(e) => setConfirmPw(e.target.value)}
-            placeholder="Confirm password"
-            autoComplete="new-password"
-            className={inputClass}
-          />
-        </div>
-      </div>
+      <AnimatePresence initial={false}>
+        {codeComplete && (
+          <motion.div {...panelMotion} className="space-y-4">
+            <FieldInput
+              label="New password"
+              type="password"
+              value={newPw}
+              onChange={(value) => {
+                setNewPw(value);
+                setError("");
+              }}
+              placeholder="New password"
+              autoComplete="new-password"
+            />
+            <div>
+              <FieldInput
+                label="Confirm new password"
+                type="password"
+                value={confirmPw}
+                onChange={(value) => {
+                  setConfirmPw(value);
+                  setError("");
+                }}
+                placeholder="Confirm new password"
+                autoComplete="new-password"
+              />
+              {passwordsMatch && (
+                <p className="mt-2 text-[10px] tracking-wide text-[#bfa68a]/70">Passwords match</p>
+              )}
+              {passwordsMismatch && (
+                <p className="mt-2 text-[10px] text-[#e07575]/85">New passwords do not match</p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-[#e07575]">{error}</p>}
 
       {codeComplete && (
-        <ActionButton type="submit" disabled={submitting || !newPw || !confirmPw}>
+        <GoldButton type="submit" disabled={submitting || !newPw || !confirmPw}>
           {submitting ? "Setting password..." : "Set password"}
-        </ActionButton>
+        </GoldButton>
       )}
-    </form>
+    </motion.form>
   );
 }
 
-// ---- Change flow (has existing password): verify current → set new password ----
-function ChangeFlow({ onSuccess }: { onSuccess: () => void }) {
-  const [mode, setMode] = useState<"verify" | "forgot">("verify");
+function ChangeFlow({ user, onSuccess }: { user: User; onSuccess: () => void }) {
   const [currentPw, setCurrentPw] = useState("");
-  const [verifyStatus, setVerifyStatus] = useState<"idle" | "checking" | "valid" | "invalid">("idle");
-  const [verifyError, setVerifyError] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState("");
-  const currentPwRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  // Focus current password input on mount
-  useEffect(() => {
-    currentPwRef.current?.focus();
-  }, []);
-
-  const showNewFields = mode === "forgot" || verifyStatus === "valid";
-
-  const handleBlur = async () => {
-    if (!currentPw || verifyStatus === "checking") return;
-    setVerifyStatus("checking");
-    setVerifyError("");
-    try {
-      const { valid } = await apiVerifyCurrentPassword(currentPw);
-      setVerifyStatus(valid ? "valid" : "invalid");
-      if (!valid) setVerifyError("Incorrect password");
-    } catch {
-      setVerifyStatus("invalid");
-      setVerifyError("Could not verify password");
-    }
-  };
-
-  const handleForgot = () => {
-    setCurrentPw("");
-    setVerifyStatus("idle");
-    setVerifyError("");
-    setMode("forgot");
-  };
+  const passwordsMatch = confirmPw.length > 0 && newPw === confirmPw;
+  const passwordsMismatch = confirmPw.length > 0 && newPw !== confirmPw;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const validErr = validateNewPassword(newPw, confirmPw);
-    if (validErr) {
-      setSubmitError(validErr);
+    setSuccess("");
+
+    if (!currentPw) {
+      setError("Enter your current password");
       return;
     }
+
+    const validErr = validateNewPassword(newPw, confirmPw, currentPw);
+    if (validErr) {
+      setError(validErr);
+      return;
+    }
+
     setSubmitting(true);
-    setSubmitError("");
+    setError("");
     try {
-      await resetPasswordAuthenticated(newPw);
-      onSuccess();
+      await changePassword(currentPw, newPw);
+      setSuccess("Password updated.");
+      setCurrentPw("");
+      setNewPw("");
+      setConfirmPw("");
+      await onSuccess();
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Failed to update password");
+      setError(err instanceof Error ? err.message : "Failed to update password");
     } finally {
       setSubmitting(false);
     }
   };
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      {/* Current password — hidden when forgot link clicked */}
-      {mode === "verify" && (
-        <div className="space-y-1.5">
-          <div className="relative">
-            <input
-              ref={currentPwRef}
-              type="password"
-              value={currentPw}
-              onChange={(e) => {
-                setCurrentPw(e.target.value);
-                if (verifyStatus !== "idle") setVerifyStatus("idle");
-                setVerifyError("");
-              }}
-              onBlur={handleBlur}
-              placeholder="Current password"
-              autoComplete="current-password"
-              className={`${inputClass} pr-9`}
-            />
-            {verifyStatus === "checking" && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--primary-brown)]/50">
-                ...
-              </span>
-            )}
-            {verifyStatus === "valid" && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--primary-brown)] text-sm leading-none">
-                ✓
-              </span>
-            )}
-          </div>
-          {verifyError && <p className="text-xs text-red-400">{verifyError}</p>}
-          <button
-            type="button"
-            onClick={handleForgot}
-            className="text-xs text-[var(--primary-brown)]/60 hover:text-[var(--primary-brown)] transition hover:underline underline-offset-2"
-          >
-            Forgot your password?
-          </button>
-        </div>
-      )}
+  const clearFeedback = () => {
+    if (error) setError("");
+    if (success) setSuccess("");
+  };
 
-      {/* New password fields — fade in after correct verify or in forgot mode */}
-      <div
-        className="overflow-hidden transition-all duration-200"
-        style={{ maxHeight: showNewFields ? 160 : 0, opacity: showNewFields ? 1 : 0 }}
-      >
-        <div className="space-y-3 pt-1">
-          <input
-            type="password"
-            value={newPw}
-            onChange={(e) => setNewPw(e.target.value)}
-            placeholder="New password"
-            autoComplete="new-password"
-            className={inputClass}
-          />
-          <input
+  return (
+    <motion.form {...panelMotion} onSubmit={handleSubmit} className="space-y-5">
+      <FieldInput
+        label="Current password"
+        type="password"
+        value={currentPw}
+        onChange={(value) => {
+          setCurrentPw(value);
+          clearFeedback();
+        }}
+        placeholder="Current password"
+        autoComplete="current-password"
+        autoFocus
+      />
+      <div className="grid gap-5 md:grid-cols-2">
+        <FieldInput
+          label="New password"
+          type="password"
+          value={newPw}
+          onChange={(value) => {
+            setNewPw(value);
+            clearFeedback();
+          }}
+          placeholder="New password"
+          autoComplete="new-password"
+        />
+        <div>
+          <FieldInput
+            label="Confirm new password"
             type="password"
             value={confirmPw}
-            onChange={(e) => setConfirmPw(e.target.value)}
+            onChange={(value) => {
+              setConfirmPw(value);
+              clearFeedback();
+            }}
             placeholder="Confirm new password"
             autoComplete="new-password"
-            className={inputClass}
           />
+          {passwordsMatch && (
+            <p className="mt-2 text-[10px] tracking-wide text-[#bfa68a]/70">Passwords match</p>
+          )}
+          {passwordsMismatch && (
+            <p className="mt-2 text-[10px] text-[#e07575]/85">New passwords do not match</p>
+          )}
         </div>
       </div>
 
-      {submitError && <p className="text-xs text-red-400">{submitError}</p>}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <Link
+          href={`/forgot-password?email=${encodeURIComponent(user.email)}`}
+          className="text-xs text-white/35 transition hover:text-[#bfa68a]"
+        >
+          Forgot your password?
+        </Link>
+        <GoldButton type="submit" disabled={submitting || !currentPw || !newPw || !confirmPw}>
+          {submitting ? "Checking current password..." : "Update password"}
+        </GoldButton>
+      </div>
 
-      {showNewFields && (
-        <ActionButton type="submit" disabled={submitting || !newPw || !confirmPw}>
-          {submitting ? "Updating..." : "Update password"}
-        </ActionButton>
-      )}
-    </form>
+      {error && <p className="text-xs text-[#e07575]">{error}</p>}
+      {success && <p className="text-xs text-[#bfa68a]/80">{success}</p>}
+    </motion.form>
   );
 }
 
-// ---- Main card ----
 interface Props {
   user: User;
 }
@@ -407,7 +455,6 @@ export default function SignInMethodsCard({ user }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [justSetPassword, setJustSetPassword] = useState(false);
 
-  // Reflects password status immediately after setup without waiting for prop refresh
   const hasPassword = justSetPassword || user.hasPassword;
 
   const handleSuccess = async () => {
@@ -417,81 +464,71 @@ export default function SignInMethodsCard({ user }: Props) {
   };
 
   return (
-    <div className="border-t border-[var(--primary-brown)]/30 pt-6">
-      <h3 className="text-[var(--light-cream)] font-semibold mb-4">Sign-in Methods</h3>
+    <section className="border-t border-white/10 pt-9">
+      <div className="mb-6">
+        <p className="text-[9px] uppercase tracking-[0.36em] text-[#bfa68a]">Security</p>
+        <h2 className="mt-2 font-playfair text-2xl font-light text-[#f0e6d2]">Sign-in Methods</h2>
+      </div>
 
-      <div className="divide-y divide-[var(--primary-brown)]/10">
-        {/* Google — only shown if the account has a Google login linked */}
+      <div className="divide-y divide-white/10">
         {user.hasGoogle && (
-          <div className="flex items-center justify-between py-3.5">
+          <div className="flex items-center justify-between gap-5 py-4">
             <div>
-              <p className="text-sm text-[var(--light-cream)] font-medium">Google</p>
-              <p className="text-xs text-[var(--primary-brown)]/60 mt-0.5">
-                Sign in with your Google account
-              </p>
+              <p className="text-sm font-medium text-[#f0e6d2]">Google</p>
+              <p className="mt-1 text-xs text-white/32">Sign in with your Google account</p>
             </div>
             <StatusBadge label="Connected" />
           </div>
         )}
 
-        {/* Magic Link — always available */}
-        <div className="flex items-center justify-between py-3.5">
+        <div className="flex items-center justify-between gap-5 py-4">
           <div>
-            <p className="text-sm text-[var(--light-cream)] font-medium">Magic Link</p>
-            <p className="text-xs text-[var(--primary-brown)]/60 mt-0.5">
-              One-time code sent to your email
-            </p>
+            <p className="text-sm font-medium text-[#f0e6d2]">Magic Link</p>
+            <p className="mt-1 text-xs text-white/32">One-time code sent to your email</p>
           </div>
           <StatusBadge label="Active" />
         </div>
 
-        {/* Password */}
-        <div>
-          <div className="flex items-center justify-between py-3.5">
+        <div className="py-4">
+          <div className="flex items-start justify-between gap-5">
             <div>
-              <p className="text-sm text-[var(--light-cream)] font-medium">Password</p>
-              <p className="text-xs text-[var(--primary-brown)]/60 mt-0.5">
-                {hasPassword ? "Sign in with your password" : "No password set"}
+              <p className="text-sm font-medium text-[#f0e6d2]">Password</p>
+              <p className="mt-1 text-xs text-white/32">
+                {hasPassword ? "Change your password after confirming the current one" : "Set a password with an email code"}
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              {hasPassword && !expanded && <StatusBadge label="Active" />}
-              {!expanded ? (
-                <button
-                  type="button"
-                  onClick={() => setExpanded(true)}
-                  className="text-xs text-[var(--primary-brown)]/60 hover:text-[var(--primary-brown)] transition hover:underline underline-offset-2"
-                >
-                  {hasPassword ? "Change" : "Set up"}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setExpanded(false)}
-                  className="text-xs text-[var(--primary-brown)]/50 hover:text-[var(--primary-brown)] transition"
-                >
-                  Cancel
-                </button>
-              )}
+            <div className="flex shrink-0 items-center gap-3">
+              {hasPassword && !expanded && <StatusBadge label="Active" tone="quiet" />}
+              <button
+                type="button"
+                onClick={() => setExpanded((value) => !value)}
+                className="text-xs text-[#bfa68a]/70 transition hover:text-[#bfa68a]"
+              >
+                {expanded ? "Cancel" : hasPassword ? "Change" : "Set up"}
+              </button>
             </div>
           </div>
 
-          {/* Inline flow panel */}
-          <div
-            className="overflow-hidden transition-all duration-200"
-            style={{ maxHeight: expanded ? 500 : 0, opacity: expanded ? 1 : 0 }}
-          >
-            <div className="pb-4">
-              {expanded &&
-                (!hasPassword ? (
-                  <SetupFlow user={user} onSuccess={handleSuccess} />
-                ) : (
-                  <ChangeFlow onSuccess={handleSuccess} />
-                ))}
-            </div>
-          </div>
+          <AnimatePresence initial={false}>
+            {expanded && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto", transition: { duration: 0.28, ease: EASE_ENTER } }}
+                exit={{ opacity: 0, height: 0, transition: { duration: 0.18, ease: EASE_ENTER } }}
+                className="overflow-hidden"
+              >
+                <div className="pt-6">
+                  {!hasPassword ? (
+                    <SetupFlow user={user} onSuccess={handleSuccess} />
+                  ) : (
+                    <ChangeFlow user={user} onSuccess={handleSuccess} />
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

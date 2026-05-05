@@ -52,7 +52,7 @@ Entry point: `backend/Program.cs`
 | `SearchController` | Full-text search |
 | `AuthenticationController` | Login, register, Google OAuth, magic login, setup-first-admin |
 | `AccountController` | Delete account, update profile |
-| `ProfileController` | User profile read/update |
+| `ProfileController` | User profile read/update, current-password-backed password changes |
 | `ChatController` | Chat concierge sessions + message handling |
 | `ContactController` | Contact advisor inquiry submission |
 | `FavouritesController` | Favourites + collections CRUD (8 endpoints) |
@@ -500,5 +500,4 @@ Browser
 | PostgreSQL | Neon | Managed, ap-southeast-2 |
 | Redis | Upstash | Managed, TLS, ap-southeast-2 |
 | Assets | AWS CloudFront + S3 | CDN-served images + videos |
-
 

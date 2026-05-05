@@ -421,16 +421,16 @@ export const verifyCurrentPassword = async (password: string): Promise<{ valid: 
     return response.json();
 };
 
-export const resetPasswordAuthenticated = async (newPassword: string): Promise<void> => {
-    const response = await fetch(`${API_BASE_URL}/profile/reset-password`, {
+export const changePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/profile/change-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newPassword }),
+        body: JSON.stringify({ currentPassword, newPassword }),
         credentials: 'include',
     });
     if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to reset password');
+        throw new Error(errorData.Message || errorData.message || 'Failed to update password');
     }
 };
 
