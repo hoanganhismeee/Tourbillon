@@ -58,19 +58,16 @@ export default function SlidingPanel({
             transition={{ duration: 0.4, ease: EASE_ENTER }}
             style={{
               position: 'fixed', inset: 0, zIndex: 200,
-              backdropFilter: 'blur(4px)',
-              WebkitBackdropFilter: 'blur(4px)',
-              backgroundColor: 'rgba(4,2,0,0.25)',
+              backgroundColor: 'rgba(4,2,0,0.55)',
               overscrollBehavior: 'none',
             }}
           />
 
-          {/* Panel — slides from right */}
+          {/* Panel — slides from right; outer layer is transform-only (no overflow) for clean GPU compositing */}
           <motion.div
             key="panel"
             data-lenis-prevent="true"
             onClick={e => e.stopPropagation()}
-            onScroll={onPanelScroll}
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%', transition: { duration: PANEL_EXIT_MS / 1000, ease: EASE_EXIT } }}
@@ -80,26 +77,32 @@ export default function SlidingPanel({
               width: '100%', maxWidth,
               background: '#1a1613',
               borderLeft: '1px solid rgba(255,255,255,0.08)',
-              overflowY: 'auto',
-              overscrollBehavior: 'contain',
+              overflow: 'hidden',
               willChange: 'transform',
             }}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-8 pt-8 pb-4">
-              <h2 className="font-playfair text-xl text-[#ecddc8]">{title}</h2>
-              <button
-                onClick={onClose}
-                className="text-white/20 hover:text-white/50 transition-colors p-1"
-                aria-label="Close"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
+            {/* Inner scrollable wrapper — separated from the animated layer so scroll doesn't block GPU compositing */}
+            <div
+              data-lenis-prevent="true"
+              onScroll={onPanelScroll}
+              style={{ height: '100%', overflowY: 'auto', overscrollBehavior: 'contain' }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-8 pt-8 pb-4">
+                <h2 className="font-playfair text-xl text-[#ecddc8]">{title}</h2>
+                <button
+                  onClick={onClose}
+                  className="text-white/20 hover:text-white/50 transition-colors p-1"
+                  aria-label="Close"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
 
-            {children}
+              {children}
+            </div>
           </motion.div>
 
           {/* Overlays — fixed dropdowns rendered outside the scrollable panel */}
