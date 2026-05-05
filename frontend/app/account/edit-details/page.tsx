@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import StaggeredFade from "../../scrollMotion/StaggeredFade";
 import UpdateDetailsForm from "./UpdateDetailsForm";
-import ChangePasswordForm from "./ChangePasswordForm";
+import SignInMethodsCard from "./SignInMethodsCard";
 import DeleteAccountForm from "./DeleteAccountForm";
 
 export default function EditDetailsPage() {
@@ -32,9 +32,9 @@ export default function EditDetailsPage() {
           {/* Update Details Form */}
           <UpdateDetailsForm user={user} />
 
-          {/* Change Password Form */}
+          {/* Sign-in Methods */}
           <div className="mt-8">
-            <ChangePasswordForm user={user} />
+            <SignInMethodsCard user={user} />
           </div>
 
           {/* Delete Account Form */}
