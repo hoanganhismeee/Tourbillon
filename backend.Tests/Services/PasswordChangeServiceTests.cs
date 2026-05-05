@@ -63,6 +63,7 @@ public class PasswordChangeServiceTests
 
         Assert.False(success);
         Assert.Contains("Too many", message);
+        rl.Verify(r => r.RecordAttemptAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
@@ -79,6 +80,7 @@ public class PasswordChangeServiceTests
         var (success, _) = await svc.ResetPasswordAuthenticatedAsync(user, "NewPass1");
 
         Assert.True(success);
+        rl.Verify(r => r.IsRateLimitedAsync(It.IsAny<string>()), Times.Once);
     }
 
     [Fact]
