@@ -1,12 +1,100 @@
-// This component handles updating user profile information (personal details and address)
+// Profile details form for account settings.
 "use client";
-import { useState, useEffect } from "react";
+
+import { useEffect, useState } from "react";
 import { updateUser, User } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { AUSTRALIAN_STATES } from "@/lib/states";
 
 interface UpdateDetailsFormProps {
   user: User;
+}
+
+function FieldInput({
+  label,
+  name,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  inputMode,
+}: {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  type?: string;
+  placeholder?: string;
+  inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search";
+}) {
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <label className="block">
+      <span className="mb-2 block text-[8.5px] uppercase tracking-[0.28em] text-[#bfa68a]/65">
+        {label}
+      </span>
+      <span className="relative block">
+        <input
+          type={type}
+          name={name}
+          value={value}
+          onChange={onChange}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder={placeholder}
+          inputMode={inputMode}
+          className="w-full border-b border-white/15 bg-transparent py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none"
+        />
+        <span
+          className="absolute bottom-0 left-0 h-px origin-left bg-[#bfa68a]/70 transition-transform duration-300"
+          style={{ width: "100%", transform: focused ? "scaleX(1)" : "scaleX(0)" }}
+        />
+      </span>
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  name,
+  value,
+  onChange,
+}: {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+}) {
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <label className="block">
+      <span className="mb-2 block text-[8.5px] uppercase tracking-[0.28em] text-[#bfa68a]/65">
+        {label}
+      </span>
+      <span className="relative block">
+        <select
+          name={name}
+          value={value}
+          onChange={onChange}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          className="w-full border-b border-white/15 bg-transparent py-2.5 text-sm text-white focus:outline-none"
+        >
+          {AUSTRALIAN_STATES.map((state) => (
+            <option key={state.value} value={state.value} className="bg-[#2b211d] text-[#f0e6d2]">
+              {state.label}
+            </option>
+          ))}
+        </select>
+        <span
+          className="absolute bottom-0 left-0 h-px origin-left bg-[#bfa68a]/70 transition-transform duration-300"
+          style={{ width: "100%", transform: focused ? "scaleX(1)" : "scaleX(0)" }}
+        />
+      </span>
+    </label>
+  );
 }
 
 export default function UpdateDetailsForm({ user }: UpdateDetailsFormProps) {
@@ -24,61 +112,44 @@ export default function UpdateDetailsForm({ user }: UpdateDetailsFormProps) {
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  // Load current user data when component mounts
   useEffect(() => {
-    if (user) {
-      setFormData({
-        firstName: user.firstName || "",
-        lastName: user.lastName || "",
-        email: user.email || "",
-        phoneNumber: user.phoneNumber || "",
-        dateOfBirth: user.dateOfBirth || "",
-        address: user.address || "",
-        city: user.city || "",
-        state: user.state || "",
-        country: user.country || "",
-      });
-    }
+    setFormData({
+      firstName: user.firstName || "",
+      lastName: user.lastName || "",
+      email: user.email || "",
+      phoneNumber: user.phoneNumber || "",
+      dateOfBirth: user.dateOfBirth || "",
+      address: user.address || "",
+      city: user.city || "",
+      state: user.state || "",
+      country: user.country || "",
+    });
   }, [user]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    
-    // Special handling for phone number - only allow numbers
-    if (name === "phoneNumber") {
-      const numericValue = value.replace(/[^0-9]/g, '');
-      setFormData((prev) => ({
-        ...prev,
-        [name]: numericValue,
-      }));
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        [name]: value,
-      }));
-    }
-    
-    // Clear error when user starts typing
+    setFormData((prev) => ({
+      ...prev,
+      [name]: name === "phoneNumber" ? value.replace(/[^0-9]/g, "") : value,
+    }));
+
     if (error) setError("");
     if (success) setSuccess("");
   };
 
   const validateForm = () => {
-    // Validate first name and last name
     if (!formData.firstName.trim() || !formData.lastName.trim()) {
       setError("Please enter your full name");
       return false;
     }
 
-    // Validate email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       setError("Email is not valid");
       return false;
     }
 
-    // Validate phone number
     if (!formData.phoneNumber.trim()) {
       setError("Please enter your phone number");
       return false;
@@ -92,12 +163,11 @@ export default function UpdateDetailsForm({ user }: UpdateDetailsFormProps) {
     setError("");
     setSuccess("");
 
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
+    setSaving(true);
     try {
-      await updateUser({
+      const result = await updateUser({
         email: formData.email,
         firstName: formData.firstName,
         lastName: formData.lastName,
@@ -108,125 +178,83 @@ export default function UpdateDetailsForm({ user }: UpdateDetailsFormProps) {
         state: formData.state,
         country: formData.country,
       });
-      
-      setSuccess("Profile updated successfully!");
-      await login('refresh'); // Refresh user data
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("An unexpected error occurred.");
+
+      if (result?.error) {
+        setError(result.error);
+        return;
       }
-      console.error(err);
+
+      setSuccess("Profile updated.");
+      await login("refresh");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred.");
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      {/* Personal Information */}
-      <div className="grid grid-cols-2 gap-6">
-        <input
-          type="text"
-          name="firstName"
-          value={formData.firstName}
-          onChange={handleChange}
-          placeholder="First Name"
-          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
-        />
-        <input
-          type="text"
-          name="lastName"
-          value={formData.lastName}
-          onChange={handleChange}
-          placeholder="Last Name"
-          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
-        />
+    <section>
+      <div className="mb-7">
+        <p className="text-[9px] uppercase tracking-[0.36em] text-[#bfa68a]">Profile</p>
+        <h2 className="mt-2 font-playfair text-2xl font-light text-[#f0e6d2]">Personal Details</h2>
+        <p className="mt-2 text-xs leading-relaxed text-white/35">
+          Keep your contact information current for appointments, orders, and private advisory.
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
-        <input
-          type="text"
-          name="email"
-          value={formData.email}
-          onChange={handleChange}
-          placeholder="Email"
-          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
-        />
-        <input
-          type="tel"
-          name="phoneNumber"
-          value={formData.phoneNumber}
-          onChange={handleChange}
-          placeholder="Phone Number"
-          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
-          pattern="[0-9]*"
-          inputMode="numeric"
-        />
-      </div>
+      <form onSubmit={handleSubmit} className="space-y-7">
+        <div className="grid gap-6 md:grid-cols-2">
+          <FieldInput label="First name" name="firstName" value={formData.firstName} onChange={handleChange} />
+          <FieldInput label="Last name" name="lastName" value={formData.lastName} onChange={handleChange} />
+        </div>
 
-      <div className="grid grid-cols-2 gap-6">
-        <input
-          type="date"
-          name="dateOfBirth"
-          value={formData.dateOfBirth}
-          onChange={handleChange}
-          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent focus:outline-none"
-        />
-        <select
-          name="state"
-          value={formData.state}
-          onChange={handleChange}
-          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent focus:outline-none"
-        >
-          {AUSTRALIAN_STATES.map((state) => (
-            <option key={state.value} value={state.value} className="bg-[var(--dark-brown)] text-[var(--primary-brown)]">
-              {state.label}
-            </option>
-          ))}
-        </select>
-      </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <FieldInput label="Email address" name="email" type="email" value={formData.email} onChange={handleChange} />
+          <FieldInput
+            label="Phone number"
+            name="phoneNumber"
+            type="tel"
+            value={formData.phoneNumber}
+            onChange={handleChange}
+            inputMode="numeric"
+          />
+        </div>
 
-      {/* Address Information */}
-      <div className="grid grid-cols-1 gap-6">
-        <input
-          type="text"
-          name="address"
-          value={formData.address}
-          onChange={handleChange}
-          placeholder="Address"
-          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
-        />
-      </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <FieldInput
+            label="Date of birth"
+            name="dateOfBirth"
+            type="date"
+            value={formData.dateOfBirth}
+            onChange={handleChange}
+          />
+          <SelectField label="State" name="state" value={formData.state} onChange={handleChange} />
+        </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        <input
-          type="text"
-          name="city"
-          value={formData.city}
-          onChange={handleChange}
-          placeholder="City"
-          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
-        />
-        <input
-          type="text"
-          name="country"
-          value={formData.country}
-          onChange={handleChange}
-          placeholder="Country"
-          className="h-10 px-4 rounded-md border border-[var(--primary-brown)] text-[var(--primary-brown)] bg-transparent placeholder-[var(--primary-brown)]/70 focus:outline-none"
-        />
-      </div>
+        <FieldInput label="Address" name="address" value={formData.address} onChange={handleChange} />
 
-      {/* Update Profile Button */}
-      <button
-        type="submit"
-        className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-[var(--primary-brown)] to-[var(--cream-gold)] text-[var(--dark-brown)] hover:opacity-90 transition cursor-pointer"
-      >
-        Update Profile
-      </button>
+        <div className="grid gap-6 md:grid-cols-2">
+          <FieldInput label="City" name="city" value={formData.city} onChange={handleChange} />
+          <FieldInput label="Country" name="country" value={formData.country} onChange={handleChange} />
+        </div>
 
-      {error && <p className="text-sm text-red-500 text-center">{error}</p>}
-      {success && <p className="text-sm text-green-500 text-center">{success}</p>}
-    </form>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full py-3 text-[9.5px] font-medium uppercase tracking-[0.28em] text-[#1e1206] transition-all duration-500 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:px-8"
+            style={{
+              background: "linear-gradient(105deg, #bfa68a 0%, #d4b898 50%, #bfa68a 100%)",
+              backgroundSize: "200% 100%",
+            }}
+          >
+            {saving ? "Saving..." : "Update profile"}
+          </button>
+          {error && <p className="text-sm text-[#e07575]">{error}</p>}
+          {success && <p className="text-sm text-[#bfa68a]/80">{success}</p>}
+        </div>
+      </form>
+    </section>
   );
-} 
+}

@@ -11,7 +11,6 @@ public interface IPasswordChangeService
 {
     Task<(bool Success, string Message)> ChangePasswordAsync(User user, string currentPassword, string newPassword);
     Task<(bool Success, string Message)> VerifyCurrentPasswordAsync(User user, string password);
-    Task<(bool Success, string Message)> ResetPasswordAuthenticatedAsync(User user, string newPassword);
 }
 
 // Handles all password change operations with security measures including rate limiting,
@@ -58,6 +57,11 @@ public class PasswordChangeService : IPasswordChangeService
                 return (false, "Current password is incorrect");
             }
 
+            if (currentPassword == newPassword)
+            {
+                return (false, "Choose a password different from your current password");
+            }
+
             // Validate new password requirements
             var passwordValidator = _userManager.PasswordValidators.FirstOrDefault();
             if (passwordValidator != null)
@@ -94,7 +98,7 @@ public class PasswordChangeService : IPasswordChangeService
         }
     }
 
-    // Verifies the current password without changing it — used for blur validation in the UI.
+    // Verifies the current password without changing it.
     public async Task<(bool Success, string Message)> VerifyCurrentPasswordAsync(User user, string password)
     {
         try
@@ -114,39 +118,6 @@ public class PasswordChangeService : IPasswordChangeService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error verifying password for user: {UserId}", user.Id);
-            return (false, "An unexpected error occurred");
-        }
-    }
-
-    // Resets a password for an already-authenticated user without requiring the current password.
-    // Safe because the caller must be authenticated; no code or old password needed.
-    public async Task<(bool Success, string Message)> ResetPasswordAuthenticatedAsync(User user, string newPassword)
-    {
-        try
-        {
-            _logger.LogInformation("Authenticated password reset for user: {UserId}", user.Id);
-
-            if (await _rateLimitService.IsRateLimitedAsync(user.Id.ToString()))
-                return (false, "Too many attempts. Please try again later.");
-
-            await _rateLimitService.RecordAttemptAsync(user.Id.ToString());
-
-            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-            var result = await _userManager.ResetPasswordAsync(user, token, newPassword);
-
-            if (!result.Succeeded)
-            {
-                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                _logger.LogWarning("Password reset failed for user: {UserId} - {Errors}", user.Id, errors);
-                return (false, errors);
-            }
-
-            _logger.LogInformation("Password reset successful for user: {UserId}", user.Id);
-            return (true, "Password updated successfully");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error resetting password for user: {UserId}", user.Id);
             return (false, "An unexpected error occurred");
         }
     }
