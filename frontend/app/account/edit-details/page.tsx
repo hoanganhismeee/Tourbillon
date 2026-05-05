@@ -15,6 +15,12 @@ const staggerContainer = {
   visible: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
 };
 
+// Aside starts at 0.05, main starts at 0.18 — creates a natural left-then-right cascade on large screens
+const mainContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07, delayChildren: 0.18 } },
+};
+
 const fadeUp = {
   hidden: { opacity: 0, y: 8 },
   visible: { opacity: 1, y: 0, transition: { duration: DUR.mid, ease: EASE_LUXURY } },
@@ -90,7 +96,7 @@ export default function EditDetailsPage() {
         </motion.aside>
 
         <motion.main
-          variants={staggerContainer}
+          variants={mainContainer}
           initial="hidden"
           animate="visible"
           className="min-w-0 border-t border-white/10 pt-9 lg:border-l lg:border-t-0 lg:pl-12 lg:pt-0"

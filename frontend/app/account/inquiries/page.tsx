@@ -2,21 +2,50 @@
 // Status auto-advances from Received → In Review after 30 minutes via Hangfire.
 "use client";
 import { useEffect, useState } from "react";
+import type { ReactNode, CSSProperties } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
-import StaggeredFade from "../../scrollMotion/StaggeredFade";
+import { EASE_LUXURY, EASE_ENTER, DUR } from "@/lib/motion";
+import { imageTransformations } from "@/lib/cloudinary";
 import {
-  getMyContactInquiries,
   getMyAppointments,
   getMyRegisterInterests,
-  MyContactInquiry,
   MyAppointment,
   MyRegisterInterest,
 } from "@/lib/api";
 
+const staggerContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+};
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 8 },
+  visible: { opacity: 1, y: 0, transition: { duration: DUR.mid, ease: EASE_LUXURY } },
+};
+
+function prettifyEnum(value: string): string {
+  return value.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function statusBorderStyle(status: string): CSSProperties {
+  const s = status.toLowerCase().replace(/\s+/g, "");
+  if (s === "confirmed" || s === "completed") return { borderLeftColor: "#bfa68a" };
+  if (s === "inreview") return { borderLeftColor: "rgba(255,255,255,0.28)" };
+  if (s === "cancelled" || s === "rejected") return { borderLeftColor: "rgba(224,117,117,0.55)" };
+  return { borderLeftColor: "rgba(255,255,255,0.12)" };
+}
+
 function StatusBadge({ status }: { status: string }) {
+  const s = status.toLowerCase().replace(/\s+/g, "");
+  let cls = "bg-white/[0.07] text-white/45 border-white/15";
+  if (s === "confirmed" || s === "completed") cls = "bg-[#bfa68a]/15 text-[#bfa68a] border-[#bfa68a]/35";
+  if (s === "inreview") cls = "bg-white/[0.07] text-white/55 border-white/20";
+  if (s === "cancelled" || s === "rejected") cls = "bg-red-400/10 text-red-400/75 border-red-400/25";
   return (
-    <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-[#bfa68a]/20 text-[#bfa68a] border border-[#bfa68a]/40">
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[9.5px] font-medium uppercase tracking-[0.06em] ${cls}`}>
       {status}
     </span>
   );
@@ -30,10 +59,39 @@ function formatDate(iso: string) {
   });
 }
 
+// ---- icons ----
+
+const CalendarIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+
+const BookmarkIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+function WatchMark() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-hidden="true" style={{ opacity: 0.12 }}>
+      <circle cx="16" cy="16" r="13" stroke="#bfa68a" strokeWidth="0.8" />
+      <circle cx="16" cy="16" r="1.2" fill="#bfa68a" />
+      <line x1="16" y1="16" x2="11.5" y2="10.5" stroke="#bfa68a" strokeWidth="0.8" strokeLinecap="round" />
+      <line x1="16" y1="16" x2="21" y2="10" stroke="#bfa68a" strokeWidth="0.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ---- page ----
+
 export default function InquiriesPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [inquiries, setInquiries] = useState<MyContactInquiry[]>([]);
   const [appointments, setAppointments] = useState<MyAppointment[]>([]);
   const [interests, setInterests] = useState<MyRegisterInterest[]>([]);
   const [fetching, setFetching] = useState(true);
@@ -44,13 +102,8 @@ export default function InquiriesPage() {
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([
-      getMyContactInquiries(),
-      getMyAppointments(),
-      getMyRegisterInterests(),
-    ])
-      .then(([i, a, r]) => {
-        setInquiries(i);
+    Promise.all([getMyAppointments(), getMyRegisterInterests()])
+      .then(([a, r]) => {
         setAppointments(a);
         setInterests(r);
       })
@@ -59,144 +112,215 @@ export default function InquiriesPage() {
 
   if (loading || !user) return null;
 
-  const empty =
-    !fetching &&
-    inquiries.length === 0 &&
-    appointments.length === 0 &&
-    interests.length === 0;
+  const empty = !fetching && appointments.length === 0 && interests.length === 0;
 
   return (
-    <StaggeredFade>
-      <div className="flex justify-center pt-20 pb-24 px-4">
-        <div className="w-full max-w-[900px] min-w-[320px] rounded-[20px] border border-[var(--primary-brown)] bg-white/5 backdrop-blur-xl px-8 py-12 shadow-lg">
-          <div className="text-center mb-10">
-            <h1 className="text-4xl font-playfair text-[var(--light-cream)]">
-              My Inquiries
-            </h1>
-            <p className="text-[var(--primary-brown)] mt-2 text-sm">
-              Track your contact requests, appointments, and watch interest
-              registrations
-            </p>
-          </div>
+    <div className="min-h-[calc(100vh-3rem-50px)]">
+      <div className="mx-auto grid w-full max-w-[1180px] gap-12 px-6 py-12 lg:grid-cols-[360px_minmax(0,1fr)] lg:px-10 lg:py-16 xl:gap-16">
 
-          {fetching && (
-            <p className="text-center text-[var(--primary-brown)] text-sm">
-              Loading...
-            </p>
-          )}
-          {empty && (
-            <p className="text-center text-[var(--primary-brown)] text-sm">
-              No inquiries yet. Browse watches and contact our advisors to get
-              started.
-            </p>
-          )}
+        {/* Sidebar */}
+        <motion.aside
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          className="lg:sticky lg:top-24 lg:self-start"
+        >
+          <motion.div variants={fadeUp} className="mb-5 h-px w-8 bg-[#bfa68a]/50" />
+          <motion.p variants={fadeUp} className="mb-3 text-[9px] uppercase tracking-[0.5em] text-[#bfa68a]">
+            Account
+          </motion.p>
+          <motion.h1 variants={fadeUp} className="font-playfair text-[3rem] font-light leading-none text-[#f0e6d2]">
+            My Inquiries
+          </motion.h1>
+          <motion.p variants={fadeUp} className="mt-5 max-w-[280px] text-[13px] leading-[1.85] text-white/38">
+            Track your boutique appointments and watch interest registrations.
+          </motion.p>
 
-          {inquiries.length > 0 && (
-            <Section title="Contact Advisor">
-              {inquiries.map((i) => (
-                <Card key={i.id}>
-                  <CardRow
-                    label="Watch"
-                    value={
-                      [i.watchName, i.watchReference]
-                        .filter(Boolean)
-                        .join(" · ") || "General inquiry"
-                    }
-                  />
-                  <CardRow label="Message" value={i.message} />
-                  <CardRow label="Submitted" value={formatDate(i.createdAt)} />
-                  <div className="mt-2">
-                    <StatusBadge status={i.status} />
+          <motion.div variants={fadeUp} className="mt-9 space-y-5 border-l border-[#bfa68a]/22 pl-6">
+            <div>
+              <p className="text-[9px] uppercase tracking-[0.3em] text-[#bfa68a]/60">Appointments</p>
+              <p className="mt-1.5 font-playfair text-[2rem] font-light leading-none text-[#f0e6d2]">
+                {fetching ? "–" : appointments.length}
+              </p>
+            </div>
+            <div>
+              <p className="text-[9px] uppercase tracking-[0.3em] text-[#bfa68a]/60">Watch Interests</p>
+              <p className="mt-1.5 font-playfair text-[2rem] font-light leading-none text-[#f0e6d2]">
+                {fetching ? "–" : interests.length}
+              </p>
+            </div>
+          </motion.div>
+
+          <motion.div variants={fadeUp} className="mt-10 hidden lg:block">
+            <WatchMark />
+          </motion.div>
+        </motion.aside>
+
+        {/* Main content */}
+        <motion.main
+          className="min-w-0 border-t border-white/10 pt-9 lg:border-l lg:border-t-0 lg:pl-12 lg:pt-0"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: DUR.mid, ease: EASE_LUXURY, delay: 0.18 }}
+        >
+          <AnimatePresence mode="wait">
+            {fetching ? (
+              <motion.p
+                key="loading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="pt-2 text-sm text-[#bfa68a]/60"
+              >
+                Loading...
+              </motion.p>
+            ) : (
+              <motion.div
+                key="content"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: DUR.mid, ease: EASE_ENTER, delay: 0.05 }}
+              >
+                {empty && (
+                  <div className="py-12 text-center">
+                    <p className="text-sm text-white/30">No inquiries yet.</p>
+                    <p className="mt-1 text-xs text-white/20">
+                      Browse timepieces and contact our advisors to get started.
+                    </p>
                   </div>
-                </Card>
-              ))}
-            </Section>
-          )}
+                )}
 
-          {appointments.length > 0 && (
-            <Section title="Appointments">
-              {appointments.map((a) => (
-                <Card key={a.id}>
-                  <CardRow label="Boutique" value={a.boutiqueName} />
-                  <CardRow label="Purpose" value={a.visitPurpose} />
-                  {a.brandName && (
-                    <CardRow label="Brand" value={a.brandName} />
-                  )}
-                  <CardRow
-                    label="Date"
-                    value={formatDate(a.appointmentDate)}
-                  />
-                  <CardRow label="Submitted" value={formatDate(a.createdAt)} />
-                  <div className="mt-2">
-                    <StatusBadge status={a.status} />
-                  </div>
-                </Card>
-              ))}
-            </Section>
-          )}
+                {appointments.length > 0 && (
+                  <Section title="Appointments" icon={<CalendarIcon />}>
+                    {appointments.map(a => (
+                      <InquiryCard key={a.id} status={a.status}>
+                        <CardPrimary
+                          title={a.brandName || a.boutiqueName}
+                          subtitle={prettifyEnum(a.visitPurpose)}
+                          badge={<StatusBadge status={a.status} />}
+                        />
+                        <CardMeta items={[
+                          { label: "Boutique", value: a.boutiqueName },
+                          { label: "Date", value: formatDate(a.appointmentDate) },
+                          { label: "Submitted", value: formatDate(a.createdAt) },
+                        ]} />
+                      </InquiryCard>
+                    ))}
+                  </Section>
+                )}
 
-          {interests.length > 0 && (
-            <Section title="Register Interest">
-              {interests.map((r) => (
-                <Card key={r.id}>
-                  {r.brandName && (
-                    <CardRow label="Brand" value={r.brandName} />
-                  )}
-                  {r.collectionName && (
-                    <CardRow label="Collection" value={r.collectionName} />
-                  )}
-                  {(r.watchDescription || r.watchReference) && (
-                    <CardRow
-                      label="Watch"
-                      value={[r.watchDescription, r.watchReference]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    />
-                  )}
-                  <CardRow label="Submitted" value={formatDate(r.createdAt)} />
-                  <div className="mt-2">
-                    <StatusBadge status={r.status} />
-                  </div>
-                </Card>
-              ))}
-            </Section>
-          )}
-        </div>
+                {interests.length > 0 && (
+                  <Section title="Register Interest" icon={<BookmarkIcon />}>
+                    {interests.map(r => (
+                      <InquiryCard key={r.id} status={r.status}>
+                        <div className="flex gap-3">
+                          {/* Watch thumbnail — links to product page */}
+                          {r.watchSlug && r.watchImage && (
+                            <Link
+                              href={`/watches/${r.watchSlug}`}
+                              className="group shrink-0"
+                              title="View timepiece"
+                            >
+                              <div className="h-[60px] w-[60px] overflow-hidden rounded-lg border border-[#bfa68a]/20 bg-white/[0.04] transition-colors group-hover:border-[#bfa68a]/50">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={imageTransformations.thumbnail(r.watchImage)}
+                                  alt={r.watchDescription || r.watchReference || "Watch"}
+                                  className="h-full w-full object-contain p-1"
+                                />
+                              </div>
+                            </Link>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <CardPrimary
+                              title={[r.brandName, r.collectionName].filter(Boolean).join(" · ") || "Watch Interest"}
+                              subtitle={[r.watchDescription, r.watchReference].filter(Boolean).join(" · ")}
+                              badge={<StatusBadge status={r.status} />}
+                              watchSlug={r.watchSlug}
+                            />
+                            <CardMeta items={[
+                              { label: "Submitted", value: formatDate(r.createdAt) },
+                            ]} />
+                          </div>
+                        </div>
+                      </InquiryCard>
+                    ))}
+                  </Section>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.main>
       </div>
-    </StaggeredFade>
-  );
-}
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mb-10">
-      <h2 className="text-lg font-playfair text-[var(--light-cream)] mb-4 border-b border-[#bfa68a]/30 pb-2">
-        {title}
-      </h2>
-      <div className="space-y-4">{children}</div>
     </div>
   );
 }
 
-function Card({ children }: { children: React.ReactNode }) {
+// ---- sub-components ----
+
+function Section({ title, icon, children }: { title: string; icon?: ReactNode; children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-[#bfa68a]/20 bg-white/5 px-5 py-4">
+    <div className="mb-10">
+      <div className="mb-4 flex items-center gap-2.5 border-b border-[#bfa68a]/20 pb-2.5">
+        {icon && <span className="text-[#bfa68a]/55">{icon}</span>}
+        <h2 className="font-playfair text-base text-[#ecddc8]">{title}</h2>
+      </div>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function InquiryCard({ status, children }: { status: string; children: ReactNode }) {
+  return (
+    <div
+      className="rounded-xl border border-[#bfa68a]/15 bg-white/[0.04] py-4 pl-4 pr-5"
+      style={{ borderLeftWidth: 3, ...statusBorderStyle(status) }}
+    >
       {children}
     </div>
   );
 }
 
-function CardRow({ label, value }: { label: string; value: string }) {
+function CardPrimary({
+  title,
+  subtitle,
+  badge,
+  watchSlug,
+}: {
+  title: string;
+  subtitle?: string;
+  badge?: ReactNode;
+  watchSlug?: string;
+}) {
+  const titleNode = watchSlug ? (
+    <Link href={`/watches/${watchSlug}`} className="hover:text-[#bfa68a] transition-colors">
+      {title}
+    </Link>
+  ) : (
+    title
+  );
+
   return (
-    <div className="flex gap-3 text-sm mb-1">
-      <span className="text-[var(--primary-brown)] w-24 shrink-0">{label}</span>
-      <span className="text-[var(--light-cream)]">{value}</span>
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-[#ecddc8]">{titleNode}</p>
+        {subtitle && <p className="mt-0.5 line-clamp-2 text-xs text-white/45">{subtitle}</p>}
+      </div>
+      {badge && <div className="mt-0.5 shrink-0">{badge}</div>}
+    </div>
+  );
+}
+
+function CardMeta({ items }: { items: { label: string; value: string }[] }) {
+  return (
+    <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1">
+      {items.map(({ label, value }) => (
+        <span key={label} className="text-xs">
+          <span className="text-[#bfa68a]/55">{label} </span>
+          <span className="text-white/50">{value}</span>
+        </span>
+      ))}
     </div>
   );
 }

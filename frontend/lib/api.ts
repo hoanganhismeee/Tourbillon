@@ -1015,6 +1015,8 @@ export interface MyRegisterInterest {
   collectionName?: string;
   watchDescription?: string;
   watchReference?: string;
+  watchSlug?: string;
+  watchImage?: string;
   status: string;
   createdAt: string;
 }
