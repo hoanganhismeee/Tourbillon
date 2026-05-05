@@ -35,7 +35,9 @@ public class RegisterInterestController : ControllerBase
             r.WatchDescription,
             r.WatchReference,
             r.Status,
-            r.CreatedAt
+            r.CreatedAt,
+            WatchSlug = r.Watch?.Slug,
+            WatchImage = r.Watch?.Image,
         }));
     }
 

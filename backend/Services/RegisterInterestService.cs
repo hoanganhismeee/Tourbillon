@@ -109,6 +109,7 @@ public class RegisterInterestService : IRegisterInterestService
 
     public async Task<List<RegisterInterest>> GetByUserIdAsync(int userId) =>
         await _context.RegisterInterests
+            .Include(r => r.Watch)
             .Where(r => r.UserId == userId)
             .OrderByDescending(r => r.CreatedAt)
             .AsNoTracking()
