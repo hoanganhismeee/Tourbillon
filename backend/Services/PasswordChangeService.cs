@@ -102,12 +102,14 @@ public class PasswordChangeService : IPasswordChangeService
             if (await _rateLimitService.IsRateLimitedAsync(user.Id.ToString()))
                 return (false, "Too many attempts. Please try again later.");
 
-            await _rateLimitService.RecordAttemptAsync(user.Id.ToString());
-
             var valid = await _userManager.CheckPasswordAsync(user, password);
-            return valid
-                ? (true, "Valid")
-                : (false, "Incorrect password");
+            if (!valid)
+            {
+                await _rateLimitService.RecordAttemptAsync(user.Id.ToString());
+                _logger.LogWarning("Failed password verify for user: {UserId}", user.Id);
+                return (false, "Incorrect password");
+            }
+            return (true, "Password verified");
         }
         catch (Exception ex)
         {
@@ -123,6 +125,11 @@ public class PasswordChangeService : IPasswordChangeService
         try
         {
             _logger.LogInformation("Authenticated password reset for user: {UserId}", user.Id);
+
+            if (await _rateLimitService.IsRateLimitedAsync(user.Id.ToString()))
+                return (false, "Too many attempts. Please try again later.");
+
+            await _rateLimitService.RecordAttemptAsync(user.Id.ToString());
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
             var result = await _userManager.ResetPasswordAsync(user, token, newPassword);
@@ -143,4 +150,4 @@ public class PasswordChangeService : IPasswordChangeService
             return (false, "An unexpected error occurred");
         }
     }
-} 
+}
