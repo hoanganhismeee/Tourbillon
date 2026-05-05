@@ -21,7 +21,9 @@ import RegisterInterestPanel from '../../components/appointment/RegisterInterest
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import Image from 'next/image';
 
-
+/** Solid gold CTAs on the watch detail hero — keep in sync with CompareToggle variant="button" (rounded-xl, py-4 px-8). */
+const watchDetailSolidCtaClassName =
+    'flex-1 min-w-0 w-full sm:w-auto py-4 px-8 rounded-xl font-semibold inline-flex items-center justify-center text-center bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition';
 
 const WatchDetailPage = () => {
     const params = useParams();
@@ -279,20 +281,20 @@ const WatchDetailPage = () => {
                     </ScrollFade>
 
                     <ScrollFade>
-                    <div className="flex items-center gap-4 mb-10">
+                    <div className="flex flex-col sm:flex-row sm:items-stretch gap-4 mb-10">
                         <motion.button
                             whileTap={{ scale: 0.97 }}
                             onClick={() => setRegisterInterestOpen(true)}
-                            className="py-4 px-8 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition">
+                            className={watchDetailSolidCtaClassName}>
                             Register Your Interest
                         </motion.button>
                         <motion.button
                             whileTap={{ scale: 0.97 }}
                             onClick={() => setAppointmentOpen(true)}
-                            className="py-4 px-8 rounded-xl font-semibold bg-[#bfa68a] text-black hover:bg-[#d4c4a8] transition">
+                            className={watchDetailSolidCtaClassName}>
                             Book an Appointment
                         </motion.button>
-                        <CompareToggle watch={watch} variant="button" />
+                        <CompareToggle watch={watch} variant="button" className="flex-1 min-w-0 w-full sm:w-auto justify-center" />
                     </div>
                     </ScrollFade>
 

@@ -53,31 +53,22 @@ public class MagicLoginService : IMagicLoginService
         var user = await _userManager.FindByEmailAsync(email);
         var firstName = user?.FirstName ?? "there";
 
-        var emailBody = $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .code {{ font-size: 36px; font-weight: bold; letter-spacing: 0.3em; color: #bfa68a;
-                 text-align: center; padding: 20px; background: #f0e6d2;
-                 border-radius: 10px; margin: 20px 0; }}
-    </style>
-</head>
-<body>
-    <div class=""container"">
-        <h2>Your Tourbillon sign-in code</h2>
-        <p>Hello {firstName},</p>
-        <p>Use the code below to sign in to your Tourbillon account.</p>
-        <div class=""code"">{code}</div>
-        <p>This code expires in {TtlMinutes} minutes. If you didn't request this, you can safely ignore it.</p>
-        <p>Best regards,<br>Tourbillon</p>
-    </div>
-</body>
-</html>";
+        var title = "Your Tourbillon sign-in code";
+        var greeting = System.Net.WebUtility.HtmlEncode(firstName);
+        var innerRows = $@"
+                <tr><td style=""padding:36px 40px 8px;"">
+                    <h2 style=""margin:0 0 16px;color:#1a1613;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:normal;"">Your sign-in code</h2>
+                    <p style=""margin:0 0 12px;color:#4a4440;font-size:15px;line-height:1.7;"">Hello {greeting},</p>
+                    <p style=""margin:0 0 8px;color:#4a4440;font-size:15px;line-height:1.7;"">Use the code below to sign in to your Tourbillon account.</p>
+                </td></tr>
+{TransactionalEmailLayout.CodePillRow(code)}
+                <tr><td style=""padding:8px 40px 36px;"">
+                    <p style=""margin:0 0 12px;color:#4a4440;font-size:14px;line-height:1.7;"">This code expires in {TtlMinutes} minutes. If you didn't request this, you can safely ignore it.</p>
+                    <p style=""margin:0;color:#4a4440;font-size:14px;line-height:1.7;"">Best regards,<br>Tourbillon</p>
+                </td></tr>";
+        var emailBody = TransactionalEmailLayout.BuildCustomerEmail(title, innerRows);
 
-        var sent = await _emailService.SendEmailAsync(email, "Your Tourbillon sign-in code", emailBody);
+        var sent = await _emailService.SendEmailAsync(email, title, emailBody);
         if (!sent)
             _logger.LogError("Magic login: failed to send code to {Email}", email);
         else

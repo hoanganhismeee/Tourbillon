@@ -1,6 +1,7 @@
 // Handles OTP-based first-time password setup for users with no password (Google/magic-link sign-in).
 // Generates a 6-char alphanumeric code, stores it in Redis under pwd-setup:{userId},
 // and delivers it via email. ConfirmAsync verifies the code then sets the password.
+using System.Net;
 using System.Security.Cryptography;
 using backend.Models;
 using Microsoft.AspNetCore.Identity;
@@ -53,8 +54,21 @@ public class PasswordSetupService : IPasswordSetupService
         await _redis.SetStringAsync(key, code, TimeSpan.FromMinutes(TtlMinutes));
         await _redis.SetStringAsync(cooldownKey, "1", TimeSpan.FromSeconds(CooldownSeconds));
 
+        var firstName = string.IsNullOrWhiteSpace(user.FirstName) ? "there" : user.FirstName;
         var subject = "Set up your Tourbillon password";
-        var body = $"Your verification code is: <strong>{code}</strong><br/>This code expires in {TtlMinutes} minutes.";
+        var greeting = WebUtility.HtmlEncode(firstName);
+        var innerRows = $@"
+                <tr><td style=""padding:36px 40px 8px;"">
+                    <h2 style=""margin:0 0 16px;color:#1a1613;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:normal;"">Set up your Tourbillon password</h2>
+                    <p style=""margin:0 0 12px;color:#4a4440;font-size:15px;line-height:1.7;"">Hello {greeting},</p>
+                    <p style=""margin:0 0 8px;color:#4a4440;font-size:15px;line-height:1.7;"">Use the code below to set a password for your Tourbillon account.</p>
+                </td></tr>
+{TransactionalEmailLayout.CodePillRow(code)}
+                <tr><td style=""padding:8px 40px 36px;"">
+                    <p style=""margin:0 0 12px;color:#4a4440;font-size:14px;line-height:1.7;"">This code expires in {TtlMinutes} minutes. If you didn't request this, you can safely ignore it.</p>
+                    <p style=""margin:0;color:#4a4440;font-size:14px;line-height:1.7;"">Best regards,<br>Tourbillon</p>
+                </td></tr>";
+        var body = TransactionalEmailLayout.BuildCustomerEmail(subject, innerRows);
         var sent = await _emailService.SendEmailAsync(user.Email!, subject, body);
         if (!sent)
         {
