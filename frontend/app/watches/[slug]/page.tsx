@@ -13,6 +13,7 @@ import { fetchWatchBySlug, fetchBrands, fetchCollections } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import { trackEvent } from '@/lib/behaviorTracker';
 import { useNavigation } from '@/contexts/NavigationContext';
+import { getSafeReturnTo, withReturnTo } from '@/lib/returnNavigation';
 import { parseStructuredSpecs, parseFlatSpecs, buildSpecSections } from '@/lib/specs';
 import CompareToggle from '../../components/compare/CompareToggle';
 import WristFitWidget from '../../components/wristfit/WristFitWidget';
@@ -39,6 +40,7 @@ const WatchDetailPage = () => {
     const [registerInterestOpen, setRegisterInterestOpen] = useState(false);
     const { navigationState } = useNavigation();
     const panelOpenedRef = useRef(false);
+    const returnTo = getSafeReturnTo(searchParams.get('returnTo'));
 
     const { data: watch, isLoading, error } = useQuery({
         queryKey: ['watch', slug],
@@ -91,6 +93,10 @@ const WatchDetailPage = () => {
 
     // Handle back navigation with position restoration
     const handleBackClick = () => {
+        if (returnTo) {
+            router.push(returnTo);
+            return;
+        }
         if (navigationState) {
             // Brief fade-out makes the departure feel intentional rather than abrupt.
             // Navigate after the fade so the listing page renders while invisible.
@@ -236,14 +242,14 @@ const WatchDetailPage = () => {
                     {(brands.length > 0 || collections.length > 0) && (
                         <div className="flex items-center gap-2 mb-3 text-sm">
                             {watch.brandSlug && brands.find(b => b.id === watch.brandId) && (
-                                <Link href={`/brands/${watch.brandSlug}`} className="text-white/50 hover:text-white/80 transition-colors font-inter">
+                                <Link href={withReturnTo(`/brands/${watch.brandSlug}`, returnTo)} className="text-white/50 hover:text-white/80 transition-colors font-inter">
                                     {brands.find(b => b.id === watch.brandId)?.name}
                                 </Link>
                             )}
                             {watch.collectionSlug && collections.find(c => c.id === watch.collectionId) && (
                                 <>
                                     <span className="text-white/30">·</span>
-                                    <Link href={`/collections/${watch.collectionSlug}`} className="text-white/50 hover:text-white/80 transition-colors font-inter">
+                                    <Link href={withReturnTo(`/collections/${watch.collectionSlug}`, returnTo)} className="text-white/50 hover:text-white/80 transition-colors font-inter">
                                         {collections.find(c => c.id === watch.collectionId)?.name}
                                     </Link>
                                 </>

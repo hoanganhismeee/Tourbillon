@@ -3,7 +3,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
@@ -11,6 +11,7 @@ import { fetchCollectionBySlug, fetchWatchesByCollectionSlug, fetchBrandById, Br
 import { trackEvent } from '@/lib/behaviorTracker';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useNavigation } from '@/contexts/NavigationContext';
+import { getSafeReturnTo, withReturnTo } from '@/lib/returnNavigation';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import { WatchCard } from '../../components/cards/WatchCard';
 
@@ -18,7 +19,9 @@ const CollectionPage = () => {
   const params = useParams();
   const slug = params.slug as string;
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { navigationState } = useNavigation();
+  const returnTo = getSafeReturnTo(searchParams.get('returnTo'));
 
   const [descExpanded, setDescExpanded] = useState(false);
 
@@ -50,6 +53,10 @@ const CollectionPage = () => {
   }, [collection?.id]);
 
   const handleBackClick = () => {
+    if (returnTo) {
+      router.push(returnTo);
+      return;
+    }
     if (navigationState) {
       document.body.style.transition = 'opacity 0.18s ease-in';
       document.body.style.opacity = '0';
@@ -121,12 +128,12 @@ const CollectionPage = () => {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
           </svg>
-          {navigationState ? 'Back' : 'All Watches'}
+          {returnTo || navigationState ? 'Back' : 'All Watches'}
         </button>
         <nav className="text-white/35 text-xs flex items-center gap-1.5">
           <Link href={brand ? `/watches?brand=${brand.slug}` : '/watches'} className="hover:text-white/60 transition-colors">Watches</Link>
           <span>/</span>
-          {brand && <Link href={`/brands/${brand.slug}`} className="hover:text-white/60 transition-colors">{brand.name}</Link>}
+          {brand && <Link href={withReturnTo(`/brands/${brand.slug}`, returnTo)} className="hover:text-white/60 transition-colors">{brand.name}</Link>}
           {brand && <span>/</span>}
           <span className="text-white/60">{collection.name}</span>
         </nav>
@@ -143,7 +150,7 @@ const CollectionPage = () => {
             </h1>
             {brand && (
               <Link
-                href={`/brands/${brand.slug}`}
+                href={withReturnTo(`/brands/${brand.slug}`, returnTo)}
                 className="text-lg font-playfair font-light text-white/60 hover:text-white/90 italic transition-colors"
               >
                 by {brand.name}

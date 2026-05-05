@@ -31,7 +31,9 @@ public class RegisterInterestController : ControllerBase
         {
             r.Id,
             r.BrandName,
+            BrandSlug = r.Watch?.Brand?.Slug,
             r.CollectionName,
+            CollectionSlug = r.Watch?.Collection?.Slug,
             r.WatchDescription,
             r.WatchReference,
             r.Status,
