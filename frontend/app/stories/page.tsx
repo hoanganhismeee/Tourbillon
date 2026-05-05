@@ -72,32 +72,68 @@ const stackGroups = [
   },
 ];
 
-const architectureDiagram = `               +------------------+
-               |    Frontend      |
-               |   Next.js 15     |
-               |      :3000       |
-               +--------+---------+
-                        | REST / HTTP
-               +--------v---------+
-               |    Backend       |
-               |   .NET 8 API     |
-               |      :5248       |
-               +---+----+----+----+
-                   |    |    |
-        +----------v+ +-v----+ +---v----------+
-        |PostgreSQL | |Flask | | Image CDN    |
-        |+ pgvector | | AI   | | S3+CloudFront|
-        |           | |:5000 | | / Cloudinary |
-        +-----------+ +--+---+ +--------------+
-                         |
-                  +------v------+
-                  | Claude API  |
-                  | or Ollama   |
-                  +-------------+
+const architectureDiagram = `LOCAL DEVELOPMENT
 
- Redis          : chat sessions, auth codes, rate limits
- Hangfire       : emails, embeddings, admin background jobs
- GitHub Actions : CI / CD pipeline`;
+ Browser
+   |
+   v
++---------------------------+
+| Next.js 15 frontend       |
+| React 19  •  localhost:3000 |
++-------------+-------------+
+              |
+              | /api/backend/* proxy
+              v
++---------------------------+
+| .NET 8 backend API        |
+| localhost:5248            |
++------+------+------+------+
+       |      |      |      
+       |      |      +--------------------+
+       |      |                           |
+       v      v                           v
++-------------+         +---------------------------+
+| PostgreSQL  |         | Flask AI service          |
+| pgvector    |         | localhost:5000            |
++-------------+         +-------------+-------------+
+                                          |
+                                          v
+                               +----------------------+
+                               | Ollama / Claude API  |
+                               +----------------------+
+
+ Redis      -> auth codes, rate limits, chat sessions
+ Hangfire   -> emails, embeddings, background jobs
+ Storage    -> IStorageService -> S3 + CloudFront / Cloudinary
+
+
+PRODUCTION
+
+ Browser
+   |
+   v
++---------------------------+
+| Vercel                    |
+| Next.js 15 app            |
++-------------+-------------+
+              |
+              | same-origin /api/backend/*
+              v
++---------------------------+         +---------------------------+
+| Railway backend           |<------->| Railway ai-service        |
+| .NET 8 API                |         | Flask + Anthropic/Ollama  |
++------+------+------+------+
+       |      |      |
+       |      |      +--------------------+
+       |      |                           |
+       v      v                           v
++-------------+  +----------------+   +---------------------------+
+| Neon        |  | Upstash Redis  |   | AWS S3 + CloudFront CDN   |
+| PostgreSQL  |  | sessions / RL  |   | images and video delivery |
++-------------+  +----------------+   +---------------------------+
+
+ GitHub Actions -> CI
+ Vercel / Railway -> deployment hosting`;
 
 function Section({
   label,
@@ -130,9 +166,6 @@ export default function StoriesPage() {
             <ScrollFade>
               <section className="border-b border-[#bfa68a]/12 pb-14">
                 <div className="max-w-3xl">
-                  <p className="text-[10px] uppercase tracking-[0.32em] text-[#bfa68a]/80">
-                    Brandon Chu
-                  </p>
                   <h1 className="mt-5 text-4xl font-semibold leading-tight text-[#f0e6d2] md:text-5xl">
                     Hi, my name is Brandon.
                   </h1>
@@ -181,13 +214,13 @@ export default function StoriesPage() {
             <Section label="About Me" title="Why watches, and why this project?">
               <div className="max-w-3xl space-y-5 text-[15px] leading-8 text-white/55">
                 <p>
-                  My name is Hoang Anh Chu, but I usually go by Brandon. I am a software
-                  engineering student at UTS, and I enjoy building practical systems that people can
+                  My name is Hoang Anh Chu, but I usually go by Brandon. I am a final yearsoftware
+                  engineering student at University of Technology Sydney (UTS), I enjoy solving problem and building practical systems that people can
                   actually use.
                 </p>
                 <p>
-                  I am a big fan of watches, especially Vacheron Constantin. I like the history,
-                  the design, and the amount of detail that goes into a good watch.
+                  I am a big fan of watches, especially Vacheron Constantin. I love the history,
+                  the design, and the amount of mechanics detail that goes into a good watch.
                 </p>
                 <p>
                   That interest gave me the idea for Tourbillon. I wanted to create an e-commerce
