@@ -115,6 +115,7 @@ builder.Services.AddAuthorization(options =>
 
 // Register secure password change service
 builder.Services.AddScoped<IPasswordChangeService, PasswordChangeService>();
+builder.Services.AddScoped<IPasswordSetupService, PasswordSetupService>();
 
 // Register rate limiting service
 builder.Services.AddScoped<IPasswordChangeRateLimitService, PasswordChangeRateLimitService>();
