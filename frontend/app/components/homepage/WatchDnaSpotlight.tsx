@@ -4,7 +4,6 @@
 // Three states: unauthenticated / authenticated without profile / authenticated with profile.
 // The design aligns with the homepage's floating editorial aesthetic: no boxy cards, 
 // using minimal lines, large typography, and staggered grids.
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { getTasteProfile } from '@/lib/api';
@@ -41,12 +40,6 @@ const DIMENSIONS = [
 
 export default function WatchDnaSpotlight() {
   const { isAuthenticated, loading: authLoading } = useAuth();
-  const [animate, setAnimate] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => setAnimate(true), 300);
-    return () => clearTimeout(t);
-  }, []);
 
   const { data: profile } = useQuery({
     queryKey: ['tasteProfile'],
@@ -173,18 +166,7 @@ export default function WatchDnaSpotlight() {
                     key={dim.id} 
                     className={`flex flex-col group relative ${i % 2 === 1 ? 'md:mt-24' : ''} ${i % 2 === 0 ? 'md:-mt-10' : ''}`}
                   >
-                    {/* Animated height bar representing score or tracking */}
-                    <div 
-                      className="absolute left-[-1px] top-0 w-[2px] bg-gradient-to-b from-[#bfa68a] to-transparent transition-all duration-1000 ease-out z-10" 
-                      style={{ 
-                        height: hasProfile && animate ? `${dim.pct}%` : '0%',
-                        transitionDelay: `${dim.delay}ms` 
-                      }} 
-                    />
-                    {/* Hover interaction line when no profile */}
-                    {!hasProfile && (
-                      <div className="absolute left-[-1px] top-0 w-[2px] h-0 bg-[#bfa68a]/40 transition-all duration-700 ease-out group-hover:h-full z-10" />
-                    )}
+                    <div className="absolute left-[-1px] top-0 w-[2px] h-0 bg-[#bfa68a]/40 transition-all duration-700 ease-out group-hover:h-full z-10" />
 
                     <div className="border-l border-white/10 pl-6 h-full flex flex-col justify-center transition-colors duration-500 group-hover:border-white/25">
                       
@@ -194,9 +176,6 @@ export default function WatchDnaSpotlight() {
                           <span className="text-[9px] tracking-[0.3em] font-inter text-[#bfa68a]/70">{dim.id}</span>
                           <div className="h-px w-6 bg-[#bfa68a]/30" />
                         </div>
-                        {hasProfile && (
-                          <span className="text-[10px] tracking-[0.2em] font-inter text-[#bfa68a]">{dim.pct}%</span>
-                        )}
                       </div>
                       
                       {/* Dimension Title */}
