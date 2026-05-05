@@ -1,6 +1,7 @@
 // password reset operations using 6-digit verification codes
 // Implements security best practices: cooldown, code expiration via Redis TTL, email delivery
 
+using System.Net;
 using System.Security.Cryptography;
 using backend.Models;
 using Microsoft.AspNetCore.Identity;
@@ -72,31 +73,22 @@ public class PasswordResetService : IPasswordResetService
             // Set cooldown timer to prevent rapid successive requests
             await _redis.SetStringAsync(cooldownKey, "1", TimeSpan.FromSeconds(CooldownSeconds));
 
-// EMAIL SENT TO USER 
-                var emailBody = $@"
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                    .code {{ font-size: 32px; font-weight: bold; color: #bfa68a; text-align: center; padding: 20px; background: #f0e6d2; border-radius: 10px; margin: 20px 0; }}
-                </style>
-            </head>
-            <body>
-                <div class=""container"">
-                    <h2>Password Reset Verification Code</h2>
-                    <p>Hello {user.FirstName},</p>
-                    <p>You requested to reset your password for your Tourbillon account.</p>
-                    <p>Your verification code is:</p>
-                    <div class=""code"">{code}</div>
-                    <p>Enter this code on the password reset page to continue.</p>
-                    <p>This code will expire in {CodeExpirationMinutes} minutes.</p>
-                    <p>If you didn't request this password reset, please ignore this email.</p>
-                    <p>Best regards,<br>Tourillon</p>
-                </div>
-            </body>
-            </html>";
+                var docTitle = "Your Tourbillon password reset code";
+                var greet = string.IsNullOrWhiteSpace(user.FirstName) ? "there" : user.FirstName;
+                var greeting = WebUtility.HtmlEncode(greet);
+                var innerRows = $@"
+                <tr><td style=""padding:36px 40px 8px;"">
+                    <h2 style=""margin:0 0 16px;color:#1a1613;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:normal;"">Password reset verification</h2>
+                    <p style=""margin:0 0 12px;color:#4a4440;font-size:15px;line-height:1.7;"">Hello {greeting},</p>
+                    <p style=""margin:0 0 12px;color:#4a4440;font-size:15px;line-height:1.7;"">You requested to reset your password for your Tourbillon account. Use the code below on the password reset page to continue.</p>
+                </td></tr>
+{TransactionalEmailLayout.CodePillRow(code)}
+                <tr><td style=""padding:8px 40px 36px;"">
+                    <p style=""margin:0 0 12px;color:#4a4440;font-size:14px;line-height:1.7;"">This code expires in {CodeExpirationMinutes} minutes.</p>
+                    <p style=""margin:0 0 12px;color:#4a4440;font-size:14px;line-height:1.7;"">If you didn't request this password reset, you can safely ignore this email.</p>
+                    <p style=""margin:0;color:#4a4440;font-size:14px;line-height:1.7;"">Best regards,<br>Tourbillon</p>
+                </td></tr>";
+                var emailBody = TransactionalEmailLayout.BuildCustomerEmail(docTitle, innerRows);
 
             var emailSent = await _emailService.SendEmailAsync(
                 user.Email!,
