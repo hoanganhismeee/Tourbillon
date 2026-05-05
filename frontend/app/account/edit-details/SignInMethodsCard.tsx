@@ -26,13 +26,14 @@ function StatusBadge({ label }: { label: string }) {
   return (
     <span
       className="text-xs px-2.5 py-0.5 rounded-full font-medium"
-      style={{ background: "#1a2e1a", color: "#4d9e4d" }}
+      style={{ background: "rgba(191,166,138,0.1)", color: "var(--primary-brown)" }}
     >
       {label}
     </span>
   );
 }
 
+// Compact gradient button — used for form submit actions (Send code, Set password, Update password)
 function ActionButton({
   type = "button",
   onClick,
@@ -49,7 +50,7 @@ function ActionButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="text-xs px-3 py-1 rounded border border-[var(--primary-brown)]/50 text-[var(--primary-brown)] hover:border-[var(--primary-brown)] transition disabled:opacity-40 disabled:cursor-not-allowed"
+      className="px-5 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-[var(--primary-brown)] to-[var(--cream-gold)] text-[var(--dark-brown)] hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
     >
       {children}
     </button>
@@ -344,7 +345,7 @@ function ChangeFlow({ onSuccess }: { onSuccess: () => void }) {
               </span>
             )}
             {verifyStatus === "valid" && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 text-sm leading-none">
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--primary-brown)] text-sm leading-none">
                 ✓
               </span>
             )}
@@ -353,8 +354,7 @@ function ChangeFlow({ onSuccess }: { onSuccess: () => void }) {
           <button
             type="button"
             onClick={handleForgot}
-            className="text-xs transition hover:underline underline-offset-2"
-            style={{ color: "#7a6545" }}
+            className="text-xs text-[var(--primary-brown)]/60 hover:text-[var(--primary-brown)] transition hover:underline underline-offset-2"
           >
             Forgot your password?
           </button>
@@ -457,9 +457,13 @@ export default function SignInMethodsCard({ user }: Props) {
             <div className="flex items-center gap-3">
               {hasPassword && !expanded && <StatusBadge label="Active" />}
               {!expanded ? (
-                <ActionButton onClick={() => setExpanded(true)}>
+                <button
+                  type="button"
+                  onClick={() => setExpanded(true)}
+                  className="text-xs text-[var(--primary-brown)]/60 hover:text-[var(--primary-brown)] transition hover:underline underline-offset-2"
+                >
                   {hasPassword ? "Change" : "Set up"}
-                </ActionButton>
+                </button>
               ) : (
                 <button
                   type="button"
