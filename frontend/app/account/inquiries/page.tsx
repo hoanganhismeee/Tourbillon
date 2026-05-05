@@ -1,14 +1,17 @@
 // User-facing page showing all submitted inquiries, appointments, and interest registrations.
-// Status auto-advances from Received → In Review after 30 minutes via Hangfire.
+// Status auto-advances from Received to In Review after 30 minutes via Hangfire.
 "use client";
+
 import { useEffect, useState } from "react";
-import type { ReactNode, CSSProperties } from "react";
-import { useRouter } from "next/navigation";
+import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
+import { DYNAMIC_ROUTES, ROUTES } from "@/app/constants/routes";
 import { useAuth } from "@/contexts/AuthContext";
-import { EASE_LUXURY, EASE_ENTER, DUR } from "@/lib/motion";
 import { imageTransformations } from "@/lib/cloudinary";
+import { DUR, EASE_ENTER, EASE_LUXURY } from "@/lib/motion";
+import { withReturnTo } from "@/lib/returnNavigation";
 import {
   getMyAppointments,
   getMyRegisterInterests,
@@ -59,8 +62,6 @@ function formatDate(iso: string) {
   });
 }
 
-// ---- icons ----
-
 const CalendarIcon = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -87,8 +88,6 @@ function WatchMark() {
   );
 }
 
-// ---- page ----
-
 export default function InquiriesPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -113,12 +112,11 @@ export default function InquiriesPage() {
   if (loading || !user) return null;
 
   const empty = !fetching && appointments.length === 0 && interests.length === 0;
+  const returnTo = ROUTES.ACCOUNT_INQUIRIES;
 
   return (
     <div className="min-h-[calc(100vh-3rem-50px)]">
       <div className="mx-auto grid w-full max-w-[1180px] gap-12 px-6 py-12 lg:grid-cols-[360px_minmax(0,1fr)] lg:px-10 lg:py-16 xl:gap-16">
-
-        {/* Sidebar */}
         <motion.aside
           variants={staggerContainer}
           initial="hidden"
@@ -140,13 +138,13 @@ export default function InquiriesPage() {
             <div>
               <p className="text-[9px] uppercase tracking-[0.3em] text-[#bfa68a]/60">Appointments</p>
               <p className="mt-1.5 font-playfair text-[2rem] font-light leading-none text-[#f0e6d2]">
-                {fetching ? "–" : appointments.length}
+                {fetching ? "-" : appointments.length}
               </p>
             </div>
             <div>
               <p className="text-[9px] uppercase tracking-[0.3em] text-[#bfa68a]/60">Watch Interests</p>
               <p className="mt-1.5 font-playfair text-[2rem] font-light leading-none text-[#f0e6d2]">
-                {fetching ? "–" : interests.length}
+                {fetching ? "-" : interests.length}
               </p>
             </div>
           </motion.div>
@@ -156,7 +154,6 @@ export default function InquiriesPage() {
           </motion.div>
         </motion.aside>
 
-        {/* Main content */}
         <motion.main
           className="min-w-0 border-t border-white/10 pt-9 lg:border-l lg:border-t-0 lg:pl-12 lg:pt-0"
           initial={{ opacity: 0, y: 8 }}
@@ -200,11 +197,13 @@ export default function InquiriesPage() {
                           subtitle={prettifyEnum(a.visitPurpose)}
                           badge={<StatusBadge status={a.status} />}
                         />
-                        <CardMeta items={[
-                          { label: "Boutique", value: a.boutiqueName },
-                          { label: "Date", value: formatDate(a.appointmentDate) },
-                          { label: "Submitted", value: formatDate(a.createdAt) },
-                        ]} />
+                        <CardMeta
+                          items={[
+                            { label: "Boutique", value: a.boutiqueName },
+                            { label: "Date", value: formatDate(a.appointmentDate) },
+                            { label: "Submitted", value: formatDate(a.createdAt) },
+                          ]}
+                        />
                       </InquiryCard>
                     ))}
                   </Section>
@@ -215,10 +214,9 @@ export default function InquiriesPage() {
                     {interests.map(r => (
                       <InquiryCard key={r.id} status={r.status}>
                         <div className="flex gap-3">
-                          {/* Watch thumbnail — links to product page */}
                           {r.watchSlug && r.watchImage && (
                             <Link
-                              href={`/watches/${r.watchSlug}`}
+                              href={withReturnTo(DYNAMIC_ROUTES.WATCH_DETAIL(r.watchSlug), returnTo)}
                               className="group shrink-0"
                               title="View timepiece"
                             >
@@ -234,14 +232,22 @@ export default function InquiriesPage() {
                           )}
                           <div className="min-w-0 flex-1">
                             <CardPrimary
-                              title={[r.brandName, r.collectionName].filter(Boolean).join(" · ") || "Watch Interest"}
-                              subtitle={[r.watchDescription, r.watchReference].filter(Boolean).join(" · ")}
+                              title={
+                                <BrandCollectionLinks
+                                  brandName={r.brandName}
+                                  brandSlug={r.brandSlug}
+                                  collectionName={r.collectionName}
+                                  collectionSlug={r.collectionSlug}
+                                  returnTo={returnTo}
+                                />
+                              }
+                              reference={r.watchReference}
+                              subtitle={r.watchDescription}
                               badge={<StatusBadge status={r.status} />}
                               watchSlug={r.watchSlug}
+                              returnTo={returnTo}
                             />
-                            <CardMeta items={[
-                              { label: "Submitted", value: formatDate(r.createdAt) },
-                            ]} />
+                            <CardMeta items={[{ label: "Submitted", value: formatDate(r.createdAt) }]} />
                           </div>
                         </div>
                       </InquiryCard>
@@ -256,8 +262,6 @@ export default function InquiriesPage() {
     </div>
   );
 }
-
-// ---- sub-components ----
 
 function Section({ title, icon, children }: { title: string; icon?: ReactNode; children: ReactNode }) {
   return (
@@ -284,31 +288,79 @@ function InquiryCard({ status, children }: { status: string; children: ReactNode
 
 function CardPrimary({
   title,
+  reference,
   subtitle,
   badge,
   watchSlug,
+  returnTo,
 }: {
-  title: string;
+  title: ReactNode;
+  reference?: string;
   subtitle?: string;
   badge?: ReactNode;
   watchSlug?: string;
+  returnTo?: string;
 }) {
-  const titleNode = watchSlug ? (
-    <Link href={`/watches/${watchSlug}`} className="hover:text-[#bfa68a] transition-colors">
-      {title}
-    </Link>
-  ) : (
-    title
-  );
-
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-[#ecddc8]">{titleNode}</p>
+        <div className="truncate text-sm font-medium text-[#ecddc8]">{title}</div>
+        {reference && (
+          <p className="mt-0.5 font-mono text-[11px] tracking-wide text-[#bfa68a]/65">
+            {watchSlug ? (
+              <Link
+                href={withReturnTo(DYNAMIC_ROUTES.WATCH_DETAIL(watchSlug), returnTo)}
+                className="hover:text-[#bfa68a] transition-colors"
+              >
+                {reference}
+              </Link>
+            ) : (
+              reference
+            )}
+          </p>
+        )}
         {subtitle && <p className="mt-0.5 line-clamp-2 text-xs text-white/45">{subtitle}</p>}
       </div>
       {badge && <div className="mt-0.5 shrink-0">{badge}</div>}
     </div>
+  );
+}
+
+function BrandCollectionLinks({
+  brandName,
+  brandSlug,
+  collectionName,
+  collectionSlug,
+  returnTo,
+}: {
+  brandName?: string;
+  brandSlug?: string | null;
+  collectionName?: string;
+  collectionSlug?: string | null;
+  returnTo: string;
+}) {
+  if (!brandName && !collectionName) return <>Watch Interest</>;
+
+  return (
+    <>
+      {brandName &&
+        (brandSlug ? (
+          <Link href={withReturnTo(DYNAMIC_ROUTES.BRAND_DETAIL(brandSlug), returnTo)} className="hover:text-[#bfa68a] transition-colors">
+            {brandName}
+          </Link>
+        ) : (
+          <span>{brandName}</span>
+        ))}
+      {brandName && collectionName && <span className="px-1 text-[#bfa68a]/55">·</span>}
+      {collectionName &&
+        (collectionSlug ? (
+          <Link href={withReturnTo(DYNAMIC_ROUTES.COLLECTION_DETAIL(collectionSlug), returnTo)} className="hover:text-[#bfa68a] transition-colors">
+            {collectionName}
+          </Link>
+        ) : (
+          <span>{collectionName}</span>
+        ))}
+    </>
   );
 }
 

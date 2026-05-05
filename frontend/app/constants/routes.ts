@@ -12,6 +12,7 @@ export const ROUTES = {
   LOGIN: '/login',
   REGISTER: '/register',
   ACCOUNT: '/account',
+  ACCOUNT_INQUIRIES: '/account/inquiries',
   
   // Other pages
   CONTACT: '/contact',

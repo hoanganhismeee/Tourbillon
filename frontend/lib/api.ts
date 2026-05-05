@@ -1012,7 +1012,9 @@ export interface MyAppointment {
 export interface MyRegisterInterest {
   id: number;
   brandName?: string;
+  brandSlug?: string | null;
   collectionName?: string;
+  collectionSlug?: string | null;
   watchDescription?: string;
   watchReference?: string;
   watchSlug?: string;

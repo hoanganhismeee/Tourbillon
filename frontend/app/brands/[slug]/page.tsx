@@ -5,22 +5,29 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { useQuery } from '@tanstack/react-query';
 import { fetchBrandBySlug, fetchWatchesByBrandSlug, fetchCollectionsByBrandSlug, Collection, Brand } from '@/lib/api';
 import { trackEvent } from '@/lib/behaviorTracker';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { imageTransformations } from '@/lib/cloudinary';
+import { getSafeReturnTo, withReturnTo } from '@/lib/returnNavigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import { WatchCard } from '../../components/cards/WatchCard';
 
-// Clean text-only row for a collection — no image needed.
-const CollectionListItem = ({ collection }: { collection: Collection }) => (
+// Clean text-only row for a collection - no image needed.
+const CollectionListItem = ({
+  collection,
+  returnTo,
+}: {
+  collection: Collection;
+  returnTo: string | null;
+}) => (
   <Link
-    href={`/collections/${collection.slug}`}
+    href={withReturnTo(`/collections/${collection.slug}`, returnTo)}
     className="group flex items-start justify-between gap-8 py-6 border-t border-white/10 transition-all duration-300 hover:pl-2"
   >
     <div className="flex-1 min-w-0">
@@ -47,13 +54,19 @@ const BrandPage = () => {
   const slug = params.slug as string;
 
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { navigationState } = useNavigation();
+  const returnTo = getSafeReturnTo(searchParams.get('returnTo'));
 
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [logoError, setLogoError] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
 
   const handleBackClick = () => {
+    if (returnTo) {
+      router.push(returnTo);
+      return;
+    }
     if (navigationState) {
       document.body.style.transition = 'opacity 0.18s ease-in';
       document.body.style.opacity = '0';
@@ -163,7 +176,7 @@ const BrandPage = () => {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
           </svg>
-          {navigationState ? 'Back' : 'All Watches'}
+          {returnTo || navigationState ? 'Back' : 'All Watches'}
         </button>
       </div>
 
@@ -254,7 +267,7 @@ const BrandPage = () => {
           <div className="max-w-2xl">
             {collections.map(collection => (
               <ScrollFade key={collection.id}>
-                <CollectionListItem collection={collection} />
+                <CollectionListItem collection={collection} returnTo={returnTo} />
               </ScrollFade>
             ))}
             {/* Close the list with a bottom border */}
