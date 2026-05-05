@@ -107,7 +107,7 @@ export default function WatchDnaSpotlight() {
                     )}
                   </div>
                   <Link
-                    href={ROUTES.TREND}
+                    href={`${ROUTES.TREND}#watch-dna-studio`}
                     className="inline-flex items-center gap-4 text-[10px] tracking-[0.25em] uppercase font-inter text-[#f0e6d2]/70 border border-[#bfa68a]/30 hover:text-[#f0e6d2] hover:border-[#bfa68a]/80 px-8 py-4 transition-all duration-500 relative overflow-hidden group mt-2"
                   >
                     <span className="relative z-10">Open Watch DNA</span>
@@ -126,7 +126,7 @@ export default function WatchDnaSpotlight() {
                     Keep browsing to form your Watch DNA.
                   </p>
                   <Link
-                    href={ROUTES.TREND}
+                    href={`${ROUTES.TREND}#watch-dna-studio`}
                     className="inline-flex items-center gap-4 text-[10px] tracking-[0.25em] uppercase font-inter text-[#f0e6d2]/70 border border-[#bfa68a]/30 hover:text-[#f0e6d2] hover:border-[#bfa68a]/80 px-8 py-4 transition-all duration-500 relative overflow-hidden group mt-2"
                   >
                     <span className="relative z-10">Open Watch DNA</span>

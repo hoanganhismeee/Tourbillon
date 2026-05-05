@@ -3,14 +3,20 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLenis } from 'lenis/react';
 import { generateTasteProfile, saveTasteProfile } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { DYNAMIC_ROUTES } from '@/app/constants/routes';
 import ScrollFade from '@/app/scrollMotion/ScrollFade';
 
+const WATCH_DNA_STUDIO_ID = 'watch-dna-studio';
+const WATCH_DNA_SCROLL_OFFSET = 110;
+const WATCH_DNA_SCROLL_RETRIES = [0, 120, 280, 520];
+
 export default function TrendWatchDnaStudio() {
   const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
+  const lenis = useLenis();
   const [editMode, setEditMode] = useState(false);
   const [text, setText] = useState('');
   const [editError, setEditError] = useState('');
@@ -32,6 +38,27 @@ export default function TrendWatchDnaStudio() {
     retry: false,
     refetchOnWindowFocus: false,
   });
+
+  useEffect(() => {
+    if (!isAuthenticated || window.location.hash !== `#${WATCH_DNA_STUDIO_ID}`) return;
+
+    const target = document.getElementById(WATCH_DNA_STUDIO_ID);
+    if (!target) return;
+
+    const scrollToTarget = () => {
+      const top = target.getBoundingClientRect().top + window.scrollY - WATCH_DNA_SCROLL_OFFSET;
+      if (lenis) {
+        lenis.scrollTo(top, { immediate: true });
+      } else {
+        window.scrollTo(0, top);
+      }
+    };
+
+    const timers = WATCH_DNA_SCROLL_RETRIES.map(delay => window.setTimeout(scrollToTarget, delay));
+    return () => {
+      timers.forEach(timer => window.clearTimeout(timer));
+    };
+  }, [isAuthenticated, isLoading, isFetching, lenis]);
 
   useEffect(() => {
     if (!editMode || !profile) return;
@@ -59,7 +86,7 @@ export default function TrendWatchDnaStudio() {
   if (!isAuthenticated) return null;
 
   return (
-    <section className="border-t border-[#bfa68a]/12 pt-12">
+    <section id={WATCH_DNA_STUDIO_ID} className="scroll-mt-28 border-t border-[#bfa68a]/12 pt-12">
       <ScrollFade>
       <div className="max-w-4xl">
         <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]">Your Watch DNA</p>
