@@ -27,7 +27,10 @@ const NAV = [
   },
   {
     group: 'System',
-    items: [{ href: '/admin/system', label: 'System' }],
+    items: [
+      { href: '/admin/analytics', label: 'Analytics' },
+      { href: '/admin/system', label: 'System' },
+    ],
   },
 ];
 
