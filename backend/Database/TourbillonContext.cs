@@ -14,8 +14,7 @@ public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
     public DbSet<Watch> Watches { get; set; }
     public DbSet<Brand> Brands { get; set; }
     public DbSet<Collection> Collections { get; set; }
-    public DbSet<PriceTrend> PriceTrends { get; set; }
-    public DbSet<WatchEmbedding> WatchEmbeddings { get; set; }
+public DbSet<WatchEmbedding> WatchEmbeddings { get; set; }
     public DbSet<QueryCache> QueryCaches { get; set; }
     public DbSet<UserTasteProfile> UserTasteProfiles { get; set; }
     public DbSet<WatchEditorialContent> WatchEditorialContents { get; set; }

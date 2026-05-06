@@ -379,13 +379,6 @@ public class WatchController : ControllerBase
                 return Ok(new { message = "No watches to delete for this brand.", deletedCount = 0 });
             }
 
-            // Delete associated price trends first (foreign key constraint)
-            var watchIds = watchesToDelete.Select(w => w.Id).ToList();
-            var priceTrendsToDelete = await _context.PriceTrends
-                .Where(pt => watchIds.Contains(pt.WatchId))
-                .ToListAsync();
-
-            _context.PriceTrends.RemoveRange(priceTrendsToDelete);
             _context.Watches.RemoveRange(watchesToDelete);
             await _context.SaveChangesAsync();
 
