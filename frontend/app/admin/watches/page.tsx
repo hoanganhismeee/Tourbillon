@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   adminFetchWatches, adminRefreshImageCache, fetchBrands, fetchCollections,
-  deleteWatch, Watch, Brand, Collection,
+  fetchWatchesByBrand, deleteWatch, Watch, Brand, Collection,
 } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
 import WatchEditorModal from './components/WatchEditorModal';
@@ -19,30 +19,54 @@ export default function AdminWatchesPage() {
   const [selectedBrand, setSelectedBrand] = useState<number | ''>('');
   const [selectedCollection, setSelectedCollection] = useState<number | ''>('');
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [metaLoading, setMetaLoading] = useState(true);
+  const [watchesLoading, setWatchesLoading] = useState(false);
+  const [brandsLoaded, setBrandsLoaded] = useState(false);
   const [editingWatch, setEditingWatch] = useState<Watch | null>(null);
   const [addingWatch, setAddingWatch] = useState(false);
   const [refreshingCache, setRefreshingCache] = useState(false);
   const [cacheMsg, setCacheMsg] = useState('');
 
+  // Collection + search filter applied client-side; brand filter is server-side
   const filtered = useMemo(() => watches.filter(w => {
-    if (selectedBrand && w.brandId !== selectedBrand) return false;
     if (selectedCollection && w.collectionId !== selectedCollection) return false;
     if (search && !w.name.toLowerCase().includes(search.toLowerCase()) &&
         !(w.description ?? '').toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  }), [watches, selectedBrand, selectedCollection, search]);
+  }), [watches, selectedCollection, search]);
 
-  const loadData = async () => {
-    setLoading(true);
-    const [w, b, c] = await Promise.all([adminFetchWatches(), fetchBrands(), fetchCollections()]);
-    setWatches(w); setBrands(b); setCollections(c);
-    setLoading(false);
+  // Step 1: load brands + collections (lightweight), then default to first brand
+  useEffect(() => {
+    if (!isAdmin) return;
+    Promise.all([fetchBrands(), fetchCollections()]).then(([b, c]) => {
+      setBrands(b);
+      setCollections(c);
+      if (b.length > 0) setSelectedBrand(b[0].id);
+      setBrandsLoaded(true);
+      setMetaLoading(false);
+    });
+  }, [isAdmin]);
+
+  // Step 2: fetch watches whenever brand selection changes (after meta is ready)
+  useEffect(() => {
+    if (!isAdmin || !brandsLoaded) return;
+    setWatchesLoading(true);
+    setSelectedCollection('');
+    const promise = selectedBrand === ''
+      ? adminFetchWatches()
+      : fetchWatchesByBrand(selectedBrand as number);
+    promise.then(w => {
+      setWatches(w);
+      setWatchesLoading(false);
+    });
+  }, [selectedBrand, isAdmin, brandsLoaded]);
+
+  const reloadWatches = async () => {
+    const w = selectedBrand === ''
+      ? await adminFetchWatches()
+      : await fetchWatchesByBrand(selectedBrand as number);
+    setWatches(w);
   };
-
-  const reloadWatches = async () => setWatches(await adminFetchWatches());
-
-  useEffect(() => { if (isAdmin) loadData(); }, [isAdmin]);
 
   const handleDelete = async (w: Watch) => {
     if (!confirm(`Delete "${w.name}" (ID ${w.id})?`)) return;
@@ -63,7 +87,7 @@ export default function AdminWatchesPage() {
     } finally { setRefreshingCache(false); }
   };
 
-  if (loading) return <div className="p-8 text-white text-sm">Loading...</div>;
+  if (metaLoading) return <div className="p-8 text-white text-sm">Loading...</div>;
 
   return (
     <div className="p-6">
@@ -98,9 +122,9 @@ export default function AdminWatchesPage() {
         <select
           className="bg-[#111] border border-[#1e1e1e] text-[#888] text-sm rounded px-3 py-1.5 focus:outline-none"
           value={selectedBrand}
-          onChange={e => { setSelectedBrand(e.target.value ? Number(e.target.value) : ''); setSelectedCollection(''); }}
+          onChange={e => setSelectedBrand(e.target.value ? Number(e.target.value) : '')}
         >
-          <option value="">All Brands</option>
+          <option value="">All Brands (slow)</option>
           {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
         <select
@@ -117,53 +141,57 @@ export default function AdminWatchesPage() {
       </div>
 
       <div className="overflow-x-auto rounded border border-[#1a1a1a]">
-        <table className="w-full text-left text-sm border-collapse">
-          <thead>
-            <tr className="border-b border-[#1e1e1e] bg-[#111]">
-              <th className="px-3 py-2 text-[#555] font-normal w-14">Image</th>
-              <th className="px-3 py-2 text-[#555] font-normal">Reference</th>
-              <th className="px-3 py-2 text-[#555] font-normal">Collection</th>
-              <th className="px-3 py-2 text-[#555] font-normal w-32">Price</th>
-              <th className="px-3 py-2 text-[#555] font-normal w-24">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(w => (
-              <tr key={w.id} className="border-b border-[#111] hover:bg-white/[0.02]">
-                <td className="px-3 py-2">
-                  {w.image ? (
-                    <img
-                      src={w.imageUrl || (w.image.startsWith('http') ? w.image : imageTransformations.thumbnail(w.image))}
-                      alt={w.name} width={48} height={48}
-                      className="rounded object-contain"
-                      onError={e => { e.currentTarget.src = w.image; }}
-                    />
-                  ) : <div className="w-12 h-12 bg-[#1a1a1a] rounded" />}
-                </td>
-                <td className="px-3 py-2">
-                  <div className="text-white text-xs">{w.name}</div>
-                  <div className="text-[#555] text-[10px]">{brands.find(b => b.id === w.brandId)?.name}</div>
-                </td>
-                <td className="px-3 py-2 text-[#666] text-xs">{collections.find(c => c.id === w.collectionId)?.name ?? '—'}</td>
-                <td className="px-3 py-2 text-[#666] text-xs">
-                  {w.currentPrice === 0 ? 'Price on request' : `$${w.currentPrice.toLocaleString()}`}
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex gap-1.5">
-                    <button
-                      className="bg-[#c9a96e] text-black px-3 py-1 rounded text-xs font-medium hover:bg-[#d4b97e] transition-colors"
-                      onClick={() => setEditingWatch(w)}
-                    >Edit</button>
-                    <button
-                      className="bg-red-900/60 text-red-300 px-3 py-1 rounded text-xs hover:bg-red-800 transition-colors"
-                      onClick={() => handleDelete(w)}
-                    >Delete</button>
-                  </div>
-                </td>
+        {watchesLoading ? (
+          <div className="p-6 text-[#555] text-sm">Loading watches...</div>
+        ) : (
+          <table className="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-[#1e1e1e] bg-[#111]">
+                <th className="px-3 py-2 text-[#555] font-normal w-14">Image</th>
+                <th className="px-3 py-2 text-[#555] font-normal">Reference</th>
+                <th className="px-3 py-2 text-[#555] font-normal">Collection</th>
+                <th className="px-3 py-2 text-[#555] font-normal w-32">Price</th>
+                <th className="px-3 py-2 text-[#555] font-normal w-24">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map(w => (
+                <tr key={w.id} className="border-b border-[#111] hover:bg-white/[0.02]">
+                  <td className="px-3 py-2">
+                    {w.image ? (
+                      <img
+                        src={w.imageUrl || (w.image.startsWith('http') ? w.image : imageTransformations.thumbnail(w.image))}
+                        alt={w.name} width={48} height={48}
+                        className="rounded object-contain"
+                        onError={e => { e.currentTarget.src = w.image; }}
+                      />
+                    ) : <div className="w-12 h-12 bg-[#1a1a1a] rounded" />}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="text-white text-xs">{w.name}</div>
+                    <div className="text-[#555] text-[10px]">{brands.find(b => b.id === w.brandId)?.name}</div>
+                  </td>
+                  <td className="px-3 py-2 text-[#666] text-xs">{collections.find(c => c.id === w.collectionId)?.name ?? '—'}</td>
+                  <td className="px-3 py-2 text-[#666] text-xs">
+                    {w.currentPrice === 0 ? 'Price on request' : `$${w.currentPrice.toLocaleString()}`}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-1.5">
+                      <button
+                        className="bg-[#c9a96e] text-black px-3 py-1 rounded text-xs font-medium hover:bg-[#d4b97e] transition-colors"
+                        onClick={() => setEditingWatch(w)}
+                      >Edit</button>
+                      <button
+                        className="bg-red-900/60 text-red-300 px-3 py-1 rounded text-xs hover:bg-red-800 transition-colors"
+                        onClick={() => handleDelete(w)}
+                      >Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {editingWatch && (
