@@ -232,7 +232,6 @@ public class AdminController : ControllerBase
     /// Scrapes a single watch from any URL using Selenium + Claude API
     /// POST: api/admin/scrape-url?url=https://www.glashuette-original.com/en/watches/senator/...&brand=Glashütte Original
 
-    [AllowAnonymous]
     [HttpPost("scrape-url")]
     public async Task<IActionResult> ScrapeUrl(
         [FromQuery] string url,
@@ -352,7 +351,6 @@ public class AdminController : ControllerBase
     /// Scrapes watches from a collection listing page (for brands that block sitemaps)
     /// POST: api/admin/scrape-listing?brand=Rolex&listingUrl=https://www.rolex.com/en-us/watches/submariner/all-models&collection=Submariner&maxWatches=50
 
-    [AllowAnonymous]
     [HttpPost("scrape-listing")]
     public async Task<IActionResult> ScrapeListingPage(
         [FromQuery] string brand,
@@ -457,7 +455,6 @@ public class AdminController : ControllerBase
     /// Adds watches directly from manually extracted data (no Selenium/Claude needed)
     /// POST: api/admin/add-watches
     /// Body: JSON array of ScrapedWatchDto
-    [AllowAnonymous]
     [HttpPost("add-watches")]
     public async Task<IActionResult> AddWatchesManually([FromBody] List<ScrapedWatchDto> watches)
     {
@@ -1912,7 +1909,6 @@ public class AdminController : ControllerBase
     /// AllowAnonymous: local-only seeding tool, no sensitive data involved.
     /// Enqueues a durable Hangfire job — progress visible at /hangfire dashboard.
     /// POST: api/admin/editorial/seed
-    [AllowAnonymous]
     [HttpPost("editorial/seed")]
     public IActionResult SeedEditorial()
     {
@@ -1923,7 +1919,6 @@ public class AdminController : ControllerBase
 
     /// Returns editorial coverage stats.
     /// GET: api/admin/editorial/status
-    [AllowAnonymous]
     [HttpGet("editorial/status")]
     public async Task<IActionResult> GetEditorialStatus()
     {
@@ -1933,7 +1928,6 @@ public class AdminController : ControllerBase
 
     /// Deletes all editorial content and links. Use before re-seeding with a different model.
     /// DELETE: api/admin/editorial
-    [AllowAnonymous]
     [HttpDelete("editorial")]
     public async Task<IActionResult> ClearEditorial()
     {
@@ -1947,7 +1941,6 @@ public class AdminController : ControllerBase
     /// Run once after DB seeding; new collections should be tagged when created via admin UI.
     /// Pass ?overwrite=true to re-classify already-tagged collections.
     /// POST: api/admin/collections/tag-styles
-    [AllowAnonymous]
     [HttpPost("collections/tag-styles")]
     public async Task<IActionResult> TagCollectionStyles([FromQuery] bool overwrite = false)
     {
@@ -2016,7 +2009,6 @@ public class AdminController : ControllerBase
 
     /// Returns style tag coverage across all collections.
     /// GET: api/admin/collections/style-status
-    [AllowAnonymous]
     [HttpGet("collections/style-status")]
     public async Task<IActionResult> GetCollectionStyleStatus()
     {
@@ -2041,7 +2033,6 @@ public class AdminController : ControllerBase
     /// Updates the editorial content linked to a specific watch.
     /// Because editorial is shared per-collection, this affects all watches in the same collection.
     /// PUT: api/admin/editorial/{watchId}
-    [AllowAnonymous]
     [HttpPut("editorial/{watchId:int}")]
     public async Task<IActionResult> UpdateEditorial(int watchId, [FromBody] UpdateEditorialDto dto)
     {

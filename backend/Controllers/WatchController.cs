@@ -3,6 +3,7 @@
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using backend.Database;
 using backend.Models;
@@ -357,6 +358,7 @@ public class WatchController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Roles = "Admin")]
     [HttpDelete("brand/{brandId}/scrape-test")]
     public async Task<IActionResult> DeleteWatchesByBrandForScrapingAsync(int brandId)
     {
