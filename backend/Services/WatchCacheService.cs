@@ -151,13 +151,6 @@ public class WatchCacheService
             _logger.LogInformation("Deleted {ImagesDeleted} images from storage out of {TotalWatches} watches", 
                 imagesDeleted, deletedCount);
 
-            // Delete all price trends for these watches first (foreign key constraint)
-            var watchIdsToDelete = watchesToDelete.Select(w => w.Id).ToList();
-            var priceTrendsToDelete = await _context.PriceTrends
-                .Where(pt => watchIdsToDelete.Contains(pt.WatchId))
-                .ToListAsync();
-
-            _context.PriceTrends.RemoveRange(priceTrendsToDelete);
             _context.Watches.RemoveRange(watchesToDelete);
 
             await _context.SaveChangesAsync();
@@ -374,15 +367,6 @@ public class WatchCacheService
         var newPrice = ParsePrice(newPriceString);
         if (newPrice > 0 && newPrice != watch.CurrentPrice)
         {
-            // Track price history if needed
-            var priceTrend = new PriceTrend
-            {
-                PriceHistory = watch.CurrentPrice,
-                Date = DateTime.UtcNow,
-                WatchId = watch.Id
-            };
-            _context.PriceTrends.Add(priceTrend);
-
             watch.CurrentPrice = newPrice;
             _logger.LogInformation("Updated price for {Name}: ${Old} -> ${New}",
                 watch.Name, watch.CurrentPrice, newPrice);

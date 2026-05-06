@@ -21,7 +21,6 @@ public class Watch
 
     // Navigation properties
 
-    public ICollection<PriceTrend>? PriceHistory { get; set; } = new List<PriceTrend>();
-    public WatchEditorialLink? EditorialLink { get; set; }
+public WatchEditorialLink? EditorialLink { get; set; }
 
 }
