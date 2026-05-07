@@ -30,7 +30,7 @@ const HeartNavLink = () => {
 
   return (
     <div className="relative">
-      <a
+      <Link
         href="/favourites"
         className="hover:opacity-70 transition-all duration-300 block"
       >
@@ -58,7 +58,7 @@ const HeartNavLink = () => {
             <path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z" />
           </svg>
         </span>
-      </a>
+      </Link>
       {hasSaved && (
         <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-[#bfa68a] text-[#1a1008] text-[9px] font-inter font-bold rounded-full flex items-center justify-center px-1 leading-none">
           {count > 99 ? '99+' : count}
@@ -122,9 +122,9 @@ const UserMenu = () => {
     // Unauthenticated: direct link to auth entry point, no dropdown
     if (!isAuthenticated) {
       return (
-        <a href="/auth/start" className="hover:opacity-70 transition-all duration-300 cursor-pointer">
+        <Link href="/auth/start" className="hover:opacity-70 transition-all duration-300 cursor-pointer">
           <UserIcon />
-        </a>
+        </Link>
       );
     }
 

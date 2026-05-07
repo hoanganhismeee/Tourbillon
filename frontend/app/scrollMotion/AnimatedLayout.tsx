@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
 import { useLenis } from "lenis/react";
 import MotionMain from "./MotionMain";
+import { isBackNavigation } from "@/lib/navigationDirection";
 
 // Shared key with useScrollRestore — checked to avoid overriding back-nav restoration.
 const NAV_STORAGE_KEY = 'tourbillon-nav';
@@ -17,16 +18,18 @@ export default function AnimatedLayout({ children }: { children: React.ReactNode
   const lenis = useLenis();
 
   useEffect(() => {
-    // If useScrollRestore has a back-nav checkpoint for this exact path, let it
-    // handle the position. clearNavigationState() is async (setState → effect),
-    // so sessionStorage still has the entry when this effect runs after children mount.
-    try {
-      const raw = sessionStorage.getItem(NAV_STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        if (saved?.path === window.location.pathname + window.location.search) return;
-      }
-    } catch { /* ignore */ }
+    // Only defer to useScrollRestore for genuine back/forward navigation.
+    // Forward navigation (Link clicks, router.push) must always scroll to top
+    // even if a sessionStorage checkpoint exists for the destination URL.
+    if (isBackNavigation()) {
+      try {
+        const raw = sessionStorage.getItem(NAV_STORAGE_KEY);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved?.path === window.location.pathname + window.location.search) return;
+        }
+      } catch { /* ignore */ }
+    }
 
     // Forward navigation — jump to top instantly, bypassing Lenis easing.
     lenis?.scrollTo(0, { immediate: true });
