@@ -237,7 +237,7 @@ const UserMenu = () => {
           opacity: scrollDirection === 'down' ? 0 : 1,
         }}
         transition={{ duration: 0.8, ease: scrollDirection === 'down' ? EASE_EXIT : EASE_ENTER }}
-        className="fixed top-0 left-0 w-full z-50 px-16 py-12 grid grid-cols-[1fr_auto_1fr] items-center"
+        className="fixed top-0 left-0 w-full z-50 px-4 py-6 md:px-16 md:py-12 grid grid-cols-[1fr_auto_1fr] items-center"
       >
         {/* Background — opacity driven by scroll position via useTransform, no manual math */}
         {mounted && (
@@ -256,7 +256,7 @@ const UserMenu = () => {
         )}
         
         {/* Left navigation menu - main site navigation links */}
-        <div className="min-w-0 flex items-center justify-start gap-[clamp(16px,2.8vw,50px)] pl-8 font-playfair font-light tracking-[0.08em] text-white uppercase">
+        <div className="min-w-0 hidden md:flex items-center justify-start gap-[clamp(16px,2.8vw,50px)] pl-8 font-playfair font-light tracking-[0.08em] text-white uppercase">
           <Link 
             href="/watches" 
             className="hover:opacity-10 transition-opacity"
@@ -272,7 +272,7 @@ const UserMenu = () => {
         <div className="justify-self-center">
           <Link 
             href="/" 
-            className="font-playfair text-[48px] logo-text opacity-90 hover:opacity-10 transition-opacity" 
+            className="font-playfair text-[28px] md:text-[48px] logo-text opacity-90 hover:opacity-10 transition-opacity"
             style={{ fontWeight: 300 }}
           >
             Tourbillon
@@ -280,7 +280,7 @@ const UserMenu = () => {
         </div>
   
         {/* Right side icons - user menu, cart, and search */}
-        <div className="min-w-0 flex items-center gap-16 relative pr-4 justify-end">
+        <div className="min-w-0 flex items-center gap-4 md:gap-16 relative pr-4 justify-end">
           <UserMenu />
 
           <HeartNavLink />

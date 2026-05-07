@@ -99,7 +99,8 @@ const architectureDiagram = `LOCAL DEVELOPMENT
                                           |
                                           v
                                +----------------------+
-                               | Ollama / Claude API  |
+                               | Ollama               |
+                               | qwen2.5:7b  (local)  |
                                +----------------------+
 
  Redis      -> auth codes, rate limits, chat sessions
@@ -121,7 +122,7 @@ PRODUCTION
               v
 +---------------------------+         +---------------------------+
 | Railway backend           |<------->| Railway ai-service        |
-| .NET 8 API                |         | Flask + Anthropic/Ollama  |
+| .NET 8 API                |         | Flask + Haiku 4.5 (prod)  |
 +------+------+------+------+
        |      |      |
        |      |      +--------------------+

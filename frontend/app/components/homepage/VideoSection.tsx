@@ -81,7 +81,6 @@ export default function VideoSection() {
     video.addEventListener('canplay', handleCanPlay);
     video.addEventListener('error', handleError);
 
-    video.load();
     void tryPlay();
 
     return () => {
@@ -121,7 +120,7 @@ export default function VideoSection() {
           muted
           loop
           playsInline
-          preload="none"
+          preload="auto"
           aria-label="Tourbillon hero video"
           className="absolute inset-0 h-full w-full object-cover"
         >

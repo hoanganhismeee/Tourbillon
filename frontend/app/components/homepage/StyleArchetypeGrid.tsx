@@ -253,7 +253,7 @@ function ArchetypeTile({ archetype, index }: { archetype: Archetype; index: numb
   return (
     <section
       ref={sectionRef}
-      className="relative min-h-[85vh] flex items-center overflow-hidden"
+      className="relative min-h-[60vh] md:min-h-[85vh] flex items-center overflow-hidden"
       style={{ background: archetype.gradient }}
     >
       {/* Centered radial glow matching the stage accent */}
