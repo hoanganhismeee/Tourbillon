@@ -8,6 +8,7 @@ import { useEffect, useRef } from 'react';
 import { useLenis } from 'lenis/react';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { EASE_LUXURY_CSS } from '@/lib/motion';
+import { isBackNavigation } from '@/lib/navigationDirection';
 
 const STORAGE_KEY = 'tourbillon-nav';
 
@@ -23,24 +24,25 @@ export function useScrollRestore(isReady: boolean) {
     hasRun.current = true;
 
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        // Only restore if the checkpoint belongs to this page — not a stale checkpoint
-        // from a previous listing page the user navigated forward away from.
-        if (
-          typeof saved.scrollPosition === 'number' &&
-          saved.path === window.location.pathname + window.location.search
-        ) {
-          if (lenis) {
-            lenis.scrollTo(saved.scrollPosition, { immediate: true });
-          } else {
-            window.scrollTo(0, saved.scrollPosition);
+      // Only restore on genuine back/forward navigation. Forward navigation to a URL
+      // that happens to match a saved checkpoint must not restore the old position.
+      if (isBackNavigation()) {
+        const raw = sessionStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (
+            typeof saved.scrollPosition === 'number' &&
+            saved.path === window.location.pathname + window.location.search
+          ) {
+            if (lenis) {
+              lenis.scrollTo(saved.scrollPosition, { immediate: true });
+            } else {
+              window.scrollTo(0, saved.scrollPosition);
+            }
+            clearNavigationState();
           }
-          clearNavigationState();
         }
       }
-      // Forward navigation: AnimatedLayout's effect handles scroll-to-top.
     } catch { /* corrupt data — ignore */ }
 
     // Fade the page in. Runs after the scroll position settles (rAF = next paint).
