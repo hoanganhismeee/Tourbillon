@@ -7,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useNavigation } from '@/contexts/NavigationContext';
+import { markScrollRestore } from '@/lib/navigationDirection';
 import { useQuery } from '@tanstack/react-query';
 import { fetchBrandBySlug, fetchWatchesByBrandSlug, fetchCollectionsByBrandSlug, Collection, Brand } from '@/lib/api';
 import { trackEvent } from '@/lib/behaviorTracker';
@@ -68,6 +69,7 @@ const BrandPage = () => {
       return;
     }
     if (navigationState) {
+      markScrollRestore(); // This button's job: return to the saved scroll checkpoint
       document.body.style.transition = 'opacity 0.18s ease-in';
       document.body.style.opacity = '0';
       setTimeout(() => { document.body.style.transition = 'opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1)'; document.body.style.opacity = '1'; }, 2000);
