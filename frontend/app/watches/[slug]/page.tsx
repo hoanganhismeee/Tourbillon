@@ -14,6 +14,7 @@ import { imageTransformations } from '@/lib/cloudinary';
 import { trackEvent } from '@/lib/behaviorTracker';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { getSafeReturnTo, withReturnTo } from '@/lib/returnNavigation';
+import { markScrollRestore } from '@/lib/navigationDirection';
 import { parseStructuredSpecs, parseFlatSpecs, buildSpecSections } from '@/lib/specs';
 import CompareToggle from '../../components/compare/CompareToggle';
 import WristFitWidget from '../../components/wristfit/WristFitWidget';
@@ -98,6 +99,7 @@ const WatchDetailPage = () => {
             return;
         }
         if (navigationState) {
+            markScrollRestore(); // This button's job: return to the saved scroll checkpoint
             // Brief fade-out makes the departure feel intentional rather than abrupt.
             // Navigate after the fade so the listing page renders while invisible.
             document.body.style.transition = 'opacity 0.18s ease-in';

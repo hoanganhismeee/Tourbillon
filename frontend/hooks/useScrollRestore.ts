@@ -8,7 +8,7 @@ import { useEffect, useRef } from 'react';
 import { useLenis } from 'lenis/react';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { EASE_LUXURY_CSS } from '@/lib/motion';
-import { isBackNavigation } from '@/lib/navigationDirection';
+import { isScrollRestore, clearScrollRestore } from '@/lib/navigationDirection';
 
 const STORAGE_KEY = 'tourbillon-nav';
 
@@ -26,7 +26,7 @@ export function useScrollRestore(isReady: boolean) {
     try {
       // Only restore on genuine back/forward navigation. Forward navigation to a URL
       // that happens to match a saved checkpoint must not restore the old position.
-      if (isBackNavigation()) {
+      if (isScrollRestore()) {
         const raw = sessionStorage.getItem(STORAGE_KEY);
         if (raw) {
           const saved = JSON.parse(raw);
@@ -40,6 +40,7 @@ export function useScrollRestore(isReady: boolean) {
               window.scrollTo(0, saved.scrollPosition);
             }
             clearNavigationState();
+            clearScrollRestore();
           }
         }
       }

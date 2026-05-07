@@ -11,6 +11,7 @@ import { fetchCollectionBySlug, fetchWatchesByCollectionSlug, fetchBrandById, Br
 import { trackEvent } from '@/lib/behaviorTracker';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useNavigation } from '@/contexts/NavigationContext';
+import { markScrollRestore } from '@/lib/navigationDirection';
 import { getSafeReturnTo, withReturnTo } from '@/lib/returnNavigation';
 import ScrollFade from '../../scrollMotion/ScrollFade';
 import { WatchCard } from '../../components/cards/WatchCard';
@@ -58,6 +59,7 @@ const CollectionPage = () => {
       return;
     }
     if (navigationState) {
+      markScrollRestore(); // This button's job: return to the saved scroll checkpoint
       document.body.style.transition = 'opacity 0.18s ease-in';
       document.body.style.opacity = '0';
       setTimeout(() => { document.body.style.transition = 'opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1)'; document.body.style.opacity = '1'; }, 2000);

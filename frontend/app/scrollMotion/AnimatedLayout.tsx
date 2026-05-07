@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
 import { useLenis } from "lenis/react";
 import MotionMain from "./MotionMain";
-import { isBackNavigation } from "@/lib/navigationDirection";
+import { isScrollRestore } from "@/lib/navigationDirection";
 
 // Shared key with useScrollRestore — checked to avoid overriding back-nav restoration.
 const NAV_STORAGE_KEY = 'tourbillon-nav';
@@ -21,7 +21,7 @@ export default function AnimatedLayout({ children }: { children: React.ReactNode
     // Only defer to useScrollRestore for genuine back/forward navigation.
     // Forward navigation (Link clicks, router.push) must always scroll to top
     // even if a sessionStorage checkpoint exists for the destination URL.
-    if (isBackNavigation()) {
+    if (isScrollRestore()) {
       try {
         const raw = sessionStorage.getItem(NAV_STORAGE_KEY);
         if (raw) {
