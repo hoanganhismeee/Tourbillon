@@ -116,8 +116,8 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
         <div className="mb-20 px-4">
             <ScrollFade>
                 <div className="text-center mb-16">
-                    <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2] mb-4">{brand.name}</h2>
-                    <p className="text-2xl text-white/70 font-playfair font-light">{brand.summary}</p>
+                    <h2 className="text-3xl md:text-5xl font-playfair font-bold text-[#f0e6d2] mb-4">{brand.name}</h2>
+                    <p className="text-xl md:text-2xl text-white/70 font-playfair font-light">{brand.summary}</p>
                 </div>
             </ScrollFade>
 
