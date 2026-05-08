@@ -190,7 +190,7 @@ function ArchetypeTile({ archetype, index }: { archetype: Archetype; index: numb
   const textLeft = index % 2 === 0;
 
   const textColumn = (
-    <ScrollFade className={`flex flex-col justify-center py-20 px-4 md:px-0 z-10 ${textLeft ? 'md:-ml-8 lg:-ml-16 xl:-ml-20' : 'md:-mr-8 lg:-mr-16 xl:-mr-20'}`}>
+    <ScrollFade className={`flex flex-col justify-center py-8 md:py-20 px-4 md:px-0 z-10 ${textLeft ? 'md:-ml-8 lg:-ml-16 xl:-ml-20' : 'md:-mr-8 lg:-mr-16 xl:-mr-20'}`}>
       <div 
         className={`flex flex-col ${textLeft ? 'border-l-2 pl-6 lg:pl-8 items-start text-left' : 'border-r-2 pr-6 lg:pr-8 items-end text-right'}`} 
         style={{ borderColor: `${archetype.accentColor}35` }}
@@ -238,12 +238,12 @@ function ArchetypeTile({ archetype, index }: { archetype: Archetype; index: numb
   );
 
   const watchColumn = (
-    <div className="flex items-center justify-center py-20">
+    <div className="flex items-center justify-center py-8 md:py-20">
       <WatchRow
         watches={displayWatches}
         isInView={isInView}
         delayBase={0.15}
-        sizeClass="w-[clamp(100px,9vw,160px)] h-[clamp(128px,11.5vw,204px)]"
+        sizeClass="w-[72px] h-[92px] md:w-[clamp(100px,9vw,160px)] md:h-[clamp(128px,11.5vw,204px)]"
         opacityRange={[0.45, 0.72]}
         stagger={archetype.animConfig.stagger}
       />
