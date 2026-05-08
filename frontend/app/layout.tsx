@@ -37,6 +37,9 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Tourbillon",
   description: "A timeless collection of luxury watches",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

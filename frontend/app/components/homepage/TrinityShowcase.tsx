@@ -122,7 +122,7 @@ const TrinityShowcase = ({ brand }: TrinityShowcaseProps) => {
             </ScrollFade>
 
             <div className="flex flex-col items-center mb-8">
-                <div ref={gridRef} className="grid grid-cols-3 gap-16 mb-8">
+                <div ref={gridRef} className="grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-16 mb-8">
                     {isLoading ? (
                         [1, 2, 3].map((i) => (
                             <WatchCardSkeleton key={i} />
