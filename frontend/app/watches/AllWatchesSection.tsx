@@ -249,7 +249,7 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
         <>
           {currentPage === 1 ? (
             <div>
-              <div className="grid grid-cols-4 gap-x-8 gap-y-20 mb-20">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-4 md:gap-x-8 md:gap-y-20 mb-20">
                 {displayedWatches.map((watch, index) => (
                   <ScrollFade key={watch.id}>
                     <WatchCard
@@ -303,7 +303,7 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
             </div>
           ) : (
             <div>
-              <div className="grid grid-cols-4 gap-x-8 gap-y-20 mb-20">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-4 md:gap-x-8 md:gap-y-20 mb-20">
                 {paginatedWatches.map(watch => (
                   <ScrollFade key={watch.id}>
                     <WatchCard
