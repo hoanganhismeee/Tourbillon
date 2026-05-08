@@ -46,7 +46,7 @@ export default function BrandShowcaseSection() {
 
       {/* Section heading */}
       <ScrollFade>
-        <h2 className="text-5xl font-playfair font-light text-center mb-15 mt-32 text-[#f0e6d2]">
+        <h2 className="text-3xl md:text-5xl font-playfair font-light text-center mb-15 mt-32 text-[#f0e6d2]">
           Explore Our Brands
         </h2>
       </ScrollFade>
@@ -56,7 +56,7 @@ export default function BrandShowcaseSection() {
       {/* Holy Trinity */}
       <section className="mb-20">
         <ScrollFade>
-          <h3 className="text-5xl font-playfair font-light text-center mb-20 text-[#f0e6d2]">
+          <h3 className="text-3xl md:text-5xl font-playfair font-light text-center mb-20 text-[#f0e6d2]">
             The Holy Trinity — Haute Horlogerie
           </h3>
         </ScrollFade>
@@ -98,7 +98,7 @@ export default function BrandShowcaseSection() {
       {/* Explore More Brands */}
       <section className="mb-32">
         <ScrollFade>
-          <h3 className="text-5xl font-playfair font-light text-center mb-10 text-[#f0e6d2]">
+          <h3 className="text-3xl md:text-5xl font-playfair font-light text-center mb-10 text-[#f0e6d2]">
             Explore More Brands
           </h3>
         </ScrollFade>
