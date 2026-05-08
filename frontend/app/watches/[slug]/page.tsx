@@ -199,7 +199,7 @@ const WatchDetailPage = () => {
                 {/* Left Column: Watch Image */}
                 <div className="flex justify-center items-start">
                     <ScrollFade>
-                        <div className="sticky top-32 w-full max-w-md bg-black/20 p-8 rounded-xl border border-white/10">
+                        <div className="sticky top-32 w-full max-w-md bg-black/20 p-4 md:p-8 rounded-xl border border-white/10">
                             <div className="aspect-square bg-white/5 flex items-center justify-center rounded-lg relative overflow-hidden">
                                 {watch.image && !imageError ? (
                                     <>

@@ -108,7 +108,7 @@ const WatchesPage = () => {
     <div className="flex items-start py-24 pt-30">
 
       {/* Left: brand/collection tree */}
-      <div className="pl-6 lg:pl-10 shrink-0">
+      <div className="hidden lg:block pl-6 lg:pl-10 shrink-0">
         <ScrollFade>
           <BrandNavPanel
             selectedBrandIds={selectedBrandIds}
