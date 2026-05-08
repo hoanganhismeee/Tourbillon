@@ -270,7 +270,7 @@ const WatchDetailPage = () => {
 
                     <ScrollFade>
                     <div className="mb-8">
-                        <span className="text-7xl font-bold text-white">
+                        <span className="text-4xl md:text-7xl font-bold text-white">
                             {watch.currentPrice > 0 ? `$${watch.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Price on request'}
                         </span>
                         <p className="text-sm text-white/50 mt-1">Price subject to market changes</p>

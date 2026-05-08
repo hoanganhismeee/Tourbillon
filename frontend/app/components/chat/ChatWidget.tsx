@@ -13,7 +13,7 @@ export default function ChatWidget() {
   return (
     <>
       {/* Floating pill */}
-      <div className="fixed bottom-8 right-8 z-40 select-none">
+      <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-40 select-none">
         <motion.button
           initial={{ opacity: 0, scale: 0.8, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
