@@ -184,7 +184,7 @@ const ComparePage = () => {
       </ScrollFade>
 
       {/* Watch header cards — same grid as spec table so columns align */}
-      <div className="pb-6">
+      <div className="overflow-x-auto pb-6">
         <div className="grid gap-4" style={{ gridTemplateColumns: colTemplate }}>
           {/* Editorial spacer occupies the label column */}
           <EditorialSpacer count={watchCount} />
@@ -303,7 +303,7 @@ const ComparePage = () => {
       </div>
 
       {/* Spec comparison sections */}
-      <div className="space-y-8">
+      <div className="overflow-x-auto space-y-8">
         {parsedSpecs.some(s => s?.productionStatus) && (
           <div>
             <h2 className="text-[13px] font-semibold uppercase tracking-[0.35em] text-[#bfa68a] mb-3 font-inter">Status</h2>
