@@ -396,7 +396,8 @@ public class ChatService
         string? ipAddress,
         string? behaviorSummary = null,
         string? preferredLanguage = null,
-        bool isAdmin = false)
+        bool isAdmin = false,
+        CancellationToken cancellationToken = default)
     {
         var disableLimit = _config.GetValue<bool>("ChatSettings:DisableLimitInDev");
         var dailyLimit = _config.GetValue<int>("ChatSettings:DailyLimit", 5);
@@ -462,6 +463,8 @@ public class ChatService
         }
         if (resolution.UseAi && !disableLimit && !isAdmin)
         {
+            // If the client disconnected before we reach the AI call, skip the charge entirely.
+            cancellationToken.ThrowIfCancellationRequested();
             quotaStatus = await _quota.ChargeAsync("chat", quotaSubject, dailyLimit, disabled: false, isAdmin: false);
             if (quotaStatus.RateLimited)
             {
@@ -502,7 +505,8 @@ public class ChatService
                 resolution,
                 responseLanguage,
                 resolution.AllowWebEnrichment,
-                resolution.WebQuery);
+                resolution.WebQuery,
+                cancellationToken);
 
             // Await both the wording draft and the planner together — planner is best-effort so
             // its result is either a usable list or an empty fallback; it never throws out here.
@@ -856,7 +860,8 @@ public class ChatService
         ChatResolution resolution,
         string? responseLanguage = null,
         bool allowWebEnrichment = false,
-        string? webQuery = null)
+        string? webQuery = null,
+        CancellationToken cancellationToken = default)
     {
         var aiDraft = await CallAiServiceAsync(
             history,
@@ -864,7 +869,8 @@ public class ChatService
             context,
             responseLanguage,
             allowWebEnrichment,
-            webQuery);
+            webQuery,
+            cancellationToken);
 
         var validation = await ValidateAiDraftAsync(aiDraft, resolution);
         if (validation.IsValid)
@@ -884,7 +890,8 @@ public class ChatService
             retryContext,
             responseLanguage,
             allowWebEnrichment,
-            webQuery);
+            webQuery,
+            cancellationToken);
 
         var correctedValidation = await ValidateAiDraftAsync(correctedDraft, resolution);
         if (correctedValidation.IsValid)
@@ -906,7 +913,8 @@ public class ChatService
         List<string> context,
         string? responseLanguage = null,
         bool allowWebEnrichment = false,
-        string? webQuery = null)
+        string? webQuery = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -927,7 +935,7 @@ public class ChatService
                 allowWebEnrichment,
                 webQuery,
             };
-            var resp = await httpClient.PostAsJsonAsync("/chat", payload);
+            var resp = await httpClient.PostAsJsonAsync("/chat", payload, cancellationToken);
             chatSw.Stop();
 
             if (!resp.IsSuccessStatusCode)
