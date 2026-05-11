@@ -549,7 +549,7 @@ function AssistantMessage({
 }
 
 export default function ChatPanel() {
-  const { messages, isLoading, dailyUsed, dailyLimit, sendMessage, clearSession } = useChat();
+  const { messages, isLoading, dailyUsed, dailyLimit, sendMessage, retryLastMessage, clearSession } = useChat();
   const [input, setInput] = useState(() => {
     try { return sessionStorage.getItem('chat-draft') ?? ''; } catch { return ''; }
   });
@@ -667,6 +667,7 @@ export default function ChatPanel() {
                 style={message.role === 'assistant' ? { background: 'rgba(255,255,255,0.05)' } : undefined}
               >
                 {message.role === 'assistant' ? (
+                  <>
                   <AssistantMessage
                     text={message.content}
                     watchCards={message.watchCards}
@@ -683,6 +684,15 @@ export default function ChatPanel() {
                     onSendMessage={(text) => void handlePromptClick(text)}
                     onRevealProgress={() => setRevealTick((tick) => tick + 1)}
                   />
+                  {message.isError && (
+                    <button
+                      onClick={() => void retryLastMessage()}
+                      className="mt-2 text-[10px] tracking-[0.12em] uppercase text-[#bfa68a] hover:text-[#f0e6d2] transition-colors"
+                    >
+                      Retry
+                    </button>
+                  )}
+                  </>
                 ) : (
                   <MarkdownMessage text={message.content} />
                 )}

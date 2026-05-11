@@ -14,6 +14,7 @@ export interface ChatMessage {
   content: string;
   watchCards?: ChatWatchCard[];
   actions?: ChatAction[];
+  isError?: boolean;
 }
 
 interface ChatContextValue {
@@ -23,6 +24,7 @@ interface ChatContextValue {
   dailyUsed: number | null;
   dailyLimit: number | null;
   sendMessage: (text: string) => Promise<void>;
+  retryLastMessage: () => Promise<void>;
   clearSession: () => Promise<void>;
   openChat: () => void;
   closeChat: () => void;
@@ -166,6 +168,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Init session ID synchronously on first render (client only) to avoid a race condition.
   const sessionIdRef = useRef<string>(initialSessionId);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const lastUserMessageRef = useRef<string>('');
 
   useEffect(() => {
     if (typeof window === 'undefined' || !sessionIdRef.current) return;
@@ -222,6 +225,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    lastUserMessageRef.current = text;
     const now = Date.now();
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -256,12 +260,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       if (err instanceof Error && err.name === 'AbortError') return;
       setMessages(prev => [
         ...prev,
-        { role: 'assistant', content: 'Something went wrong. Please try again.' },
+        { role: 'assistant', content: 'Something went wrong. Please try again.', isError: true },
       ]);
     } finally {
       if (!controller.signal.aborted) setIsLoading(false);
     }
   }, [isLoading, tasteProfile]);
+
+  const retryLastMessage = useCallback(async () => {
+    if (!lastUserMessageRef.current) return;
+    // Remove the trailing error message before re-sending
+    setMessages(prev => prev.filter(m => !m.isError));
+    await sendMessage(lastUserMessageRef.current);
+  }, [sendMessage]);
 
   const clearSession = useCallback(async () => {
     // Cancel any in-flight request so it doesn't append to the cleared session
@@ -285,7 +296,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   return (
     <ChatContext.Provider value={{
       messages, isOpen, isLoading, dailyUsed, dailyLimit,
-      sendMessage, clearSession, openChat, closeChat,
+      sendMessage, retryLastMessage, clearSession, openChat, closeChat,
     }}>
       {children}
     </ChatContext.Provider>
