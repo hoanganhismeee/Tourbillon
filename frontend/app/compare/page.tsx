@@ -215,7 +215,8 @@ const ComparePage = () => {
                 {/* Remove button */}
                 <button
                   onClick={() => removeFromCompare(watch.id)}
-                  className="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/20"
+                  aria-label="Remove from compare"
+                  className="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:bg-white/20"
                 >
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round">
                     <path d="M1 1l8 8M9 1l-8 8" />
