@@ -553,7 +553,6 @@ export default function ChatPanel() {
   const [input, setInput] = useState(() => {
     try { return sessionStorage.getItem('chat-draft') ?? ''; } catch { return ''; }
   });
-  const [revealTick, setRevealTick] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mountTimeRef = useRef(Date.now());
@@ -563,11 +562,9 @@ export default function ChatPanel() {
     useCompare.persist.rehydrate();
   }, []);
 
-  // Scroll only when a new message arrives or streaming finishes — not on every streamed chunk.
-  // Removing revealTick prevents repeated scroll jumps during token streaming.
+  // Scroll only when a new message arrives or streaming finishes, not on every streamed chunk.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, isLoading]);
 
   useEffect(() => {
@@ -682,7 +679,7 @@ export default function ChatPanel() {
                       && (message.createdAt ?? 0) >= mountTimeRef.current
                     }
                     onSendMessage={(text) => void handlePromptClick(text)}
-                    onRevealProgress={() => setRevealTick((tick) => tick + 1)}
+                    onRevealProgress={() => {}}
                   />
                   {message.isError && (
                     <button
