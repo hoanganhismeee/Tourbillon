@@ -22,4 +22,6 @@ public class TasteProfileDto
     public DateTime? BehaviorAnalyzedAt { get; set; }
     public bool HasBehaviorAnalysis { get; set; }
     public bool HasEnoughBehaviorData { get; set; }
+    /// "ranked" when LLM structured parse succeeded; "fallback" when AI was unavailable and existing preferences were preserved.
+    public string ParseSource { get; set; } = "ranked";
 }
