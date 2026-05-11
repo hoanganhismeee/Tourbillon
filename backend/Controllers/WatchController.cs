@@ -231,6 +231,7 @@ public class WatchController : ControllerBase
     public IActionResult GetAllWatches()
     {
         var watches = _context.Watches
+            .AsNoTracking()
             .Include(w => w.Brand).Include(w => w.Collection)
             .ToList();
         var watchDtos = watches.Select(w => WatchDto.FromWatch(w, _storage)).ToList();

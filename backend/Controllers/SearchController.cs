@@ -35,26 +35,45 @@ public class SearchController : ControllerBase
             });
         }
 
+        var fullTerm = q.ToLower().Trim();
+
+        // Split multi-word queries into individual tokens for independent matching
+        var tokens = fullTerm
+            .Split(new[] { ' ', '-', '_', ',', '.' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 2)
+            .Distinct()
+            .ToArray();
+        if (tokens.Length == 0) tokens = new[] { fullTerm };
+
         try
         {
-            var brands = await _context.Brands.ToListAsync();
-            var watches = await _context.Watches
+            var brands = await _context.Brands.AsNoTracking().ToListAsync();
+
+            // Pre-filter watches in SQL on the most discriminating fields before
+            // loading into memory for in-process fuzzy/Levenshtein scoring.
+            var watchQuery = _context.Watches
+                .AsNoTracking()
                 .Include(w => w.Brand)
                 .Include(w => w.Collection)
-                .ToListAsync();
+                .AsQueryable();
+
+            if (tokens.Length > 0)
+            {
+                watchQuery = watchQuery.Where(w =>
+                    tokens.Any(t =>
+                        EF.Functions.ILike(w.Name, $"%{t}%") ||
+                        (w.Description != null && EF.Functions.ILike(w.Description, $"%{t}%")) ||
+                        EF.Functions.ILike(w.Brand.Name, $"%{t}%") ||
+                        (w.Collection != null && EF.Functions.ILike(w.Collection.Name, $"%{t}%"))
+                    )
+                );
+            }
+
+            var watches = await watchQuery.ToListAsync();
             var collections = await _context.Collections
+                .AsNoTracking()
                 .Include(c => c.Brand)
                 .ToListAsync();
-
-            var fullTerm = q.ToLower().Trim();
-
-            // Split multi-word queries into individual tokens for independent matching
-            var tokens = fullTerm
-                .Split(new[] { ' ', '-', '_', ',', '.' }, StringSplitOptions.RemoveEmptyEntries)
-                .Where(t => t.Length >= 2)
-                .Distinct()
-                .ToArray();
-            if (tokens.Length == 0) tokens = new[] { fullTerm };
 
             var relevantBrands = brands
                 .Select(b => new { brand = b, score = CalculateBrandRelevance(b, fullTerm, tokens) })
