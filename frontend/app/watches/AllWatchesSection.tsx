@@ -259,6 +259,16 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white/40 mx-auto mb-4" />
           <p className="text-white/60 font-playfair">Loading watches...</p>
         </div>
+      ) : sortedWatches.length === 0 ? (
+        <div className="text-center py-24">
+          <p className="text-white/40 font-playfair text-xl mb-6">No watches match your current filters.</p>
+          <button
+            onClick={() => router.push('/watches')}
+            className="inline-block text-[10px] tracking-[0.18em] uppercase text-[#bfa68a] border border-[#bfa68a]/30 px-6 py-2.5 hover:border-[#bfa68a]/70 transition-colors duration-200"
+          >
+            Clear filters
+          </button>
+        </div>
       ) : (
         <>
           {currentPage === 1 ? (
