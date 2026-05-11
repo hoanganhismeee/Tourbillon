@@ -96,7 +96,7 @@ export default function InquiriesPage() {
   const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.push("/auth/start?redirect=/account/inquiries");
   }, [loading, user, router]);
 
   useEffect(() => {
