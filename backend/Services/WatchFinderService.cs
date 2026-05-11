@@ -126,6 +126,8 @@ public class WatchFinderResult
     /// Structured intent extracted from query text — brand/collection/price hard constraints.
     public QueryIntent? QueryIntent { get; set; }
     public string? SearchPath { get; set; }
+    /// "ranked" when LLM rerank succeeded; "fallback" when results are unranked due to AI failure.
+    public string RerankSource { get; set; } = "ranked";
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -568,6 +570,7 @@ public class WatchFinderService : IWatchFinderService
             _logger.LogWarning(ex,
                 "WatchFinder rerank threw after {ElapsedMs}ms — returning unranked results",
                 rerankSw.ElapsedMilliseconds);
+            result.RerankSource = "fallback";
         }
 
         } // end Tier 3 rerank

@@ -70,6 +70,7 @@ public class TasteProfileService : ITasteProfileService
         // Call ai-service to extract structured preferences; preserve existing data on failure
         var httpClient = _httpClientFactory.CreateClient("ai-service");
         var payload = new { taste_text = tasteText, available_brands = brandNames };
+        var parseSucceeded = false;
 
         try
         {
@@ -93,6 +94,7 @@ public class TasteProfileService : ITasteProfileService
             profile.PriceMin           = parsed.PriceMin;
             profile.PriceMax           = parsed.PriceMax;
             profile.PreferredCaseSize  = parsed.PreferredCaseSize;
+            parseSucceeded = true;
         }
         catch
         {
@@ -100,7 +102,9 @@ public class TasteProfileService : ITasteProfileService
         }
 
         await _context.SaveChangesAsync();
-        return await GetProfileAsync(userId);
+        var dto = await GetProfileAsync(userId);
+        if (!parseSucceeded) dto.ParseSource = "fallback";
+        return dto;
     }
 
     // Pure scoring function: rates a watch against a taste profile.
