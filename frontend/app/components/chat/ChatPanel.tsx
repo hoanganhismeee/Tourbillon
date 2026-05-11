@@ -727,7 +727,7 @@ export default function ChatPanel() {
             onKeyDown={handleKeyDown}
             placeholder="Ask anything..."
             rows={1}
-            className="flex-1 resize-none overflow-hidden rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-[#ecddc8] outline-none transition-colors placeholder:text-white/25 focus:border-white/20"
+            className="flex-1 resize-none overflow-hidden rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base sm:text-sm text-[#ecddc8] outline-none transition-colors placeholder:text-white/25 focus:border-white/20"
           />
           <button
             onClick={() => void handleSend()}
