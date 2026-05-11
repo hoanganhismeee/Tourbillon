@@ -30,7 +30,7 @@ public class BrandController : ControllerBase
     public async Task<IActionResult> GetBrandBySlug(string slug)
     {
         var brand = await _context.Brands.FirstOrDefaultAsync(b => b.Slug == slug);
-        return brand == null ? NotFound() : Ok(brand);
+        return brand == null ? NotFound(new { message = "Brand not found." }) : Ok(brand);
     }
 
     // Numeric ID detail — kept for admin/internal use
@@ -38,7 +38,7 @@ public class BrandController : ControllerBase
     public async Task<IActionResult> GetBrand(int id)
     {
         var brand = await _context.Brands.FindAsync(id);
-        return brand == null ? NotFound() : Ok(brand);
+        return brand == null ? NotFound(new { message = "Brand not found." }) : Ok(brand);
     }
 
     [HttpPost]
