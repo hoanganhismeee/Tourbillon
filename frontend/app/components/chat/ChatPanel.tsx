@@ -563,9 +563,12 @@ export default function ChatPanel() {
     useCompare.persist.rehydrate();
   }, []);
 
+  // Scroll only when a new message arrives or streaming finishes — not on every streamed chunk.
+  // Removing revealTick prevents repeated scroll jumps during token streaming.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading, revealTick]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length, isLoading]);
 
   useEffect(() => {
     if (textareaRef.current) {
