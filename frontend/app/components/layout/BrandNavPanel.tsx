@@ -16,6 +16,7 @@ interface BrandNavPanelProps {
   onBrandToggle: (brandId: number, brandSlug: string) => void;
   onCollectionToggle: (brandId: number, brandSlug: string, collectionId: number, collectionSlug: string) => void;
   onClearAll: () => void;
+  className?: string;
 }
 
 export default function BrandNavPanel({
@@ -24,6 +25,7 @@ export default function BrandNavPanel({
   onBrandToggle,
   onCollectionToggle,
   onClearAll,
+  className,
 }: BrandNavPanelProps) {
   const router = useRouter();
   const { saveNavigationState } = useNavigation();
@@ -45,7 +47,7 @@ export default function BrandNavPanel({
   };
 
   return (
-    <nav className="w-52 shrink-0 sticky top-28 self-start pr-4 border-r border-white/10">
+    <nav className={className ?? 'w-52 shrink-0 sticky top-28 self-start pr-4 border-r border-white/10'}>
 
       {/* All Watches + Clear All */}
       <div className="flex items-center justify-between mb-1">
