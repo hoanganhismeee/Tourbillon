@@ -31,14 +31,24 @@ public class ChatController : ControllerBase
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
         var isAdmin = User.Identity?.IsAuthenticated == true && User.IsInRole("Admin");
 
-        var result = await _chatService.HandleMessageAsync(
-            request.SessionId,
-            request.Message,
-            userId,
-            ipAddress,
-            request.BehaviorSummary,
-            request.PreferredLanguage,
-            isAdmin);
+        ChatApiResponse result;
+        try
+        {
+            result = await _chatService.HandleMessageAsync(
+                request.SessionId,
+                request.Message,
+                userId,
+                ipAddress,
+                request.BehaviorSummary,
+                request.PreferredLanguage,
+                isAdmin,
+                HttpContext.RequestAborted);
+        }
+        catch (OperationCanceledException)
+        {
+            // Client disconnected before a response was produced — quota was not charged.
+            return StatusCode(499);
+        }
 
         if (result.RateLimited)
             return StatusCode(429, result);
