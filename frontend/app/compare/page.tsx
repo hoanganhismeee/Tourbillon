@@ -122,8 +122,10 @@ const ComparePage = () => {
     }).filter(s => s.rows.length > 0);
   }, [parsedSpecs]);
 
-  // Grid template: label/spacer column + one column per watch
-  const colTemplate = `minmax(140px, 180px) repeat(${watchCount}, 1fr)`;
+  // Grid template: label/spacer column + one column per watch.
+  // minmax(160px, 1fr) ensures watch columns stay readable on small screens and trigger
+  // horizontal scroll via the overflow-x-auto parent rather than collapsing to illegible widths.
+  const colTemplate = `minmax(120px, 160px) repeat(${watchCount}, minmax(160px, 1fr))`;
 
   if (watchCount === 0) {
     return (
@@ -155,7 +157,7 @@ const ComparePage = () => {
   }
 
   return (
-    <div className="container mx-auto px-8 sm:px-12 lg:px-16 py-8 pt-28">
+    <div className="container mx-auto px-4 sm:px-8 md:px-12 lg:px-16 py-8 pt-28">
 
       {/* Back button */}
       <div className="mb-8">
