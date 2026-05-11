@@ -2,6 +2,7 @@
 // No localStorage persist — state is server-side and auth-gated.
 // Uses optimistic updates: snapshot → apply locally → await API → revert on error.
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import {
   UserCollectionSummary,
   getFavouritesState,
@@ -88,8 +89,8 @@ export const useFavourites = create<FavouritesStore>()((set, get) => ({
       if (wasFavourited) await removeFavourite(watchId);
       else await addFavourite(watchId);
     } catch {
-      // Revert on failure
       set({ favouriteWatchIds: new Set(favouriteWatchIds) });
+      toast.error('Could not update favourites. Please try again.');
     }
   },
 
@@ -111,6 +112,7 @@ export const useFavourites = create<FavouritesStore>()((set, get) => ({
       set({ collections: fresh.collections });
     } catch {
       set({ collections });
+      toast.error('Could not add to collection. Please try again.');
     }
   },
 
@@ -132,6 +134,7 @@ export const useFavourites = create<FavouritesStore>()((set, get) => ({
       set({ collections: fresh.collections });
     } catch {
       set({ collections });
+      toast.error('Could not remove from collection. Please try again.');
     }
   },
 
@@ -155,6 +158,7 @@ export const useFavourites = create<FavouritesStore>()((set, get) => ({
       }));
     } catch {
       set({ collections: snapshot });
+      toast.error('Could not rename collection. Please try again.');
     }
   },
 
@@ -166,6 +170,7 @@ export const useFavourites = create<FavouritesStore>()((set, get) => ({
       await apiDeleteCollection(collectionId);
     } catch {
       set({ collections });
+      toast.error('Could not delete collection. Please try again.');
     }
   },
 

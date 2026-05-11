@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useLenis } from 'lenis/react';
+import { toast } from 'sonner';
 import { fetchWatches, fetchCollections, getTasteProfile, Brand } from '@/lib/api';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useAuth } from '@/contexts/AuthContext';
@@ -119,15 +120,23 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
   const [showAllWatches, setShowAllWatches] = useState(false);
   const watchesPerPage = 20;
 
-  const { data: watches = [], isLoading: watchesLoading } = useQuery({
+  const { data: watches = [], isLoading: watchesLoading, isError: watchesError } = useQuery({
     queryKey: ['watches'],
     queryFn: fetchWatches,
   });
 
-  const { data: collections = [] } = useQuery({
+  const { data: collections = [], isError: collectionsError } = useQuery({
     queryKey: ['collections'],
     queryFn: fetchCollections,
   });
+
+  useEffect(() => {
+    if (watchesError) toast.error('Could not load watches. Please refresh the page.');
+  }, [watchesError]);
+
+  useEffect(() => {
+    if (collectionsError) toast.error('Could not load filters. Please refresh the page.');
+  }, [collectionsError]);
 
   const { data: tasteProfile } = useQuery({
     queryKey: ['tasteProfile'],
