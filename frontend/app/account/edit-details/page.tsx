@@ -47,7 +47,7 @@ export default function EditDetailsPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.push("/auth/start?redirect=/account/edit-details");
   }, [loading, user, router]);
 
   if (loading || !user) return null;
