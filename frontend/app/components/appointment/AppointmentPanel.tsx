@@ -196,7 +196,8 @@ export default function AppointmentPanel({
   };
 
   const canConfirmSection3 = selectedDate !== null && selectedTime !== '';
-  const canSubmit = firstName.trim() !== '' && lastName.trim() !== '' && email.trim() !== '';
+  const canSubmit = firstName.trim() !== '' && lastName.trim() !== '' &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
   const handleSubmit = async () => {
     if (!canSubmit || submitting) return;

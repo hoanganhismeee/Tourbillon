@@ -49,11 +49,12 @@ const WatchIcon = () => (
 );
 
 function FocusInput({
-  type = 'text', value, onChange, placeholder, autoFocus
+  type = 'text', value, onChange, onBlur, placeholder, autoFocus
 }: {
   type?: string;
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
   placeholder: string;
   autoFocus?: boolean;
 }) {
@@ -65,10 +66,12 @@ function FocusInput({
         value={value}
         onChange={onChange}
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onBlur={() => { setFocused(false); onBlur?.(); }}
         placeholder={placeholder}
         autoFocus={autoFocus}
         required
+        autoComplete={type === 'email' ? 'email' : undefined}
+        spellCheck={type === 'email' ? false : undefined}
         suppressHydrationWarning
         className="w-full bg-transparent border-b border-white/20 py-2.5 text-white placeholder:text-white/30 focus:outline-none transition text-sm"
       />
@@ -204,7 +207,12 @@ export default function AuthStartPage() {
               <FocusInput
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={e => { setEmail(e.target.value); if (error) setError(''); }}
+                onBlur={() => {
+                  if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+                    setError('Please enter a valid email address.');
+                  }
+                }}
                 placeholder="your@email.com"
                 autoFocus
               />
