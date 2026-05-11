@@ -3,6 +3,10 @@
 // creating a reusable and maintainable way to manage data fetching.
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5248/api';
 
+// Global 401 handler — registered by AuthContext to clear session on token expiry.
+let _onUnauthorized: (() => void) | null = null;
+export const setUnauthorizedHandler = (handler: () => void) => { _onUnauthorized = handler; };
+
 // Small helper to avoid hanging requests in dev when backend is down.
 // Accepts an optional external AbortSignal so callers can cancel mid-flight.
 const fetchWithTimeout = async (
@@ -15,7 +19,14 @@ const fetchWithTimeout = async (
   const onExternalAbort = () => controller.abort();
   externalSignal?.addEventListener('abort', onExternalAbort);
   try {
-    return await fetch(input, { ...rest, signal: controller.signal });
+    const response = await fetch(input, { ...rest, signal: controller.signal });
+    // Intercept unexpected 401s (token expired mid-session) — skip public/auth endpoints
+    if (response.status === 401 && _onUnauthorized) {
+      const url = typeof input === 'string' ? input : input.toString();
+      const isAuthEndpoint = url.includes('/authentication') || url.includes('/profile/me');
+      if (!isAuthEndpoint) _onUnauthorized();
+    }
+    return response;
   } finally {
     clearTimeout(timeoutId);
     externalSignal?.removeEventListener('abort', onExternalAbort);
