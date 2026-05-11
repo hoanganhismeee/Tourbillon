@@ -12,8 +12,11 @@ export default function ChatWidget() {
 
   return (
     <>
-      {/* Floating pill */}
-      <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-40 select-none">
+      {/* Floating pill — env(safe-area-inset-bottom) keeps it above iOS home bar */}
+      <div
+        className="fixed right-4 sm:right-8 z-40 select-none"
+        style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+      >
         <motion.button
           initial={{ opacity: 0, scale: 0.8, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
