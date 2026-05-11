@@ -74,11 +74,12 @@ export default function SlidingPanel({
             transition={{ duration: DUR.mid, ease: EASE_ENTER }}
             style={{
               position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201,
-              width: '100%', maxWidth,
+              width: '100%', maxWidth: `min(${maxWidth}px, calc(100vw - env(safe-area-inset-left, 0px)))`,
               background: '#1a1613',
               borderLeft: '1px solid rgba(255,255,255,0.08)',
               overflow: 'hidden',
               willChange: 'transform',
+              paddingRight: 'env(safe-area-inset-right, 0px)',
             }}
           >
             {/* Inner scrollable wrapper — separated from the animated layer so scroll doesn't block GPU compositing */}
