@@ -171,7 +171,9 @@ builder.Services.AddScoped<SitemapScraperService>();
 builder.Services.AddHttpClient("ai-service", c =>
 {
     c.BaseAddress = new Uri(builder.Configuration["AiService:BaseUrl"] ?? "http://localhost:5000");
-    c.Timeout = TimeSpan.FromSeconds(360); // 6 min — covers gemma2:9b at 1200 tokens (~3-5 min)
+    // 120s covers qwen2.5:7b in local dev and Claude Haiku in production with headroom.
+    // Seed-editorial uses a separate Hangfire job with its own cancellation token.
+    c.Timeout = TimeSpan.FromSeconds(120);
 });
 builder.Services.AddSingleton<WatchFilterMapper>();
 builder.Services.AddScoped<IDeterministicWatchSearchService, DeterministicWatchSearchService>();
