@@ -64,7 +64,7 @@ export default function WatchDnaSpotlight() {
         style={{ background: 'radial-gradient(ellipse 55% 50% at 25% 50%, rgba(191,166,138,0.06) 0%, transparent 70%)' }}
       />
 
-      <div className="container mx-auto px-8 sm:px-12 lg:px-16 xl:px-20 max-w-7xl py-32">
+      <div className="container mx-auto px-4 sm:px-8 lg:px-16 xl:px-20 max-w-7xl py-32">
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-20 items-center">
 
           {/* Left — text block */}

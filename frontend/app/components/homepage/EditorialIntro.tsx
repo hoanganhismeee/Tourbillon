@@ -12,7 +12,7 @@ import ScrollFade from '@/app/scrollMotion/ScrollFade';
 
 export default function EditorialIntro() {
   return (
-    <section className="container mx-auto px-8 pt-16 pb-24">
+    <section className="container mx-auto px-4 sm:px-8 pt-16 pb-24">
       <div className="max-w-3xl mx-auto text-center">
 
         {/* Caption label — letter-spacing expands on entry for a signature reveal */}

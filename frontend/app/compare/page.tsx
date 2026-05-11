@@ -129,7 +129,7 @@ const ComparePage = () => {
 
   if (watchCount === 0) {
     return (
-      <div className="container mx-auto px-8 py-24 pt-48 max-w-5xl text-center">
+      <div className="container mx-auto px-4 sm:px-8 py-24 pt-48 max-w-5xl text-center">
         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-white/20 mb-6">
           <path d="M12 3v18" /><path d="M3 7h18" />
           <path d="M6 7l-3 9a5 5 0 0 0 6 0L6 7" />
@@ -146,7 +146,7 @@ const ComparePage = () => {
 
   if (watchCount === 1) {
     return (
-      <div className="container mx-auto px-8 py-24 pt-48 max-w-5xl text-center">
+      <div className="container mx-auto px-4 sm:px-8 py-24 pt-48 max-w-5xl text-center">
         <h1 className="text-3xl font-playfair font-bold text-[#f0e6d2] mb-3">Add One More Watch</h1>
         <p className="text-white/50 font-inter mb-8">Select at least 2 watches to compare. You currently have 1 selected.</p>
         <Link href="/watches" className="inline-block py-3 px-8 rounded-xl font-semibold bg-[#f0e6d2] text-[#1e1512] hover:bg-[#e6d9c2] transition-colors">
