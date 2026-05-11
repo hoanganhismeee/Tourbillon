@@ -167,7 +167,7 @@ const BrandPage = () => {
   const brandAsArray: Brand[] = [brand];
 
   return (
-    <div className="container mx-auto px-8 sm:px-12 lg:px-16 py-20 max-w-7xl">
+    <div className="container mx-auto px-4 sm:px-8 lg:px-16 py-20 max-w-7xl">
 
       {/* Back button */}
       <div className="mb-10">

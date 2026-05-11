@@ -42,7 +42,7 @@ export default function BrandShowcaseSection() {
   const displayedBrands = showAllBrands ? remainingBrands : remainingBrands.slice(0, 3);
 
   return (
-    <div className="container mx-auto px-8 sm:px-12 lg:px-16 xl:px-20 max-w-7xl">
+    <div className="container mx-auto px-4 sm:px-8 lg:px-16 xl:px-20 max-w-7xl">
 
       {/* Section heading */}
       <ScrollFade>

@@ -119,7 +119,7 @@ const CollectionPage = () => {
   const brandAsArray: Brand[] = brand ? [brand] : [];
 
   return (
-    <div className="container mx-auto px-8 sm:px-12 lg:px-16 py-20 max-w-7xl">
+    <div className="container mx-auto px-4 sm:px-8 lg:px-16 py-20 max-w-7xl">
 
       {/* Back + breadcrumb */}
       <div className="mb-10 flex items-center gap-6">
