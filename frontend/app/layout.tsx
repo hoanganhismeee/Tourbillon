@@ -11,6 +11,7 @@ import { ChatProvider } from "@/contexts/ChatContext";
 import { LenisProvider } from "@/app/providers/LenisProvider";
 import { GSAPProvider } from "@/app/providers/GSAPProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "sonner";
 import "./globals.css";
 import NavBar from "./components/layout/NavBar";
 import Footer from "./components/layout/Footer";
@@ -75,6 +76,18 @@ export default function RootLayout({
                         <Footer />
                         <CompareIndicator />
                         <ChatWidget />
+                        <Toaster
+                          position="bottom-right"
+                          toastOptions={{
+                            style: {
+                              background: '#1a1a1a',
+                              border: '1px solid rgba(255,255,255,0.1)',
+                              color: '#f0e6d2',
+                              fontFamily: 'var(--font-inter)',
+                              fontSize: '13px',
+                            },
+                          }}
+                        />
                       </ChatProvider>
                       <CursorSelector />
                       <CustomCursor />
