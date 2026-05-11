@@ -110,8 +110,8 @@ export const WatchCard = ({ watch, brands, collections, isPriority = false, curr
             )}
           </div>
         </Link>
-        {/* Action buttons */}
-        <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        {/* Action buttons — always visible on touch screens, hover-only on desktop */}
+        <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300">
           <FavouriteToggle watchId={watch.id} />
           <CompareToggle watch={watch} />
         </div>
