@@ -58,10 +58,10 @@ public class AuthenticationController : ControllerBase
         
         if (!success)
         {
-            return BadRequest(new { Message = message });
+            return BadRequest(new { message = message });
         }
 
-        return Ok(new { Message = message });
+        return Ok(new { message = message });
     }
 
     // POST: api/authentication/check-email
@@ -87,11 +87,11 @@ public class AuthenticationController : ControllerBase
 
         if (!result.Succeeded)
         {
-            return Unauthorized(new { Message = "Invalid login attempt." });
+            return Unauthorized(new { message = "Invalid login attempt." });
         }
 
         _logger.LogInformation("User logged in successfully: {Email}", loginDto.Email);
-        return Ok(new { Message = "Login successful" });
+        return Ok(new { message = "Login successful" });
     }
 
     // POST: api/authentication/logout
@@ -101,7 +101,7 @@ public class AuthenticationController : ControllerBase
     {
         await _signInManager.SignOutAsync();
         _logger.LogInformation("User logged out successfully");
-        return Ok(new { Message = "Logout successful" });
+        return Ok(new { message = "Logout successful" });
     }
 
     // POST: api/authentication/forgot-password
@@ -113,22 +113,22 @@ public class AuthenticationController : ControllerBase
         {
             if (string.IsNullOrWhiteSpace(dto.Email))
             {
-                return BadRequest(new { Message = "Email is required." });
+                return BadRequest(new { message = "Email is required." });
             }
 
             var (success, message) = await _passwordResetService.RequestPasswordResetAsync(dto.Email);
             
             if (!success)
             {
-                return BadRequest(new { Message = message });
+                return BadRequest(new { message = message });
             }
 
-            return Ok(new { Message = message });
+            return Ok(new { message = message });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error in ForgotPassword");
-            return StatusCode(500, new { Message = "An error occurred. Please try again later." });
+            return StatusCode(500, new { message = "An error occurred. Please try again later." });
         }
     }
 
@@ -141,22 +141,22 @@ public class AuthenticationController : ControllerBase
         {
             if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Code))
             {
-                return BadRequest(new { Message = "Email and code are required." });
+                return BadRequest(new { message = "Email and code are required." });
             }
 
             var (success, message) = await _passwordResetService.VerifyCodeAsync(dto.Email, dto.Code);
             
             if (!success)
             {
-                return BadRequest(new { Message = message });
+                return BadRequest(new { message = message });
             }
 
-            return Ok(new { Message = message });
+            return Ok(new { message = message });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error in VerifyCode");
-            return StatusCode(500, new { Message = "An error occurred. Please try again later." });
+            return StatusCode(500, new { message = "An error occurred. Please try again later." });
         }
     }
 
@@ -169,7 +169,7 @@ public class AuthenticationController : ControllerBase
         {
             if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Code) || string.IsNullOrWhiteSpace(dto.NewPassword))
             {
-                return BadRequest(new { Message = "Email, code, and new password are required." });
+                return BadRequest(new { message = "Email, code, and new password are required." });
             }
 
             var (success, message) = await _passwordResetService.ResetPasswordAsync(
@@ -179,15 +179,15 @@ public class AuthenticationController : ControllerBase
 
             if (!success)
             {
-                return BadRequest(new { Message = message });
+                return BadRequest(new { message = message });
             }
 
-            return Ok(new { Message = message });
+            return Ok(new { message = message });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error in ResetPassword");
-            return StatusCode(500, new { Message = "An error occurred. Please try again later." });
+            return StatusCode(500, new { message = "An error occurred. Please try again later." });
         }
     }
 
@@ -205,7 +205,7 @@ public class AuthenticationController : ControllerBase
             var adminRoleExists = await _roleManager.RoleExistsAsync("Admin");
             if (!adminRoleExists)
             {
-                return BadRequest(new { Message = "Admin role has not been created yet. Please try again later." });
+                return BadRequest(new { message = "Admin role has not been created yet. Please try again later." });
             }
 
             // Check if any admin users already exist
@@ -216,7 +216,7 @@ public class AuthenticationController : ControllerBase
             {
                 return BadRequest(new
                 {
-                    Message = "Admin already exists. For security reasons, only the first user can use this endpoint."
+                    message = "Admin already exists. For security reasons, only the first user can use this endpoint."
                 });
             }
 
@@ -224,7 +224,7 @@ public class AuthenticationController : ControllerBase
             var currentUser = await _userManager.GetUserAsync(User);
             if (currentUser == null)
             {
-                return Unauthorized(new { Message = "User not found" });
+                return Unauthorized(new { message = "User not found" });
             }
 
             // Assign Admin role to current user
@@ -234,21 +234,21 @@ public class AuthenticationController : ControllerBase
                 _logger.LogInformation("User {Email} has been promoted to Admin role during initial setup", currentUser.Email);
                 return Ok(new
                 {
-                    Success = true,
-                    Message = $"Successfully promoted {currentUser.Email} to Admin role",
-                    Email = currentUser.Email,
-                    Role = "Admin"
+                    success = true,
+                    message = $"Successfully promoted {currentUser.Email} to Admin role",
+                    email = currentUser.Email,
+                    role = "Admin"
                 });
             }
 
             var errors = string.Join(", ", result.Errors.Select(e => e.Description));
             _logger.LogError("Failed to promote user {Email} to Admin: {Errors}", currentUser.Email, errors);
-            return BadRequest(new { Message = $"Failed to assign Admin role: {errors}" });
+            return BadRequest(new { message = $"Failed to assign Admin role: {errors}" });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in SetupFirstAdmin");
-            return StatusCode(500, new { Message = $"Error during admin setup: {ex.Message}" });
+            return StatusCode(500, new { message = $"Error during admin setup: {ex.Message}" });
         }
     }
 
@@ -262,7 +262,7 @@ public class AuthenticationController : ControllerBase
     {
         var scheme = await _schemes.GetSchemeAsync("Google");
         if (scheme == null)
-            return StatusCode(503, new { Message = "Google login is not configured on this server." });
+            return StatusCode(503, new { message = "Google login is not configured on this server." });
 
         var redirectUrl = Url.Action(nameof(GoogleCallback), "Authentication");
         var properties  = _signInManager.ConfigureExternalAuthenticationProperties("Google", redirectUrl);
@@ -327,10 +327,10 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> MagicLoginRequest([FromBody] MagicLoginRequestDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.Email))
-            return BadRequest(new { Message = "Email is required." });
+            return BadRequest(new { message = "Email is required." });
 
         await _magicLoginService.RequestAsync(dto.Email.Trim());
-        return Ok(new { Message = "If that email is valid, a sign-in code has been sent." });
+        return Ok(new { message = "If that email is valid, a sign-in code has been sent." });
     }
 
     // POST: api/authentication/magic-login/verify
@@ -340,15 +340,15 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> MagicLoginVerify([FromBody] MagicLoginVerifyDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Code))
-            return BadRequest(new { Message = "Email and code are required." });
+            return BadRequest(new { message = "Email and code are required." });
 
         var (user, isNewAccount) = await _magicLoginService.VerifyAsync(dto.Email.Trim(), dto.Code.Trim());
         if (user == null)
-            return Unauthorized(new { Message = "Invalid or expired code." });
+            return Unauthorized(new { message = "Invalid or expired code." });
 
         await _signInManager.SignInAsync(user, isPersistent: false);
         _logger.LogInformation("Magic login sign-in: {Email}", user.Email);
-        return Ok(new { Message = "Sign-in successful.", IsNewAccount = isNewAccount });
+        return Ok(new { message = "Sign-in successful.", IsNewAccount = isNewAccount });
     }
 
     // POST: api/authentication/test-email
@@ -360,7 +360,7 @@ public class AuthenticationController : ControllerBase
         {
             if (string.IsNullOrWhiteSpace(dto.Email))
             {
-                return BadRequest(new { Message = "Email is required." });
+                return BadRequest(new { message = "Email is required." });
             }
 
             _logger.LogInformation("Testing email send to {Email}", dto.Email);
@@ -373,17 +373,17 @@ public class AuthenticationController : ControllerBase
 
             if (result)
             {
-                return Ok(new { Message = "Test email sent successfully! Check your inbox." });
+                return Ok(new { message = "Test email sent successfully! Check your inbox." });
             }
             else
             {
-                return BadRequest(new { Message = "Failed to send test email. Check server logs for details." });
+                return BadRequest(new { message = "Failed to send test email. Check server logs for details." });
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sending test email");
-            return StatusCode(500, new { Message = $"Error: {ex.Message}" });
+            return StatusCode(500, new { message = $"Error: {ex.Message}" });
         }
     }
 } 
