@@ -6,6 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { AnimatePresence, motion } from 'framer-motion';
 import { fetchBrands, fetchCollections } from '@/lib/api';
 import BrandNavPanel from '../components/layout/BrandNavPanel';
 import AllWatchesSection from './AllWatchesSection';
@@ -17,6 +18,7 @@ const WatchesPage = () => {
 
   const [selectedBrandIds, setSelectedBrandIds] = useState<number[]>([]);
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<number[]>([]);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   const { data: brands = [] } = useQuery({ queryKey: ['brands'], queryFn: fetchBrands });
   const { data: collections = [] } = useQuery({ queryKey: ['collections'], queryFn: fetchCollections });
@@ -104,10 +106,12 @@ const WatchesPage = () => {
     router.replace(buildUrl([], []), { scroll: false });
   };
 
+  const activeFilterCount = selectedBrandIds.length + selectedCollectionIds.length;
+
   return (
     <div className="flex items-start py-24 pt-30">
 
-      {/* Left: brand/collection tree */}
+      {/* Left: brand/collection tree — desktop only */}
       <div className="hidden lg:block pl-6 lg:pl-10 shrink-0">
         <ScrollFade>
           <BrandNavPanel
@@ -121,13 +125,84 @@ const WatchesPage = () => {
       </div>
 
       {/* Right: watch grid */}
-      <div className="flex-1 min-w-0 px-8 lg:px-12 pr-10 lg:pr-16">
+      <div className="flex-1 min-w-0 px-4 sm:px-8 lg:px-12 pr-4 sm:pr-10 lg:pr-16">
+
+        {/* Mobile filter button — hidden on desktop */}
+        <div className="lg:hidden flex items-center justify-between mb-6">
+          <button
+            onClick={() => setMobileFilterOpen(true)}
+            aria-label="Open filters"
+            className="flex items-center gap-2 text-[10px] tracking-[0.18em] uppercase text-white/50 hover:text-white/80 transition-colors duration-200 border border-white/15 px-3 py-2"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4h18M7 12h10M11 20h2" />
+            </svg>
+            <span>Filter</span>
+            {activeFilterCount > 0 && (
+              <span className="bg-[#bfa68a] text-black text-[9px] font-semibold rounded-full w-4 h-4 flex items-center justify-center leading-none">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        </div>
+
         <AllWatchesSection
           brands={brands}
           brandFilters={selectedBrandIds}
           collectionFilters={selectedCollectionIds}
         />
       </div>
+
+      {/* Mobile filter drawer */}
+      <AnimatePresence>
+        {mobileFilterOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+              onClick={() => setMobileFilterOpen(false)}
+            />
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="fixed top-0 left-0 h-full w-72 max-w-[85vw] bg-[#0a0a0a] border-r border-white/10 z-50 flex flex-col lg:hidden"
+            >
+              {/* Drawer header */}
+              <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
+                <span className="text-[10px] tracking-[0.18em] uppercase text-white/40">Filters</span>
+                <button
+                  onClick={() => setMobileFilterOpen(false)}
+                  aria-label="Close filters"
+                  className="text-white/40 hover:text-white/80 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Scrollable nav tree */}
+              <div className="flex-1 overflow-y-auto py-4 px-2">
+                <BrandNavPanel
+                  className="w-full pr-2"
+                  selectedBrandIds={selectedBrandIds}
+                  selectedCollectionIds={selectedCollectionIds}
+                  onBrandToggle={(brandId, slug) => { handleBrandToggle(brandId, slug); setMobileFilterOpen(false); }}
+                  onCollectionToggle={(brandId, bSlug, colId, cSlug) => { handleCollectionToggle(brandId, bSlug, colId, cSlug); setMobileFilterOpen(false); }}
+                  onClearAll={() => { handleClearAll(); setMobileFilterOpen(false); }}
+                />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
     </div>
   );
