@@ -34,6 +34,7 @@ const ChatContext = createContext<ChatContextValue | null>(null);
 const CHAT_SESSION_KEY = 'chat_session_id';
 const CHAT_MESSAGES_KEY = 'chat_messages';
 const CHAT_USAGE_KEY = 'chat_usage';
+const STORAGE_VERSION = 1;
 
 function getOrCreateChatSessionId(): string {
   if (typeof window === 'undefined') return '';
@@ -53,7 +54,11 @@ function loadStoredMessages(sessionId: string): ChatMessage[] {
     const raw = sessionStorage.getItem(`${CHAT_MESSAGES_KEY}:${sessionId}`);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (parsed?.version !== STORAGE_VERSION) {
+      sessionStorage.removeItem(`${CHAT_MESSAGES_KEY}:${sessionId}`);
+      return [];
+    }
+    return Array.isArray(parsed.messages) ? parsed.messages : [];
   } catch {
     return [];
   }
@@ -176,7 +181,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     try {
       sessionStorage.setItem(
         `${CHAT_MESSAGES_KEY}:${sessionIdRef.current}`,
-        JSON.stringify(messages),
+        JSON.stringify({ version: STORAGE_VERSION, messages }),
       );
     } catch {
       // ignore storage errors
