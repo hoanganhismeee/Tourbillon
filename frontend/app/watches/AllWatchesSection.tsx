@@ -120,7 +120,7 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
   const [showAllWatches, setShowAllWatches] = useState(false);
   const watchesPerPage = 20;
 
-  const { data: watches = [], isLoading: watchesLoading, isError: watchesError } = useQuery({
+  const { data: watches = [], isLoading: watchesLoading, isFetching: watchesFetching, isError: watchesError } = useQuery({
     queryKey: ['watches'],
     queryFn: fetchWatches,
   });
@@ -233,10 +233,15 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
 
           {!watchesLoading && (
             <>
-              <SortDropdown
-                sortOrder={sortOrder}
-                onSelect={handleSortChange}
-              />
+              <div className="flex items-center justify-end gap-3">
+                {watchesFetching && !watchesLoading && (
+                  <div className="mt-8 w-3 h-3 rounded-full border border-white/30 border-t-transparent animate-spin" />
+                )}
+                <SortDropdown
+                  sortOrder={sortOrder}
+                  onSelect={handleSortChange}
+                />
+              </div>
               {showPersonalizedHint && (
                 <div className="mt-4 max-w-md ml-auto text-right">
                   <p className="text-[10px] uppercase tracking-[0.18em] text-white/32">
