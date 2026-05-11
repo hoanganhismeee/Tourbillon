@@ -4,7 +4,8 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCurrentUser, logoutUser, flushBehaviorEvents, mergeBehaviorEvents, User } from '@/lib/api';
+import { toast } from 'sonner';
+import { getCurrentUser, logoutUser, flushBehaviorEvents, mergeBehaviorEvents, setUnauthorizedHandler, User } from '@/lib/api';
 import { useFavourites } from '@/stores/favouritesStore';
 
 export type AuthLoginMode = 'existing-account' | 'new-account' | 'refresh';
@@ -87,6 +88,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     useEffect(() => {
         fetchUser(getInitialAuthMode());
+
+        // Register 401 interceptor — fires when any authenticated API call returns 401
+        // (e.g. cookie expired mid-session). Clears local auth state without a full page reload.
+        setUnauthorizedHandler(() => {
+            setUser(null);
+            useFavourites.getState().reset();
+            toast.error('Your session has expired. Please sign in again.');
+            router.push('/auth/start');
+        });
     }, []);
 
     const login = async (mode: AuthLoginMode = 'refresh') => {
