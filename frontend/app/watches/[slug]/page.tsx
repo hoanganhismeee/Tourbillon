@@ -181,7 +181,7 @@ const WatchDetailPage = () => {
 
     return (
         <>
-        <div className="container mx-auto px-8 sm:px-12 lg:px-16 py-8 pt-28 pb-28 text-white">
+        <div className="container mx-auto px-4 sm:px-8 lg:px-16 py-8 pt-28 pb-28 text-white">
             {/* Back Navigation Button */}
             <div className="mb-8">
                 <button
@@ -195,7 +195,7 @@ const WatchDetailPage = () => {
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-24">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-24">
                 {/* Left Column: Watch Image */}
                 <div className="flex justify-center items-start">
                     <ScrollFade>
