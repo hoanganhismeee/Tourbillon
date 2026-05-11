@@ -264,7 +264,7 @@ export function FilterDropdown({
       </button>
 
       {open && (
-        <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-52 overflow-hidden">
+        <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-44 sm:min-w-52 max-w-[calc(100vw-1rem)] overflow-hidden">
           <div data-lenis-prevent="true" className="max-h-64 overflow-y-auto overscroll-contain p-2">
             {options.map(opt => {
               const active = selected.includes(opt);
@@ -328,7 +328,7 @@ export function BrandDropdown({
       </button>
 
       {open && (
-        <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-52 overflow-hidden">
+        <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-44 sm:min-w-52 max-w-[calc(100vw-1rem)] overflow-hidden">
           <div data-lenis-prevent="true" className="max-h-64 overflow-y-auto overscroll-contain p-2">
             {brands.map(b => {
               const active = selected.includes(b.id);
@@ -392,7 +392,7 @@ export function CollectionDropdown({
       </button>
 
       {open && (
-        <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-52 overflow-hidden">
+        <div className="absolute top-full mt-2 left-0 z-50 bg-[#111] border border-white/15 border-t-2 border-t-[#f0e6d2]/15 rounded-2xl shadow-2xl min-w-44 sm:min-w-52 max-w-[calc(100vw-1rem)] overflow-hidden">
           <div data-lenis-prevent="true" className="max-h-64 overflow-y-auto overscroll-contain p-2">
             {collections.map(c => {
               const active = selected.includes(c.id);
