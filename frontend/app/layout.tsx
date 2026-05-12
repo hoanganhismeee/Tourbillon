@@ -12,6 +12,8 @@ import { LenisProvider } from "@/app/providers/LenisProvider";
 import { GSAPProvider } from "@/app/providers/GSAPProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "sonner";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import NavBar from "./components/layout/NavBar";
 import Footer from "./components/layout/Footer";
@@ -104,6 +106,8 @@ export default function RootLayout({
             __html: `if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; }`,
           }}
         />
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
