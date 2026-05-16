@@ -1060,6 +1060,7 @@ public class WatchFinderService : IWatchFinderService
         var hasHardFilters = intent?.BrandId != null || HasStrictCollectionIntent(intent)
             || intent?.MaxPrice != null || intent?.MinPrice != null
             || intent?.BrandIds?.Count > 0
+            || intent?.ExcludedBrandIds?.Count > 0
             || (intent?.CollectionsDerivedFromStyle != true && intent?.CollectionIds?.Count > 0)
             || styleCollectionIds.Count > 0;
 

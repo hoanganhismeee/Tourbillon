@@ -25,12 +25,18 @@ public class TasteProfileService : ITasteProfileService
     private readonly TourbillonContext _context;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IBehaviorService _behaviorService;
+    private readonly ILogger<TasteProfileService> _logger;
 
-    public TasteProfileService(TourbillonContext context, IHttpClientFactory httpClientFactory, IBehaviorService behaviorService)
+    public TasteProfileService(
+        TourbillonContext context,
+        IHttpClientFactory httpClientFactory,
+        IBehaviorService behaviorService,
+        ILogger<TasteProfileService> logger)
     {
         _context = context;
         _httpClientFactory = httpClientFactory;
         _behaviorService = behaviorService;
+        _logger = logger;
     }
 
     // Returns the user's current taste profile, or empty defaults if none exists.
@@ -96,9 +102,10 @@ public class TasteProfileService : ITasteProfileService
             profile.PreferredCaseSize  = parsed.PreferredCaseSize;
             parseSucceeded = true;
         }
-        catch
+        catch (Exception ex)
         {
             // AI service unavailable — TasteText updated; existing structured preferences preserved
+            _logger.LogWarning(ex, "TasteProfile parse-taste failed for userId={UserId}; preserving existing structured preferences", userId);
         }
 
         await _context.SaveChangesAsync();
@@ -317,9 +324,10 @@ public class TasteProfileService : ITasteProfileService
             profile.Summary = parsed.Summary;
             profile.BehaviorAnalyzedAt = DateTime.UtcNow;
         }
-        catch
+        catch (Exception ex)
         {
             // AI service unavailable — preserve existing profile
+            _logger.LogWarning(ex, "TasteProfile generate-from-behavior failed for userId={UserId}; preserving existing structured preferences", userId);
         }
 
         await _context.SaveChangesAsync();
