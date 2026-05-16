@@ -7,7 +7,7 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { ReactNode, useState } from 'react';
 
-const CACHE_PERSIST_KEY = 'tourbillon-query-cache-v2';
+export const CACHE_PERSIST_KEY = 'tourbillon-query-cache-v2';
 
 const STALE_TIME = 5 * 60 * 1000;   // 5 minutes — data considered fresh
 const GC_TIME = 10 * 60 * 1000;     // 10 minutes — inactive cache garbage collected
