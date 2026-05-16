@@ -8,6 +8,7 @@ using backend.Database;
 using backend.Models;
 using backend.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace backend.Tests.Services;
@@ -25,7 +26,7 @@ public class TasteProfileGenerationTests
         httpFactory.Setup(f => f.CreateClient("ai-service")).Returns(client);
 
         var behaviorService = new BehaviorService(context);
-        return new TasteProfileService(context, httpFactory.Object, behaviorService);
+        return new TasteProfileService(context, httpFactory.Object, behaviorService, NullLogger<TasteProfileService>.Instance);
     }
 
     private static void SeedBrands(TourbillonContext context)
