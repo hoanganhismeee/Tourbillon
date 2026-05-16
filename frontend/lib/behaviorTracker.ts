@@ -28,6 +28,24 @@ export function getAnonId(): string {
   }
 }
 
+const VALID_EVENT_TYPES: ReadonlySet<BrowsingEvent['type']> = new Set([
+  'watch_view', 'brand_view', 'collection_view', 'search',
+]);
+
+// Defensive shape check — drops entries that don't match the current BrowsingEvent
+// contract so a stale format in localStorage (e.g. after a schema change) cannot
+// corrupt the flush payload sent to the backend.
+function isValidEvent(value: unknown): value is BrowsingEvent {
+  if (!value || typeof value !== 'object') return false;
+  const e = value as Record<string, unknown>;
+  return (
+    typeof e.type === 'string'
+    && VALID_EVENT_TYPES.has(e.type as BrowsingEvent['type'])
+    && typeof e.entityName === 'string'
+    && typeof e.timestamp === 'number'
+  );
+}
+
 // Returns the rolling buffer of stored browsing events, or an empty array if unavailable.
 export function getBufferedEvents(): BrowsingEvent[] {
   try {
@@ -35,7 +53,7 @@ export function getBufferedEvents(): BrowsingEvent[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed as BrowsingEvent[];
+    return parsed.filter(isValidEvent);
   } catch {
     return [];
   }
