@@ -1560,7 +1560,8 @@ public class ChatService
                 searchResult ??= new WatchFinderResult();
                 if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
                     return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
-                if (searchResult.Watches.Count == 0) return null;
+                if (searchResult.Watches.Count == 0)
+                    return new ChatResolution { Message = NoCloseMatchMessage, RoutingPath = "discovery_empty" };
                 var r = await BuildDiscoveryResolutionAsync(
                     canonicalMessage, searchResult, excludedBrandIds, mentions: mentions);
                 r.SearchPath = searchResult.SearchPath;
