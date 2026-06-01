@@ -42,9 +42,16 @@ builder.Services.AddSwaggerGen();
 // Add memory cache (retained for framework-level caching)
 builder.Services.AddMemoryCache();
 
-// Add DbContext (PostgreSQL) with pgvector support
+// Add DbContext (PostgreSQL) with pgvector support.
+// MaxPoolSize is pinned for the EF data source so we never exceed Neon's hard
+// connection cap (free tier ~100). Hangfire keeps the original string and runs
+// its own pool independently.
 var pgConnectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
-var pgDataSourceBuilder = new NpgsqlDataSourceBuilder(pgConnectionString);
+var efConnectionString = new NpgsqlConnectionStringBuilder(pgConnectionString)
+{
+    MaxPoolSize = 20,
+}.ToString();
+var pgDataSourceBuilder = new NpgsqlDataSourceBuilder(efConnectionString);
 pgDataSourceBuilder.UseVector();
 var pgDataSource = pgDataSourceBuilder.Build();
 builder.Services.AddDbContext<TourbillonContext>(options =>
