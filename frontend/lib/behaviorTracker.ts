@@ -46,8 +46,15 @@ function isValidEvent(value: unknown): value is BrowsingEvent {
   );
 }
 
-// Returns the rolling buffer of stored browsing events, or an empty array if unavailable.
-export function getBufferedEvents(): BrowsingEvent[] {
+// In-memory queue of events that haven't been flushed to localStorage yet.
+// Flushed on idle (FLUSH_DEBOUNCE_MS), when MAX_PENDING is hit, or on tab hide.
+const pending: BrowsingEvent[] = [];
+const FLUSH_DEBOUNCE_MS = 5000;
+const MAX_PENDING = 10;
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let unloadHookInstalled = false;
+
+function readPersisted(): BrowsingEvent[] {
   try {
     const raw = localStorage.getItem(BEHAVIOR_KEY);
     if (!raw) return [];
@@ -59,20 +66,59 @@ export function getBufferedEvents(): BrowsingEvent[] {
   }
 }
 
-// Appends a new event (with current timestamp) to the buffer, trimming to the last 100 entries.
+function persistNow(): void {
+  if (pending.length === 0) return;
+  try {
+    const merged = [...readPersisted(), ...pending].slice(-MAX_EVENTS);
+    localStorage.setItem(BEHAVIOR_KEY, JSON.stringify(merged));
+    pending.length = 0;
+    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  } catch {
+    // Storage may be full or unavailable — keep the pending buffer so a later
+    // flush can retry instead of dropping events on the floor.
+  }
+}
+
+function ensureUnloadHook(): void {
+  if (unloadHookInstalled || typeof window === 'undefined') return;
+  // pagehide fires reliably on tab close, navigation, and mobile bfcache transitions.
+  window.addEventListener('pagehide', persistNow);
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') persistNow();
+  });
+  unloadHookInstalled = true;
+}
+
+// Returns the rolling buffer of stored browsing events, or an empty array if unavailable.
+// Flushes any pending in-memory events first so callers (e.g. flushBehaviorEvents) see
+// everything tracked so far in the current session.
+export function getBufferedEvents(): BrowsingEvent[] {
+  persistNow();
+  return readPersisted();
+}
+
+// Appends a new event (with current timestamp) to the in-memory queue and schedules
+// a debounced flush. Avoids a parse + stringify + write cycle on every page view.
 export function trackEvent(event: Omit<BrowsingEvent, 'timestamp'>): void {
   try {
-    const events = getBufferedEvents();
-    events.push({ ...event, timestamp: Date.now(), anonId: getAnonId() });
-    const trimmed = events.slice(-MAX_EVENTS);
-    localStorage.setItem(BEHAVIOR_KEY, JSON.stringify(trimmed));
+    pending.push({ ...event, timestamp: Date.now(), anonId: getAnonId() });
+    ensureUnloadHook();
+    if (pending.length >= MAX_PENDING) {
+      persistNow();
+      return;
+    }
+    if (flushTimer === null) {
+      flushTimer = setTimeout(persistNow, FLUSH_DEBOUNCE_MS);
+    }
   } catch {
     // Silently ignore — storage may be full or unavailable
   }
 }
 
-// Clears the behavior buffer from localStorage.
+// Clears the behavior buffer from localStorage and any pending in-memory events.
 export function clearBuffer(): void {
+  pending.length = 0;
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
   try {
     localStorage.removeItem(BEHAVIOR_KEY);
   } catch {
