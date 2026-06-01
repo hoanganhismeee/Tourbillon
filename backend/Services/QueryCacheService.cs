@@ -37,12 +37,10 @@ public class QueryCacheService
     /// Returns null on miss or if similarity is below threshold.
     public async Task<WatchFinderResult?> LookupAsync(float[] queryEmbedding, string feature = "watch_finder")
     {
-        var count = await _context.QueryCaches.Where(q => q.Feature == feature).CountAsync();
-        if (count == 0) return null;
-
         var queryVector = new Vector(queryEmbedding);
 
-        // ORDER BY cosine distance within the feature scope — pgvector translates to <=> operator
+        // ORDER BY cosine distance within the feature scope — pgvector translates to <=> operator.
+        // FirstOrDefaultAsync handles the empty-set case directly, no need for a separate CountAsync.
         var nearest = await _context.QueryCaches
             .Where(q => q.Feature == feature)
             .OrderBy(q => q.QueryEmbedding.CosineDistance(queryVector))
