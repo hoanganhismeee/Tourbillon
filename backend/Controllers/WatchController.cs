@@ -234,7 +234,16 @@ public class WatchController : ControllerBase
             .AsNoTracking()
             .Include(w => w.Brand).Include(w => w.Collection)
             .ToList();
-        var watchDtos = watches.Select(w => WatchDto.FromWatch(w, _storage)).ToList();
+
+        // List endpoint: drop the large Description field (used only on detail
+        // pages and admin views). Specs stays because WatchOrderingService
+        // reads it for personalized scoring.
+        var watchDtos = watches.Select(w =>
+        {
+            var dto = WatchDto.FromWatch(w, _storage);
+            dto.Description = null;
+            return dto;
+        }).ToList();
         return Ok(watchDtos);
     }
 
