@@ -10,6 +10,7 @@ using System.Globalization;
 using backend.Database;
 using backend.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace backend.Services;
 
@@ -88,6 +89,13 @@ public class ChatService
     private readonly IActionPlanner _planner;
     private readonly IStorageService _storage;
     private readonly IAiUsageQuotaService _quota;
+    private readonly IMemoryCache _memoryCache;
+
+    // Brand/collection rosters change rarely. Caching them for 5 minutes removes
+    // two full-table scans per chat turn (entity resolution + catalogue roster build).
+    private const string BrandsCacheKey = "chat:roster:brands";
+    private const string CollectionsCacheKey = "chat:roster:collections";
+    private static readonly TimeSpan RosterCacheTtl = TimeSpan.FromMinutes(5);
 
     // Set by ResolveWatchScopedAsync once /classify returns. Read by follow-up
     // routing branches that now trust the classifier instead of semantic regexes.
@@ -297,6 +305,7 @@ public class ChatService
         IIntentClassifier classifier,
         IActionPlanner planner,
         IStorageService storageService,
+        IMemoryCache memoryCache,
         IAiUsageQuotaService? quotaService = null)
     {
         _httpClientFactory = httpClientFactory;
@@ -308,8 +317,23 @@ public class ChatService
         _classifier = classifier;
         _planner = planner;
         _storage = storageService;
+        _memoryCache = memoryCache;
         _quota = quotaService ?? new AiUsageQuotaService(redis);
     }
+
+    private Task<List<Brand>> GetCachedBrandsAsync() =>
+        _memoryCache.GetOrCreateAsync(BrandsCacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = RosterCacheTtl;
+            return await _context.Brands.AsNoTracking().ToListAsync();
+        })!;
+
+    private Task<List<Collection>> GetCachedCollectionsAsync() =>
+        _memoryCache.GetOrCreateAsync(CollectionsCacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = RosterCacheTtl;
+            return await _context.Collections.AsNoTracking().ToListAsync();
+        })!;
 
     private async Task<List<ChatMessage>> GetSessionHistoryAsync(string sessionId)
     {
@@ -1121,8 +1145,8 @@ public class ChatService
 
     private async Task<EntityMentions> ResolveEntityMentionsAsync(string query)
     {
-        var brands = await _context.Brands.AsNoTracking().ToListAsync();
-        var collections = await _context.Collections.AsNoTracking().ToListAsync();
+        var brands = await GetCachedBrandsAsync();
+        var collections = await GetCachedCollectionsAsync();
         var mentions = new EntityMentions();
         var matchedBrandIds = new HashSet<int>();
         var normalizedQuery = NormalizeEntityText(query);
@@ -4645,8 +4669,8 @@ public class ChatService
     {
         if (_catalogueRoster is not null) return _catalogueRoster;
 
-        var brands = await _context.Brands.AsNoTracking().OrderBy(b => b.Name).ToListAsync();
-        var collections = await _context.Collections.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+        var brands = (await GetCachedBrandsAsync()).OrderBy(b => b.Name).ToList();
+        var collections = (await GetCachedCollectionsAsync()).OrderBy(c => c.Name).ToList();
         var colsByBrand = collections.GroupBy(c => c.BrandId).ToDictionary(g => g.Key, g => g.ToList());
 
         var lines = brands.Select(b =>

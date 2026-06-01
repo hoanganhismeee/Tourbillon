@@ -6,6 +6,7 @@ using System.Text.Json;
 using backend.Database;
 using backend.Models;
 using backend.Services;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -48,7 +49,8 @@ public class ChatServiceTests
             NullLogger<ChatService>.Instance,
             classifier ?? new FakeClassifier(),
             planner ?? new ActionPlannerFake(),
-            TestStorage);
+            TestStorage,
+            new MemoryCache(new MemoryCacheOptions()));
     }
 
     // 0-card responses now show 3 "suggest"-type actions from the curated query bank.
