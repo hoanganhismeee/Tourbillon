@@ -106,6 +106,30 @@ const WatchesPage = () => {
     router.replace(buildUrl([], []), { scroll: false });
   };
 
+  // Set-based handlers used by WatchFilterBar inside AllWatchesSection. These keep
+  // the sidebar and the filter bar in sync because both write to the same state.
+  // Cascade rules mirror the per-id toggles above: dropping a brand drops orphan
+  // collections; selecting a collection auto-adds its parent brand.
+  const handleBrandFiltersChange = (next: number[]) => {
+    const validIds = new Set(collections.filter(c => next.includes(c.brandId)).map(c => c.id));
+    const nextCols = selectedCollectionIds.filter(id => validIds.has(id));
+    setSelectedBrandIds(next);
+    setSelectedCollectionIds(nextCols);
+    initializedRef.current = true;
+    router.replace(buildUrl(next, nextCols), { scroll: false });
+  };
+
+  const handleCollectionFiltersChange = (next: number[]) => {
+    const parentBrandIds = next
+      .map(id => collections.find(c => c.id === id)?.brandId)
+      .filter((id): id is number => id != null);
+    const nextBrands = Array.from(new Set([...selectedBrandIds, ...parentBrandIds]));
+    setSelectedBrandIds(nextBrands);
+    setSelectedCollectionIds(next);
+    initializedRef.current = true;
+    router.replace(buildUrl(nextBrands, next), { scroll: false });
+  };
+
   const activeFilterCount = selectedBrandIds.length + selectedCollectionIds.length;
 
   return (
@@ -150,6 +174,8 @@ const WatchesPage = () => {
           brands={brands}
           brandFilters={selectedBrandIds}
           collectionFilters={selectedCollectionIds}
+          onBrandFiltersChange={handleBrandFiltersChange}
+          onCollectionFiltersChange={handleCollectionFiltersChange}
         />
       </div>
 
