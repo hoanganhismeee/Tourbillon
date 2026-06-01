@@ -8,17 +8,25 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useLenis } from 'lenis/react';
 import { toast } from 'sonner';
-import { fetchWatches, fetchCollections, getTasteProfile, Brand } from '@/lib/api';
+import { fetchWatches, fetchCollections, fetchFilterOptions, getTasteProfile, Brand } from '@/lib/api';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { WatchCard } from '../components/cards/WatchCard';
 import { SortOrder, WatchOrderingService } from './WatchOrderingService';
 import ScrollFade from '../scrollMotion/ScrollFade';
+import {
+  WatchFilterBar,
+  WatchFilters,
+  EMPTY_WATCH_FILTERS,
+  applyWatchFilters,
+} from '../components/filters/WatchFilterBar';
 
 interface AllWatchesSectionProps {
   brands: Brand[];
   brandFilters?: number[];
   collectionFilters?: number[];
+  onBrandFiltersChange?: (next: number[]) => void;
+  onCollectionFiltersChange?: (next: number[]) => void;
 }
 
 function SortDropdown({ sortOrder, onSelect }: {
@@ -96,13 +104,78 @@ function SortDropdown({ sortOrder, onSelect }: {
   );
 }
 
-const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }: AllWatchesSectionProps) => {
+const AllWatchesSection = ({
+  brands,
+  brandFilters = [],
+  collectionFilters = [],
+  onBrandFiltersChange,
+  onCollectionFiltersChange,
+}: AllWatchesSectionProps) => {
   const { isAuthenticated } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const lenis = useLenis();
   const currentPage = Number(searchParams.get('page') ?? '1');
   const sortOrder = WatchOrderingService.parseSortOrder(searchParams.get('sort'));
+
+  // Filter bar state — brand/collection live on the page (URL-synced for shareable links),
+  // the rest live locally and reset on navigation. Matches smart-search behavior.
+  const [extraFilters, setExtraFilters] = useState<Omit<WatchFilters, 'brandIds' | 'collectionIds'>>({
+    caseMaterials: [],
+    movementTypes: [],
+    waterResistances: [],
+    powerReserves: [],
+    diameterBuckets: [],
+    priceBuckets: [],
+    complications: [],
+  });
+  const [wristFit, setWristFit] = useState('');
+
+  const { data: filterOptions } = useQuery({
+    queryKey: ['watch-filter-options'],
+    queryFn: fetchFilterOptions,
+    staleTime: 60 * 60 * 1000,
+  });
+  const diameterOptions = useMemo(() => filterOptions?.diameters ?? [], [filterOptions]);
+
+  const filters: WatchFilters = useMemo(() => ({
+    ...extraFilters,
+    brandIds: brandFilters,
+    collectionIds: collectionFilters,
+  }), [extraFilters, brandFilters, collectionFilters]);
+
+  const setFilter = useCallback(<K extends keyof WatchFilters>(key: K, value: WatchFilters[K]) => {
+    if (key === 'brandIds') {
+      onBrandFiltersChange?.(value as number[]);
+      return;
+    }
+    if (key === 'collectionIds') {
+      onCollectionFiltersChange?.(value as number[]);
+      return;
+    }
+    setExtraFilters(prev => ({ ...prev, [key]: value }));
+  }, [onBrandFiltersChange, onCollectionFiltersChange]);
+
+  const clearFilters = useCallback(() => {
+    setExtraFilters({
+      caseMaterials: [],
+      movementTypes: [],
+      waterResistances: [],
+      powerReserves: [],
+      diameterBuckets: [],
+      priceBuckets: [],
+      complications: [],
+    });
+    setWristFit('');
+    onBrandFiltersChange?.([]);
+    onCollectionFiltersChange?.([]);
+  }, [onBrandFiltersChange, onCollectionFiltersChange]);
+
+  const hasActiveFilters =
+    brandFilters.length > 0
+    || collectionFilters.length > 0
+    || Object.values(extraFilters).some(v => Array.isArray(v) && v.length > 0)
+    || wristFit !== '';
   const goToPage = (page: number) => {
     const params = new URLSearchParams(searchParams.toString());
     if (page === 1) {
@@ -173,14 +246,13 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
     sortOrder === 'personalized' && hasPersonalizedTaste ? personalizedWatches : featuredWatches
   ), [sortOrder, hasPersonalizedTaste, personalizedWatches, featuredWatches]);
 
-  const filteredWatches = useMemo(() => {
-    let result = activeOrder;
-    if (brandFilters.length > 0) result = result.filter(watch => brandFilters.includes(watch.brandId));
-    if (collectionFilters.length > 0) {
-      result = result.filter(watch => watch.collectionId != null && collectionFilters.includes(watch.collectionId));
-    }
-    return result;
-  }, [activeOrder, brandFilters, collectionFilters]);
+  // Single filter pass — applyWatchFilters handles brand, collection, AND the spec filters
+  // (case material, diameter, movement, water resistance, power reserve, complications, price)
+  // plus the wrist-fit overlay. Order is preserved.
+  const filteredWatches = useMemo(
+    () => applyWatchFilters(activeOrder, filters, wristFit),
+    [activeOrder, filters, wristFit],
+  );
 
   const sortedWatches = useMemo(() => {
     if (sortOrder === 'default' || sortOrder === 'personalized') return filteredWatches;
@@ -224,35 +296,52 @@ const AllWatchesSection = ({ brands, brandFilters = [], collectionFilters = [] }
   return (
     <section>
       <ScrollFade>
-        <div className="mb-16">
-          <div className="text-center">
-            <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2]">
-              {currentPage === 1 ? headingLabel : `${headingLabel} - Page ${currentPage}`}
-            </h2>
-          </div>
-
-          {!watchesLoading && (
-            <>
-              <div className="flex items-center justify-end gap-3">
-                {watchesFetching && !watchesLoading && (
-                  <div className="mt-8 w-3 h-3 rounded-full border border-white/30 border-t-transparent animate-spin" />
-                )}
-                <SortDropdown
-                  sortOrder={sortOrder}
-                  onSelect={handleSortChange}
-                />
-              </div>
-              {showPersonalizedHint && (
-                <div className="mt-4 max-w-md ml-auto text-right">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-white/32">
-                    {personalizedHintCopy}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
+        <div className="text-center mb-10">
+          <h2 className="text-5xl font-playfair font-bold text-[#f0e6d2]">
+            {currentPage === 1 ? headingLabel : `${headingLabel} - Page ${currentPage}`}
+          </h2>
         </div>
       </ScrollFade>
+
+      {/* Filter bar first — wide, wraps to multiple rows on narrow columns. */}
+      {!watchesLoading && (
+        <ScrollFade>
+          <WatchFilterBar
+            filters={filters}
+            brands={brands}
+            collections={collections}
+            diameterOptions={diameterOptions}
+            wristFit={wristFit}
+            hasActiveFilters={hasActiveFilters}
+            onChange={setFilter}
+            onWristFitChange={setWristFit}
+            onClear={clearFilters}
+          />
+        </ScrollFade>
+      )}
+
+      {/* Sort row sits directly above the grid so its dropdown opens into the
+          watch area below (empty space), not into the filter chips above. */}
+      {!watchesLoading && (
+        <div className="mb-6">
+          <div className="flex items-center justify-end gap-3">
+            {watchesFetching && !watchesLoading && (
+              <div className="w-3 h-3 rounded-full border border-white/30 border-t-transparent animate-spin" />
+            )}
+            <SortDropdown
+              sortOrder={sortOrder}
+              onSelect={handleSortChange}
+            />
+          </div>
+          {showPersonalizedHint && (
+            <div className="mt-2 max-w-md ml-auto text-right">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-white/32">
+                {personalizedHintCopy}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {watchesLoading ? (
         <div className="text-center py-16">
