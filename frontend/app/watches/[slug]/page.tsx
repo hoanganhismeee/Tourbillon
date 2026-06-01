@@ -219,7 +219,6 @@ const WatchDetailPage = () => {
                                           onLoad={handleImageLoad}
                                           priority
                                           fetchPriority="high"
-                                          unoptimized
                                         />
                                     </>
                                 ) : (
