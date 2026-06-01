@@ -35,8 +35,9 @@ public DbSet<WatchEmbedding> WatchEmbeddings { get; set; }
         // Enable pgvector extension
         modelBuilder.HasPostgresExtension("vector");
 
-        // Slug indexes added in a follow-up migration (AddSlugIndexes) after
-        // DbInitializer.EnsureSlugsPopulated fills the empty default values.
+        // Unique slug indexes on Brands/Collections/Watches are created at
+        // startup by DbInitializer.EnsureSlugsPopulated (raw SQL, idempotent)
+        // because indexes must come after empty default slugs are filled.
 
         modelBuilder.Entity<WatchEmbedding>(entity =>
         {
