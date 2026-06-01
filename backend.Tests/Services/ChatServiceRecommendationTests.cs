@@ -6,6 +6,7 @@ using System.Text.Json;
 using backend.Database;
 using backend.Models;
 using backend.Services;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -38,7 +39,8 @@ public class ChatServiceRecommendationTests
             NullLogger<ChatService>.Instance,
             classifier ?? new FakeClassifier(),
             planner ?? new ActionPlannerFake(),
-            TestStorage);
+            TestStorage,
+            new MemoryCache(new MemoryCacheOptions()));
     }
 
     private static readonly IStorageService TestStorage = new TestStorageService();
