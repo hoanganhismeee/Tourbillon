@@ -165,6 +165,9 @@ else
 // Register migration job as transient — Hangfire creates one instance per execution
 builder.Services.AddTransient<MigrateToS3Job>();
 
+// Register retention job — scheduled daily by Hangfire below.
+builder.Services.AddTransient<BrowsingEventRetentionJob>();
+
 // Register watch cache service for database operations
 builder.Services.AddScoped<WatchCacheService>();
 
@@ -376,6 +379,13 @@ using (var scope = app.Services.CreateScope())
     // Ensure Admin role exists
     await DbInitializer.EnsureAdminSetupAsync(scope.ServiceProvider);
 }
+
+// Recurring jobs — Hangfire stores the schedule in its own tables and re-registers
+// on every boot. Runs daily at 03:00 UTC.
+RecurringJob.AddOrUpdate<BrowsingEventRetentionJob>(
+    "browsing-event-retention",
+    job => job.RunAsync(),
+    "0 3 * * *");
 
     app.Run();
 }
