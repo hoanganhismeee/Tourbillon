@@ -999,9 +999,11 @@ public class WatchFinderService : IWatchFinderService
         var queryVector = new Vector(queryEmbedding);
 
         // Base query: feature-scoped, distance-filtered, ordered by cosine similarity.
-        // Join Watch via Include so brand/collection/price filters can reference Watch columns.
+        // No Include — the WHERE clauses below reference e.Watch.* which EF translates
+        // to an implicit JOIN, and the final Select projects only (WatchId, Distance)
+        // so EF would drop any Include here anyway. Watches are reloaded with Brand
+        // and Collection in the second query below.
         var q = _context.WatchEmbeddings
-            .Include(e => e.Watch)
             .Where(e => e.Feature == "watch_finder" && e.Embedding != null && e.Embedding.CosineDistance(queryVector) < MaxDistance);
 
         // Hard SQL pre-filters from parsed intent — eliminate irrelevant candidates entirely.
