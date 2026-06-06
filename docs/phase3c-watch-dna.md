@@ -73,7 +73,7 @@ venv/Scripts/python.exe -m unittest tests.test_taste_behavior_eval
 
 ### Scoring algorithm
 
-Applied client-side in `AllWatchesSection.tsx` via `scoreTasteMatch()`. The same logic runs server-side in `TasteProfileService.ScoreWatch()` (C# static method, unit-tested).
+Computed server-side. `TasteProfileService.ScoreWatch()` (C# static method, unit-tested) is the single scorer; `CatalogueOrderingService.BuildPersonalizedOrder()` calls it to re-rank the featured order, exposed via `GET /api/watch/ordered/personalized`. The frontend fetches the ordered list rather than scoring locally.
 
 | Signal | Points | Notes |
 |---|---|---|
