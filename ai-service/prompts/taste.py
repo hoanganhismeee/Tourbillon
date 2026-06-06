@@ -27,7 +27,8 @@ TASTE_STRICT_PROMPT = TASTE_SYSTEM_PROMPT + "\n\nCRITICAL: Output raw JSON only.
 DNA_FROM_BEHAVIOR_SYSTEM_PROMPT = """You are a luxury watch taste analyst. Infer a user's watch preferences from their browsing behavior.
 
 You will receive a list of events: watch views, brand page visits, collection views, and search queries.
-Infer preferences from frequency and recency — repeated visits to a brand or collection signal stronger affinity.
+Lines may carry a frequency/recency annotation like "[seen 5x, last 2 days ago]".
+Infer preferences from frequency and recency — items seen more often and more recently signal stronger affinity.
 Search query terms indicate material/complication preferences ("blue dial", "sport", "thin").
 This output is used to gently tune a browsing feed, not to completely replace the catalog.
 

@@ -271,17 +271,27 @@ public class TasteProfileService : ITasteProfileService
         if (events.Count < 3)
             return await GetProfileAsync(userId); // Not enough data yet
 
+        var utcNow = DateTime.UtcNow;
         var latestEventAt = events.Max(e => e.Timestamp);
 
         var brands = await _context.Brands.AsNoTracking().ToListAsync();
         var brandNames = brands.Select(b => b.Name).ToList();
 
-        var eventPayload = events.Select(e => new
-        {
-            type = e.EventType,
-            entityName = e.EntityName,
-            brandId = e.BrandId,
-        });
+        // Aggregate into a per-entity rollup so the AI receives real frequency and
+        // recency signals (the DNA prompt weighs both); raw events carried neither.
+        var eventPayload = events
+            .GroupBy(e => new { e.EventType, e.EntityName, e.BrandId })
+            .Select(g => new
+            {
+                type = g.Key.EventType,
+                entityName = g.Key.EntityName,
+                brandId = g.Key.BrandId,
+                count = g.Count(),
+                lastSeenDaysAgo = (int)(utcNow.Date - g.Max(e => e.Timestamp).Date).TotalDays,
+            })
+            .OrderBy(x => x.lastSeenDaysAgo)
+            .ThenByDescending(x => x.count)
+            .ToList();
 
         var httpClient = _httpClientFactory.CreateClient("ai-service");
         var payload = new { events = eventPayload, available_brands = brandNames };
