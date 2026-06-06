@@ -221,6 +221,14 @@ const AllWatchesSection = ({
 
   const hasPersonalizedTaste = isAuthenticated && WatchOrderingService.hasTastePreferences(tasteProfile);
 
+  // Personalized order is server-computed; only fetched when the user opts into that sort.
+  const { data: personalizedWatches = [] } = useQuery({
+    queryKey: ['watches', 'personalized'],
+    queryFn: fetchPersonalizedWatches,
+    enabled: isAuthenticated && hasPersonalizedTaste && sortOrder === 'personalized',
+    retry: false,
+  });
+
   const handleSortChange = (nextSortOrder: SortOrder) => {
     const params = new URLSearchParams(searchParams.toString());
     if (nextSortOrder === 'default') {
@@ -234,18 +242,13 @@ const AllWatchesSection = ({
     router.push(query ? `/watches?${query}` : '/watches', { scroll: false });
   };
 
-  const featuredWatches = useMemo(() => {
-    if (watches.length === 0) return [];
-    return WatchOrderingService.buildFeaturedOrder(watches, brands, collections);
-  }, [watches, brands, collections]);
-
-  const personalizedWatches = useMemo(() => (
-    WatchOrderingService.buildPersonalizedOrder(featuredWatches, tasteProfile, hasPersonalizedTaste)
-  ), [featuredWatches, tasteProfile, hasPersonalizedTaste]);
-
-  const activeOrder = useMemo(() => (
-    sortOrder === 'personalized' && hasPersonalizedTaste ? personalizedWatches : featuredWatches
-  ), [sortOrder, hasPersonalizedTaste, personalizedWatches, featuredWatches]);
+  // Fall back to the featured order until the personalized list has loaded.
+  const activeOrder = useMemo(() => {
+    if (sortOrder === 'personalized' && hasPersonalizedTaste) {
+      return personalizedWatches.length > 0 ? personalizedWatches : featuredWatches;
+    }
+    return featuredWatches;
+  }, [sortOrder, hasPersonalizedTaste, personalizedWatches, featuredWatches]);
 
   // Single filter pass — applyWatchFilters handles brand, collection, AND the spec filters
   // (case material, diameter, movement, water resistance, power reserve, complications, price)
@@ -282,7 +285,7 @@ const AllWatchesSection = ({
     ? 'Keep browsing to form your Watch DNA.'
     : 'Sign in to save your browsing and form your Watch DNA.';
 
-  const isReady = featuredWatches.length > 0 || (!watchesLoading && watches.length === 0);
+  const isReady = featuredWatches.length > 0 || (!watchesLoading && featuredWatches.length === 0);
   useScrollRestore(isReady);
 
 
