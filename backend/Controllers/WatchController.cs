@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using backend.Database;
+using backend.Extensions;
 using backend.Models;
 using backend.Services;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,8 @@ public class WatchController : ControllerBase
     private readonly IStorageService _storage;
     private readonly IAiUsageQuotaService _quota;
     private readonly IConfiguration _config;
+    private readonly CatalogueOrderingService _ordering;
+    private readonly ITasteProfileService _tasteService;
 
     public WatchController(
         TourbillonContext context,
@@ -29,7 +32,9 @@ public class WatchController : ControllerBase
         IHttpClientFactory httpClientFactory,
         IStorageService storageService,
         IAiUsageQuotaService quotaService,
-        IConfiguration config)
+        IConfiguration config,
+        CatalogueOrderingService ordering,
+        ITasteProfileService tasteService)
     {
         _context = context;
         _watchFinderService = watchFinderService;
@@ -37,6 +42,8 @@ public class WatchController : ControllerBase
         _storage = storageService;
         _quota = quotaService;
         _config = config;
+        _ordering = ordering;
+        _tasteService = tasteService;
     }
 
     [HttpPost("find")]
@@ -245,6 +252,50 @@ public class WatchController : ControllerBase
             return dto;
         }).ToList();
         return Ok(watchDtos);
+    }
+
+    // Full catalogue in stable merchandising order. Filtering/pagination stay client-side.
+    [HttpGet("ordered")]
+    public async Task<IActionResult> GetCatalogueOrder()
+    {
+        var (dtos, brands, collections) = await LoadCatalogueForOrderingAsync();
+        return Ok(_ordering.BuildFeaturedOrder(dtos, brands, collections));
+    }
+
+    // Catalogue order re-ranked by the signed-in user's Watch DNA. Falls back to the
+    // merchandising order when the profile has no usable preferences.
+    [HttpGet("ordered/personalized")]
+    [Authorize]
+    public async Task<IActionResult> GetPersonalizedCatalogueOrder()
+    {
+        var userId = User.GetUserId();
+        if (userId == null) return Unauthorized();
+
+        var (dtos, brands, collections) = await LoadCatalogueForOrderingAsync();
+        var featured = _ordering.BuildFeaturedOrder(dtos, brands, collections);
+        var profile = await _tasteService.GetProfileAsync(userId.Value);
+        return Ok(_ordering.BuildPersonalizedOrder(featured, profile));
+    }
+
+    // Loads the catalogue as list DTOs (Description dropped) plus the brand/collection
+    // metadata the ordering service needs for merchandising rules.
+    private async Task<(List<WatchDto> Dtos, List<Brand> Brands, List<Collection> Collections)> LoadCatalogueForOrderingAsync()
+    {
+        var watches = await _context.Watches
+            .AsNoTracking()
+            .Include(w => w.Brand).Include(w => w.Collection)
+            .ToListAsync();
+
+        var dtos = watches.Select(w =>
+        {
+            var dto = WatchDto.FromWatch(w, _storage);
+            dto.Description = null;
+            return dto;
+        }).ToList();
+
+        var brands = await _context.Brands.AsNoTracking().ToListAsync();
+        var collections = await _context.Collections.AsNoTracking().ToListAsync();
+        return (dtos, brands, collections);
     }
 
     // Slug-based detail — primary public endpoint

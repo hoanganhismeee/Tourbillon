@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useLenis } from 'lenis/react';
 import { toast } from 'sonner';
-import { fetchWatches, fetchCollections, fetchFilterOptions, getTasteProfile, Brand } from '@/lib/api';
+import { fetchOrderedWatches, fetchPersonalizedWatches, fetchCollections, fetchFilterOptions, getTasteProfile, Brand } from '@/lib/api';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { WatchCard } from '../components/cards/WatchCard';
@@ -192,9 +192,11 @@ const AllWatchesSection = ({
   const [showAllWatches, setShowAllWatches] = useState(false);
   const watchesPerPage = 20;
 
-  const { data: watches = [], isLoading: watchesLoading, isFetching: watchesFetching, isError: watchesError } = useQuery({
-    queryKey: ['watches'],
-    queryFn: fetchWatches,
+  // Featured order is computed server-side (CatalogueOrderingService); filtering, price
+  // sort, and pagination below stay client-side for instant interaction.
+  const { data: featuredWatches = [], isLoading: watchesLoading, isFetching: watchesFetching, isError: watchesError } = useQuery({
+    queryKey: ['watches', 'ordered'],
+    queryFn: fetchOrderedWatches,
   });
 
   const { data: collections = [], isError: collectionsError } = useQuery({
