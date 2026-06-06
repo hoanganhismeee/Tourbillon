@@ -186,6 +186,7 @@ builder.Services.AddHttpClient("ai-service", c =>
     c.Timeout = TimeSpan.FromSeconds(120);
 });
 builder.Services.AddSingleton<WatchFilterMapper>();
+builder.Services.AddSingleton<CatalogueOrderingService>();
 builder.Services.AddScoped<IDeterministicWatchSearchService, DeterministicWatchSearchService>();
 builder.Services.AddScoped<IWatchFinderService, WatchFinderService>();
 builder.Services.AddScoped<WatchFinderService>();

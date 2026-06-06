@@ -147,6 +147,24 @@ export const fetchWatches = async (): Promise<Watch[]> => {
   return response.json();
 };
 
+// Full catalogue in server-computed featured merchandising order.
+export const fetchOrderedWatches = async (): Promise<Watch[]> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/watch/ordered`, { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error('Failed to fetch ordered watches');
+  }
+  return response.json();
+};
+
+// Catalogue re-ranked by the signed-in user's Watch DNA (requires auth).
+export const fetchPersonalizedWatches = async (): Promise<Watch[]> => {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/watch/ordered/personalized`, { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error('Failed to fetch personalized watches');
+  }
+  return response.json();
+};
+
 export const fetchWatchesByBrand = async (brandId: number): Promise<Watch[]> => {
   const response = await fetchWithTimeout(`${API_BASE_URL}/watch/brand/${brandId}`, { credentials: 'include' });
   if (!response.ok) {
