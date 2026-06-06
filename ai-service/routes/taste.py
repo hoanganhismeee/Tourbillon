@@ -12,6 +12,33 @@ from prompts.taste import (
 )
 
 
+def _frequency_recency_suffix(event: dict) -> str:
+    """Render an optional '[seen Nx, last <when>]' annotation from a rollup event.
+
+    Returns an empty string for legacy single-event payloads that omit count, so
+    the endpoint stays backward compatible with un-aggregated callers and tests.
+    """
+    count = event.get("count")
+    if not count:
+        return ""
+
+    days = event.get("lastSeenDaysAgo")
+    if days is None:
+        days = event.get("last_seen_days_ago")
+
+    if days is None:
+        recency = ""
+    elif days <= 0:
+        recency = ", last today"
+    elif days == 1:
+        recency = ", last yesterday"
+    else:
+        recency = f", last {days} days ago"
+
+    times = "once" if count == 1 else f"{count}x"
+    return f" [seen {times}{recency}]"
+
+
 def register_routes(app, runtime: Runtime) -> None:
     @app.route("/parse-taste", methods=["POST"])
     def parse_taste():
@@ -52,13 +79,19 @@ def register_routes(app, runtime: Runtime) -> None:
             event_type = event.get("type", "")
             name = event.get("entityName") or event.get("entity_name", "")
             if event_type == "search":
-                event_lines.append(f"- Searched for: {name}")
+                line = f"- Searched for: {name}"
             elif event_type == "watch_view":
-                event_lines.append(f"- Viewed watch: {name}")
+                line = f"- Viewed watch: {name}"
             elif event_type == "brand_view":
-                event_lines.append(f"- Visited brand page: {name}")
+                line = f"- Visited brand page: {name}"
             elif event_type == "collection_view":
-                event_lines.append(f"- Visited collection page: {name}")
+                line = f"- Visited collection page: {name}"
+            else:
+                continue
+            # Backend may pre-aggregate events into a per-entity rollup carrying
+            # frequency (count) and recency (lastSeenDaysAgo). Surface it so the
+            # model can weigh repeated/recent items, as the system prompt instructs.
+            event_lines.append(line + _frequency_recency_suffix(event))
 
         events_text = "\n".join(event_lines) if event_lines else "No events"
         user_content = f"Available brands: {', '.join(available_brands)}\n\nBrowsing history:\n{events_text}"
