@@ -17,7 +17,6 @@ import ScrollFade from '../scrollMotion/ScrollFade';
 import {
   WatchFilterBar,
   WatchFilters,
-  EMPTY_WATCH_FILTERS,
   applyWatchFilters,
 } from '../components/filters/WatchFilterBar';
 
