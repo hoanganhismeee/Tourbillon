@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { fetchFeaturedWatches, Watch } from '@/lib/api';
 import { imageTransformations } from '@/lib/cloudinary';
+import { withReturnTo } from '@/lib/returnNavigation';
 import ScrollFade from '@/app/scrollMotion/ScrollFade';
 
 const FEATURED_LIMIT = 6;
@@ -35,7 +36,10 @@ function FeaturedWatchCard({ watch }: { watch: Watch }) {
   const imageSrc = watch.imageUrl || imageTransformations.card(watch.image);
 
   return (
-    <Link href={`/watches/${watch.slug}`} className="group flex flex-col border border-[#bfa68a]/10">
+    <Link
+      href={withReturnTo(`/watches/${watch.slug}`, '/stories')}
+      className="group flex flex-col border border-[#bfa68a]/10"
+    >
       <div className="relative min-h-[260px] flex-1 overflow-hidden bg-black/30">
         <Image
           src={imageSrc}
