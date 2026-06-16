@@ -1,6 +1,6 @@
 // Stories page — editorial brand storytelling for Tourbillon.
-// Founding story with a sticky pocket watch companion (its scroll-driven hands
-// stay visible while reading), then a featured catalogue strip.
+// A pocket watch is locked to the page corner so its scroll-driven hands stay
+// visible the whole way down, then a featured catalogue strip.
 // Visual language matches the Trend page (Playfair, gold accents, ScrollFade).
 import Link from "next/link";
 import PocketWatch from "../components/decorations/PocketWatch";
@@ -10,6 +10,13 @@ import StoriesFeatured from "./StoriesFeatured";
 export default function StoriesPage() {
   return (
     <main className="relative overflow-hidden pt-10 text-white">
+      {/* Pocket watch locked to the corner — subtle, winds as you scroll.
+          Bottom-left keeps clear of the chat/compare pills on the right;
+          xl-only so it sits in the gutter beside the centered content. */}
+      <div className="pointer-events-none fixed bottom-8 left-8 z-30 hidden opacity-75 xl:block">
+        <PocketWatch size={118} variant="champagne" />
+      </div>
+
       <section className="relative px-10 py-20 pt-20 lg:px-24">
         <div className="mx-auto max-w-5xl">
           {/* Hero */}
@@ -34,61 +41,44 @@ export default function StoriesPage() {
             </div>
           </ScrollFade>
 
-          {/* The founding story — prose left, sticky pocket watch right */}
+          {/* The founding story */}
           <section className="mt-24 border-t border-[#bfa68a]/12 pt-12">
-            <div className="grid gap-14 lg:grid-cols-[minmax(0,1fr)_260px] lg:gap-16">
-              <div className="min-w-0">
-                <ScrollFade>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.45em] text-[#bfa68a]/80">
-                      Where it started
-                    </p>
-                    <h2
-                      className="mt-5 font-playfair font-light leading-[1.12] tracking-[-0.005em] text-[#f0e6d2]"
-                      style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
-                    >
-                      A quiet obsession with
-                      <br className="hidden sm:block" />{" "}
-                      <span className="italic text-[#f0e6d2]/70">how time is kept.</span>
-                    </h2>
-                  </div>
-                </ScrollFade>
-                <ScrollFade>
-                  <div className="mt-8 max-w-2xl space-y-6 text-[15.5px] font-light leading-[1.9] text-white/55">
-                    <p>
-                      Tourbillon grew out of a long fascination with Vacheron Constantin — the
-                      history, the restraint of the design, and the sheer density of mechanical
-                      detail folded into something you can wear on a wrist. The more you look,
-                      the more there is to see.
-                    </p>
-                    <p>
-                      That fascination became a question: what would it take to build a place
-                      worthy of pieces like these? Not a plain product list, but a platform with
-                      the patience of a good boutique — somewhere to browse, compare, ask, and
-                      return to.
-                    </p>
-                  </div>
-                </ScrollFade>
-                <ScrollFade>
-                  <blockquote className="mt-10 max-w-2xl border-l border-[#bfa68a]/40 pl-7 font-playfair text-xl italic leading-relaxed text-[#f0e6d2]/85 md:text-2xl">
-                    How an object keeps time is a story worth telling well.
-                  </blockquote>
-                </ScrollFade>
+            <ScrollFade>
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.45em] text-[#bfa68a]/80">
+                  Where it started
+                </p>
+                <h2
+                  className="mt-5 font-playfair font-light leading-[1.12] tracking-[-0.005em] text-[#f0e6d2]"
+                  style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
+                >
+                  A quiet obsession with
+                  <br className="hidden sm:block" />{" "}
+                  <span className="italic text-[#f0e6d2]/70">how time is kept.</span>
+                </h2>
               </div>
-
-              {/* Sticky watch — winds as you scroll the story */}
-              <aside className="hidden lg:sticky lg:top-28 lg:flex lg:h-fit lg:flex-col lg:items-center lg:gap-4">
-                <PocketWatch size={240} variant="champagne" />
-                <div className="text-center">
-                  <p className="font-playfair text-base italic text-[#f0e6d2]/90">
-                    Grand Complication
-                  </p>
-                  <p className="mt-1.5 text-[11px] leading-6 tracking-wide text-white/40">
-                    Perpetual calendar, moon phase, running seconds.
-                  </p>
-                </div>
-              </aside>
-            </div>
+            </ScrollFade>
+            <ScrollFade>
+              <div className="mt-8 max-w-2xl space-y-6 text-[15.5px] font-light leading-[1.9] text-white/55">
+                <p>
+                  Tourbillon grew out of a long fascination with Vacheron Constantin — the
+                  history, the restraint of the design, and the sheer density of mechanical
+                  detail folded into something you can wear on a wrist. The more you look, the
+                  more there is to see.
+                </p>
+                <p>
+                  That fascination became a question: what would it take to build a place
+                  worthy of pieces like these? Not a plain product list, but a platform with
+                  the patience of a good boutique — somewhere to browse, compare, ask, and
+                  return to.
+                </p>
+              </div>
+            </ScrollFade>
+            <ScrollFade>
+              <blockquote className="mt-10 max-w-2xl border-l border-[#bfa68a]/40 pl-7 font-playfair text-xl italic leading-relaxed text-[#f0e6d2]/85 md:text-2xl">
+                How an object keeps time is a story worth telling well.
+              </blockquote>
+            </ScrollFade>
           </section>
 
           {/* Featured watches from the catalogue */}
