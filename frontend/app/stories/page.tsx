@@ -1,28 +1,47 @@
-// Stories page — editorial brand storytelling for Tourbillon.
-// A four-chapter journal: Origin (with the winding pocket watch), In passing
-// (aphorisms on time), The measure (how we curate), and What it's for (back
-// into the platform). Visual language matches the Trend page (Playfair, gold
-// accents, ScrollFade) but the structure is deliberately text-forward, not a feed.
+// Stories page — the personal story behind Tourbillon.
+// Answers why the platform exists and how a fascination with fine watches,
+// and Vacheron Constantin in particular, started it. The pocket watch is purely
+// decorative: it lives large in the first section then docks to the top-right
+// corner on scroll (see StoriesPocketWatch). The engineering story lives on
+// /portfolio. Visual language: Playfair, gold #bfa68a, cream #f0e6d2, ScrollFade.
 import Link from "next/link";
-import PocketWatch from "../components/decorations/PocketWatch";
 import ScrollFade from "../scrollMotion/ScrollFade";
 import StoriesActions from "./StoriesActions";
+import StoriesPocketWatch from "./StoriesPocketWatch";
 
-// Chapter 02 — sparse single lines, revealed one at a time on scroll.
-const APHORISMS = [
-  "Precision you wear, not something you check.",
-  "The best complication is patience.",
-  "A machine we forgive for repeating itself.",
-  "Kept by hand. Worn for a life.",
+// A few dates that matter to this story — the house, the namesake, and now.
+const TIMELINE = [
+  { year: "1755", text: "Vacheron Constantin is founded in Geneva, and never once stops." },
+  {
+    year: "1801",
+    text: "Breguet patents the tourbillon — the complication this site borrows its name from.",
+  },
+  { year: "Now", text: "Tourbillon gathers pieces like these in one place, to study and to keep." },
 ];
 
-// Chapter 03 — what we look for, condensed to a word and a short line.
-const PRINCIPLES = [
-  { index: "01", title: "Proportion", tagline: "Nothing added, nothing spare." },
-  { index: "02", title: "Finish", tagline: "Light, handled with patience." },
-  { index: "03", title: "Movement", tagline: "Felt before it is understood." },
-  { index: "04", title: "Restraint", tagline: "Knowing when to stop." },
-];
+// Technical-drawing corner marks for framed blocks.
+function CornerMarks() {
+  const base = "pointer-events-none absolute h-3 w-3 border-[#bfa68a]/40";
+  return (
+    <>
+      <span className={`${base} left-0 top-0 border-l border-t`} />
+      <span className={`${base} right-0 top-0 border-r border-t`} />
+      <span className={`${base} bottom-0 left-0 border-b border-l`} />
+      <span className={`${base} bottom-0 right-0 border-b border-r`} />
+    </>
+  );
+}
+
+// Horology data readout — label, dotted leader, value.
+function SpecRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline gap-3">
+      <span className="text-[10px] uppercase tracking-[0.28em] text-[#bfa68a]/60">{label}</span>
+      <span className="h-px flex-1 translate-y-[-0.15em] border-b border-dotted border-[#bfa68a]/25" />
+      <span className="text-[11px] font-light tracking-wide text-white/70">{value}</span>
+    </div>
+  );
+}
 
 function ChapterMark({ number, label }: { number: string; label: string }) {
   return (
@@ -34,53 +53,27 @@ function ChapterMark({ number, label }: { number: string; label: string }) {
   );
 }
 
-// One aphorism — large Playfair italic, alignment alternating down the page so
-// the eye drifts as the watch above keeps winding.
-function Aphorism({ text, index }: { text: string; index: number }) {
-  const right = index % 2 === 1;
-  return (
-    <div className={`flex ${right ? "justify-end text-right" : "justify-start text-left"}`}>
-      <div className="max-w-xl">
-        <span className={`mb-6 block h-px w-12 bg-[#bfa68a]/40 ${right ? "ml-auto" : ""}`} />
-        <p
-          className="font-playfair font-light italic leading-[1.18] text-[#f0e6d2]/85"
-          style={{ fontSize: "clamp(1.6rem, 3.6vw, 3rem)" }}
-        >
-          {text}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// One curation principle — a word and a single short line. No paragraphs.
-function Measure({ index, title, tagline }: { index: string; title: string; tagline: string }) {
-  return (
-    <div className="group border-t border-[#bfa68a]/12 pt-6">
-      <span className="text-[10px] tracking-[0.3em] text-[#bfa68a]/45">{index}</span>
-      <h3 className="mt-3 font-playfair text-2xl font-light text-[#f0e6d2] transition-colors duration-500 group-hover:text-white md:text-3xl">
-        {title}
-      </h3>
-      <p className="mt-2 text-[14px] font-light italic leading-relaxed text-white/45">{tagline}</p>
-    </div>
-  );
-}
-
 export default function StoriesPage() {
   return (
-    <main className="relative overflow-hidden pt-10 text-white">
-      <section className="relative px-10 py-20 pt-20 lg:px-24">
+    <main className="relative min-h-screen pt-10 text-white">
+      {/* Decorative winding watch — fixed, docks to the corner on scroll */}
+      <StoriesPocketWatch />
+
+      <section className="relative z-10 px-6 py-20 pt-20 sm:px-10 lg:px-24">
         <div>
-          {/* Hero */}
+          {/* Hero — masthead */}
           <ScrollFade>
             <div className="max-w-4xl">
-              <div className="mb-10 h-px w-10 bg-[#bfa68a]/55" />
-              <p className="mb-6 text-[10px] uppercase tracking-[0.5em] text-[#bfa68a]/70">
-                The Tourbillon Journal
-              </p>
+              <div className="flex flex-wrap items-center gap-4 text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/55">
+                <span>Vol. I</span>
+                <span className="h-px w-6 bg-[#bfa68a]/30" />
+                <span className="text-[#bfa68a]/80">The Tourbillon Journal</span>
+                <span className="h-px w-6 bg-[#bfa68a]/30" />
+                <span>MMXXVI</span>
+              </div>
               <h1
-                className="font-playfair font-light leading-[1.03] tracking-[-0.01em] text-[#f0e6d2]"
-                style={{ fontSize: "clamp(3rem, 6.8vw, 5.75rem)" }}
+                className="mt-9 font-playfair font-light leading-[1.03] tracking-[-0.01em] text-[#f0e6d2]"
+                style={{ fontSize: "clamp(2.6rem, 6.8vw, 5.75rem)" }}
               >
                 Every watch
                 <br />
@@ -89,114 +82,172 @@ export default function StoriesPage() {
               <div className="mt-10 flex max-w-2xl items-start gap-6">
                 <div className="mt-[0.7em] h-px w-6 flex-shrink-0 bg-[#bfa68a]/45" />
                 <p className="font-light leading-relaxed tracking-wide text-white/50 text-balance">
-                  Where Tourbillon began, the way we read a watch, and what this quiet corner
-                  of the web is for.
+                  How a fascination with one watchmaker turned into a place to browse, compare,
+                  and understand fine watches — and why I built it.
                 </p>
+              </div>
+              {/* Contents — masthead index of the chapters below */}
+              <div className="mt-12 grid max-w-2xl grid-cols-2 gap-x-10 gap-y-3 border-t border-[#bfa68a]/12 pt-6 sm:grid-cols-3">
+                {[
+                  ["01", "The spark"],
+                  ["02", "Vacheron Constantin"],
+                  ["03", "Why Tourbillon"],
+                ].map(([n, label]) => (
+                  <div key={n} className="flex items-baseline gap-2">
+                    <span className="font-playfair text-sm text-[#bfa68a]/50">{n}</span>
+                    <span className="text-[11px] uppercase tracking-[0.2em] text-white/40">
+                      {label}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           </ScrollFade>
 
-          {/* Chapter 01 — Origin. The winding pocket watch lives inside the
-              chapter, paired with the prose rather than floating between sections. */}
+          {/* Chapter 01 — The spark. How the passion began. */}
           <section className="mt-28 border-t border-[#bfa68a]/12 pt-12">
             <ScrollFade>
-              <ChapterMark number="01" label="Origin" />
+              <ChapterMark number="01" label="The spark" />
             </ScrollFade>
-
-            <div className="mt-8 grid gap-x-20 gap-y-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,340px)] lg:items-start">
-              {/* The story */}
-              <div>
-                <ScrollFade>
-                  <h2
-                    className="max-w-2xl font-playfair font-light leading-[1.12] tracking-[-0.005em] text-[#f0e6d2]"
-                    style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
-                  >
-                    A quiet obsession with{" "}
-                    <span className="italic text-[#f0e6d2]/70">how time is kept.</span>
-                  </h2>
-                </ScrollFade>
-                <ScrollFade>
-                  <div className="mt-10 max-w-2xl">
-                    {/* Lede with a drop cap — breaks the flat run of body copy */}
-                    <p className="text-[19px] font-light leading-[1.85] text-white/70">
-                      <span className="float-left mr-3.5 mt-2 font-playfair text-[68px] font-normal leading-[0.7] text-[#bfa68a]/85">
-                        T
-                      </span>
-                      ourbillon began as a fascination with Vacheron Constantin — the lineage,
-                      the restraint of the design, and the sheer density of mechanical detail
-                      folded into something you can wear on a wrist. The closer you look, the
-                      more there is to find.
-                    </p>
-                    <p className="mt-7 text-[15.5px] font-light leading-[1.9] text-white/45">
-                      That fascination turned into a question: what would it take to build a
-                      place worthy of pieces like these? Not another product grid, but somewhere
-                      with the patience of a good boutique — room to browse, compare, ask, and
-                      come back when you are ready.
-                    </p>
-                  </div>
-                </ScrollFade>
-                <ScrollFade>
-                  <blockquote className="mt-12 max-w-2xl border-l border-[#bfa68a]/40 pl-7 font-playfair text-xl italic leading-relaxed text-[#f0e6d2]/85 md:text-2xl">
-                    How an object keeps time is a story worth telling well.
-                  </blockquote>
-                </ScrollFade>
+            <ScrollFade>
+              <h2
+                className="mt-7 max-w-2xl font-playfair font-light leading-[1.12] tracking-[-0.005em] text-[#f0e6d2]"
+                style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
+              >
+                It started with{" "}
+                <span className="italic text-[#f0e6d2]/70">a single movement.</span>
+              </h2>
+            </ScrollFade>
+            <ScrollFade>
+              <div className="mt-10 max-w-2xl">
+                <p className="text-[19px] font-light leading-[1.85] text-white/70">
+                  <span className="float-left mr-3.5 mt-2 font-playfair text-[68px] font-normal leading-[0.7] text-[#bfa68a]/85">
+                    I
+                  </span>
+                  didn&apos;t grow up around watchmaking. What pulled me in was a single photograph
+                  — a movement opened up, bridges chamfered by hand, every wheel placed with a logic
+                  I didn&apos;t yet understand. I wanted to know how something so small could be made
+                  so deliberately.
+                </p>
+                <p className="mt-7 text-[15.5px] font-light leading-[1.9] text-white/45">
+                  The more I read, the less it felt like jewellery and the more it felt like
+                  engineering you could wear. A good watch hides decades of decisions behind a quiet
+                  dial — and that gap, between how simple it looks and how hard it is to make, is
+                  what I fell for.
+                </p>
               </div>
-
-              {/* The winding watch — part of the chapter, sticky beside the prose */}
-              <ScrollFade>
-                <figure className="relative flex flex-col items-center lg:sticky lg:top-28">
-                  <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_center,rgba(191,166,138,0.12),transparent_68%)]" />
-                  <PocketWatch size={300} variant="champagne" />
-                  <figcaption className="mt-7 max-w-[16rem] text-center">
-                    <p className="text-[10px] uppercase tracking-[0.42em] text-[#bfa68a]/75">
-                      Grand Complication
-                    </p>
-                    <p className="mt-2.5 text-[12.5px] font-light italic leading-relaxed text-white/40">
-                      Wound by the scroll — five hands turning as the story unfolds.
-                    </p>
-                  </figcaption>
-                </figure>
-              </ScrollFade>
-            </div>
-          </section>
-
-          {/* Chapter 02 — In passing. Sparse aphorisms, all mood, no prose. */}
-          <section className="mt-28 border-t border-[#bfa68a]/12 pt-12">
-            <ScrollFade>
-              <ChapterMark number="02" label="In passing" />
             </ScrollFade>
-            <div className="mt-20 flex flex-col gap-28 md:gap-36">
-              {APHORISMS.map((text, i) => (
-                <ScrollFade key={text}>
-                  <Aphorism text={text} index={i} />
-                </ScrollFade>
-              ))}
-            </div>
+            <ScrollFade>
+              <blockquote className="mt-12 max-w-2xl border-l border-[#bfa68a]/40 pl-7 font-playfair text-xl italic leading-relaxed text-[#f0e6d2]/85 md:text-2xl">
+                How an object keeps time is a story worth telling well.
+              </blockquote>
+            </ScrollFade>
           </section>
 
-          {/* Chapter 03 — The measure. What we look for, condensed to a word each. */}
+          {/* Chapter 02 — Vacheron Constantin. Why this house in particular. */}
           <section className="mt-28 border-t border-[#bfa68a]/12 pt-12">
             <ScrollFade>
-              <ChapterMark number="03" label="The measure" />
+              <ChapterMark number="02" label="Vacheron Constantin" />
             </ScrollFade>
             <ScrollFade>
               <h2
                 className="mt-7 max-w-3xl font-playfair font-light leading-[1.12] text-[#f0e6d2]"
                 style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
               >
-                What we look for, <span className="italic text-[#f0e6d2]/70">before anything else.</span>
+                One house kept{" "}
+                <span className="italic text-[#f0e6d2]/70">coming back to me.</span>
               </h2>
             </ScrollFade>
-            <div className="mt-14 grid gap-x-16 gap-y-12 sm:grid-cols-2">
-              {PRINCIPLES.map((principle) => (
-                <ScrollFade key={principle.index}>
-                  <Measure {...principle} />
-                </ScrollFade>
-              ))}
+
+            <div className="mt-10 grid gap-x-16 gap-y-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,300px)] lg:items-start">
+              <ScrollFade>
+                <div className="max-w-2xl space-y-7">
+                  <p className="text-[15.5px] font-light leading-[1.9] text-white/55">
+                    Founded in Geneva in 1755 and never once interrupted, Vacheron Constantin is the
+                    oldest watchmaker in continuous operation. But it wasn&apos;t the age that held
+                    me — it was the restraint. Where others shout, Vacheron tends to whisper.
+                  </p>
+                  <p className="text-[15.5px] font-light leading-[1.9] text-white/45">
+                    The finishing, the proportion, the Maltese cross stamped on a movement you may
+                    never see — all of it reflects a belief that the parts no one notices still
+                    deserve care. That idea quietly shaped how I wanted this whole project to feel.
+                  </p>
+                </div>
+              </ScrollFade>
+
+              {/* A small dossier of facts + the dates that matter */}
+              <ScrollFade>
+                <div className="relative border border-[#bfa68a]/15 p-7">
+                  <CornerMarks />
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-[#bfa68a]/55">
+                    The house
+                  </p>
+                  <div className="mt-5 space-y-3">
+                    <SpecRow label="Founded" value="Geneva, 1755" />
+                    <SpecRow label="Standing" value="Oldest, unbroken" />
+                    <SpecRow label="Emblem" value="Maltese cross" />
+                    <SpecRow label="What I admire" value="Restraint" />
+                  </div>
+                  <ol className="mt-7 space-y-5 border-t border-[#bfa68a]/12 pt-6">
+                    {TIMELINE.map((m) => (
+                      <li key={m.year} className="flex gap-4">
+                        <span className="font-playfair text-lg font-light leading-none text-[#f0e6d2]/80">
+                          {m.year}
+                        </span>
+                        <span className="text-[12.5px] font-light leading-relaxed text-white/45">
+                          {m.text}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </ScrollFade>
             </div>
           </section>
 
-          {/* Chapter 04 — What it's for. The journal turns back into the platform. */}
+          {/* Chapter 03 — Why Tourbillon. Why the platform was created. */}
+          <section className="mt-28 border-t border-[#bfa68a]/12 pt-12">
+            <ScrollFade>
+              <ChapterMark number="03" label="Why Tourbillon" />
+            </ScrollFade>
+            <ScrollFade>
+              <h2
+                className="mt-7 max-w-3xl font-playfair font-light leading-[1.12] text-[#f0e6d2]"
+                style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
+              >
+                A place with the{" "}
+                <span className="italic text-[#f0e6d2]/70">patience of a boutique.</span>
+              </h2>
+            </ScrollFade>
+            <ScrollFade>
+              <div className="mt-10 max-w-2xl space-y-7">
+                <p className="text-[15.5px] font-light leading-[1.9] text-white/55">
+                  Shopping for watches online usually means a wall of thumbnails and a price filter.
+                  Little of it helps you understand what you are looking at, or which piece actually
+                  suits you. I wanted the opposite — somewhere unhurried, where a watch is allowed to
+                  explain itself.
+                </p>
+                <p className="text-[15.5px] font-light leading-[1.9] text-white/45">
+                  So I built one, end to end: search you can speak to in plain English, comparisons
+                  with real context, a concierge that answers questions, and saved pieces you can
+                  return to. It is a personal project, but I made it work like a real product.
+                </p>
+                <p className="text-[14px] font-light leading-relaxed text-white/40">
+                  The engineering behind it — the stack, the architecture, the trade-offs — lives on
+                  the{" "}
+                  <Link
+                    href="/portfolio"
+                    className="text-[#bfa68a] underline decoration-[#bfa68a]/30 underline-offset-4 transition-colors hover:text-[#f0e6d2]"
+                  >
+                    portfolio
+                  </Link>{" "}
+                  page.
+                </p>
+              </div>
+            </ScrollFade>
+          </section>
+
+          {/* Chapter 04 — What it's for. The story turns back into the platform. */}
           <section className="mt-28 border-t border-[#bfa68a]/12 pt-12">
             <ScrollFade>
               <ChapterMark number="04" label="What it's for" />
@@ -212,19 +263,22 @@ export default function StoriesPage() {
             <StoriesActions />
           </section>
 
-          {/* Closing CTA */}
-          <section className="mt-28 border-t border-[#bfa68a]/12 pt-12">
+          {/* Closing CTA — framed finale */}
+          <section className="mt-28">
             <ScrollFade>
-              <div className="max-w-2xl">
+              <div className="relative border border-[#bfa68a]/15 px-6 py-16 text-center sm:px-16">
+                <CornerMarks />
+                <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,rgba(191,166,138,0.08),transparent_70%)]" />
+                <p className="text-[10px] uppercase tracking-[0.5em] text-[#bfa68a]/60">Fin</p>
                 <h2
-                  className="font-playfair font-light leading-[1.12] text-[#f0e6d2]"
-                  style={{ fontSize: "clamp(1.7rem, 3.2vw, 2.6rem)" }}
+                  className="mx-auto mt-6 max-w-2xl font-playfair font-light leading-[1.12] text-[#f0e6d2]"
+                  style={{ fontSize: "clamp(1.9rem, 3.6vw, 3rem)" }}
                 >
                   Find the one that&apos;s <span className="italic text-[#f0e6d2]/70">yours.</span>
                 </h2>
-                <p className="mt-5 font-light leading-relaxed tracking-wide text-white/50">
-                  The full collection is a few clicks away — filter by brand, complication, or
-                  feel, and let it tell you its story.
+                <p className="mx-auto mt-5 max-w-xl font-light leading-relaxed tracking-wide text-white/50">
+                  The full collection is a few clicks away — filter by brand, complication, or feel,
+                  and let it tell you its story.
                 </p>
                 <Link
                   href="/watches"
