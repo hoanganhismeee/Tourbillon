@@ -1,8 +1,12 @@
 // Portfolio page — the maker's story behind Tourbillon.
 // Carries the personal intro, tech stack, architecture, and project notes
 // that used to live on /stories. Single column, no pocket watch decoration.
+// A faint guilloche (engine-turned) texture + grain gives the page depth.
 import Image from "next/image";
 import ScrollFade from "../scrollMotion/ScrollFade";
+
+const GRAIN =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
 
 function LinkedInIcon({ size = 16, className }: { size?: number; className?: string }) {
   return (
@@ -162,8 +166,29 @@ function Section({
 
 export default function PortfolioPage() {
   return (
-    <main className="px-6 pb-24 pt-20 text-white sm:px-10 lg:px-24">
-      <div className="mx-auto max-w-3xl space-y-16">
+    <main className="relative overflow-hidden px-6 pb-24 pt-20 text-white sm:px-10 lg:px-24">
+      {/* Guilloche cross-hatch — faint engine-turned texture across the page */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(45deg, rgba(191,166,138,0.022) 0 1px, transparent 1px 8px), repeating-linear-gradient(-45deg, rgba(191,166,138,0.022) 0 1px, transparent 1px 8px)",
+        }}
+      />
+      {/* Film grain */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0 opacity-[0.05] mix-blend-soft-light"
+        style={{ backgroundImage: GRAIN }}
+      />
+      {/* Top vignette glow */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[45vh] bg-[radial-gradient(ellipse_at_top,rgba(191,166,138,0.08),transparent_70%)]"
+      />
+
+      <div className="relative z-10 mx-auto max-w-3xl space-y-16">
         <ScrollFade>
           <section className="border-b border-[#bfa68a]/12 pb-14">
             <div className="max-w-3xl">
