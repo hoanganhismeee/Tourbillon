@@ -1,87 +1,52 @@
-// Final chapter actions for the Stories page — "what it's for".
-// Three detailed rows that turn the journal back into the platform: browse and
-// compare are links, ask opens the concierge via ChatContext. Client-only
-// because the concierge is opened through useChat().
+// Capability cards for the Stories page (Chapter 03) — "in the boutique".
+// A tidy feature grid, the way an e-commerce site surfaces what you can do.
+// "Ask" opens the concierge via ChatContext, so this stays a client component.
 'use client';
 
 import Link from 'next/link';
 import { useChat } from '@/contexts/ChatContext';
 
-type ActionRow = {
-  mark: string;
-  label: string;
-  phrase: string;
-  note: string;
-  href?: string;
-  opensChat?: boolean;
-};
+type Capability = { term: string; note: string; href?: string; opensChat?: boolean };
 
-const ROWS: ActionRow[] = [
-  {
-    mark: 'A',
-    label: 'Browse',
-    phrase: 'the catalogue, unhurried.',
-    note: 'Filter by brand, complication, price, or the feel you are after.',
-    href: '/watches',
-  },
-  {
-    mark: 'B',
-    label: 'Compare',
-    phrase: 'two pieces, side by side.',
-    note: 'Hold candidates together and read the differences that matter.',
-    href: '/watches',
-  },
-  {
-    mark: 'C',
-    label: 'Ask',
-    phrase: 'the concierge, anything.',
-    note: 'A guided search that listens, then narrows the field for you.',
-    opensChat: true,
-  },
+const CAPABILITIES: Capability[] = [
+  { term: 'Search', note: 'Describe the watch you have in mind, in plain English.', href: '/smart-search' },
+  { term: 'Compare', note: 'Hold pieces side by side, differences surfaced.', href: '/compare' },
+  { term: 'Save', note: 'Keep a shortlist worth returning to.', href: '/favourites' },
+  { term: 'Concierge', note: 'Ask for guidance whenever you want it.', opensChat: true },
 ];
 
-function RowInner({ row }: { row: ActionRow }) {
+const CARD =
+  'group relative flex flex-col gap-2.5 border border-[#bfa68a]/15 bg-gradient-to-b from-white/[0.05] to-white/[0.01] p-5 text-left transition-all duration-500 hover:border-[#bfa68a]/40 hover:from-white/[0.08]';
+
+function Inner({ c }: { c: Capability }) {
   return (
     <>
-      <span className="flex flex-shrink-0 items-center justify-center self-start pt-1">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#bfa68a]/35 font-playfair text-[12px] text-[#bfa68a]/80 transition-colors duration-500 group-hover:border-[#bfa68a]/70 group-hover:text-[#bfa68a]">
-          {row.mark}
+      <span className="flex items-center justify-between">
+        <span className="font-playfair text-xl font-light text-[#f0e6d2] transition-colors duration-500 group-hover:text-white">
+          {c.term}
+        </span>
+        <span className="text-[#bfa68a]/45 transition-all duration-500 group-hover:translate-x-1 group-hover:text-[#bfa68a]">
+          →
         </span>
       </span>
-      <span className="flex-1">
-        <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <span className="font-playfair text-2xl font-light text-[#f0e6d2] transition-colors duration-500 group-hover:text-white md:text-3xl">
-            {row.label}
-          </span>
-          <span className="text-[14px] font-light italic text-white/45">{row.phrase}</span>
-        </span>
-        <span className="mt-2 block max-w-md text-[12.5px] font-light leading-relaxed text-white/35">
-          {row.note}
-        </span>
-      </span>
-      <span className="self-center text-lg text-[#bfa68a]/40 transition-all duration-500 group-hover:translate-x-1.5 group-hover:text-[#bfa68a]">
-        →
-      </span>
+      <span className="text-[13px] font-light leading-relaxed text-white/55">{c.note}</span>
     </>
   );
 }
-
-const ROW_CLASS =
-  'group flex w-full items-start gap-6 border-t border-[#bfa68a]/12 py-8 text-left';
 
 export default function StoriesActions() {
   const { openChat } = useChat();
 
   return (
-    <div className="mt-12">
-      {ROWS.map((row) =>
-        row.opensChat ? (
-          <button key={row.label} type="button" onClick={openChat} className={ROW_CLASS}>
-            <RowInner row={row} />
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {CAPABILITIES.map((c) =>
+        c.opensChat ? (
+          <button key={c.term} type="button" onClick={openChat} className={CARD}>
+            <Inner c={c} />
           </button>
         ) : (
-          <Link key={row.label} href={row.href!} className={ROW_CLASS}>
-            <RowInner row={row} />
+          <Link key={c.term} href={c.href!} className={CARD}>
+            <Inner c={c} />
           </Link>
         )
       )}
