@@ -172,7 +172,8 @@ Email: `TestEmailDto`
 | `/favourites` | Saved watches + collection filtering/sorting |
 | `/contact` | Contact advisor inquiry form |
 | `/search` | Redirects to `/smart-search` |
-| `/stories` | Curated editorial articles (5 horological stories) |
+| `/stories` | Editorial brand storytelling: founding story, pocket-watch craft centerpiece, featured catalogue strip |
+| `/portfolio` | Maker portfolio (about, tech stack, architecture) — URL-only, not linked from nav/footer |
 | `/trend` | Trend-led Watch DNA page with auto behavior analysis |
 | `/login`, `/register` | Auth |
 | `/login/magic` | Magic link OTP entry |

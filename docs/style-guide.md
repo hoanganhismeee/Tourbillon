@@ -30,6 +30,22 @@ Allowed font families:
 - Color: `text-white/35` to `text-white/60`
 - Utilities: `text-balance`
 
+### Editorial / Long-form Body
+For story, journal, and long-form reading pages, prioritise legibility over the
+muted register above:
+- Lead paragraph: `text-[18px]`–`text-[19px]`, `text-white/75`, `leading-[1.8]`
+- Body: `text-[15px]`–`text-[16px]`, `text-white/60`–`/70`, `leading-[1.85]`
+- Reserve `text-white/35`–`/45` for captions and de-emphasised meta, not primary copy.
+
+## Surfaces & Depth
+
+Long, sparse, dark pages read as empty voids. Give content weight with surfaces
+and atmosphere (keep the palette — no new colours):
+- **Panel:** `border border-[#bfa68a]/15 bg-gradient-to-b from-white/[0.045] to-white/[0.01]` with generous padding. Use for dossiers, quotes, and feature cards.
+- **Corner marks:** small `border-[#bfa68a]/40` L-shapes at panel corners for a technical-drawing detail.
+- **Atmosphere:** soft radial glows, e.g. `bg-[radial-gradient(ellipse_at_74%_26%,rgba(191,166,138,0.13),transparent_60%)]`, behind content (`-z-0`) to lift the flat background.
+- **Ghost numerals:** large faint `font-playfair text-[#bfa68a]/[0.07]` chapter numbers behind headings to anchor empty margins.
+
 ### Blockquotes
 - Container: `border-l-2 border-[#bfa68a]/60 pl-5 py-1 mb-8`
 - Text: `text-[#f0e6d2] font-playfair italic leading-relaxed`
