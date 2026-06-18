@@ -1,10 +1,9 @@
 // Decorative pocket watch for the Stories page.
-// Sits large in the hero, then eases down into a small corner emblem as you scroll.
-// It never disappears: instead of hiding when the navbar returns, it shares the
-// top-right corner with it — sitting flush at the top while the navbar is hidden
-// (scrolling down), and tucking just below the navbar when it slides back in
-// (scrolling up). A continuous lerp loop eases position, scale, and the navbar tuck
-// for buttery motion. A single fixed element, so the winding hands never stop.
+// Sits large in the hero, then eases down into a small emblem on the upper-right as
+// you scroll — set in from the corner and well below the navbar so the two never
+// collide. Position and scale are a single eased function of scroll progress, so the
+// motion glides and the watch stays visible throughout (no direction-based hiding).
+// One fixed element, so the winding hands never stop. Decorative only.
 'use client';
 
 import { useEffect, useRef } from 'react';
@@ -22,21 +21,18 @@ export default function StoriesPocketWatch() {
     let raf = 0;
     let vw = window.innerWidth;
     let vh = window.innerHeight;
-    let lastY = window.scrollY;
-    let dir: 'up' | 'down' = 'down';
 
     const clamp = (n: number) => Math.min(1, Math.max(0, n));
     const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-    // Smoothed state, eased toward their targets every frame.
-    let prog = clamp(window.scrollY / (vh * 0.6)); // 0 = hero, 1 = docked
-    let navShown = 1; // 1 = navbar visible (tuck below it), 0 = hidden (hug top)
+    // Smoothed scroll progress, eased toward its target every frame. 0 = hero, 1 = docked.
+    let prog = clamp(window.scrollY / (vh * 0.6));
     let shown = 0; // opacity, eases to 1 once positioned
     let started = false;
 
-    // Breakpoint-aware home (large) and docked (small) geometry, anchored to the
-    // right edge so the watch only ever shrinks up toward the corner. Two docked
-    // Y targets let the emblem share the corner with the navbar instead of hiding.
+    // Breakpoint-aware home (large) and docked (small) geometry, anchored to the right
+    // edge. The docked spot is set in from the corner and below the navbar so they never
+    // touch — the watch reads as a floating emblem, not a corner sticker.
     const geometry = () => {
       const mobile = vw < 768;
       let largeW: number;
@@ -44,20 +40,18 @@ export default function StoriesPocketWatch() {
       else if (vw >= 1024) largeW = 280;
       else if (vw >= 768) largeW = 220;
       else largeW = 116;
-      // A generous docked emblem — readable, not a speck.
-      const smallW = mobile ? 70 : 108;
+      const smallW = mobile ? 58 : 92;
       const pad = vw >= 1024 ? 96 : vw >= 640 ? 40 : 24;
       const largeH = largeW * 1.2;
-      const dockRight = mobile ? 16 : 28;
+      const dockRight = mobile ? 14 : 48; // in from the right edge
+      const dockTop = mobile ? 72 : 150; // clear of the navbar
       return {
-        mobile,
         largeW,
         smallW,
         xLarge: vw - largeW - pad,
-        yLarge: mobile ? Math.max(150, vh * 0.26) : Math.max(132, (vh - largeH) / 2),
+        yLarge: mobile ? Math.max(150, vh * 0.26) : Math.max(150, (vh - largeH) / 2),
         xSmall: vw - smallW - dockRight,
-        yTop: mobile ? 12 : 18, // navbar hidden — hug the very corner
-        yTuck: mobile ? 64 : 104, // navbar visible — slide below the navbar bar
+        ySmall: dockTop,
       };
     };
 
@@ -69,17 +63,9 @@ export default function StoriesPocketWatch() {
       prog += (targetP - prog) * 0.14;
       if (Math.abs(targetP - prog) < 0.0004) prog = targetP;
 
-      // Mirror the navbar: it shows while scrolling up, hides while scrolling down.
-      // Ease the tuck so the emblem glides between corner and below-navbar.
-      const navTarget = dir === 'up' ? 1 : 0;
-      navShown += (navTarget - navShown) * 0.12;
-
       const w = lerp(g.largeW, g.smallW, prog);
       const x = lerp(g.xLarge, g.xSmall, prog);
-      // The navbar tuck only matters once docked; in the hero the watch sits low
-      // and centered, well clear of the navbar regardless of direction.
-      const dockY = lerp(g.yTop, g.yTuck, navShown);
-      const y = lerp(g.yLarge, dockY, prog);
+      const y = lerp(g.yLarge, g.ySmall, prog);
       el.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${w / BASE})`;
 
       // Always visible once mounted — a gentle fade-in only, never a hide.
@@ -89,13 +75,6 @@ export default function StoriesPocketWatch() {
       raf = requestAnimationFrame(frame);
     };
 
-    const onScroll = () => {
-      const y = window.scrollY;
-      const d = y - lastY;
-      if (d > 4) dir = 'down';
-      else if (d < -4) dir = 'up';
-      lastY = y;
-    };
     const onResize = () => {
       vw = window.innerWidth;
       vh = window.innerHeight;
@@ -111,11 +90,9 @@ export default function StoriesPocketWatch() {
     };
 
     start();
-    window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize);
     return () => {
       if (raf) cancelAnimationFrame(raf);
-      window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onResize);
     };
   }, []);
