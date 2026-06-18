@@ -51,7 +51,7 @@ export default function StoriesPocketWatch() {
       // never collide on narrower screens where the headline is proportionally wider.
       const headlineRight = 96 + 6.7 * Math.min(vw * 0.068, 92);
       const xLarge = desktop
-        ? Math.round(Math.max(headlineRight + 32, vw * 0.5 - largeW / 2))
+        ? Math.round(Math.max(headlineRight + 40, vw * 0.7 - largeW / 2))
         : vw - largeW - pad;
       return {
         largeW,
@@ -112,8 +112,6 @@ export default function StoriesPocketWatch() {
       className="pointer-events-none fixed left-0 top-0 z-40 origin-top-left opacity-0 will-change-transform"
       style={{ width: BASE, height: BASE * 1.2, filter: 'drop-shadow(0 22px 48px rgba(0,0,0,0.55))' }}
     >
-      {/* Soft halo behind the dial gives the watch presence and depth */}
-      <div className="absolute left-1/2 top-[56%] -z-10 h-[88%] w-[88%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(191,166,138,0.20),transparent_62%)]" />
       <PocketWatch size={BASE} variant="champagne" />
     </div>
   );
