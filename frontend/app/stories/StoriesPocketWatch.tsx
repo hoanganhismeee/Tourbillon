@@ -40,15 +40,23 @@ export default function StoriesPocketWatch() {
       else if (vw >= 1024) largeW = 280;
       else if (vw >= 768) largeW = 220;
       else largeW = 116;
+      const desktop = vw >= 1024;
       const smallW = mobile ? 58 : 92;
       const pad = vw >= 1024 ? 96 : vw >= 640 ? 40 : 24;
       const largeH = largeW * 1.2;
       const dockRight = mobile ? 14 : 48; // in from the right edge
       const dockTop = mobile ? 72 : 150; // clear of the navbar
+      // Hero: centre the watch on the page's horizontal middle, but never left of the
+      // "keeps a story." headline (approx right edge below + a small gap) so they
+      // never collide on narrower screens where the headline is proportionally wider.
+      const headlineRight = 96 + 6.7 * Math.min(vw * 0.068, 92);
+      const xLarge = desktop
+        ? Math.round(Math.max(headlineRight + 32, vw * 0.5 - largeW / 2))
+        : vw - largeW - pad;
       return {
         largeW,
         smallW,
-        xLarge: vw - largeW - pad,
+        xLarge,
         yLarge: mobile ? Math.max(150, vh * 0.26) : Math.max(150, (vh - largeH) / 2),
         xSmall: vw - smallW - dockRight,
         ySmall: dockTop,
