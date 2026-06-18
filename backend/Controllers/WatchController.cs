@@ -217,18 +217,22 @@ public class WatchController : ControllerBase
     {
         var featuredCollectionIds = new[] { 2, 6, 10, 13, 17, 27 };
 
-        var watches = new List<Watch>();
-        foreach (var collId in featuredCollectionIds)
-        {
-            var watch = await _context.Watches
-                .Include(w => w.Brand)
-                .Include(w => w.Collection)
-                .Include(w => w.EditorialLink)
-                    .ThenInclude(l => l!.EditorialContent)
-                .Where(w => w.CollectionId == collId)
-                .FirstOrDefaultAsync();
-            if (watch != null) watches.Add(watch);
-        }
+        // One round-trip for all featured collections, then pick the first watch per
+        // collection in the curated order (was a 6-query loop — each adding latency).
+        var candidates = await _context.Watches
+            .AsNoTracking()
+            .Include(w => w.Brand)
+            .Include(w => w.Collection)
+            .Include(w => w.EditorialLink)
+                .ThenInclude(l => l!.EditorialContent)
+            .Where(w => w.CollectionId.HasValue && featuredCollectionIds.Contains(w.CollectionId.Value))
+            .ToListAsync();
+
+        var watches = featuredCollectionIds
+            .Select(id => candidates.FirstOrDefault(w => w.CollectionId == id))
+            .Where(w => w != null)
+            .Select(w => w!)
+            .ToList();
 
         var dtos = watches.Select(w => WatchDto.FromWatch(w, _storage, editorial: w.EditorialLink?.EditorialContent)).ToList();
         return Ok(dtos);

@@ -18,6 +18,8 @@ export const ROUTES = {
   CONTACT: '/contact',
   STORIES: '/stories',
   TREND: '/trend',
+  // URL-only — intentionally not linked from the nav or footer.
+  PORTFOLIO: '/portfolio',
 } as const;
 
 export const DYNAMIC_ROUTES = {
