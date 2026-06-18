@@ -43,27 +43,54 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddMemoryCache();
 
 // Add DbContext (PostgreSQL) with pgvector support.
-// MaxPoolSize is pinned for the EF data source so we never exceed Neon's hard
-// connection cap (free tier ~100). Hangfire keeps the original string and runs
-// its own pool independently.
+// Connections are tuned so Neon's serverless compute can scale to zero: idle
+// pooled connections are pruned within seconds (default 300s would hold the
+// compute awake well past Neon's ~5min autosuspend window) and MinPoolSize=0
+// means nothing is kept open when traffic stops. MaxPoolSize is pinned on the
+// EF data source so we never exceed Neon's hard connection cap.
 var pgConnectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
-var efConnectionString = new NpgsqlConnectionStringBuilder(pgConnectionString)
+var basePgBuilder = new NpgsqlConnectionStringBuilder(pgConnectionString)
+{
+    MinPoolSize = 0,
+    ConnectionIdleLifetime = 15,
+    ConnectionPruningInterval = 5,
+};
+var efConnectionString = new NpgsqlConnectionStringBuilder(basePgBuilder.ConnectionString)
 {
     MaxPoolSize = 20,
 }.ToString();
+var hangfireConnectionString = basePgBuilder.ConnectionString;
 var pgDataSourceBuilder = new NpgsqlDataSourceBuilder(efConnectionString);
 pgDataSourceBuilder.UseVector();
 var pgDataSource = pgDataSourceBuilder.Build();
 builder.Services.AddDbContext<TourbillonContext>(options =>
     options.UseNpgsql(pgDataSource, npgsqlOptions => npgsqlOptions.UseVector()));
 
-// Register Hangfire with PostgreSQL storage for durable background jobs
+// Register Hangfire with PostgreSQL storage for durable background jobs.
+// Polling/heartbeat intervals are stretched from their ~15-30s defaults to a
+// minute so an idle backend stops querying Postgres long enough for Neon to
+// suspend. Jobs are enqueued by user actions (which wake the container), so a
+// sub-minute dispatch delay is an acceptable trade for the compute savings.
 builder.Services.AddHangfire(config => config
     .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
     .UseSimpleAssemblyNameTypeSerializer()
     .UseRecommendedSerializerSettings()
-    .UsePostgreSqlStorage(o => o.UseNpgsqlConnection(pgConnectionString)));
-builder.Services.AddHangfireServer();
+    .UsePostgreSqlStorage(
+        o => o.UseNpgsqlConnection(hangfireConnectionString),
+        new PostgreSqlStorageOptions
+        {
+            QueuePollInterval = TimeSpan.FromMinutes(1),
+            InvisibilityTimeout = TimeSpan.FromMinutes(30),
+            DistributedLockTimeout = TimeSpan.FromMinutes(10),
+            UseSlidingInvisibilityTimeout = true,
+        }));
+builder.Services.AddHangfireServer(options =>
+{
+    options.WorkerCount = 2;
+    options.SchedulePollingInterval = TimeSpan.FromMinutes(1);
+    options.HeartbeatInterval = TimeSpan.FromMinutes(1);
+    options.ServerCheckInterval = TimeSpan.FromMinutes(5);
+});
 
 // Register Redis for distributed state (rate limiting, auth codes, chat sessions)
 var redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
