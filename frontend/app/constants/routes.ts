@@ -20,6 +20,7 @@ export const ROUTES = {
   TREND: '/trend',
   // URL-only — intentionally not linked from the nav or footer.
   PORTFOLIO: '/portfolio',
+  PORTFOLIO_TOURBILLON: '/portfolio/tourbillon',
 } as const;
 
 export const DYNAMIC_ROUTES = {
