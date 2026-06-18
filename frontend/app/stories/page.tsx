@@ -92,11 +92,15 @@ export default function StoriesPage() {
               <span className="italic text-[#f0e6d2]/55">keeps a story.</span>
             </h1>
             <div className="mt-10 flex max-w-2xl items-start gap-6">
-              <div className="mt-[0.7em] h-px w-6 flex-shrink-0 bg-[#bfa68a]/45" />
-              <p className="text-[16px] font-light leading-relaxed tracking-wide text-white/65 text-balance">
-                It started with a single movement and the urge to look closer. We built our
-                platform as a calmer place to do exactly that — and to help you find the watch
-                that becomes yours.
+              <div className="mt-[0.95em] h-px w-12 flex-shrink-0 bg-gradient-to-r from-[#bfa68a]/75 to-transparent" />
+              <p className="text-[18px] font-light leading-[1.9] tracking-wide text-white/70 text-balance">
+                It started with{" "}
+                <span className="font-playfair text-[1.18em] italic text-[#f0e6d2]">
+                  a single movement
+                </span>{" "}
+                and the urge to look closer. We built our platform as a calmer place to do exactly
+                that — and to help you find the watch that{" "}
+                <span className="text-[#f0e6d2]">becomes yours.</span>
               </p>
             </div>
           </div>
