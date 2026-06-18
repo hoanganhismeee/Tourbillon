@@ -9,10 +9,10 @@ import { useChat } from '@/contexts/ChatContext';
 type Capability = { term: string; note: string; href?: string; opensChat?: boolean };
 
 const CAPABILITIES: Capability[] = [
-  { term: 'Search', note: 'Describe the watch you have in mind, in plain English.', href: '/smart-search' },
-  { term: 'Compare', note: 'Hold pieces side by side, differences surfaced.', href: '/compare' },
+  { term: 'Search', note: 'Describe the watch in your head, in plain words.', href: '/smart-search' },
+  { term: 'Compare', note: 'Hold pieces side by side, every difference surfaced.', href: '/compare' },
   { term: 'Save', note: 'Keep a shortlist worth returning to.', href: '/favourites' },
-  { term: 'Concierge', note: 'Ask for guidance whenever you want it.', opensChat: true },
+  { term: 'Concierge', note: 'Ask for guidance, whenever you want it.', opensChat: true },
 ];
 
 const CARD =

@@ -1,8 +1,11 @@
 // Stories page — Tourbillon's brand journal.
-// Reads like an e-commerce "Stories" section: an editorial cover, numbered
-// chapters on subtle surfaces, a facts dossier, and a feature grid that leads
-// into the catalogue. Text-forward (no imagery); the pocket watch is the only
-// decoration and docks to the corner on scroll (StoriesPocketWatch).
+// A text-forward editorial: a cover, a table of contents, three chapters, and a
+// closing CTA into the catalogue. The voice blends a personal opening (the founder
+// and the Vacheron Constantin movement that started it) with a refined house voice
+// for the maison and the catalogue close. It shares the site's warm background
+// (the global gradient, gold glow, and grain from globals.css) and lifts content
+// with translucent gold-tinted surfaces — no imagery; the docking pocket watch
+// (StoriesPocketWatch) is the only decoration.
 // Palette + voice per the house style: Playfair, gold #bfa68a, cream #f0e6d2.
 import Link from "next/link";
 import ScrollFade from "../scrollMotion/ScrollFade";
@@ -11,16 +14,16 @@ import StoriesPocketWatch from "./StoriesPocketWatch";
 
 // Chapters, used for the cover's table of contents.
 const CONTENTS = [
-  ["01", "The spark", "How an obsession with mechanics began."],
-  ["02", "Vacheron Constantin", "The house that set our standard."],
+  ["01", "The spark", "The one movement that started all of this."],
+  ["02", "Vacheron Constantin", "The oldest name in watchmaking — and our north star."],
   ["03", "Why Tourbillon", "A calmer way to choose your next piece."],
 ];
 
-// A few dates that frame the story — the house, the namesake, and now.
-const TIMELINE = [
-  { year: "1755", text: "Vacheron Constantin is founded in Geneva, and never once stops." },
-  { year: "1801", text: "Breguet patents the tourbillon — the complication this site is named for." },
-  { year: "Now", text: "Tourbillon gathers pieces in this spirit into one considered place." },
+// Three figures that frame the house — and the complication we took our name from.
+const STATS = [
+  { value: "1755", label: "Founded in Geneva" },
+  { value: "271", label: "Years, never interrupted" },
+  { value: "1801", label: "The tourbillon, patented" },
 ];
 
 const PANEL =
@@ -121,8 +124,8 @@ export default function StoriesPage() {
             <div className="mt-10 flex max-w-2xl items-start gap-6">
               <div className="mt-[0.7em] h-px w-6 flex-shrink-0 bg-[#bfa68a]/45" />
               <p className="text-[16px] font-light leading-relaxed tracking-wide text-white/65 text-balance">
-                The watchmaker that shaped our taste, the craft worth slowing down for, and the
-                idea behind a calmer place to find your next piece.
+                One movement changed how I look at time. This is the house that taught me to slow
+                down — and the quieter place I built so you could do the same.
               </p>
             </div>
           </div>
@@ -132,24 +135,24 @@ export default function StoriesPage() {
         <ScrollFade>
           <div className="mt-16 border-t border-[#bfa68a]/15 pt-6">
             <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/55">In this issue</p>
-            <div className="mt-7 grid gap-px overflow-hidden border border-[#bfa68a]/12 bg-[#bfa68a]/[0.06] sm:grid-cols-3">
+            <div className="mt-7 grid gap-px overflow-hidden border border-[#bfa68a]/15 bg-[#bfa68a]/12 sm:grid-cols-3">
               {CONTENTS.map(([n, title, desc]) => (
                 <div
                   key={n}
-                  className="group flex flex-col gap-3 bg-[#1a120b] p-6 transition-colors duration-500 hover:bg-[#211710]"
+                  className="group flex flex-col gap-3 bg-gradient-to-b from-white/[0.045] to-white/[0.01] p-6 transition-colors duration-500 hover:from-white/[0.08] hover:to-white/[0.02]"
                 >
                   <span className="font-playfair text-3xl font-light text-[#bfa68a]/45 transition-colors duration-500 group-hover:text-[#bfa68a]/75">
                     {n}
                   </span>
                   <span className="font-playfair text-lg font-light text-[#f0e6d2]">{title}</span>
-                  <span className="text-[13px] font-light leading-relaxed text-white/45">{desc}</span>
+                  <span className="text-[13px] font-light leading-relaxed text-white/50">{desc}</span>
                 </div>
               ))}
             </div>
           </div>
         </ScrollFade>
 
-        {/* Chapter 01 — The spark */}
+        {/* Chapter 01 — The spark (personal, first person) */}
         <section className="relative mt-24 border-t border-[#bfa68a]/12 pt-14">
           <ScrollFade>
             <ChapterHead number="01" label="The spark">
@@ -164,14 +167,15 @@ export default function StoriesPage() {
                   <span className="float-left mr-3.5 mt-2 font-playfair text-[66px] font-normal leading-[0.7] text-[#bfa68a]/85">
                     T
                   </span>
-                  ourbillon started the way most obsessions do — quietly. A single photograph of an
-                  open movement: bridges chamfered by hand, every wheel set with a logic that
-                  rewarded a closer look. A watch, it turned out, is engineering you can wear.
+                  he first time I really looked at a Vacheron Constantin — not the dial, the
+                  movement — I lost an afternoon to it. Bridges chamfered by hand, every wheel set
+                  with a logic that rewarded a closer look. A watch, it turned out, is engineering
+                  you are allowed to wear, and I have not looked at time the same way since.
                 </p>
                 <p className="mt-7 text-[16px] font-light leading-[1.85] text-white/60">
-                  The deeper you look, the more a fine watch gives back — decades of decisions kept
-                  behind a calm dial. We built this place for the people who feel that pull and want
-                  the room to follow it.
+                  Tourbillon grew out of that afternoon. I am not a watchmaker — I am someone who
+                  fell hard for the craft and wanted a calmer place to get close to it. So I built
+                  one, for the people who feel that same pull and want the room to follow it.
                 </p>
               </div>
             </ScrollFade>
@@ -181,17 +185,17 @@ export default function StoriesPage() {
                 <CornerMarks />
                 <span className="font-playfair text-5xl leading-none text-[#bfa68a]/35">&ldquo;</span>
                 <p className="mt-2 font-playfair text-2xl font-light italic leading-relaxed text-[#f0e6d2]/90 md:text-[26px]">
-                  How an object keeps time is a story worth telling well.
+                  A fine watch is engineering you are allowed to wear.
                 </p>
                 <figcaption className="mt-6 text-[10px] uppercase tracking-[0.3em] text-[#bfa68a]/60">
-                  The Tourbillon Journal
+                  Brandon — founder of Tourbillon
                 </figcaption>
               </figure>
             </ScrollFade>
           </div>
         </section>
 
-        {/* Chapter 02 — Vacheron Constantin */}
+        {/* Chapter 02 — Vacheron Constantin (house voice) */}
         <section className="relative mt-24 border-t border-[#bfa68a]/12 pt-14">
           <ScrollFade>
             <ChapterHead number="02" label="Vacheron Constantin">
@@ -206,12 +210,14 @@ export default function StoriesPage() {
                   Founded in Geneva in 1755 and never once interrupted, Vacheron Constantin is the
                   oldest watchmaker in continuous operation. What sets it apart isn&apos;t the age —
                   it&apos;s the restraint. Where others reach for spectacle, Vacheron keeps its voice
-                  low.
+                  low and lets the finishing speak.
                 </p>
                 <p className="text-[16px] font-light leading-[1.85] text-white/60">
-                  The finishing, the proportion, the Maltese cross on a caseback few will ever open —
-                  proof that the details no one sees still deserve care. It is the measure we hold
-                  every piece in the catalogue against.
+                  The chamfered bridges, the Maltese cross on a caseback few will ever open, the
+                  hand-work the Hallmark of Geneva demands — proof that the details no one sees still
+                  deserve care. Its founders left one instruction that still runs the place:{" "}
+                  <span className="text-white/80">do better if possible, and that is always possible.</span>{" "}
+                  It is the measure we hold every piece in this catalogue against.
                 </p>
               </div>
             </ScrollFade>
@@ -224,26 +230,46 @@ export default function StoriesPage() {
                   <SpecRow label="Founded" value="Geneva, 1755" />
                   <SpecRow label="Standing" value="Oldest, unbroken" />
                   <SpecRow label="Emblem" value="Maltese cross" />
-                  <SpecRow label="What we admire" value="Restraint" />
+                  <SpecRow label="Credo" value="Do better, always" />
                 </div>
-                <ol className="mt-7 space-y-5 border-t border-[#bfa68a]/15 pt-6">
-                  {TIMELINE.map((m) => (
-                    <li key={m.year} className="flex gap-4">
-                      <span className="w-12 flex-shrink-0 font-playfair text-xl font-light leading-tight text-[#f0e6d2]/85">
-                        {m.year}
-                      </span>
-                      <span className="text-[13px] font-light leading-relaxed text-white/55">
-                        {m.text}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
+                <figure className="mt-7 border-t border-[#bfa68a]/15 pt-6">
+                  <blockquote className="border-l-2 border-[#bfa68a]/60 pl-5">
+                    <p className="font-playfair text-[1.15rem] font-light italic leading-relaxed text-[#f0e6d2]">
+                      Do better if possible, and that is always possible.
+                    </p>
+                  </blockquote>
+                  <figcaption className="mt-3 text-[9px] uppercase tracking-[0.28em] text-[#bfa68a]/70">
+                    François Constantin, 1819
+                  </figcaption>
+                </figure>
               </div>
             </ScrollFade>
           </div>
+
+          {/* Stats band — large figures give the chapter visual weight */}
+          <ScrollFade>
+            <div className="mt-14 grid grid-cols-3 gap-px overflow-hidden border-y border-[#bfa68a]/15 bg-[#bfa68a]/12">
+              {STATS.map((s) => (
+                <div
+                  key={s.value}
+                  className="flex flex-col items-center gap-3 bg-gradient-to-b from-white/[0.035] to-white/[0.005] px-3 py-9 text-center"
+                >
+                  <span
+                    className="font-playfair font-light leading-none text-[#f0e6d2]"
+                    style={{ fontSize: "clamp(2.2rem, 5vw, 3.6rem)" }}
+                  >
+                    {s.value}
+                  </span>
+                  <span className="text-[8.5px] uppercase tracking-[0.32em] text-[#bfa68a]/70">
+                    {s.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </ScrollFade>
         </section>
 
-        {/* Chapter 03 — Why Tourbillon */}
+        {/* Chapter 03 — Why Tourbillon (house voice, blended close) */}
         <section className="relative mt-24 border-t border-[#bfa68a]/12 pt-14">
           <ScrollFade>
             <ChapterHead number="03" label="Why Tourbillon">
@@ -257,11 +283,12 @@ export default function StoriesPage() {
                 <p className="text-[16px] font-light leading-[1.85] text-white/70">
                   Most watch sites hand you a wall of thumbnails and a price slider. Tourbillon is
                   built for the decision, not just the checkout — somewhere every piece is given the
-                  space to explain itself, and you have the time to be sure.
+                  room to explain itself, and you have the time to be sure.
                 </p>
                 <p className="text-[16px] font-light leading-[1.85] text-white/60">
-                  From first curiosity to final choice, the catalogue is yours to explore at your own
-                  pace — with the right tools close at hand.
+                  Search in plain language, hold pieces side by side, save the ones worth returning
+                  to, or ask the concierge when you would rather be guided. From first curiosity to
+                  final choice, the catalogue is yours to explore at your own pace.
                 </p>
               </div>
             </ScrollFade>
