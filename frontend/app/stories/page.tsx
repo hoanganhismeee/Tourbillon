@@ -1,28 +1,26 @@
 // Stories page — Tourbillon's brand journal.
-// A text-forward editorial in the house "we" voice: a cover, a table of contents,
-// three chapters (the spark, the craft we look for, why Tourbillon), and a closing
-// CTA into the catalogue. Vacheron Constantin appears once as the origin spark, kept
-// brief. The page adds no background of its own — it relies on the global warm
-// gradient, gold glow, and grain from globals.css — and lifts content with
-// translucent gold-tinted surfaces. No imagery; the docking pocket watch
-// (StoriesPocketWatch) is the only decoration.
+// A text-forward editorial in the house "we" voice: a cover, then three chapters
+// (the spark, the craft we look for, why Tourbillon) and a closing CTA into the
+// catalogue. Vacheron Constantin appears once as the origin spark, kept brief.
+// Surfaces are deliberately borderless — left-accent blockquotes and hairline lists
+// that sit in the page rather than boxed panels that read as stickers. The page adds
+// no background of its own; it relies on the global warm gradient, gold glow, and
+// grain from globals.css. No imagery; the docking pocket watch is the only decoration.
 // Palette per the house style: Playfair, gold #bfa68a, cream #f0e6d2.
 import Link from "next/link";
 import ScrollFade from "../scrollMotion/ScrollFade";
 import StoriesActions from "./StoriesActions";
 import StoriesPocketWatch from "./StoriesPocketWatch";
 
-// Chapters, used for the cover's table of contents.
-const CONTENTS = [
-  ["01", "The spark", "Where our fascination with fine watches began."],
-  ["02", "The craft", "The standard we measure every piece against."],
-  ["03", "Why Tourbillon", "A calmer way to choose your next piece."],
+// The qualities we weigh every piece against — rendered as a hairline list, not a box.
+const CRAFT: [string, string][] = [
+  ["Finishing", "Hand-work that continues where no one will ever look."],
+  ["Proportion", "Restraint chosen over flash, on the wrist and off."],
+  ["Longevity", "Made to outlast the trend that surrounded it."],
+  ["Provenance", "A name prepared to stand behind it for decades."],
 ];
 
-const PANEL =
-  "relative border border-[#bfa68a]/15 bg-gradient-to-b from-white/[0.045] to-white/[0.01]";
-
-// Technical-drawing corner marks for framed blocks.
+// Technical-drawing corner marks for the closing frame.
 function CornerMarks() {
   const base = "pointer-events-none absolute h-3 w-3 border-[#bfa68a]/40";
   return (
@@ -32,17 +30,6 @@ function CornerMarks() {
       <span className={`${base} bottom-0 left-0 border-b border-l`} />
       <span className={`${base} bottom-0 right-0 border-b border-r`} />
     </>
-  );
-}
-
-// Horology data readout — label, dotted leader, value.
-function SpecRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline gap-3">
-      <span className="text-[10px] uppercase tracking-[0.26em] text-[#bfa68a]/65">{label}</span>
-      <span className="h-px flex-1 translate-y-[-0.15em] border-b border-dotted border-[#bfa68a]/25" />
-      <span className="text-[12px] font-light tracking-wide text-white/75">{value}</span>
-    </div>
   );
 }
 
@@ -82,7 +69,7 @@ function ChapterHead({
 export default function StoriesPage() {
   return (
     <main className="relative min-h-screen overflow-hidden pt-10 text-white">
-      {/* Decorative winding watch — fixed, docks to the corner on scroll */}
+      {/* Decorative winding watch — fixed, eases into the upper-right on scroll */}
       <StoriesPocketWatch />
 
       <section className="relative z-10 px-6 py-20 pt-20 sm:px-10 lg:px-24">
@@ -115,27 +102,6 @@ export default function StoriesPage() {
           </div>
         </ScrollFade>
 
-        {/* In this issue — a proper table of contents */}
-        <ScrollFade>
-          <div className="mt-16 border-t border-[#bfa68a]/15 pt-6">
-            <p className="text-[10px] uppercase tracking-[0.4em] text-[#bfa68a]/55">In this issue</p>
-            <div className="mt-7 grid gap-px overflow-hidden border border-[#bfa68a]/15 bg-[#bfa68a]/12 sm:grid-cols-3">
-              {CONTENTS.map(([n, title, desc]) => (
-                <div
-                  key={n}
-                  className="group flex flex-col gap-3 bg-gradient-to-b from-white/[0.045] to-white/[0.01] p-6 transition-colors duration-500 hover:from-white/[0.08] hover:to-white/[0.02]"
-                >
-                  <span className="font-playfair text-3xl font-light text-[#bfa68a]/45 transition-colors duration-500 group-hover:text-[#bfa68a]/75">
-                    {n}
-                  </span>
-                  <span className="font-playfair text-lg font-light text-[#f0e6d2]">{title}</span>
-                  <span className="text-[13px] font-light leading-relaxed text-white/50">{desc}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </ScrollFade>
-
         {/* Chapter 01 — The spark */}
         <section className="relative mt-24 border-t border-[#bfa68a]/12 pt-14">
           <ScrollFade>
@@ -144,7 +110,7 @@ export default function StoriesPage() {
             </ChapterHead>
           </ScrollFade>
 
-          <div className="mt-12 grid items-stretch gap-x-14 gap-y-10 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="mt-12 grid items-stretch gap-x-16 gap-y-12 lg:grid-cols-[1.15fr_0.85fr]">
             <ScrollFade>
               <div>
                 <p className="text-[18px] font-light leading-[1.8] text-white/75">
@@ -165,16 +131,14 @@ export default function StoriesPage() {
             </ScrollFade>
 
             <ScrollFade>
-              <figure className={`${PANEL} flex flex-col justify-center p-9 lg:p-10`}>
-                <CornerMarks />
-                <span className="font-playfair text-5xl leading-none text-[#bfa68a]/35">&ldquo;</span>
-                <p className="mt-2 font-playfair text-2xl font-light italic leading-relaxed text-[#f0e6d2]/90 md:text-[26px]">
-                  A fine watch is engineering you are allowed to wear.
+              <blockquote className="self-center border-l-2 border-[#bfa68a]/55 pl-6 py-1 lg:pl-7 lg:pr-16">
+                <p className="font-playfair text-[1.5rem] font-light italic leading-relaxed text-[#f0e6d2] md:text-[1.7rem]">
+                  &ldquo;Time is what we want most, but what we use worst.&rdquo;
                 </p>
-                <figcaption className="mt-6 text-[10px] uppercase tracking-[0.3em] text-[#bfa68a]/60">
-                  The Tourbillon Journal
-                </figcaption>
-              </figure>
+                <cite className="mt-4 block text-[9px] uppercase tracking-[0.28em] text-[#bfa68a]/70 not-italic">
+                  William Penn
+                </cite>
+              </blockquote>
             </ScrollFade>
           </div>
         </section>
@@ -187,9 +151,9 @@ export default function StoriesPage() {
             </ChapterHead>
           </ScrollFade>
 
-          <div className="mt-12 grid items-stretch gap-x-14 gap-y-10 lg:grid-cols-2">
+          <div className="mt-12 grid items-start gap-x-16 gap-y-12 lg:grid-cols-2">
             <ScrollFade>
-              <div className="flex flex-col justify-center space-y-7">
+              <div className="space-y-7">
                 <p className="text-[16px] font-light leading-[1.85] text-white/70">
                   What we admire in a watch isn&apos;t spectacle — it&apos;s restraint. The finishing,
                   the proportion, the decades of decisions kept behind a calm dial. The maison we
@@ -205,18 +169,24 @@ export default function StoriesPage() {
             </ScrollFade>
 
             <ScrollFade>
-              <div className={`${PANEL} p-7 lg:p-9`}>
-                <CornerMarks />
-                <p className="text-[10px] uppercase tracking-[0.3em] text-[#bfa68a]/60">
+              <div className="lg:pt-1 lg:pr-16">
+                <p className="text-[10px] uppercase tracking-[0.32em] text-[#bfa68a]/60">
                   What we look for
                 </p>
-                <div className="mt-5 space-y-3.5">
-                  <SpecRow label="Finishing" value="Even where unseen" />
-                  <SpecRow label="Proportion" value="Restraint over flash" />
-                  <SpecRow label="Longevity" value="Made to outlast trends" />
-                  <SpecRow label="Provenance" value="A name behind it" />
-                </div>
-                <p className="mt-7 border-t border-[#bfa68a]/15 pt-6 text-[13.5px] font-light leading-[1.85] text-white/55">
+                <dl className="mt-6 border-t border-white/[0.08]">
+                  {CRAFT.map(([term, desc]) => (
+                    <div
+                      key={term}
+                      className="flex flex-col gap-1.5 border-b border-white/[0.08] py-5 sm:flex-row sm:items-baseline sm:gap-8"
+                    >
+                      <dt className="w-36 shrink-0 font-playfair text-[18px] font-light text-[#f0e6d2]">
+                        {term}
+                      </dt>
+                      <dd className="text-[14px] font-light leading-[1.7] text-white/55">{desc}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="mt-6 text-[13.5px] font-light italic leading-relaxed text-white/45">
                   Get those right and a watch keeps giving back for decades — long after the trend
                   that surrounded it has moved on.
                 </p>
@@ -233,7 +203,7 @@ export default function StoriesPage() {
             </ChapterHead>
           </ScrollFade>
 
-          <div className="mt-12 grid items-start gap-x-14 gap-y-10 lg:grid-cols-2">
+          <div className="mt-12 grid items-start gap-x-16 gap-y-12 lg:grid-cols-2">
             <ScrollFade>
               <div className="space-y-7">
                 <p className="text-[16px] font-light leading-[1.85] text-white/70">
@@ -250,7 +220,7 @@ export default function StoriesPage() {
             </ScrollFade>
 
             <ScrollFade>
-              <div>
+              <div className="lg:pr-16">
                 <p className="mb-5 text-[10px] uppercase tracking-[0.3em] text-[#bfa68a]/60">
                   In the boutique
                 </p>
