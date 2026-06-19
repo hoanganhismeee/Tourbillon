@@ -2,7 +2,6 @@
 // A light ivory editorial layout (engine-turned guilloche, deep-ink serif, oxblood
 // accent) presenting Hoang Anh Chu's full-stack watch platform as a printed dossier.
 // Deliberately NOT part of the Tourbillon site aesthetic; chrome is hidden via ChromeGate.
-import Image from "next/image";
 import ScrollFade from "../../scrollMotion/ScrollFade";
 
 // Subtle film-grain data URI, multiplied over the ivory paper for a printed texture.
@@ -247,32 +246,29 @@ export default function TourbillonPortfolioPage() {
         <section className="grid grid-cols-1 gap-12 pb-20 pt-16 md:pt-24 lg:grid-cols-12 lg:gap-10">
           <div className="lg:col-span-7">
             <p className="atl-rise atl-mono text-[12px] uppercase tracking-[0.36em] text-[var(--atl-oxblood)]" style={{ animationDelay: "80ms" }}>
-              Software Engineer &middot; Watch Obsessive
+              Case Study &middot; Luxury watch e-commerce
             </p>
             <h1
               className="atl-rise atl-display mt-6 text-[3.4rem] font-medium leading-[0.94] tracking-[-0.02em] text-[var(--atl-ink)] sm:text-[4.6rem] lg:text-[5.4rem]"
               style={{ animationDelay: "160ms" }}
             >
-              Hoang Anh
-              <span className="block text-[var(--atl-oxblood)]">Chu.</span>
+              Tourbillon<span className="text-[var(--atl-oxblood)]">.</span>
             </h1>
             <p className="atl-rise mt-6 max-w-xl text-[1.05rem] leading-[1.7] text-[var(--atl-soft)]" style={{ animationDelay: "240ms" }}>
-              Everyone calls me Brandon. Tourbillon is my full-stack luxury watch
-              e-commerce platform &mdash; built to show real range across frontend, backend
-              systems, AI search, chat, and shipping a complete product end to end.
+              A full-stack luxury watch e-commerce platform &mdash; an AI concierge,
+              plain-English smart search, and a Watch DNA taste profile, built to show real
+              range from the data model to the interface.
             </p>
 
             <div className="atl-rise mt-8 flex flex-wrap items-center gap-3" style={{ animationDelay: "320ms" }}>
               <a
-                href="https://www.linkedin.com/in/hoanganhchu/"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="/"
                 className="atl-tag group inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
               >
-                <LinkedInIcon /> LinkedIn
+                Visit live site <span aria-hidden>&rarr;</span>
               </a>
               <a
-                href="https://github.com/hoanganhismeee"
+                href="https://github.com/hoanganhismeee/Tourbillon"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="atl-tag group inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
@@ -280,18 +276,18 @@ export default function TourbillonPortfolioPage() {
                 <GitHubIcon /> GitHub
               </a>
               <a
-                href="mailto:hoanganh31012005@gmail.com"
+                href="/portfolio"
                 className="atl-tag inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
               >
-                Email
+                <span aria-hidden>&larr;</span> All work
               </a>
             </div>
 
             <dl className="atl-rise mt-12 grid max-w-lg grid-cols-3 gap-6 border-t border-[var(--atl-rule)] pt-7" style={{ animationDelay: "400ms" }}>
               {[
-                { k: "Role", v: "Full-stack" },
-                { k: "Study", v: "UTS · SWE" },
-                { k: "Year", v: "Final year" },
+                { k: "Scope", v: "Solo build" },
+                { k: "Stack", v: ".NET · Next.js" },
+                { k: "AI cost", v: "< $2 / mo" },
               ].map((item) => (
                 <div key={item.k}>
                   <dt className="atl-mono text-[10px] uppercase tracking-[0.24em] text-[var(--atl-faint)]">{item.k}</dt>
@@ -301,23 +297,38 @@ export default function TourbillonPortfolioPage() {
             </dl>
           </div>
 
-          {/* Portrait with guilloche rosette behind a thin double-rule frame */}
+          {/* Specimen plate — engraved title card behind a guilloche rosette + double rule */}
           <div className="atl-rise relative lg:col-span-5" style={{ animationDelay: "300ms" }}>
             <div aria-hidden className="atl-rosette pointer-events-none absolute -right-6 -top-10 h-[360px] w-[360px] sm:h-[440px] sm:w-[440px]" />
             <div className="relative ml-auto max-w-[400px] p-2.5">
               <div className="absolute inset-0 border border-[var(--atl-rule)]" />
-              <div className="relative h-[470px] w-full overflow-hidden border border-[var(--atl-rule)] bg-[var(--atl-paper-2)] shadow-[0_30px_60px_-30px_rgba(31,26,21,0.45)]">
-                <Image
-                  src="/tao-profile.jpg"
-                  alt="Hoang Anh Chu (Brandon)"
-                  fill
-                  priority
-                  sizes="(max-width: 1024px) 100vw, 400px"
-                  className="object-cover object-[50%_26%]"
-                />
+              <div className="atl-guilloche relative flex h-[470px] w-full flex-col justify-between overflow-hidden border border-[var(--atl-rule)] bg-[var(--atl-paper-2)] p-8 shadow-[0_30px_60px_-30px_rgba(31,26,21,0.45)]">
+                <p className="atl-mono text-[10px] uppercase tracking-[0.3em] text-[var(--atl-faint)]">
+                  E-commerce platform
+                </p>
+                <div>
+                  <h2 className="atl-display text-[2.5rem] font-medium leading-[0.95] text-[var(--atl-ink)]">
+                    Tourbillon<span className="text-[var(--atl-oxblood)]">.</span>
+                  </h2>
+                  <p className="atl-italic mt-3 text-[1.05rem] leading-snug text-[var(--atl-soft)]">
+                    A quieter way to discover modern horology.
+                  </p>
+                </div>
+                <dl className="space-y-2.5 border-t border-[var(--atl-rule)] pt-5">
+                  {[
+                    { k: "Stack", v: ".NET 8 · Next.js 15" },
+                    { k: "Search", v: "SQL + pgvector" },
+                    { k: "AI cost", v: "Claude · < $2 / mo" },
+                  ].map((row) => (
+                    <div key={row.k} className="atl-mono flex items-baseline justify-between gap-4 text-[11px]">
+                      <dt className="uppercase tracking-[0.2em] text-[var(--atl-faint)]">{row.k}</dt>
+                      <dd className="text-right tracking-[0.04em] text-[var(--atl-soft)]">{row.v}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
               <span className="atl-mono absolute -bottom-3 right-4 bg-[var(--atl-paper)] px-2 text-[10px] uppercase tracking-[0.22em] text-[var(--atl-faint)]">
-                Pl. I &mdash; the maker
+                Pl. I &mdash; the platform
               </span>
             </div>
           </div>
@@ -329,22 +340,15 @@ export default function TourbillonPortfolioPage() {
           <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
             <p className="atl-display lg:col-span-5 text-[1.5rem] font-light leading-[1.4] text-[var(--atl-ink)]">
               <span className="atl-display float-left mr-3 mt-1 text-[4.4rem] font-medium leading-[0.7] text-[var(--atl-oxblood)]">
-                M
+                W
               </span>
-              y name is Hoang Anh Chu, but I usually go by Brandon &mdash; a final-year software
-              engineering student at the University of Technology Sydney (UTS) who enjoys
-              solving problems and building practical systems people can actually use.
+              atches have fascinated me for years &mdash; especially Vacheron Constantin: the
+              history, the design, and the sheer mechanical detail in a truly fine piece.
             </p>
             <div className="lg:col-span-7 space-y-5 text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
               <p>
-                I am a big admirer of watches, especially Vacheron Constantin &mdash; the
-                history, the design, and the amount of mechanical detail that goes into a
-                truly fine piece.
-              </p>
-              <p>
-                That fascination became Tourbillon. I wanted an e-commerce site for luxury
-                watches that also pushed my own limits. Rather than a simple product listing,
-                I built a full platform: authentication, search, AI features, saved watches,
+                That fascination became Tourbillon. Rather than a simple product listing, I
+                built a full platform: authentication, search, AI features, saved watches,
                 contact flows, admin tools, background jobs, and image storage.
               </p>
               <p>
