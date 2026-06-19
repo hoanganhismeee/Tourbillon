@@ -5,6 +5,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import ScrollFade from "../scrollMotion/ScrollFade";
+import { PortfolioCheckpoint } from "./PortfolioBackNav";
 
 // Subtle film-grain data URI, layered over the brown for a tactile, atmospheric texture.
 const GRAIN =
@@ -179,6 +180,9 @@ export default function PortfolioHubPage() {
           `,
         }}
       />
+
+      {/* Drops the in-app checkpoint so case studies know they can offer a back control */}
+      <PortfolioCheckpoint />
 
       {/* Fixed atmosphere planes */}
       <div aria-hidden className="stu-grid pointer-events-none fixed inset-0 z-0" />
