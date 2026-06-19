@@ -2,7 +2,6 @@
 // A light ivory editorial layout (engine-turned guilloche, deep-ink serif, oxblood
 // accent) presenting Hoang Anh Chu's full-stack watch platform as a printed dossier.
 // Deliberately NOT part of the Tourbillon site aesthetic; chrome is hidden via ChromeGate.
-import Image from "next/image";
 import Link from "next/link";
 import ScrollFade from "../../scrollMotion/ScrollFade";
 
@@ -245,80 +244,57 @@ export default function TourbillonPortfolioPage() {
         </header>
 
         {/* Hero */}
-        <section className="grid grid-cols-1 gap-12 pb-20 pt-16 md:pt-24 lg:grid-cols-12 lg:gap-10">
-          <div className="lg:col-span-7">
-            <p className="atl-rise atl-mono text-[12px] uppercase tracking-[0.36em] text-[var(--atl-oxblood)]" style={{ animationDelay: "80ms" }}>
-              Case Study &middot; Luxury watch e-commerce
-            </p>
-            <h1
-              className="atl-rise atl-display mt-6 text-[3.4rem] font-medium leading-[0.94] tracking-[-0.02em] text-[var(--atl-ink)] sm:text-[4.6rem] lg:text-[5.4rem]"
-              style={{ animationDelay: "160ms" }}
+        <section className="pb-20 pt-16 md:pt-24">
+          <p className="atl-rise atl-mono text-[12px] uppercase tracking-[0.36em] text-[var(--atl-oxblood)]" style={{ animationDelay: "80ms" }}>
+            Case Study &middot; Luxury watch e-commerce
+          </p>
+          <h1
+            className="atl-rise atl-display mt-6 text-[3.8rem] font-medium leading-[0.92] tracking-[-0.02em] text-[var(--atl-ink)] sm:text-[5.4rem] lg:text-[6.4rem]"
+            style={{ animationDelay: "160ms" }}
+          >
+            Tourbillon<span className="text-[var(--atl-oxblood)]">.</span>
+          </h1>
+          <p className="atl-rise mt-7 max-w-2xl text-[1.1rem] leading-[1.7] text-[var(--atl-soft)]" style={{ animationDelay: "240ms" }}>
+            A full-stack luxury watch e-commerce platform &mdash; an AI concierge,
+            plain-English smart search, and a Watch DNA taste profile, built to show real
+            range from the data model to the interface.
+          </p>
+
+          <div className="atl-rise mt-8 flex flex-wrap items-center gap-3" style={{ animationDelay: "320ms" }}>
+            <Link
+              href="/"
+              className="atl-tag group inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
             >
-              Tourbillon<span className="text-[var(--atl-oxblood)]">.</span>
-            </h1>
-            <p className="atl-rise mt-6 max-w-xl text-[1.05rem] leading-[1.7] text-[var(--atl-soft)]" style={{ animationDelay: "240ms" }}>
-              A full-stack luxury watch e-commerce platform &mdash; an AI concierge,
-              plain-English smart search, and a Watch DNA taste profile, built to show real
-              range from the data model to the interface.
-            </p>
-
-            <div className="atl-rise mt-8 flex flex-wrap items-center gap-3" style={{ animationDelay: "320ms" }}>
-              <Link
-                href="/"
-                className="atl-tag group inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
-              >
-                Visit live site <span aria-hidden>&rarr;</span>
-              </Link>
-              <a
-                href="https://github.com/hoanganhismeee/Tourbillon"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="atl-tag group inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
-              >
-                <GitHubIcon /> GitHub
-              </a>
-              <Link
-                href="/portfolio"
-                className="atl-tag inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
-              >
-                <span aria-hidden>&larr;</span> All work
-              </Link>
-            </div>
-
-            <dl className="atl-rise mt-12 grid max-w-lg grid-cols-3 gap-6 border-t border-[var(--atl-rule)] pt-7" style={{ animationDelay: "400ms" }}>
-              {[
-                { k: "Scope", v: "Solo build" },
-                { k: "Stack", v: ".NET · Next.js" },
-                { k: "AI cost", v: "< $2 / mo" },
-              ].map((item) => (
-                <div key={item.k}>
-                  <dt className="atl-mono text-[10px] uppercase tracking-[0.24em] text-[var(--atl-faint)]">{item.k}</dt>
-                  <dd className="atl-display mt-2 text-[1.15rem] text-[var(--atl-ink)]">{item.v}</dd>
-                </div>
-              ))}
-            </dl>
+              Visit live site <span aria-hidden>&rarr;</span>
+            </Link>
+            <a
+              href="https://github.com/hoanganhismeee/Tourbillon"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="atl-tag group inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
+            >
+              <GitHubIcon /> GitHub
+            </a>
+            <Link
+              href="/portfolio"
+              className="atl-tag inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
+            >
+              <span aria-hidden>&larr;</span> All work
+            </Link>
           </div>
 
-          {/* Live-site screenshot, guilloche rosette behind a thin double-rule frame */}
-          <div className="atl-rise relative lg:col-span-5" style={{ animationDelay: "300ms" }}>
-            <div aria-hidden className="atl-rosette pointer-events-none absolute -right-6 -top-10 h-[360px] w-[360px] sm:h-[440px] sm:w-[440px]" />
-            <div className="relative ml-auto max-w-[400px] p-2.5">
-              <div className="absolute inset-0 border border-[var(--atl-rule)]" />
-              <div className="relative h-[470px] w-full overflow-hidden border border-[var(--atl-rule)] bg-[var(--atl-paper-2)] shadow-[0_30px_60px_-30px_rgba(31,26,21,0.45)]">
-                <Image
-                  src="/tourbillon-home.jpg"
-                  alt="The Tourbillon home page — a watch movement hero"
-                  fill
-                  priority
-                  sizes="(max-width: 1024px) 100vw, 400px"
-                  className="object-cover object-[50%_45%]"
-                />
+          <dl className="atl-rise mt-12 grid max-w-2xl grid-cols-3 gap-6 border-t border-[var(--atl-rule)] pt-7" style={{ animationDelay: "400ms" }}>
+            {[
+              { k: "Scope", v: "Solo build" },
+              { k: "Stack", v: ".NET · Next.js" },
+              { k: "AI cost", v: "< $2 / mo" },
+            ].map((item) => (
+              <div key={item.k}>
+                <dt className="atl-mono text-[10px] uppercase tracking-[0.24em] text-[var(--atl-faint)]">{item.k}</dt>
+                <dd className="atl-display mt-2 text-[1.15rem] text-[var(--atl-ink)]">{item.v}</dd>
               </div>
-              <span className="atl-mono absolute -bottom-3 right-4 bg-[var(--atl-paper)] px-2 text-[10px] uppercase tracking-[0.22em] text-[var(--atl-faint)]">
-                Pl. I &mdash; the live site
-              </span>
-            </div>
-          </div>
+            ))}
+          </dl>
         </section>
 
         {/* About */}
