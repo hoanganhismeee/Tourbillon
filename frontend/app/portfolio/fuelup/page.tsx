@@ -2,6 +2,7 @@
 // Light ivory editorial layout (engine-turned guilloche, deep-ink serif, oxblood accent)
 // presenting Hoang Anh Chu's AI-assisted fitness & nutrition app as a printed dossier.
 // Deliberately NOT part of the Tourbillon site aesthetic; chrome is hidden via ChromeGate.
+import Image from "next/image";
 import ScrollFade from "../../scrollMotion/ScrollFade";
 
 // Subtle film-grain data URI, multiplied over the ivory paper for a printed texture.
@@ -273,39 +274,26 @@ export default function FuelUpPortfolioPage() {
             </dl>
           </div>
 
-          {/* Specimen plate — engraved title card behind a guilloche rosette + double rule */}
-          <div className="atl-rise relative lg:col-span-5" style={{ animationDelay: "300ms" }}>
-            <div aria-hidden className="atl-rosette pointer-events-none absolute -right-6 -top-10 h-[360px] w-[360px] sm:h-[440px] sm:w-[440px]" />
-            <div className="relative ml-auto max-w-[400px] p-2.5">
-              <div className="absolute inset-0 border border-[var(--atl-rule)]" />
-              <div className="atl-guilloche relative flex h-[470px] w-full flex-col justify-between overflow-hidden border border-[var(--atl-rule)] bg-[var(--atl-paper-2)] p-8 shadow-[0_30px_60px_-30px_rgba(31,26,21,0.45)]">
-                <p className="atl-mono text-[10px] uppercase tracking-[0.3em] text-[var(--atl-faint)]">
-                  Mobile Application
-                </p>
-                <div>
-                  <h2 className="atl-display text-[3.4rem] font-medium leading-[0.95] text-[var(--atl-ink)]">
-                    Fuel<span className="text-[var(--atl-oxblood)]">Up</span>
-                  </h2>
-                  <p className="atl-italic mt-3 text-[1.05rem] leading-snug text-[var(--atl-soft)]">
-                    Your daily fitness &amp; nutrition companion.
-                  </p>
+          {/* App screenshot — framed like a device, guilloche rosette haloed behind a double rule */}
+          <div className="atl-rise relative flex justify-center lg:col-span-5" style={{ animationDelay: "300ms" }}>
+            <div className="relative w-[240px] max-w-full">
+              <div aria-hidden className="atl-rosette pointer-events-none absolute left-1/2 top-1/2 h-[440px] w-[440px] -translate-x-1/2 -translate-y-1/2" />
+              <div className="relative p-2.5">
+                <div className="absolute inset-0 border border-[var(--atl-rule)]" />
+                <div className="relative aspect-[1170/2532] w-full overflow-hidden border border-[var(--atl-rule)] bg-[var(--atl-paper-2)] shadow-[0_30px_60px_-30px_rgba(31,26,21,0.45)]">
+                  <Image
+                    src="/fuelup1.jpg"
+                    alt="FuelUp app home screen"
+                    fill
+                    priority
+                    sizes="(max-width: 1024px) 60vw, 240px"
+                    className="object-cover"
+                  />
                 </div>
-                <dl className="space-y-2.5 border-t border-[var(--atl-rule)] pt-5">
-                  {[
-                    { k: "Platform", v: "iOS · Android · Web" },
-                    { k: "Stack", v: "Expo · Node · Postgres" },
-                    { k: "AI", v: "OpenAI + rule fallback" },
-                  ].map((row) => (
-                    <div key={row.k} className="atl-mono flex items-baseline justify-between gap-4 text-[11px]">
-                      <dt className="uppercase tracking-[0.2em] text-[var(--atl-faint)]">{row.k}</dt>
-                      <dd className="text-right tracking-[0.04em] text-[var(--atl-soft)]">{row.v}</dd>
-                    </div>
-                  ))}
-                </dl>
+                <span className="atl-mono absolute -bottom-3 right-4 bg-[var(--atl-paper)] px-2 text-[10px] uppercase tracking-[0.22em] text-[var(--atl-faint)]">
+                  Pl. II &mdash; FuelUp home
+                </span>
               </div>
-              <span className="atl-mono absolute -bottom-3 right-4 bg-[var(--atl-paper)] px-2 text-[10px] uppercase tracking-[0.22em] text-[var(--atl-faint)]">
-                Pl. II &mdash; the product
-              </span>
             </div>
           </div>
         </section>
