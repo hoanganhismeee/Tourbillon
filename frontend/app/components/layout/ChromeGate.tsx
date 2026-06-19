@@ -8,7 +8,7 @@ import { usePathname } from "next/navigation";
 import AnimatedLayout from "@/app/scrollMotion/AnimatedLayout";
 
 // Routes that render bare — no site chrome, no inherited body background/margin.
-const BARE_PREFIXES = ["/portfolio/tourbillon"];
+const BARE_PREFIXES = ["/portfolio/tourbillon", "/portfolio/fuelup"];
 
 // Scoped overrides that undo the global brown gradient, top margin, and fixed
 // grain/vignette overlays from globals.css for the bare routes. Server-rendered
