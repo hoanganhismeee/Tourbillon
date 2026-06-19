@@ -4,12 +4,20 @@
 // case studies, but they override the title and load their own Atelier fonts.
 // Site chrome is suppressed upstream by ChromeGate for /portfolio routes.
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, Manrope, IBM_Plex_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Manrope, IBM_Plex_Mono, Fraunces } from "next/font/google";
 
 const display = Bricolage_Grotesque({
   variable: "--font-display",
   subsets: ["latin"],
   display: "swap",
+});
+
+// Italic serif used for expressive accents (name, ghost numerals) — ties to the case studies.
+const serif = Fraunces({
+  variable: "--font-serif",
+  subsets: ["latin"],
+  display: "swap",
+  style: ["normal", "italic"],
 });
 
 const body = Manrope({
@@ -37,7 +45,7 @@ export default function PortfolioHubLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`${display.variable} ${body.variable} ${mono.variable}`}>
+    <div className={`${display.variable} ${serif.variable} ${body.variable} ${mono.variable}`}>
       {children}
     </div>
   );
