@@ -470,9 +470,6 @@ export default function TourbillonPortfolioPage() {
               </a>
             </div>
             <div className="sm:text-right">
-              <p className="atl-mono text-[10px] uppercase tracking-[0.24em] text-[var(--atl-faint)]">
-                Set in Fraunces, Hanken Grotesk &amp; JetBrains Mono &middot; Built with Next.js
-              </p>
               <p className="atl-mono mt-2 text-[10px] uppercase tracking-[0.24em] text-[var(--atl-faint)]">
                 &copy; 2026 Hoang Anh Chu &mdash; portfolio &amp; demonstration use only
               </p>
