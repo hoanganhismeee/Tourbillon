@@ -367,7 +367,7 @@ export default function PortfolioHubPage() {
                         className="group stu-mono inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.14em] text-[var(--stu-text)]"
                       >
                         <span className="stu-link">{link.label}</span>
-                        <span className="stu-arrow text-[var(--stu-accent)]" aria-hidden>&nearr;</span>
+                        <span className="stu-arrow text-[var(--stu-accent)]" aria-hidden>↗</span>
                       </a>
                     ) : (
                       <Link
@@ -444,53 +444,48 @@ export default function PortfolioHubPage() {
           </div>
         </ScrollFade>
 
-        {/* Contact */}
-        <ScrollFade triggerOnce className="border-t border-[var(--stu-line)] pt-20">
-          <h2 className="stu-display max-w-2xl text-[2.4rem] font-bold leading-[1.02] tracking-[-0.025em] md:text-[3.4rem]">
-            Let&rsquo;s build{" "}
-            <span className="stu-serif font-light italic text-[var(--stu-accent)]">something.</span>
-          </h2>
-          <p className="mt-6 max-w-lg text-[1.02rem] leading-[1.7] text-[var(--stu-muted)]">
-            The fastest way to reach me is email. I am happy to walk through any project in
-            detail, code and decisions included.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
+      </div>
+
+      {/* Footer — contact links + bleeding wordmark */}
+      <footer className="relative z-10 mt-12 border-t border-[var(--stu-line)]">
+        <div className="mx-auto w-full max-w-[1140px] px-6 pt-10 sm:px-10 lg:px-14">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
             <a
               href="mailto:hoanganh31012005@gmail.com"
-              className="group inline-flex items-center gap-2 rounded-md bg-[var(--stu-accent)] px-5 py-3 text-[13px] font-semibold tracking-[0.02em] text-[#211710] transition-colors hover:bg-[var(--stu-accent-hover)]"
+              className="group stu-mono inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.16em] text-[var(--stu-text)]"
             >
-              hoanganh31012005@gmail.com
-              <span className="stu-arrow" aria-hidden>&rarr;</span>
+              <span className="stu-link">Email</span>
+              <span className="stu-arrow text-[var(--stu-accent)]" aria-hidden>→</span>
             </a>
             <a
               href="https://www.linkedin.com/in/hoanganhchu/"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-md border border-[var(--stu-line)] px-5 py-3 text-[13px] text-[var(--stu-text)] transition-colors hover:border-[var(--stu-accent)]/55"
+              className="group stu-mono inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.16em] text-[var(--stu-text)]"
             >
-              <LinkedInIcon size={15} /> LinkedIn
+              <span className="stu-link">LinkedIn</span>
+              <span className="stu-arrow text-[var(--stu-accent)]" aria-hidden>↗</span>
             </a>
             <a
               href="https://github.com/hoanganhismeee"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-md border border-[var(--stu-line)] px-5 py-3 text-[13px] text-[var(--stu-text)] transition-colors hover:border-[var(--stu-accent)]/55"
+              className="group stu-mono inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.16em] text-[var(--stu-text)]"
             >
-              <GitHubIcon size={15} /> GitHub
+              <span className="stu-link">GitHub</span>
+              <span className="stu-arrow text-[var(--stu-accent)]" aria-hidden>↗</span>
             </a>
           </div>
-        </ScrollFade>
-      </div>
-
-      {/* Bleeding wordmark footer */}
-      <div aria-hidden className="relative z-10 mt-16 overflow-hidden border-t border-[var(--stu-line)] pt-8">
-        <p className="stu-display whitespace-nowrap px-4 text-center text-[15vw] font-bold leading-[0.78] tracking-[-0.04em]" style={{ color: "rgba(240,230,210,0.05)" }}>
-          HOANG ANH CHU
-        </p>
+        </div>
+        <div aria-hidden className="overflow-hidden pt-8">
+          <p className="stu-display whitespace-nowrap px-4 text-center text-[15vw] font-bold leading-[0.78] tracking-[-0.04em]" style={{ color: "rgba(240,230,210,0.05)" }}>
+            HOANG ANH CHU
+          </p>
+        </div>
         <p className="stu-mono pb-6 text-center text-[10.5px] uppercase tracking-[0.24em] text-[var(--stu-faint)]">
           &copy; 2026 Hoang Anh Chu &middot; Sydney
         </p>
-      </div>
+      </footer>
     </main>
   );
 }
