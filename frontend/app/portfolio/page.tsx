@@ -1,7 +1,8 @@
-// Portfolio hub — warm "vibey" standalone landing. Deep brown canvas, cream-gold text,
-// amber accent, engine-turned guilloche + grain, in the same warm family as the Tourbillon
-// site and the case studies. Introduces Hoang Anh Chu and routes out to the projects.
-// Chrome hidden via ChromeGate.
+// Portfolio hub — warm, expressive standalone landing. Deep brown canvas, cream-gold text,
+// amber accent, engine-turned guilloche + grain, a kinetic tech marquee, and a bleeding
+// wordmark footer. A professional personal portfolio: intro, experience, projects,
+// education, skills. Chrome hidden via ChromeGate.
+import Image from "next/image";
 import Link from "next/link";
 import ScrollFade from "../scrollMotion/ScrollFade";
 
@@ -25,22 +26,32 @@ function GitHubIcon({ size = 16 }: { size?: number }) {
   );
 }
 
-const focusAreas = [
+const marquee = [
+  "Full-stack", "AI-driven", ".NET 8", "Next.js", "React Native", "RAG",
+  "pgvector", "PostgreSQL", "Docker", "AWS", "Hangfire", "Redis",
+];
+
+const experience = [
   {
-    title: "Full-stack product engineering",
-    text: "Frontend, backend, and data treated as one system — Next.js, .NET, React Native, and PostgreSQL.",
+    company: "FPT Software",
+    role: "Software Engineer Intern",
+    dates: "Dec 2025 — May 2026",
+    location: "Sydney CBD, NSW",
+    points: [
+      "Architected a RAG backend in Python — document ingestion, chunking, Hugging Face embeddings, and vector retrieval from SurrealDB, containerised with Docker.",
+      "Built a company-authenticated AI document assistant supporting file upload, document preview, slide generation, and citation-backed answers from uploaded files.",
+      "Worked in an Agile Scrum team across sprint planning, peer code reviews, and stakeholder demos.",
+    ],
   },
   {
-    title: "AI integration, done responsibly",
-    text: "LLM features validated against a schema and paired with deterministic fallbacks, so they stay reliable.",
-  },
-  {
-    title: "Shipping end to end",
-    text: "Auth, background jobs, storage, search, CI/CD and deployment — not just the happy path.",
-  },
-  {
-    title: "Considered interfaces",
-    text: "Interfaces that feel intentional, fast, and accessible, with a clear point of view.",
+    company: "Sensear",
+    role: "Software Engineer Intern",
+    dates: "May 2025 — Aug 2025",
+    location: "Botany, NSW",
+    points: [
+      "Built a Python test-automation suite validating IIoT headset firmware across device configurations, cutting manual regression effort per release and improving defect traceability.",
+      "Translated reported hardware and firmware issues into repeatable test cases, working directly with mechanical engineers on the headset platform.",
+    ],
   },
 ];
 
@@ -49,22 +60,53 @@ const projects = [
     name: "Tourbillon",
     meta: "2025 — 2026 · Full-stack web",
     blurb:
-      "A luxury watch e-commerce platform with an AI concierge, plain-English smart search, and a Watch DNA taste profile. A .NET 8 API, a Next.js 15 frontend, and a Python AI service.",
+      "A luxury watch e-commerce platform with an AI concierge, plain-English smart search, and a Watch DNA taste profile. A .NET 8 API, a Next.js 15 frontend, and a Python AI service — production AI spend held under $2/month.",
     tags: ["Next.js 15", ".NET 8", "PostgreSQL", "pgvector", "Claude"],
     links: [
-      { label: "Visit live site", href: "/" },
-      { label: "Read case study", href: "/portfolio/tourbillon" },
+      { label: "Visit live site", href: "/", external: false },
+      { label: "Read case study", href: "/portfolio/tourbillon", external: false },
+      { label: "GitHub", href: "https://github.com/hoanganhismeee/Tourbillon", external: true },
     ],
   },
   {
     name: "FuelUp",
     meta: "2025 · Mobile app",
     blurb:
-      "A fitness and nutrition companion app with AI food and workout recommendations that gracefully fall back to rule-based logic. React Native (Expo) with a Node, Express, and PostgreSQL API.",
+      "A cross-platform fitness and nutrition companion with AI food and workout recommendations that gracefully fall back to rule-based logic. React Native (Expo) with a Node, Express, and PostgreSQL API.",
     tags: ["React Native", "Expo", "Node", "PostgreSQL", "OpenAI"],
-    links: [{ label: "Read case study", href: "/portfolio/fuelup" }],
+    links: [
+      { label: "Read case study", href: "/portfolio/fuelup", external: false },
+      { label: "GitHub", href: "https://github.com/Scorpio-2410/FuelUp", external: true },
+    ],
   },
 ];
+
+const education = [
+  {
+    school: "University of Technology Sydney",
+    degree: "Bachelor of Engineering (Honours), Software Engineering",
+    dates: "Feb 2023 — Nov 2026 (Expected)",
+    logo: "/UTS.jpg",
+  },
+];
+
+const skillGroups = [
+  { title: "Languages", items: ["C#", "Python", "Java", "TypeScript", "JavaScript"] },
+  { title: "Frameworks", items: ["ASP.NET Core (.NET 8)", "React", "Next.js", "Node.js", "Expo"] },
+  {
+    title: "Cloud & DevOps",
+    items: ["Docker", "GitHub Actions", "AWS S3", "CloudFront", "Railway", "Vercel", "Neon", "Upstash"],
+  },
+  { title: "Databases", items: ["PostgreSQL", "SurrealDB", "pgvector", "Redis"] },
+  { title: "Tools & Practices", items: ["Git", "Jira", "Confluence", "Cursor", "Agile Scrum", "SOLID"] },
+];
+
+// Plain grotesk section title.
+function SectionHead({ title }: { title: string }) {
+  return (
+    <h2 className="stu-display text-[2rem] font-semibold tracking-[-0.015em] md:text-[2.6rem]">{title}</h2>
+  );
+}
 
 export default function PortfolioHubPage() {
   return (
@@ -88,6 +130,7 @@ export default function PortfolioHubPage() {
                 linear-gradient(180deg, #241a14 0%, #1e1512 44%, #2a1f17 100%);
             }
             .stu-display { font-family: var(--font-display), "Segoe UI", system-ui, sans-serif; }
+            .stu-serif { font-family: var(--font-serif), Georgia, "Times New Roman", serif; }
             .stu-body { font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif; }
             .stu-mono { font-family: var(--font-mono-studio), ui-monospace, "SFMono-Regular", monospace; }
 
@@ -111,6 +154,9 @@ export default function PortfolioHubPage() {
             }
             .stu-rise { opacity: 0; animation: stu-rise 0.85s cubic-bezier(0.22,1,0.36,1) forwards; }
 
+            @keyframes stu-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+            .stu-marquee { animation: stu-scroll 40s linear infinite; }
+
             .stu-link { position: relative; }
             .stu-link::after {
               content: ''; position: absolute; left: 0; bottom: -2px; height: 1px; width: 100%;
@@ -122,11 +168,13 @@ export default function PortfolioHubPage() {
             .stu-card:hover {
               border-color: rgba(216,178,122,0.55);
               background-color: rgba(216,178,122,0.05);
+              transform: translateY(-3px);
             }
             .stu-arrow { transition: transform 0.35s cubic-bezier(0.22,1,0.36,1); }
             .group:hover .stu-arrow { transform: translateX(4px); }
             @media (prefers-reduced-motion: reduce) {
               .stu-rise { animation: none; opacity: 1; }
+              .stu-marquee { animation: none; }
             }
           `,
         }}
@@ -147,88 +195,134 @@ export default function PortfolioHubPage() {
               Hoang Anh Chu
             </span>
           </div>
-          <span className="stu-mono hidden items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-[var(--stu-muted)] sm:inline-flex">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#7fc99a]" />
-            Open to grad / intern roles
+          <span className="stu-mono hidden text-[11px] uppercase tracking-[0.22em] text-[var(--stu-faint)] sm:inline">
+            Sydney, Australia
           </span>
         </header>
 
         {/* Hero */}
-        <section className="pb-24 pt-16 md:pt-24">
-          <h1
-            className="stu-rise stu-display mt-2 text-[3.2rem] font-bold leading-[0.98] tracking-[-0.03em] sm:text-[4.4rem] lg:text-[5rem]"
-            style={{ animationDelay: "60ms" }}
-          >
-            Hoang Anh Chu
-          </h1>
-          <p
-            className="stu-rise stu-display mt-6 max-w-3xl text-[1.7rem] font-semibold leading-[1.18] tracking-[-0.01em] text-[var(--stu-text)] sm:text-[2.2rem] lg:text-[2.6rem]"
-            style={{ animationDelay: "140ms" }}
-          >
-            I build full-stack products{" "}
-            <span className="text-[var(--stu-accent)]">with AI at the core</span> — from the
-            data model to the interface.
-          </p>
-          <p
-            className="stu-rise mt-7 max-w-xl text-[1.02rem] leading-[1.75] text-[var(--stu-muted)]"
-            style={{ animationDelay: "220ms" }}
-          >
-            Final-year Software Engineering at UTS. I like turning ideas into real, shipped
-            products — search, AI features, authentication, background jobs, and deployment,
-            across the whole stack.
-          </p>
+        <section className="grid grid-cols-1 items-center gap-12 pb-14 pt-14 md:pt-20 lg:grid-cols-12 lg:gap-12">
+          <div className="lg:col-span-7">
+            <p className="stu-rise stu-serif text-[1.15rem] italic text-[var(--stu-muted)]" style={{ animationDelay: "40ms" }}>
+              Hello — I&rsquo;m
+            </p>
+            <h1
+              className="stu-rise stu-display mt-3 text-[3.1rem] font-bold leading-[0.9] tracking-[-0.035em] sm:text-[4.4rem] lg:text-[5.2rem]"
+              style={{ animationDelay: "110ms" }}
+            >
+              <span className="block">Hoang Anh</span>
+              <span className="stu-serif block font-light italic text-[var(--stu-accent)]">Chu.</span>
+            </h1>
+            <p
+              className="stu-rise mt-8 max-w-xl text-[1.05rem] leading-[1.75] text-[var(--stu-muted)]"
+              style={{ animationDelay: "200ms" }}
+            >
+              Final-year Software Engineering (Honours) at UTS, graduating November 2026. I ship
+              full-stack, AI-driven products — through internships at FPT Software and Sensear,
+              and projects like Tourbillon and FuelUp.
+            </p>
 
-          <div className="stu-rise mt-9 flex flex-wrap items-center gap-3" style={{ animationDelay: "300ms" }}>
-            <a
-              href="mailto:hoanganh31012005@gmail.com"
-              className="group inline-flex items-center gap-2 rounded-md bg-[var(--stu-accent)] px-5 py-3 text-[13px] font-semibold tracking-[0.02em] text-[#211710] transition-colors hover:bg-[var(--stu-accent-hover)]"
-            >
-              Email me
-              <span className="stu-arrow" aria-hidden>&rarr;</span>
-            </a>
-            <a
-              href="https://www.linkedin.com/in/hoanganhchu/"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="LinkedIn"
-              className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-md border border-[var(--stu-line)] text-[var(--stu-muted)] transition-colors hover:border-[var(--stu-accent)]/55 hover:text-[var(--stu-text)]"
-            >
-              <LinkedInIcon />
-            </a>
-            <a
-              href="https://github.com/hoanganhismeee"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="GitHub"
-              className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-md border border-[var(--stu-line)] text-[var(--stu-muted)] transition-colors hover:border-[var(--stu-accent)]/55 hover:text-[var(--stu-text)]"
-            >
-              <GitHubIcon />
-            </a>
+            <div className="stu-rise mt-9 flex flex-wrap items-center gap-3" style={{ animationDelay: "280ms" }}>
+              <a
+                href="mailto:hoanganh31012005@gmail.com"
+                className="group inline-flex items-center gap-2 rounded-md bg-[var(--stu-accent)] px-5 py-3 text-[13px] font-semibold tracking-[0.02em] text-[#211710] transition-colors hover:bg-[var(--stu-accent-hover)]"
+              >
+                Email me
+                <span className="stu-arrow" aria-hidden>&rarr;</span>
+              </a>
+              <a
+                href="https://www.linkedin.com/in/hoanganhchu/"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="LinkedIn"
+                className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-md border border-[var(--stu-line)] text-[var(--stu-muted)] transition-colors hover:border-[var(--stu-accent)]/55 hover:text-[var(--stu-text)]"
+              >
+                <LinkedInIcon />
+              </a>
+              <a
+                href="https://github.com/hoanganhismeee"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="GitHub"
+                className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-md border border-[var(--stu-line)] text-[var(--stu-muted)] transition-colors hover:border-[var(--stu-accent)]/55 hover:text-[var(--stu-text)]"
+              >
+                <GitHubIcon />
+              </a>
+            </div>
+          </div>
+
+          {/* Portrait */}
+          <div className="stu-rise lg:col-span-5" style={{ animationDelay: "180ms" }}>
+            <div className="relative mx-auto w-full max-w-[360px] lg:ml-auto">
+              <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-[var(--stu-line)] bg-[var(--stu-surface)] shadow-[0_40px_80px_-40px_rgba(0,0,0,0.75)]">
+                <Image
+                  src="/tao-profile.jpg"
+                  alt="Hoang Anh Chu (Brandon)"
+                  fill
+                  priority
+                  sizes="(max-width: 1024px) 80vw, 360px"
+                  className="object-cover object-[50%_20%]"
+                />
+                <div
+                  aria-hidden
+                  className="absolute inset-0"
+                  style={{ background: "linear-gradient(180deg, transparent 48%, rgba(30,21,18,0.55) 100%)" }}
+                />
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* Focus */}
-        <ScrollFade triggerOnce className="border-t border-[var(--stu-line)] py-20">
-          <div className="flex items-baseline justify-between gap-6">
-            <h2 className="stu-display text-[1.7rem] font-semibold tracking-[-0.01em] md:text-[2.1rem]">
-              What I work on
-            </h2>
-            <span className="stu-mono text-[11px] uppercase tracking-[0.26em] text-[var(--stu-faint)]">
-              Focus / 01
-            </span>
+        {/* Kinetic tech marquee */}
+        <div
+          aria-hidden
+          className="stu-rise relative overflow-hidden border-y border-[var(--stu-line)] py-4"
+          style={{ animationDelay: "360ms" }}
+        >
+          <div className="stu-marquee flex w-max">
+            {[0, 1].map((dup) => (
+              <div key={dup} className="flex shrink-0 items-center">
+                {marquee.map((item) => (
+                  <span
+                    key={`${dup}-${item}`}
+                    className="stu-mono flex items-center gap-6 px-6 text-[12px] uppercase tracking-[0.28em] text-[var(--stu-muted)]"
+                  >
+                    {item}
+                    <span className="text-[var(--stu-accent)]">&#10022;</span>
+                  </span>
+                ))}
+              </div>
+            ))}
           </div>
-          <div className="mt-12 grid grid-cols-1 gap-x-12 gap-y-10 sm:grid-cols-2">
-            {focusAreas.map((area, i) => (
-              <div key={area.title} className="flex gap-5 border-t border-[var(--stu-line-soft)] pt-6">
-                <span className="stu-mono mt-1 text-[12px] tracking-[0.1em] text-[var(--stu-accent)]">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <div>
-                  <h3 className="stu-display text-[1.2rem] font-semibold leading-snug text-[var(--stu-text)]">
-                    {area.title}
-                  </h3>
-                  <p className="mt-2.5 text-[0.97rem] leading-[1.7] text-[var(--stu-muted)]">{area.text}</p>
+        </div>
+
+        {/* Experience */}
+        <ScrollFade triggerOnce className="mt-6 border-t border-[var(--stu-line)] py-20">
+          <SectionHead title="Experience" />
+          <div className="mt-12 space-y-12">
+            {experience.map((role) => (
+              <div key={role.company}>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+                  <div>
+                    <h3 className="stu-display text-[1.4rem] font-semibold leading-tight text-[var(--stu-text)]">
+                      {role.company}
+                    </h3>
+                    <p className="stu-mono mt-1.5 text-[12px] uppercase tracking-[0.16em] text-[var(--stu-accent)]">
+                      {role.role}
+                    </p>
+                  </div>
+                  <div className="stu-mono shrink-0 text-[11px] uppercase tracking-[0.16em] text-[var(--stu-faint)] sm:text-right">
+                    {role.dates} &middot; {role.location}
+                  </div>
                 </div>
+                <ul className="mt-5 space-y-2.5">
+                  {role.points.map((point) => (
+                    <li key={point} className="flex gap-3 text-[0.97rem] leading-[1.7] text-[var(--stu-muted)]">
+                      <span className="mt-[2px] text-[var(--stu-accent)]" aria-hidden>&ndash;</span>
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
@@ -236,26 +330,16 @@ export default function PortfolioHubPage() {
 
         {/* Projects */}
         <ScrollFade triggerOnce className="border-t border-[var(--stu-line)] py-20">
-          <div className="flex items-baseline justify-between gap-6">
-            <h2 className="stu-display text-[1.7rem] font-semibold tracking-[-0.01em] md:text-[2.1rem]">
-              Projects
-            </h2>
-            <span className="stu-mono text-[11px] uppercase tracking-[0.26em] text-[var(--stu-faint)]">
-              Work / 02
-            </span>
-          </div>
-
+          <SectionHead title="Projects" />
           <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-2">
             {projects.map((project) => (
               <article
                 key={project.name}
                 className="stu-card flex flex-col rounded-xl border border-[var(--stu-line)] bg-[var(--stu-surface)]/40 p-8"
               >
-                <div className="flex items-center justify-between gap-4">
-                  <span className="stu-mono text-[11px] uppercase tracking-[0.22em] text-[var(--stu-faint)]">
-                    {project.meta}
-                  </span>
-                </div>
+                <span className="stu-mono text-[11px] uppercase tracking-[0.22em] text-[var(--stu-faint)]">
+                  {project.meta}
+                </span>
                 <h3 className="stu-display mt-5 text-[2.2rem] font-bold leading-none tracking-[-0.02em]">
                   {project.name}
                 </h3>
@@ -273,31 +357,100 @@ export default function PortfolioHubPage() {
                 </div>
 
                 <div className="mt-auto flex flex-wrap gap-x-7 gap-y-3 pt-8">
-                  {project.links.map((link) => (
-                    <Link
-                      key={link.label}
-                      href={link.href}
-                      className="group stu-mono inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.14em] text-[var(--stu-text)]"
-                    >
-                      <span className="stu-link">{link.label}</span>
-                      <span className="stu-arrow text-[var(--stu-accent)]" aria-hidden>&rarr;</span>
-                    </Link>
-                  ))}
+                  {project.links.map((link) =>
+                    link.external ? (
+                      <a
+                        key={link.label}
+                        href={link.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group stu-mono inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.14em] text-[var(--stu-text)]"
+                      >
+                        <span className="stu-link">{link.label}</span>
+                        <span className="stu-arrow text-[var(--stu-accent)]" aria-hidden>&nearr;</span>
+                      </a>
+                    ) : (
+                      <Link
+                        key={link.label}
+                        href={link.href}
+                        className="group stu-mono inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.14em] text-[var(--stu-text)]"
+                      >
+                        <span className="stu-link">{link.label}</span>
+                        <span className="stu-arrow text-[var(--stu-accent)]" aria-hidden>&rarr;</span>
+                      </Link>
+                    ),
+                  )}
                 </div>
               </article>
             ))}
           </div>
         </ScrollFade>
 
-        {/* Contact / footer */}
+        {/* Education */}
         <ScrollFade triggerOnce className="border-t border-[var(--stu-line)] py-20">
-          <span className="stu-mono text-[11px] uppercase tracking-[0.26em] text-[var(--stu-faint)]">
-            Contact / 03
-          </span>
-          <h2 className="stu-display mt-5 max-w-2xl text-[2.2rem] font-bold leading-[1.05] tracking-[-0.02em] md:text-[3rem]">
-            Let&rsquo;s build something.
+          <SectionHead title="Education" />
+          <div className="mt-12 space-y-8">
+            {education.map((e) => (
+              <div
+                key={e.school}
+                className="flex flex-col gap-5 border-t border-[var(--stu-line-soft)] pt-6 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex items-center gap-5">
+                  <span className="inline-flex shrink-0 items-center justify-center rounded-lg bg-white px-3.5 py-2.5">
+                    <Image
+                      src={e.logo}
+                      alt={e.school}
+                      width={132}
+                      height={50}
+                      className="h-7 w-auto object-contain"
+                    />
+                  </span>
+                  <div>
+                    <h3 className="stu-display text-[1.4rem] font-semibold leading-tight text-[var(--stu-text)]">
+                      {e.school}
+                    </h3>
+                    <p className="mt-1.5 text-[0.97rem] text-[var(--stu-muted)]">{e.degree}</p>
+                  </div>
+                </div>
+                <span className="stu-mono shrink-0 text-[11px] uppercase tracking-[0.16em] text-[var(--stu-faint)] sm:text-right">
+                  {e.dates}
+                </span>
+              </div>
+            ))}
+          </div>
+        </ScrollFade>
+
+        {/* Skills */}
+        <ScrollFade triggerOnce className="border-t border-[var(--stu-line)] py-20">
+          <SectionHead title="Skills" />
+          <div className="mt-12 grid grid-cols-1 gap-x-12 gap-y-9 sm:grid-cols-2">
+            {skillGroups.map((group) => (
+              <div key={group.title} className="border-t border-[var(--stu-line-soft)] pt-5">
+                <h3 className="stu-mono text-[11px] uppercase tracking-[0.24em] text-[var(--stu-accent)]">
+                  {group.title}
+                </h3>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {group.items.map((item) => (
+                    <span
+                      key={item}
+                      className="stu-mono rounded-full border border-[var(--stu-line)] px-3 py-1 text-[10.5px] tracking-[0.04em] text-[var(--stu-muted)]"
+                    >
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </ScrollFade>
+
+        {/* Contact */}
+        <ScrollFade triggerOnce className="border-t border-[var(--stu-line)] pt-20">
+          <h2 className="stu-display max-w-2xl text-[2.4rem] font-bold leading-[1.02] tracking-[-0.025em] md:text-[3.4rem]">
+            Let&rsquo;s build{" "}
+            <span className="stu-serif font-light italic text-[var(--stu-accent)]">something.</span>
           </h2>
-          <p className="mt-5 max-w-lg text-[1.02rem] leading-[1.7] text-[var(--stu-muted)]">
+          <p className="mt-6 max-w-lg text-[1.02rem] leading-[1.7] text-[var(--stu-muted)]">
             The fastest way to reach me is email. I am happy to walk through any project in
             detail, code and decisions included.
           </p>
@@ -326,16 +479,17 @@ export default function PortfolioHubPage() {
               <GitHubIcon size={15} /> GitHub
             </a>
           </div>
-
-          <div className="mt-16 flex flex-col gap-2 border-t border-[var(--stu-line-soft)] pt-6 sm:flex-row sm:items-center sm:justify-between">
-            <p className="stu-mono text-[10.5px] uppercase tracking-[0.24em] text-[var(--stu-faint)]">
-              Hoang Anh Chu &middot; Sydney &middot; 2026
-            </p>
-            <p className="stu-mono text-[10.5px] uppercase tracking-[0.24em] text-[var(--stu-faint)]">
-              Set in Bricolage Grotesque &amp; Manrope &middot; Built with Next.js
-            </p>
-          </div>
         </ScrollFade>
+      </div>
+
+      {/* Bleeding wordmark footer */}
+      <div aria-hidden className="relative z-10 mt-16 overflow-hidden border-t border-[var(--stu-line)] pt-8">
+        <p className="stu-display whitespace-nowrap px-4 text-center text-[15vw] font-bold leading-[0.78] tracking-[-0.04em]" style={{ color: "rgba(240,230,210,0.05)" }}>
+          HOANG ANH CHU
+        </p>
+        <p className="stu-mono pb-6 text-center text-[10.5px] uppercase tracking-[0.24em] text-[var(--stu-faint)]">
+          &copy; 2026 Hoang Anh Chu &middot; Sydney
+        </p>
       </div>
     </main>
   );
