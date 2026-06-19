@@ -4,6 +4,7 @@
 // Deliberately NOT part of the Tourbillon site aesthetic; chrome is hidden via ChromeGate.
 import Image from "next/image";
 import ScrollFade from "../../scrollMotion/ScrollFade";
+import { BackToPortfolio } from "../PortfolioBackNav";
 
 // Subtle film-grain data URI, multiplied over the ivory paper for a printed texture.
 const GRAIN =
@@ -216,8 +217,11 @@ export default function FuelUpPortfolioPage() {
           </span>
         </header>
 
+        {/* Checkpoint-gated back control — between the masthead and the case-study text */}
+        <BackToPortfolio />
+
         {/* Hero */}
-        <section className="grid grid-cols-1 gap-12 pb-20 pt-16 md:pt-24 lg:grid-cols-12 lg:gap-10">
+        <section className="grid grid-cols-1 gap-12 pb-20 pt-8 md:pt-10 lg:grid-cols-12 lg:gap-10">
           <div className="lg:col-span-7">
             <p className="atl-rise atl-mono text-[12px] uppercase tracking-[0.36em] text-[var(--atl-oxblood)]" style={{ animationDelay: "80ms" }}>
               Mobile App &middot; Full-Stack &middot; AI
