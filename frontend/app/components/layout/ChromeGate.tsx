@@ -8,12 +8,19 @@ import { usePathname } from "next/navigation";
 import AnimatedLayout from "@/app/scrollMotion/AnimatedLayout";
 
 // Routes that render bare — no site chrome, no inherited body background/margin.
-const BARE_PREFIXES = ["/portfolio/tourbillon", "/portfolio/fuelup"];
+// Each carries the html background its design paints, so overscroll never shows the
+// global brown. Ordered specific-first so subpaths win over the /portfolio parent.
+const BARE_ROUTES = [
+  { prefix: "/portfolio/tourbillon", bg: "#efe7d8" }, // Atelier ivory
+  { prefix: "/portfolio/fuelup", bg: "#efe7d8" }, // Atelier ivory
+  { prefix: "/portfolio", bg: "#1e1512" }, // warm brown (hub)
+];
 
 // Scoped overrides that undo the global brown gradient, top margin, and fixed
 // grain/vignette overlays from globals.css for the bare routes. Server-rendered
-// in the initial HTML, so the ivory canvas paints with no flash of brown.
-const BARE_STYLE = `html{background:#efe7d8 !important}body{margin-top:0 !important}body::before,body::after{display:none !important}`;
+// in the initial HTML, so the page's own canvas paints with no flash of brown.
+const bareStyle = (bg: string) =>
+  `html{background:${bg} !important}body{margin-top:0 !important}body::before,body::after{display:none !important}`;
 
 export default function ChromeGate({
   header,
@@ -25,14 +32,16 @@ export default function ChromeGate({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const bare =
-    !!pathname &&
-    BARE_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  const match = pathname
+    ? BARE_ROUTES.find(
+        (r) => pathname === r.prefix || pathname.startsWith(r.prefix + "/"),
+      )
+    : undefined;
 
-  if (bare) {
+  if (match) {
     return (
       <>
-        <style dangerouslySetInnerHTML={{ __html: BARE_STYLE }} />
+        <style dangerouslySetInnerHTML={{ __html: bareStyle(match.bg) }} />
         {children}
       </>
     );
