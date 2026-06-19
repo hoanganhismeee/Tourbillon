@@ -4,6 +4,7 @@
 // Deliberately NOT part of the Tourbillon site aesthetic; chrome is hidden via ChromeGate.
 import Link from "next/link";
 import ScrollFade from "../../scrollMotion/ScrollFade";
+import { BackToPortfolio } from "../PortfolioBackNav";
 
 // Subtle film-grain data URI, multiplied over the ivory paper for a printed texture.
 const GRAIN =
@@ -243,8 +244,11 @@ export default function TourbillonPortfolioPage() {
           </span>
         </header>
 
+        {/* Checkpoint-gated back control — between the masthead and the case-study text */}
+        <BackToPortfolio />
+
         {/* Hero */}
-        <section className="pb-20 pt-16 md:pt-24">
+        <section className="pb-20 pt-8 md:pt-10">
           <p className="atl-rise atl-mono text-[12px] uppercase tracking-[0.36em] text-[var(--atl-oxblood)]" style={{ animationDelay: "80ms" }}>
             Case Study &middot; Luxury watch e-commerce
           </p>
@@ -275,17 +279,10 @@ export default function TourbillonPortfolioPage() {
             >
               <GitHubIcon /> GitHub
             </a>
-            <Link
-              href="/portfolio"
-              className="atl-tag inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
-            >
-              <span aria-hidden>&larr;</span> All work
-            </Link>
           </div>
 
-          <dl className="atl-rise mt-12 grid max-w-2xl grid-cols-3 gap-6 border-t border-[var(--atl-rule)] pt-7" style={{ animationDelay: "400ms" }}>
+          <dl className="atl-rise mt-12 grid max-w-md grid-cols-2 gap-6 border-t border-[var(--atl-rule)] pt-7" style={{ animationDelay: "400ms" }}>
             {[
-              { k: "Scope", v: "Solo build" },
               { k: "Stack", v: ".NET · Next.js" },
               { k: "AI cost", v: "< $2 / mo" },
             ].map((item) => (
