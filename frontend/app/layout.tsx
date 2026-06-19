@@ -17,7 +17,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import NavBar from "./components/layout/NavBar";
 import Footer from "./components/layout/Footer";
-import AnimatedLayout from "./scrollMotion/AnimatedLayout";
+import ChromeGate from "./components/layout/ChromeGate";
 import CompareIndicator from "./components/compare/CompareIndicator";
 import ChatWidget from "./components/chat/ChatWidget";
 import CustomCursor from "./components/cursor/CustomCursor";
@@ -71,13 +71,21 @@ export default function RootLayout({
                   <NavigationProvider>
                     <CursorProvider>
                       <ChatProvider>
-                        <NavBar />
-                        <AnimatedLayout>
+                        {/* ChromeGate hides the site chrome on standalone routes (portfolio case study) */}
+                        <ChromeGate
+                          header={<NavBar />}
+                          trailing={
+                            <>
+                              <Footer />
+                              <CompareIndicator />
+                              <ChatWidget />
+                              <CursorSelector />
+                              <CustomCursor />
+                            </>
+                          }
+                        >
                           {children}
-                        </AnimatedLayout>
-                        <Footer />
-                        <CompareIndicator />
-                        <ChatWidget />
+                        </ChromeGate>
                         <Toaster
                           position="bottom-right"
                           toastOptions={{
@@ -91,8 +99,6 @@ export default function RootLayout({
                           }}
                         />
                       </ChatProvider>
-                      <CursorSelector />
-                      <CustomCursor />
                     </CursorProvider>
                   </NavigationProvider>
                 </WatchesPageProvider>
