@@ -107,6 +107,72 @@ public class ChatServiceRecommendationTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_BroadRecommendation_DiversifiesAcrossBrands()
+    {
+        using var context = CreateContext();
+
+        var rolex = new Brand { Id = 1, Name = "Rolex", Slug = "rolex" };
+        var omega = new Brand { Id = 2, Name = "Omega", Slug = "omega" };
+        var tudor = new Brand { Id = 3, Name = "Tudor", Slug = "tudor" };
+        var rolexColl = new Collection { Id = 10, BrandId = 1, Brand = rolex, Name = "Submariner", Slug = "submariner" };
+        var omegaColl = new Collection { Id = 20, BrandId = 2, Brand = omega, Name = "Seamaster", Slug = "seamaster" };
+        var tudorColl = new Collection { Id = 30, BrandId = 3, Brand = tudor, Name = "Black Bay", Slug = "black-bay" };
+        context.Brands.AddRange(rolex, omega, tudor);
+        context.Collections.AddRange(rolexColl, omegaColl, tudorColl);
+
+        static Watch Make(int id, Brand brand, Collection coll, decimal price) => new()
+        {
+            Id = id,
+            BrandId = brand.Id,
+            Brand = brand,
+            CollectionId = coll.Id,
+            Collection = coll,
+            Name = $"REF-{id}",
+            Slug = $"{brand.Slug}-{id}",
+            Description = $"{brand.Name} {coll.Name}",
+            CurrentPrice = price,
+        };
+
+        var rolexWatches = Enumerable.Range(1, 6).Select(i => Make(i, rolex, rolexColl, 8_000m + i)).ToList();
+        var omegaWatches = new[] { Make(7, omega, omegaColl, 6_000m), Make(8, omega, omegaColl, 6_500m) };
+        var tudorWatches = new[] { Make(9, tudor, tudorColl, 4_000m), Make(10, tudor, tudorColl, 4_500m) };
+        context.Watches.AddRange(rolexWatches);
+        context.Watches.AddRange(omegaWatches);
+        context.Watches.AddRange(tudorWatches);
+        await context.SaveChangesAsync();
+
+        // WatchFinder's ranking clustered Rolex at the top; the other brands ranked just outside,
+        // in OtherCandidates. Brand-diversity should pull them into the visible shortlist.
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("Recommend me sporty watches"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = rolexWatches.Select(ToDto).ToList(),
+                OtherCandidates = omegaWatches.Concat(tudorWatches).Select(ToDto).ToList(),
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"Here are several Tourbillon sport picks.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "Recommend me sporty watches", null, "127.0.0.1");
+
+        var brandSlugs = result.WatchCards
+            .Select(card => card.BrandSlug)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        Assert.True(brandSlugs.Count >= 3, $"Expected >= 3 distinct brands, got: {string.Join(",", brandSlugs)}");
+        Assert.Contains("omega", brandSlugs);
+        Assert.Contains("tudor", brandSlugs);
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_MessyRecommendation_RewritesSearchActionIntoCanonicalTerms()
     {
         using var context = CreateContext();

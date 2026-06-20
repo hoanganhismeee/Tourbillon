@@ -397,11 +397,7 @@ public class WatchFinderService : IWatchFinderService
 
                 if (ShouldApplyStyleSqlFilter(queryIntent))
                 {
-                    var fallbackStyleFamily = StyleFamily(queryIntent.Style);
-                    var fallbackStyleCollectionIds = await _context.Collections
-                        .Where(c => c.Styles.Any(s => fallbackStyleFamily.Contains(s)))
-                        .Select(c => c.Id)
-                        .ToListAsync();
+                    var fallbackStyleCollectionIds = await ResolveStyleCollectionIdsAsync(_context, queryIntent.Style);
                     if (fallbackStyleCollectionIds.Count > 0)
                         fallbackQuery = fallbackQuery.Where(w => w.CollectionId != null && fallbackStyleCollectionIds.Contains(w.CollectionId.Value));
                 }
@@ -727,6 +723,29 @@ public class WatchFinderService : IWatchFinderService
         _ => style is null ? [] : [style],
     };
 
+    // Resolves a style (plus its sibling family — see StyleFamily) to the collection IDs tagged
+    // with any family tag. Materializes the small collections table and filters in memory so it
+    // behaves identically across the Npgsql and in-memory providers — the array-overlap predicate
+    // does not translate under the in-memory test provider. Centralizes what used to be four
+    // duplicated style→collection lookups.
+    internal static async Task<List<int>> ResolveStyleCollectionIdsAsync(TourbillonContext context, string? style)
+    {
+        var family = StyleFamily(style);
+        if (family.Length == 0)
+            return [];
+
+        var familySet = new HashSet<string>(family, StringComparer.OrdinalIgnoreCase);
+        var collections = await context.Collections
+            .AsNoTracking()
+            .Select(c => new { c.Id, c.Styles })
+            .ToListAsync();
+
+        return collections
+            .Where(c => c.Styles.Any(s => familySet.Contains(s)))
+            .Select(c => c.Id)
+            .ToList();
+    }
+
     internal static int DirectSqlScore(string query, Watch watch, QueryIntent? intent, bool isReferenceLike)
     {
         var queryKey = NormaliseEntityText(query);
@@ -1049,11 +1068,7 @@ public class WatchFinderService : IWatchFinderService
             var style = intent?.Style;
             if (style != null)
             {
-                var styleFamily = StyleFamily(style);
-                styleCollectionIds = await _context.Collections
-                    .Where(c => c.Styles.Any(s => styleFamily.Contains(s)))
-                    .Select(c => c.Id)
-                    .ToListAsync();
+                styleCollectionIds = await ResolveStyleCollectionIdsAsync(_context, style);
                 if (styleCollectionIds.Count > 0)
                     q = q.Where(e => e.Watch.CollectionId != null
                                   && styleCollectionIds.Contains((int)e.Watch.CollectionId));
