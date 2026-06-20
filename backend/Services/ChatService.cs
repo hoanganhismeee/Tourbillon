@@ -2668,9 +2668,12 @@ public class ChatService
         // as the search ranked as top matches (capped at the card limit). OtherCandidates only
         // displace a dominant brand's surplus within that size, they don't pad it out.
         var targetCardCount = Math.Min(result.Watches.Count, DiscoveryCardLimit);
-        // Price-on-Request can't be judged against a budget, so pin it below priced matches
-        // whenever the user gave a price constraint (mirrors the deterministic ranking).
-        var pinPriceOnRequest = result.QueryIntent?.MinPrice != null || result.QueryIntent?.MaxPrice != null;
+
+        // Sinks Price-on-Request below priced matches. A discovery shortlist is a list of buyable
+        // recommendations, so a priced in-budget piece should always lead an expensive PoR one —
+        // not just on budget queries. Stable: preserves the upstream order within each group.
+        static List<Watch> SinkPriceOnRequest(IEnumerable<Watch> watches) =>
+            [.. watches.OrderBy(w => w.CurrentPrice <= 0 ? 1 : 0)];
 
         List<Watch> ordered;
         if (requestedDirections.Count >= 2)
@@ -2679,6 +2682,7 @@ public class ChatService
             // directions, which the directional diversifier handles.
             ordered = await DiversifyDiscoveryWatchesAsync(
                 query, pool, requestedDirections, mentions, excludedBrandIds);
+            ordered = SinkPriceOnRequest(ordered);
         }
         else
         {
@@ -2706,13 +2710,12 @@ public class ChatService
             }
 
             ordered = ApplyDiscoveryBrandDiversity(ordered);
+            // Sink PoR BEFORE truncating: prestige tier can rank an in-budget priced piece below
+            // many expensive PoR watches, so truncating first would drop the affordable matches the
+            // user actually asked for (e.g. the only priced sub-$8k sport watches).
+            ordered = SinkPriceOnRequest(ordered);
             ordered = ordered.Take(targetCardCount).ToList();
         }
-
-        // Pin Price-on-Request to the bottom of the shortlist — stable, so the brand-diversified
-        // order is preserved within the priced and PoR groups.
-        if (pinPriceOnRequest)
-            ordered = [.. ordered.OrderBy(w => w.CurrentPrice <= 0 ? 1 : 0)];
 
         if (rejectedWatchSlugs is { Count: > 0 })
         {
