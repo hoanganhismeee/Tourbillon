@@ -4,7 +4,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { motion, useScroll, useTransform, useMotionValueEvent } from 'framer-motion';
+import { motion, AnimatePresence, useScroll, useTransform, useMotionValueEvent } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePathname } from 'next/navigation';
 import SearchOverlay from './SearchOverlay';
@@ -72,6 +72,20 @@ const HeartNavLink = () => {
 const SearchIcon = () => ( 
 <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M17.5 3.33333C15.241 3.33352 13.0148 3.87394 11.0071 4.90948C8.99941 5.94503 7.26848 7.44569 5.95872 9.28625C4.64896 11.1268 3.79834 13.2539 3.47784 15.4901C3.15734 17.7262 3.37624 20.0066 4.11629 22.141C4.85634 24.2753 6.09607 26.2018 7.73206 27.7595C9.36804 29.3173 11.3528 30.4613 13.5209 31.096C15.6889 31.7307 17.9772 31.8377 20.195 31.4082C22.4128 30.9786 24.4957 30.0249 26.27 28.6267L32.3567 34.7133C32.671 35.0169 33.092 35.1849 33.529 35.1811C33.966 35.1773 34.384 35.002 34.693 34.693C35.002 34.384 35.1773 33.966 35.1811 33.529C35.1849 33.092 35.0169 32.671 34.7133 32.3567L28.6267 26.27C30.2733 24.181 31.2986 21.6707 31.5852 19.0262C31.8717 16.3817 31.408 13.71 30.247 11.3168C29.0861 8.92361 27.2748 6.90559 25.0205 5.49371C22.7662 4.08184 20.1599 3.33315 17.5 3.33333ZM6.66666 17.5C6.66666 14.6268 7.80803 11.8713 9.83967 9.83967C11.8713 7.80803 14.6268 6.66666 17.5 6.66666C20.3732 6.66666 23.1287 7.80803 25.1603 9.83967C27.192 11.8713 28.3333 14.6268 28.3333 17.5C28.3333 20.3732 27.192 23.1287 25.1603 25.1603C23.1287 27.192 20.3732 28.3333 17.5 28.3333C14.6268 28.3333 11.8713 27.192 9.83967 25.1603C7.80803 23.1287 6.66666 20.3732 6.66666 17.5Z" fill="black"/>
+</svg>
+)
+
+// Hamburger icon - opens the mobile menu (matches the black icon set)
+const MenuIcon = () => (
+<svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M6 14H34M6 20H34M6 26H34" stroke="black" strokeWidth="2.2" strokeLinecap="round"/>
+</svg>
+)
+
+// Close icon - dismisses the mobile menu
+const CloseIcon = () => (
+<svg width="30" height="30" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M6 6L18 18M18 6L6 18" stroke="#f0e6d2" strokeWidth="1.6" strokeLinecap="round"/>
 </svg>
 )
 
@@ -175,6 +189,10 @@ const UserMenu = () => {
     // State for search overlay
     const [isSearchOpen, setIsSearchOpen] = useState(false);
 
+    // State for the mobile menu overlay
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const { isAuthenticated } = useAuth();
+
     // Scroll direction state — drives hide/show animation
     const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up');
     const pathname = usePathname();
@@ -224,12 +242,14 @@ const UserMenu = () => {
       else if (diff < -3) setScrollDirection('up');
     });
 
-    // Reset navbar to visible on route change
+    // Reset navbar to visible and close the mobile menu on route change
     useEffect(() => {
       setScrollDirection('up');
+      setIsMenuOpen(false);
     }, [pathname]);
   
     return (
+      <>
       <motion.nav
         ref={navRef}
         animate={{
@@ -255,17 +275,22 @@ const UserMenu = () => {
           />
         )}
         
-        {/* Left navigation menu - main site navigation links */}
-        <div className="min-w-0 hidden md:flex items-center justify-start gap-[clamp(16px,2.8vw,50px)] pl-8 font-playfair font-light tracking-[0.08em] text-white uppercase">
-          <Link 
-            href="/watches" 
-            className="hover:opacity-10 transition-opacity"
+        {/* Left: desktop nav links, or the mobile menu trigger */}
+        <div className="min-w-0 flex items-center justify-start">
+          <div className="hidden md:flex items-center justify-start gap-[clamp(16px,2.8vw,50px)] pl-8 font-playfair font-light tracking-[0.08em] text-white uppercase">
+            <Link href="/watches" className="hover:opacity-10 transition-opacity">Timepieces</Link>
+            <Link href="/trend" className="hover:opacity-10 transition-opacity">Trend</Link>
+            <Link href="/stories" className="hover:opacity-10 transition-opacity">Stories</Link>
+            <Link href="/contact" className="hover:opacity-10 transition-opacity">Contact</Link>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsMenuOpen(true)}
+            aria-label="Open menu"
+            className="md:hidden flex items-center justify-center bg-transparent border-none p-0 -ml-1 cursor-pointer hover:opacity-70 transition-opacity"
           >
-            Timepieces
-          </Link>
-          <Link href="/trend" className="hover:opacity-10 transition-opacity">Trend</Link>
-          <Link href="/stories" className="hover:opacity-10 transition-opacity">Stories</Link>
-          <Link href="/contact" className="hover:opacity-10 transition-opacity">Contact</Link>
+            <MenuIcon />
+          </button>
         </div>
   
         {/* Center logo - brand name with hover effects */}
@@ -300,6 +325,89 @@ const UserMenu = () => {
           onClose={() => setIsSearchOpen(false)}
         />
       </motion.nav>
+
+      {/* Mobile menu overlay — gives small screens access to the primary navigation */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: EASE_ENTER }}
+            className="fixed inset-0 z-[60] flex flex-col md:hidden"
+            style={{ background: 'linear-gradient(165deg, #1e1512 0%, #241b16 55%, #2c211a 100%)' }}
+          >
+            {/* Top row: logo + close */}
+            <div className="flex items-center justify-between px-5 py-6">
+              <Link
+                href="/"
+                onClick={() => setIsMenuOpen(false)}
+                className="font-playfair text-[26px] logo-text"
+                style={{ fontWeight: 300 }}
+              >
+                Tourbillon
+              </Link>
+              <button
+                type="button"
+                onClick={() => setIsMenuOpen(false)}
+                aria-label="Close menu"
+                className="bg-transparent border-none p-0 cursor-pointer hover:opacity-70 transition-opacity"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+
+            {/* Primary links */}
+            <nav className="flex flex-1 flex-col justify-center gap-1 px-7">
+              {[
+                { label: 'Timepieces', href: '/watches' },
+                { label: 'Trend', href: '/trend' },
+                { label: 'Stories', href: '/stories' },
+                { label: 'Contact', href: '/contact' },
+              ].map((item, i) => (
+                <motion.div
+                  key={item.href}
+                  initial={{ opacity: 0, x: -24 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.08 + i * 0.06, duration: 0.5, ease: EASE_ENTER }}
+                >
+                  <Link
+                    href={item.href}
+                    onClick={() => setIsMenuOpen(false)}
+                    className="block py-2.5 font-playfair text-[2.6rem] font-light leading-tight tracking-[0.01em] text-[#f0e6d2] transition-colors hover:text-[#bfa68a]"
+                  >
+                    {item.label}
+                  </Link>
+                </motion.div>
+              ))}
+            </nav>
+
+            {/* Secondary links */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.32, duration: 0.4 }}
+              className="flex items-center gap-8 border-t border-white/10 px-7 py-7 font-inter text-[12px] uppercase tracking-[0.22em] text-white/55"
+            >
+              <Link
+                href={isAuthenticated ? '/account/edit-details' : '/auth/start'}
+                onClick={() => setIsMenuOpen(false)}
+                className="transition-colors hover:text-[#bfa68a]"
+              >
+                {isAuthenticated ? 'Account' : 'Sign in'}
+              </Link>
+              <Link
+                href="/favourites"
+                onClick={() => setIsMenuOpen(false)}
+                className="transition-colors hover:text-[#bfa68a]"
+              >
+                Favourites
+              </Link>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      </>
     );
   }
   
