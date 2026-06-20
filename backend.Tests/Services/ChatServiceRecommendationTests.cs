@@ -173,6 +173,71 @@ public class ChatServiceRecommendationTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_PricedInBudgetPieces_AreNotDisplacedByHigherTierPriceOnRequest()
+    {
+        using var context = CreateContext();
+
+        // Frederique Constant is a tier-2 brand; Audemars Piguet is tier-4. The prestige sort ranks
+        // AP above FC, so without sinking PoR before truncation the few priced in-budget FC pieces
+        // get dropped and the shortlist fills with expensive Price-on-Request AP watches.
+        var fc = new Brand { Id = 1, Name = "Frederique Constant", Slug = "frederique-constant" };
+        var ap = new Brand { Id = 2, Name = "Audemars Piguet", Slug = "audemars-piguet" };
+        var fcColl = new Collection { Id = 10, BrandId = 1, Brand = fc, Name = "Highlife", Slug = "highlife" };
+        var apColl = new Collection { Id = 20, BrandId = 2, Brand = ap, Name = "Royal Oak", Slug = "royal-oak" };
+        context.Brands.AddRange(fc, ap);
+        context.Collections.AddRange(fcColl, apColl);
+
+        static Watch Make(int id, Brand brand, Collection coll, decimal price) => new()
+        {
+            Id = id,
+            BrandId = brand.Id,
+            Brand = brand,
+            CollectionId = coll.Id,
+            Collection = coll,
+            Name = $"REF-{id}",
+            Slug = $"{brand.Slug}-{id}",
+            Description = $"{brand.Name} {coll.Name}",
+            CurrentPrice = price,
+        };
+
+        var fcPriced = new[] { Make(1, fc, fcColl, 3_700m), Make(2, fc, fcColl, 3_995m), Make(3, fc, fcColl, 4_750m) };
+        var apPor = Enumerable.Range(4, 12).Select(i => Make(i, ap, apColl, 0m)).ToList();
+        context.Watches.AddRange(fcPriced);
+        context.Watches.AddRange(apPor);
+        await context.SaveChangesAsync();
+
+        // Deterministic ranking already sinks PoR, so priced FC lead Watches; the tier re-sort in
+        // discovery must not undo that and truncate them away.
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("Recommend me sporty watches under 8000"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = fcPriced.Concat(apPor.Take(12)).Select(ToDto).ToList(),
+                OtherCandidates = [],
+                SearchPath = "direct_sql_deterministic",
+                QueryIntent = new QueryIntent { Style = "sport", MaxPrice = 8_000m }
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"Here are sport picks within budget.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+        var result = await service.HandleMessageAsync("session-1", "Recommend me sporty watches under 8000", null, "127.0.0.1");
+
+        var prices = result.WatchCards.Select(card => card.CurrentPrice).ToList();
+        Assert.Equal(3, prices.Count(p => p > 0)); // all three priced FC pieces survived truncation
+        var firstPor = prices.FindIndex(p => p == 0);
+        var lastPriced = prices.FindLastIndex(p => p > 0);
+        Assert.True(firstPor == -1 || lastPriced < firstPor, "priced in-budget cards must precede Price-on-Request");
+        Assert.All(fcPriced, w => Assert.Contains(w.Slug, result.WatchCards.Select(c => c.Slug)));
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_MessyRecommendation_RewritesSearchActionIntoCanonicalTerms()
     {
         using var context = CreateContext();
