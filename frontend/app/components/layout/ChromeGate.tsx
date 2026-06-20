@@ -9,11 +9,12 @@ import AnimatedLayout from "@/app/scrollMotion/AnimatedLayout";
 
 // Routes that render bare — no site chrome, no inherited body background/margin.
 // Each carries the html background its design paints, so overscroll never shows the
-// global brown. Ordered specific-first so subpaths win over the /portfolio parent.
+// global brown. The "/" entry matches the root exactly (its `prefix + "/"` is "//",
+// which never matches a real path), so only the portfolio landing goes bare — not the shop.
 const BARE_ROUTES = [
-  { prefix: "/portfolio/tourbillon", bg: "#efe7d8" }, // Atelier ivory
-  { prefix: "/portfolio/fuelup", bg: "#efe7d8" }, // Atelier ivory
-  { prefix: "/portfolio", bg: "#1e1512" }, // warm brown (hub)
+  { prefix: "/projects/tourbillon", bg: "#efe7d8" }, // Atelier ivory (case study)
+  { prefix: "/projects/fuelup", bg: "#efe7d8" }, // Atelier ivory (case study)
+  { prefix: "/", bg: "#1e1512" }, // warm brown (portfolio landing at root)
 ];
 
 // Scoped overrides that undo the global brown gradient, top margin, and fixed

@@ -9,14 +9,14 @@ const navigationColumns = [
     links: [
       { label: 'Watches', href: ROUTES.WATCHES, description: 'Browse the full collection.' },
       { label: 'Stories', href: ROUTES.STORIES, description: 'Read editorial notes and horology pieces.' },
-      { label: 'Smart Search', href: '/#smart-search', description: 'Describe a brief and start from the homepage finder.' },
+      { label: 'Smart Search', href: '/tourbillon#smart-search', description: 'Describe a brief and start from the homepage finder.' },
       { label: 'Compare', href: '/compare', description: 'Review details side by side.' },
     ],
   },
   {
     title: 'Client Services',
     links: [
-      { label: 'Watch DNA', href: '/#watch-dna', description: 'See how taste signals shape the homepage curation.' },
+      { label: 'Watch DNA', href: '/tourbillon#watch-dna', description: 'See how taste signals shape the homepage curation.' },
       { label: 'Favourites', href: '/favourites', description: 'Keep saved references within reach.' },
       { label: 'Sign In', href: ROUTES.LOGIN, description: 'Access your account and saved activity.' },
       { label: 'LinkedIn', href: 'https://www.linkedin.com/in/hoanganhchu/', description: 'Follow the project and its builder.' },

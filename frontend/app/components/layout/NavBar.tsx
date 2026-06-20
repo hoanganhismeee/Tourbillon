@@ -295,8 +295,8 @@ const UserMenu = () => {
   
         {/* Center logo - brand name with hover effects */}
         <div className="justify-self-center">
-          <Link 
-            href="/" 
+          <Link
+            href="/tourbillon"
             className="font-playfair text-[28px] md:text-[48px] logo-text opacity-90 hover:opacity-10 transition-opacity"
             style={{ fontWeight: 300 }}
           >
@@ -340,7 +340,7 @@ const UserMenu = () => {
             {/* Top row: logo + close */}
             <div className="flex items-center justify-between px-5 py-6">
               <Link
-                href="/"
+                href="/tourbillon"
                 onClick={() => setIsMenuOpen(false)}
                 className="font-playfair text-[26px] logo-text"
                 style={{ fontWeight: 300 }}

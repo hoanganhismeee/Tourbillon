@@ -266,7 +266,7 @@ export default function TourbillonPortfolioPage() {
 
           <div className="atl-rise mt-8 flex flex-wrap items-center gap-3" style={{ animationDelay: "320ms" }}>
             <Link
-              href="/"
+              href="/tourbillon"
               className="atl-tag group inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
             >
               Visit live site <span aria-hidden>&rarr;</span>
