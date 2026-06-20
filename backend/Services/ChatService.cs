@@ -105,6 +105,9 @@ public class ChatService
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(1);
     private const int DiscoveryCardLimit = 10;
+    // Wider candidate pool fed into brand-diversity so a dominant brand's surplus cards can be
+    // displaced by alternatives that ranked just outside the card limit.
+    private const int DiscoveryPoolSize = 24;
 
     // Lazy-loaded catalogue roster — built once and reused for the service lifetime.
     private string? _catalogueRoster;
@@ -2203,6 +2206,37 @@ public class ChatService
         return 3;
     }
 
+    // Spread brands across the shortlist so a single house can't fill every card. Walks the
+    // (already prestige-ordered) list keeping each brand under a per-position cap; watches over
+    // the cap are deferred to the tail so they still appear when no other brand can fill a slot.
+    // Mirrors CatalogueOrderingService's diversity caps used by the watch-listing Featured order.
+    private static List<Watch> ApplyDiscoveryBrandDiversity(List<Watch> ordered)
+    {
+        if (ordered.Count <= 1) return ordered;
+
+        var result = new List<Watch>();
+        var deferred = new List<Watch>();
+        var brandCounts = new Dictionary<int, int>();
+
+        foreach (var watch in ordered)
+        {
+            var count = brandCounts.GetValueOrDefault(watch.BrandId);
+            if (count >= DiscoveryBrandCapForPosition(result.Count))
+            {
+                deferred.Add(watch);
+                continue;
+            }
+            result.Add(watch);
+            brandCounts[watch.BrandId] = count + 1;
+        }
+
+        result.AddRange(deferred);
+        return result;
+    }
+
+    // At most 2 of one brand before position 6 (guarantees a varied visible head), then 3.
+    private static int DiscoveryBrandCapForPosition(int position) => position < 6 ? 2 : 3;
+
     private static ChatSessionState BuildUpdatedRecommendationState(
         ChatSessionState? existingState,
         List<Watch> watches,
@@ -2619,23 +2653,40 @@ public class ChatService
         string? revisionSummary = null,
         IReadOnlyCollection<string>? rejectedWatchSlugs = null)
     {
-        var topIds = result.Watches.Take(DiscoveryCardLimit).Select(w => w.Id).Distinct().ToList();
-        var ordered = await LoadWatchesByIdsAsync(topIds);
+        // Pull a wider candidate pool than the card limit so brand-diversity has alternatives to
+        // promote when one brand dominates the ranking. OtherCandidates are the same-query
+        // matches that ranked just outside Watches.
+        var poolIds = result.Watches
+            .Concat(result.OtherCandidates)
+            .Select(w => w.Id)
+            .Distinct()
+            .Take(DiscoveryPoolSize)
+            .ToList();
+        var pool = await LoadWatchesByIdsAsync(poolIds);
         var requestedDirections = DetectDiscoveryDirections(query);
-        ordered = await DiversifyDiscoveryWatchesAsync(
-            query,
-            ordered,
-            requestedDirections,
-            mentions,
-            excludedBrandIds);
+        // The wider pool feeds diversity but must not inflate the shortlist: show as many cards
+        // as the search ranked as top matches (capped at the card limit). OtherCandidates only
+        // displace a dominant brand's surplus within that size, they don't pad it out.
+        var targetCardCount = Math.Min(result.Watches.Count, DiscoveryCardLimit);
+        // Price-on-Request can't be judged against a budget, so pin it below priced matches
+        // whenever the user gave a price constraint (mirrors the deterministic ranking).
+        var pinPriceOnRequest = result.QueryIntent?.MinPrice != null || result.QueryIntent?.MaxPrice != null;
 
-        // For unidirectional queries the diversifier does nothing, so WatchFinder's raw
-        // vector ranking determines order. Apply a stable prestige sort so higher-tier
-        // brands surface first regardless of embedding score — same tier weights as the
-        // watch listing Featured sort (PP=5, VC/AP/Rolex=4, JLC/Omega=3, others=1).
-        if (requestedDirections.Count < 2)
+        List<Watch> ordered;
+        if (requestedDirections.Count >= 2)
         {
-            ordered = [.. ordered.OrderByDescending(GetBrandPrestigeTier)];
+            // Multi-direction brief (e.g. "sporty and dressy"): balance across the requested
+            // directions, which the directional diversifier handles.
+            ordered = await DiversifyDiscoveryWatchesAsync(
+                query, pool, requestedDirections, mentions, excludedBrandIds);
+        }
+        else
+        {
+            // Unidirectional brief: WatchFinder's ranking determines order. Apply a stable
+            // prestige sort so higher-tier brands surface first (same tier weights as the watch
+            // listing Featured sort: PP=5, VC/AP/Rolex=4, JLC/Omega=3, others=1), then spread
+            // brands so no single house fills the shortlist, then take the card limit.
+            ordered = [.. pool.OrderByDescending(GetBrandPrestigeTier)];
 
             // Cap tier-2 brands (e.g. Frédérique Constant) at 3 cards when higher-tier
             // alternatives are present — prevents a single accessible-luxury brand from
@@ -2653,7 +2704,15 @@ public class ChatService
                     })
                     .ToList();
             }
+
+            ordered = ApplyDiscoveryBrandDiversity(ordered);
+            ordered = ordered.Take(targetCardCount).ToList();
         }
+
+        // Pin Price-on-Request to the bottom of the shortlist — stable, so the brand-diversified
+        // order is preserved within the priced and PoR groups.
+        if (pinPriceOnRequest)
+            ordered = [.. ordered.OrderBy(w => w.CurrentPrice <= 0 ? 1 : 0)];
 
         if (rejectedWatchSlugs is { Count: > 0 })
         {
