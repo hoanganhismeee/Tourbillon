@@ -78,9 +78,9 @@ const projects = [
       "A luxury watch e-commerce platform with an AI concierge, plain-English smart search, and a Watch DNA taste profile. A .NET 8 API, a Next.js 15 frontend, and a Python AI service — production AI spend held under $2/month.",
     tags: ["Next.js 15", ".NET 8", "PostgreSQL", "pgvector", "Claude"],
     links: [
-      { label: "Visit live site", href: "/tourbillon", external: false },
-      { label: "Read case study", href: "/projects/tourbillon", external: false },
-      { label: "GitHub", href: "https://github.com/hoanganhismeee/Tourbillon", external: true },
+      { label: "Visit live site", href: "/tourbillon", external: false, newTab: true },
+      { label: "Read case study", href: "/projects/tourbillon", external: false, newTab: false },
+      { label: "GitHub", href: "https://github.com/hoanganhismeee/Tourbillon", external: true, newTab: false },
     ],
   },
   {
@@ -90,8 +90,8 @@ const projects = [
       "A cross-platform fitness and nutrition companion with AI food and workout recommendations that gracefully fall back to rule-based logic. React Native (Expo) with a Node, Express, and PostgreSQL API.",
     tags: ["React Native", "Expo", "Node", "PostgreSQL", "OpenAI"],
     links: [
-      { label: "Read case study", href: "/projects/fuelup", external: false },
-      { label: "GitHub", href: "https://github.com/Scorpio-2410/FuelUp", external: true },
+      { label: "Read case study", href: "/projects/fuelup", external: false, newTab: false },
+      { label: "GitHub", href: "https://github.com/Scorpio-2410/FuelUp", external: true, newTab: false },
     ],
   },
 ];
@@ -391,10 +391,12 @@ export default function PortfolioHubPage() {
                       <Link
                         key={link.label}
                         href={link.href}
+                        target={link.newTab ? "_blank" : undefined}
+                        rel={link.newTab ? "noopener noreferrer" : undefined}
                         className="group stu-mono inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.14em] text-[var(--stu-text)]"
                       >
                         <span className="stu-link">{link.label}</span>
-                        <span className="stu-arrow text-[var(--stu-accent)]" aria-hidden>&rarr;</span>
+                        <span className="stu-arrow text-[var(--stu-accent)]" aria-hidden>{link.newTab ? "↗" : "→"}</span>
                       </Link>
                     ),
                   )}
