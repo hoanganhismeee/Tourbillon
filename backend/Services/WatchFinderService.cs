@@ -528,8 +528,8 @@ public class WatchFinderService : IWatchFinderService
                                 + RelaxedDeterministicScore(w, queryIntent, [])
                                 + IntentPricePreferenceScore(w, queryIntent)
                         })
-                        .OrderByDescending(x => x.CompositeScore)
-                        .ThenBy(x => x.Watch.CurrentPrice == 0 ? 1 : 0)
+                        .OrderBy(x => PriceOnRequestRank(x.Watch, queryIntent))
+                        .ThenByDescending(x => x.CompositeScore)
                         .ThenBy(x => PriceDistanceFromIntent(x.Watch, queryIntent))
                         .Select(x => x.Watch)
                         .ToList();
@@ -969,6 +969,13 @@ public class WatchFinderService : IWatchFinderService
         return 0;
     }
 
+    // Primary sort key that pins Price-on-Request (price 0) below every priced match — but only
+    // when the user set a budget. A PoR watch can't be judged against a price ceiling, so it
+    // belongs at the bottom of a budgeted shortlist; for non-price queries it returns 0 for all
+    // rows, leaving the existing score ordering untouched.
+    internal static int PriceOnRequestRank(Watch watch, QueryIntent? intent) =>
+        (intent?.MinPrice != null || intent?.MaxPrice != null) && watch.CurrentPrice <= 0 ? 1 : 0;
+
     private static decimal PriceDistanceFromIntent(Watch watch, QueryIntent? intent)
     {
         if (watch.CurrentPrice <= 0)
@@ -980,12 +987,17 @@ public class WatchFinderService : IWatchFinderService
             : Math.Abs(watch.CurrentPrice - targetPrice.Value);
     }
 
+    // A price "target" only exists when the user gave a bounded range or an "around $X"
+    // phrasing (both MinPrice and MaxPrice set → midpoint). A lone MaxPrice ("under $X") is a
+    // budget ceiling, not a target: every in-budget watch is equally acceptable, so return null
+    // and let IntentPricePreferenceScore apply a flat in-budget score. Treating a cap as a target
+    // pushed results to cluster just below the ceiling (e.g. only the most expensive sub-$20k pieces).
     private static decimal? TargetPriceFromIntent(QueryIntent? intent)
     {
         if (intent?.MinPrice != null && intent.MaxPrice != null)
             return (intent.MinPrice.Value + intent.MaxPrice.Value) / 2m;
 
-        return intent?.MaxPrice ?? intent?.MinPrice;
+        return null;
     }
 
     // Phase 3B retrieval: cosine similarity search against watch chunk embeddings.

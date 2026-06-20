@@ -145,8 +145,8 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
                         + WatchFinderService.DeterministicMatchScore(w, intent, styleCollectionIds)
                 })
                 .Where(x => !isDeterministicCatalogueQuery || WatchFinderService.MatchesDeterministicIntent(x.Watch, intent, styleCollectionIds))
-                .OrderByDescending(x => x.Score)
-                .ThenBy(x => x.Watch.CurrentPrice == 0 ? 1 : 0)
+                .OrderBy(x => WatchFinderService.PriceOnRequestRank(x.Watch, intent))
+                .ThenByDescending(x => x.Score)
                 .ThenBy(x => x.Watch.CurrentPrice == 0 ? decimal.MaxValue : x.Watch.CurrentPrice)
                 .Select(x => x.Watch)
                 .ToList();
@@ -163,8 +163,8 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
                         Score = WatchFinderService.DirectSqlScore(query, w, intent, false)
                             + WatchFinderService.RelaxedDeterministicScore(w, intent, styleCollectionIds)
                     })
-                    .OrderByDescending(x => x.Score)
-                    .ThenBy(x => x.Watch.CurrentPrice == 0 ? 1 : 0)
+                    .OrderBy(x => WatchFinderService.PriceOnRequestRank(x.Watch, intent))
+                    .ThenByDescending(x => x.Score)
                     .ThenBy(x => x.Watch.CurrentPrice == 0 ? decimal.MaxValue : x.Watch.CurrentPrice)
                     .Select(x => x.Watch)
                     .ToList();
@@ -249,8 +249,8 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
                 Score = WatchFinderService.DirectSqlScore(query, w, intent, false)
                     + WatchFinderService.DeterministicMatchScore(w, intent, styleCollectionIds)
             })
-            .OrderByDescending(x => x.Score)
-            .ThenBy(x => x.Watch.CurrentPrice == 0 ? 1 : 0)
+            .OrderBy(x => WatchFinderService.PriceOnRequestRank(x.Watch, intent))
+            .ThenByDescending(x => x.Score)
             .ThenBy(x => x.Watch.CurrentPrice == 0 ? decimal.MaxValue : x.Watch.CurrentPrice)
             .Select(x => x.Watch)
             .ToList();
@@ -264,8 +264,8 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
                     Score = WatchFinderService.DirectSqlScore(query, w, intent, false)
                         + WatchFinderService.RelaxedDeterministicScore(w, intent, styleCollectionIds)
                 })
-                .OrderByDescending(x => x.Score)
-                .ThenBy(x => x.Watch.CurrentPrice == 0 ? 1 : 0)
+                .OrderBy(x => WatchFinderService.PriceOnRequestRank(x.Watch, intent))
+                .ThenByDescending(x => x.Score)
                 .ThenBy(x => x.Watch.CurrentPrice == 0 ? decimal.MaxValue : x.Watch.CurrentPrice)
                 .Select(x => x.Watch)
                 .ToList();
