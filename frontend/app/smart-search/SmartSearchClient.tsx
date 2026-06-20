@@ -466,7 +466,7 @@ export default function SmartSearchClient() {
       <div className="px-8 lg:px-16 py-28 text-center">
         <p className="text-white/50 font-inter">
           No query provided.{' '}
-          <Link href="/" className="text-white/70 underline underline-offset-2">Go back.</Link>
+          <Link href="/tourbillon" className="text-white/70 underline underline-offset-2">Go back.</Link>
         </p>
       </div>
     );

@@ -1,7 +1,7 @@
 // Route constants for the Tourbillon application
 export const ROUTES = {
-  // Main pages
-  HOME: '/',
+  // Main pages — the shop now lives under /tourbillon; the root is the portfolio landing
+  HOME: '/tourbillon',
   WATCHES: '/watches',
   BRANDS: '/brands',
   COLLECTIONS: '/collections',
@@ -18,9 +18,10 @@ export const ROUTES = {
   CONTACT: '/contact',
   STORIES: '/stories',
   TREND: '/trend',
-  // URL-only — intentionally not linked from the nav or footer.
-  PORTFOLIO: '/portfolio',
-  PORTFOLIO_TOURBILLON: '/portfolio/tourbillon',
+  // Portfolio landing (root) + case studies — URL-only, not linked from nav or footer.
+  PORTFOLIO: '/',
+  PORTFOLIO_TOURBILLON: '/projects/tourbillon',
+  PORTFOLIO_FUELUP: '/projects/fuelup',
 } as const;
 
 export const DYNAMIC_ROUTES = {
