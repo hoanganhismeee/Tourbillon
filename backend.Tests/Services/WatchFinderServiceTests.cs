@@ -745,4 +745,113 @@ public class WatchFinderServiceTests
 
         Assert.Equal([10, 20, 30], matches.Select(c => c.Id).Order().ToArray());
     }
+
+    // ── Deterministic ranking: budget cap, Price-on-Request placement, style family ──────────
+
+    private static DeterministicWatchSearchService CreateDeterministic(TourbillonContext context) =>
+        new(context, NullLogger<DeterministicWatchSearchService>.Instance, TestStorage);
+
+    private static Watch StyledWatch(int id, Brand brand, Collection collection, string slug, decimal price) => new()
+    {
+        Id = id,
+        BrandId = brand.Id,
+        Brand = brand,
+        CollectionId = collection.Id,
+        Collection = collection,
+        Name = slug.ToUpperInvariant(),
+        Slug = slug,
+        Description = $"{brand.Name} {collection.Name}",
+        CurrentPrice = price,
+    };
+
+    [Fact]
+    public async Task TryDirectSqlSearch_BudgetCap_DoesNotLeadWithMostExpensive()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Rolex", Slug = "rolex" };
+        var coll = new Collection { Id = 1, BrandId = 1, Brand = brand, Name = "Submariner", Slug = "submariner", Styles = ["sport"] };
+        context.Brands.Add(brand);
+        context.Collections.Add(coll);
+        context.Watches.AddRange(
+            StyledWatch(1, brand, coll, "cheap", 5_000m),
+            StyledWatch(2, brand, coll, "mid", 12_000m),
+            StyledWatch(3, brand, coll, "ceiling", 19_500m));
+        await context.SaveChangesAsync();
+
+        var result = await CreateDeterministic(context).TryDirectSqlSearchAsync(
+            "sporty watches under 20k", new QueryIntent { Style = "sport", MaxPrice = 20_000m }, "test");
+
+        Assert.NotNull(result);
+        // The old code treated the cap as a target and ranked the $19.5k piece first; a budget
+        // query should spread across the range rather than cluster at the ceiling.
+        Assert.NotEqual("ceiling", result!.Watches.First().Slug);
+        Assert.Equal("cheap", result.Watches.First().Slug);
+    }
+
+    [Fact]
+    public async Task TryDirectSqlSearch_PriceConstraint_PinsPriceOnRequestToBottom()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Rolex", Slug = "rolex" };
+        var coll = new Collection { Id = 1, BrandId = 1, Brand = brand, Name = "Submariner", Slug = "submariner", Styles = ["sport"] };
+        context.Brands.Add(brand);
+        context.Collections.Add(coll);
+        context.Watches.AddRange(
+            StyledWatch(1, brand, coll, "priced-low", 5_000m),
+            StyledWatch(2, brand, coll, "priced-high", 18_000m),
+            StyledWatch(3, brand, coll, "por", 0m));
+        await context.SaveChangesAsync();
+
+        var result = await CreateDeterministic(context).TryDirectSqlSearchAsync(
+            "sporty watches under 20k", new QueryIntent { Style = "sport", MaxPrice = 20_000m }, "test");
+
+        Assert.NotNull(result);
+        // Price-on-Request cannot be judged against a budget, so it sits below every priced match.
+        Assert.Equal("por", result!.Watches.Last().Slug);
+        Assert.DoesNotContain("por", result.Watches.Take(result.Watches.Count - 1).Select(w => w.Slug));
+    }
+
+    [Fact]
+    public async Task TryDirectSqlSearch_SportStyle_IncludesDiverTaggedCollections()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Omega", Slug = "omega" };
+        var sportColl = new Collection { Id = 1, BrandId = 1, Brand = brand, Name = "Speedmaster", Slug = "speedmaster", Styles = ["sport"] };
+        var diverColl = new Collection { Id = 2, BrandId = 1, Brand = brand, Name = "Seamaster", Slug = "seamaster", Styles = ["diver"] };
+        context.Brands.Add(brand);
+        context.Collections.AddRange(sportColl, diverColl);
+        context.Watches.AddRange(
+            StyledWatch(1, brand, sportColl, "speedmaster-1", 8_000m),
+            StyledWatch(2, brand, diverColl, "seamaster-1", 6_000m));
+        await context.SaveChangesAsync();
+
+        var result = await CreateDeterministic(context).TryDirectSqlSearchAsync(
+            "sporty watches under 20k", new QueryIntent { Style = "sport", MaxPrice = 20_000m }, "test");
+
+        Assert.NotNull(result);
+        // A diver is a sport watch; a diver-tagged collection must not vanish from a sport query.
+        Assert.Contains("seamaster-1", result!.Watches.Select(w => w.Slug));
+    }
+
+    [Fact]
+    public async Task TryDirectSqlSearch_BoundedRange_StillRanksByProximityToMidpoint()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Rolex", Slug = "rolex" };
+        var coll = new Collection { Id = 1, BrandId = 1, Brand = brand, Name = "Datejust", Slug = "datejust", Styles = ["dress"] };
+        context.Brands.Add(brand);
+        context.Collections.Add(coll);
+        context.Watches.AddRange(
+            StyledWatch(1, brand, coll, "low", 6_500m),
+            StyledWatch(2, brand, coll, "mid", 10_000m),
+            StyledWatch(3, brand, coll, "high", 13_500m));
+        await context.SaveChangesAsync();
+
+        // "around 10k" sets both bounds → a genuine target at the midpoint, unchanged by the cap fix.
+        var result = await CreateDeterministic(context).TryDirectSqlSearchAsync(
+            "dress watches around 10k", new QueryIntent { Style = "dress", MinPrice = 6_000m, MaxPrice = 14_000m }, "test");
+
+        Assert.NotNull(result);
+        Assert.Equal("mid", result!.Watches.First().Slug);
+    }
 }
