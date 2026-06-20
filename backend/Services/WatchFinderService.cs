@@ -703,7 +703,15 @@ public class WatchFinderService : IWatchFinderService
 
     internal static bool ShouldUseDeterministicCataloguePath(string query, QueryIntent? intent)
     {
-        if (intent == null || HasSemanticOnlySignals(query))
+        if (intent == null)
+            return false;
+
+        // A semantic-only signal (occasion / vibe word like "everyday" or "gift") normally routes
+        // to the vector path. But an explicit budget is a hard constraint the catalogue path serves
+        // better: it returns varied, in-budget priced pieces instead of letting the vector search
+        // surface expensive Price-on-Request grails for "affordable everyday watches".
+        var hasBudget = intent.MinPrice != null || intent.MaxPrice != null;
+        if (HasSemanticOnlySignals(query) && !hasBudget)
             return false;
 
         return HasBrandIntent(intent)
