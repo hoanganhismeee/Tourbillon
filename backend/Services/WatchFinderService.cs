@@ -158,6 +158,9 @@ public class WatchFinderService : IWatchFinderService
     private const int RerankLimit        = 15;    // max candidates sent to LLM (was 40)
     internal const int TopMatchLimit     = 15;    // max results in Watches (was 20)
     private const int MinScoreThreshold  = 60;    // min LLM score to appear in top matches
+    // Accessible-luxury ceiling for vague affordability terms with no explicit number (~catalogue
+    // p25). Keeps "affordable / entry-level" queries on priced entry-tier pieces.
+    internal const decimal AffordableCeiling = 15_000m;
 
     public WatchFinderService(
         IHttpClientFactory httpClientFactory,
@@ -1879,6 +1882,15 @@ public class WatchFinderService : IWatchFinderService
                         budgetCap.Groups[1].Value,
                         budgetCap.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
                 }
+            }
+
+            // Vague affordability terms with no number map to the accessible-luxury ceiling so the
+            // price pre-filter pulls in entry-tier priced pieces, instead of the vector search
+            // surfacing expensive Price-on-Request grails for "affordable everyday watches".
+            if (intent.MaxPrice == null && intent.MinPrice == null
+                && Regex.IsMatch(q, @"\b(?:affordable|budget[-\s]?friendly|entry[-\s]?level|accessible|starter|inexpensive)\b|\bstudent\b", RegexOptions.IgnoreCase))
+            {
+                intent.MaxPrice = AffordableCeiling;
             }
         }
 

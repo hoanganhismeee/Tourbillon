@@ -746,6 +746,22 @@ public class WatchFinderServiceTests
         Assert.Equal([10, 20, 30], matches.Select(c => c.Id).Order().ToArray());
     }
 
+    [Fact]
+    public void ApplyRegexFilters_AffordabilityTerm_SetsAccessibleCeiling()
+    {
+        var intent = new QueryIntent();
+        WatchFinderService.ApplyRegexFilters("affordable everyday watches", intent);
+        Assert.Equal(WatchFinderService.AffordableCeiling, intent.MaxPrice);
+    }
+
+    [Fact]
+    public void ApplyRegexFilters_ExplicitPrice_OverridesAffordabilityCeiling()
+    {
+        var intent = new QueryIntent();
+        WatchFinderService.ApplyRegexFilters("affordable watches under 5000", intent);
+        Assert.Equal(5_000m, intent.MaxPrice);
+    }
+
     // ── Deterministic ranking: budget cap, Price-on-Request placement, style family ──────────
 
     private static DeterministicWatchSearchService CreateDeterministic(TourbillonContext context) =>
