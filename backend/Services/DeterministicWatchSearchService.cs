@@ -62,8 +62,9 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
             strictQuery = strictQuery.Where(w => w.CurrentPrice == 0 || w.CurrentPrice >= intent.MinPrice);
         if (intent?.Style != null && WatchFinderService.ShouldApplyStyleSqlFilter(intent))
         {
+            var styleFamily = WatchFinderService.StyleFamily(intent.Style);
             styleCollectionIds = await _context.Collections
-                .Where(c => c.Styles.Contains(intent.Style!))
+                .Where(c => c.Styles.Any(s => styleFamily.Contains(s)))
                 .Select(c => c.Id)
                 .ToListAsync();
             if (styleCollectionIds.Count > 0)
@@ -223,8 +224,9 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
         var styleCollectionIds = new List<int>();
         if (intent.Style != null && WatchFinderService.ShouldApplyStyleSqlFilter(intent))
         {
+            var styleFamily = WatchFinderService.StyleFamily(intent.Style);
             styleCollectionIds = await _context.Collections
-                .Where(c => c.Styles.Contains(intent.Style!))
+                .Where(c => c.Styles.Any(s => styleFamily.Contains(s)))
                 .Select(c => c.Id)
                 .ToListAsync();
             if (styleCollectionIds.Count > 0)

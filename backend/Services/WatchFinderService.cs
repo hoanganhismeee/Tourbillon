@@ -397,8 +397,9 @@ public class WatchFinderService : IWatchFinderService
 
                 if (ShouldApplyStyleSqlFilter(queryIntent))
                 {
+                    var fallbackStyleFamily = StyleFamily(queryIntent.Style);
                     var fallbackStyleCollectionIds = await _context.Collections
-                        .Where(c => c.Styles.Contains(queryIntent.Style!))
+                        .Where(c => c.Styles.Any(s => fallbackStyleFamily.Contains(s)))
                         .Select(c => c.Id)
                         .ToListAsync();
                     if (fallbackStyleCollectionIds.Count > 0)
@@ -715,6 +716,16 @@ public class WatchFinderService : IWatchFinderService
 
     internal static bool ShouldApplyStyleSqlFilter(QueryIntent? intent) =>
         intent?.Style != null && !HasCollectionIntent(intent) && !HasBrandIntent(intent);
+
+    // A requested style also accepts its sibling family so the hard SQL collection filter does
+    // not exclude obviously-related pieces — "sport" must surface diver collections too (a diver
+    // is a sport watch), otherwise a Seamaster/Black Bay tagged only "diver" vanishes from a
+    // "sporty watches" query. Dress and art stay narrow. Returns the acceptable Collection.Styles tags.
+    internal static string[] StyleFamily(string? style) => style switch
+    {
+        "sport" => ["sport", "diver"],
+        _ => style is null ? [] : [style],
+    };
 
     internal static int DirectSqlScore(string query, Watch watch, QueryIntent? intent, bool isReferenceLike)
     {
@@ -1038,8 +1049,9 @@ public class WatchFinderService : IWatchFinderService
             var style = intent?.Style;
             if (style != null)
             {
+                var styleFamily = StyleFamily(style);
                 styleCollectionIds = await _context.Collections
-                    .Where(c => c.Styles.Contains(style))
+                    .Where(c => c.Styles.Any(s => styleFamily.Contains(s)))
                     .Select(c => c.Id)
                     .ToListAsync();
                 if (styleCollectionIds.Count > 0)
