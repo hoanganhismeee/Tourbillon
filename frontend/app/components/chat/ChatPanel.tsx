@@ -3,7 +3,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState, KeyboardEvent, useCallback, ReactNode, startTransition } from 'react';
+import { useEffect, useRef, useState, KeyboardEvent, PointerEvent, MouseEvent, useCallback, ReactNode, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useChat } from '@/contexts/ChatContext';
 import { useCursor } from '@/contexts/CursorContext';
@@ -226,12 +226,84 @@ function MarkdownMessage({ text }: { text: string }) {
 }
 
 function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Mouse drag-to-pan state (touch keeps native momentum scrolling, so it is left untouched).
+  const drag = useRef({ active: false, moved: false, startX: 0, startScroll: 0, pointerId: -1 });
+
+  // Translate a vertical wheel into horizontal scroll. The listener must be native + non-passive:
+  // React's synthetic onWheel is passive, so preventDefault would be ignored and the chat
+  // transcript would scroll instead of the card row. We release the wheel at either edge so the
+  // page can still scroll past the row once there is nothing left to pan.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      if (delta === 0) return;
+      const atStart = el.scrollLeft <= 0;
+      const atEnd = Math.ceil(el.scrollLeft + el.clientWidth) >= el.scrollWidth;
+      if ((delta < 0 && atStart) || (delta > 0 && atEnd)) return;
+      el.scrollLeft += delta;
+      e.preventDefault();
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    const el = scrollRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    drag.current = { active: true, moved: false, startX: e.clientX, startScroll: el.scrollLeft, pointerId: e.pointerId };
+  };
+
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    const d = drag.current;
+    if (!el || !d.active) return;
+    const dx = e.clientX - d.startX;
+    if (!d.moved) {
+      if (Math.abs(dx) <= 4) return;          // tolerate click jitter before committing to a drag
+      d.moved = true;
+      el.setPointerCapture(d.pointerId);
+    }
+    el.scrollLeft = d.startScroll - dx;
+  };
+
+  const endDrag = () => {
+    const el = scrollRef.current;
+    const d = drag.current;
+    if (el && d.pointerId !== -1 && el.hasPointerCapture(d.pointerId)) el.releasePointerCapture(d.pointerId);
+    d.active = false;
+    d.pointerId = -1;
+    // `moved` is cleared by onClickCapture so the trailing click is swallowed, not navigated.
+  };
+
+  // A drag ends with a click event; swallow it so panning never opens a watch page.
+  const onClickCapture = (e: MouseEvent<HTMLDivElement>) => {
+    if (drag.current.moved) {
+      e.preventDefault();
+      e.stopPropagation();
+      drag.current.moved = false;
+    }
+  };
+
   return (
-    <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+    <div
+      ref={scrollRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onClickCapture={onClickCapture}
+      className="mt-3 flex gap-3 overflow-x-auto overscroll-x-contain pb-1 cursor-grab select-none scrollbar-hide active:cursor-grabbing"
+    >
       {cards.map(card => (
         <Link
           key={card.id}
           href={`/watches/${card.slug || card.id}`}
+          draggable={false}
           className="flex-shrink-0 flex flex-col items-center gap-1.5 rounded-xl border border-white/10 p-2.5 hover:border-[#bfa68a]/40 transition-colors"
           style={{ background: 'rgba(255,255,255,0.04)', width: 100 }}
         >
@@ -241,6 +313,7 @@ function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
               <img
                 src={card.imageUrl || imageTransformations.thumbnail(card.image!)}
                 alt={card.name}
+                draggable={false}
                 className="h-full w-full object-contain"
               />
             ) : (
