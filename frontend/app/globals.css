@@ -29,6 +29,16 @@ html::-webkit-scrollbar {
   display: none;
 }
 
+/* Reusable: hide the scrollbar on any scroll container while keeping it scrollable
+   (wheel / drag / touch). Used by horizontal card rows that supply their own affordance. */
+@utility scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Hide native cursor when custom cursor is active */
 html.custom-cursor,
 html.custom-cursor * {
