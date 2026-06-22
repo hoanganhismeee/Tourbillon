@@ -415,6 +415,14 @@ RecurringJob.AddOrUpdate<BrowsingEventRetentionJob>(
     job => job.RunAsync(),
     "0 3 * * *");
 
+// Keep the concierge starter answers pre-cached so the suggestions return instantly. Refreshes
+// every 6 hours (well inside the 12h cache TTL); also fired once on boot to warm a cold cache.
+RecurringJob.AddOrUpdate<ChatService>(
+    "chat-warm-starters",
+    service => service.WarmStartersAsync(),
+    "0 */6 * * *");
+BackgroundJob.Enqueue<ChatService>(service => service.WarmStartersAsync());
+
     app.Run();
 }
 catch (Exception ex) when (ex is not HostAbortedException)

@@ -3,7 +3,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState, KeyboardEvent, useCallback, ReactNode, startTransition } from 'react';
+import { useEffect, useRef, useState, KeyboardEvent, PointerEvent, MouseEvent, useCallback, ReactNode, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useChat } from '@/contexts/ChatContext';
 import { useCursor } from '@/contexts/CursorContext';
@@ -225,38 +225,240 @@ function MarkdownMessage({ text }: { text: string }) {
   return <div>{renderMarkdown(text, handleNavigate)}</div>;
 }
 
+// Wheel feel: scale each notch down so a flick travels a measured distance (not a lurch), then
+// glide to it with a gentle ease. Lower EASE = longer, more luxurious glide.
+const WHEEL_SCALE = 0.65;
+const WHEEL_EASE = 0.12;
+
 function WatchCardRow({ cards }: { cards: ChatWatchCard[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLDivElement>(null);
+  // Live geometry, refreshed on every scroll/resize so the thumb-drag maths use current values.
+  const geom = useRef({ trackW: 0, thumbW: 0, maxScroll: 0 });
+
+  const wheelAnim = useRef({ raf: 0, target: 0, animating: false });
+  // Mouse drag-to-pan over the cards (touch keeps native momentum scrolling).
+  const drag = useRef({ active: false, moved: false, startX: 0, startScroll: 0, pointerId: -1 });
+  // Dragging the custom thumb itself.
+  const thumbDrag = useRef({ active: false, startX: 0, startScroll: 0, pointerId: -1 });
+
+  // Position the custom thumb from live scroll metrics. Mutates the DOM directly (no React state)
+  // so scrolling at 60fps never re-renders the ten cards — that is what keeps the motion smooth.
+  const syncThumb = useCallback(() => {
+    const el = scrollRef.current, bar = barRef.current, track = trackRef.current, thumb = thumbRef.current;
+    if (!el || !bar || !track || !thumb) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    const overflowing = maxScroll > 1;
+    bar.style.opacity = overflowing ? '1' : '0';
+    bar.style.pointerEvents = overflowing ? 'auto' : 'none';
+    if (!overflowing) { geom.current = { trackW: 0, thumbW: 0, maxScroll: 0 }; return; }
+    const trackW = track.clientWidth;
+    const thumbW = Math.max(28, Math.round((el.clientWidth / el.scrollWidth) * trackW));
+    const left = Math.round((el.scrollLeft / maxScroll) * (trackW - thumbW));
+    thumb.style.width = `${thumbW}px`;
+    thumb.style.transform = `translateX(${left}px)`;
+    geom.current = { trackW, thumbW, maxScroll };
+  }, []);
+
+  useEffect(() => {
+    syncThumb();
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(syncThumb);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [syncThumb, cards.length]);
+
+  const stopWheelAnim = useCallback(() => {
+    if (wheelAnim.current.raf) cancelAnimationFrame(wheelAnim.current.raf);
+    wheelAnim.current = { raf: 0, target: 0, animating: false };
+  }, []);
+
+  // Translate a vertical wheel into eased horizontal scroll. The listener must be native +
+  // non-passive (React's synthetic onWheel is passive, so preventDefault is ignored and the chat
+  // transcript would scroll instead). A rAF lerp toward an accumulating target turns the discrete
+  // wheel notches into smooth momentum; we release at either edge so the page can scroll past.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const max = el.scrollWidth - el.clientWidth;
+      if (max <= 0) return;
+      const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      if (delta === 0) return;
+      if ((delta < 0 && el.scrollLeft <= 0) || (delta > 0 && el.scrollLeft >= max - 1)) return;
+      e.preventDefault();
+      const a = wheelAnim.current;
+      a.target = Math.max(0, Math.min(max, (a.animating ? a.target : el.scrollLeft) + delta * WHEEL_SCALE));
+      if (a.animating) return;
+      a.animating = true;
+      const step = () => {
+        const cur = el.scrollLeft;
+        const diff = wheelAnim.current.target - cur;
+        if (Math.abs(diff) <= 1) {
+          el.scrollLeft = wheelAnim.current.target;
+          wheelAnim.current.animating = false;
+          wheelAnim.current.raf = 0;
+          return;
+        }
+        const stepPx = diff * WHEEL_EASE;                            // easing factor
+        el.scrollLeft = cur + (Math.abs(stepPx) < 1 ? Math.sign(diff) : stepPx);
+        wheelAnim.current.raf = requestAnimationFrame(step);
+      };
+      wheelAnim.current.raf = requestAnimationFrame(step);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => { el.removeEventListener('wheel', onWheel); stopWheelAnim(); };
+  }, [stopWheelAnim]);
+
+  // ── Drag-to-pan over the cards ─────────────────────────────────────────────
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    const el = scrollRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    stopWheelAnim();
+    drag.current = { active: true, moved: false, startX: e.clientX, startScroll: el.scrollLeft, pointerId: e.pointerId };
+  };
+
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    const d = drag.current;
+    if (!el || !d.active) return;
+    const dx = e.clientX - d.startX;
+    if (!d.moved) {
+      if (Math.abs(dx) <= 4) return;          // tolerate click jitter before committing to a drag
+      d.moved = true;
+      el.setPointerCapture(d.pointerId);
+    }
+    el.scrollLeft = d.startScroll - dx;        // onScroll re-syncs the thumb
+  };
+
+  const endDrag = () => {
+    const el = scrollRef.current;
+    const d = drag.current;
+    if (el && d.pointerId !== -1 && el.hasPointerCapture(d.pointerId)) el.releasePointerCapture(d.pointerId);
+    d.active = false;
+    d.pointerId = -1;
+    // `moved` is cleared by onClickCapture so the trailing click is swallowed, not navigated.
+  };
+
+  // A drag ends with a click event; swallow it so panning never opens a watch page.
+  const onClickCapture = (e: MouseEvent<HTMLDivElement>) => {
+    if (drag.current.moved) {
+      e.preventDefault();
+      e.stopPropagation();
+      drag.current.moved = false;
+    }
+  };
+
+  // ── Dragging the custom thumb ──────────────────────────────────────────────
+  const onThumbDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = scrollRef.current;
+    if (!el) return;
+    stopWheelAnim();
+    thumbDrag.current = { active: true, startX: e.clientX, startScroll: el.scrollLeft, pointerId: e.pointerId };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onThumbMove = (e: PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    const t = thumbDrag.current;
+    if (!el || !t.active) return;
+    const { trackW, thumbW, maxScroll } = geom.current;
+    const travel = trackW - thumbW;
+    if (travel <= 0) return;
+    const dx = e.clientX - t.startX;
+    el.scrollLeft = t.startScroll + (dx / travel) * maxScroll;   // thumb travel maps to scroll range
+  };
+
+  const onThumbUp = (e: PointerEvent<HTMLDivElement>) => {
+    const t = thumbDrag.current;
+    if (e.currentTarget.hasPointerCapture(t.pointerId)) e.currentTarget.releasePointerCapture(t.pointerId);
+    t.active = false;
+    t.pointerId = -1;
+  };
+
+  // Click anywhere on the track (not the thumb) to page toward that spot.
+  const onTrackDown = (e: PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current, track = trackRef.current;
+    if (!el || !track || e.target === thumbRef.current) return;
+    const { thumbW, maxScroll, trackW } = geom.current;
+    if (maxScroll <= 0) return;
+    const clickX = e.clientX - track.getBoundingClientRect().left - thumbW / 2;
+    el.scrollTo({ left: (clickX / (trackW - thumbW)) * maxScroll, behavior: 'smooth' });
+  };
+
   return (
-    <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
-      {cards.map(card => (
-        <Link
-          key={card.id}
-          href={`/watches/${card.slug || card.id}`}
-          className="flex-shrink-0 flex flex-col items-center gap-1.5 rounded-xl border border-white/10 p-2.5 hover:border-[#bfa68a]/40 transition-colors"
-          style={{ background: 'rgba(255,255,255,0.04)', width: 100 }}
+    <div className="mt-3">
+      <div
+        ref={scrollRef}
+        data-testid="cardrow-scroll"
+        onScroll={syncThumb}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClickCapture={onClickCapture}
+        className="flex gap-3 overflow-x-auto overscroll-x-contain cursor-grab select-none scrollbar-hide active:cursor-grabbing"
+      >
+        {cards.map(card => (
+          <Link
+            key={card.id}
+            href={`/watches/${card.slug || card.id}`}
+            draggable={false}
+            className="flex-shrink-0 flex flex-col items-center gap-1.5 rounded-xl border border-white/10 p-2.5 hover:border-[#bfa68a]/40 transition-colors"
+            style={{ background: 'rgba(255,255,255,0.04)', width: 100 }}
+          >
+            <div className="relative h-16 w-16 overflow-hidden rounded-lg bg-white/5">
+              {card.imageUrl || card.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={card.imageUrl || imageTransformations.thumbnail(card.image!)}
+                  alt={card.name}
+                  draggable={false}
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-xs text-white/20">
+                  No image
+                </div>
+              )}
+            </div>
+            <p className="w-full line-clamp-2 text-center text-[10px] leading-tight text-[#ecddc8]/80">
+              {card.name}
+            </p>
+            <p className="text-[10px] text-[#bfa68a]">
+              {card.currentPrice === 0 ? 'PoR' : `$${card.currentPrice.toLocaleString()}`}
+            </p>
+          </Link>
+        ))}
+      </div>
+
+      {/* Custom on-brand scrollbar — hidden until the row overflows (opacity toggled in syncThumb) */}
+      <div ref={barRef} className="mt-2.5 transition-opacity duration-300" style={{ opacity: 0 }}>
+        <div
+          ref={trackRef}
+          onPointerDown={onTrackDown}
+          className="relative h-[3px] w-full cursor-pointer rounded-full bg-white/[0.06]"
         >
-          <div className="relative h-16 w-16 overflow-hidden rounded-lg bg-white/5">
-            {card.imageUrl || card.image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={card.imageUrl || imageTransformations.thumbnail(card.image!)}
-                alt={card.name}
-                className="h-full w-full object-contain"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-xs text-white/20">
-                No image
-              </div>
-            )}
-          </div>
-          <p className="w-full line-clamp-2 text-center text-[10px] leading-tight text-[#ecddc8]/80">
-            {card.name}
-          </p>
-          <p className="text-[10px] text-[#bfa68a]">
-            {card.currentPrice === 0 ? 'PoR' : `$${card.currentPrice.toLocaleString()}`}
-          </p>
-        </Link>
-      ))}
+          {/* Visible line stays a refined 3px; the ::before extends an invisible ±9px grab zone. */}
+          <div
+            ref={thumbRef}
+            data-testid="cardrow-thumb"
+            onPointerDown={onThumbDown}
+            onPointerMove={onThumbMove}
+            onPointerUp={onThumbUp}
+            onPointerCancel={onThumbUp}
+            className="absolute left-0 top-0 h-[3px] cursor-grab rounded-full bg-[#bfa68a]/45 transition-colors hover:bg-[#bfa68a]/70 active:cursor-grabbing active:bg-[#bfa68a]/90 before:absolute before:inset-x-0 before:-top-[9px] before:-bottom-[9px] before:content-['']"
+            style={{ width: 0, transform: 'translateX(0px)' }}
+          />
+        </div>
+      </div>
     </div>
   );
 }

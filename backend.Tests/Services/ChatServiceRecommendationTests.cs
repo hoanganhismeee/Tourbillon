@@ -48,6 +48,64 @@ public class ChatServiceRecommendationTests
     private static WatchDto ToDto(Watch watch) => WatchDto.FromWatch(watch, TestStorage);
 
     [Fact]
+    public async Task HandleMessageAsync_ContextFreeQuery_RepeatServedFromCacheWithoutLlm()
+    {
+        using var context = CreateContext();
+
+        var brand = new Brand { Id = 1, Name = "Omega", Slug = "omega" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Seamaster", Slug = "seamaster" };
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        var watches = Enumerable.Range(1, 4)
+            .Select(i => new Watch
+            {
+                Id = i,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 10,
+                Collection = collection,
+                Name = $"220.{i:000}",
+                Slug = $"omega-seamaster-220-{i:000}",
+                Description = "Omega Seamaster",
+                CurrentPrice = 6000m + i,
+            })
+            .ToList();
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("Recommend me a versatile Omega"))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = watches.Select(ToDto).ToList(),
+                OtherCandidates = [],
+                SearchPath = "vector",
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"Several strong [Omega](/brands/omega) picks.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var service = CreateService(context, watchFinder, handler);
+
+        // First turn (fresh session) runs the full pipeline and caches the result.
+        var first = await service.HandleMessageAsync("sess-A", "Recommend me a versatile Omega", null, "127.0.0.1");
+        var handlerCallsAfterFirst = handler.CallCount;
+
+        // Second turn, different fresh session, identical context-free query → served from cache.
+        var second = await service.HandleMessageAsync("sess-B", "Recommend me a versatile Omega", null, "127.0.0.1");
+
+        watchFinder.Verify(f => f.FindWatchesAsync(It.IsAny<string>()), Times.Once);   // no second search
+        Assert.Equal(handlerCallsAfterFirst, handler.CallCount);                        // no second /chat call
+        Assert.Equal(first.WatchCards.Select(c => c.Slug), second.WatchCards.Select(c => c.Slug));
+        Assert.Equal(first.Message, second.Message);
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_BroadRecommendation_ShowsUpToTenMatchedProductsByDefault()
     {
         using var context = CreateContext();

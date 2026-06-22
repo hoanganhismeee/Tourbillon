@@ -57,6 +57,10 @@ public class WatchCacheService
                 BackgroundJob.Enqueue<WatchEmbeddingService>(x => x.GenerateBulkAsync(idsToEmbed));
             }
 
+            // Catalogue changed — invalidate cached concierge answers and re-warm the starters.
+            if (watchesAdded > 0)
+                BackgroundJob.Enqueue<ChatService>(x => x.InvalidateAndRewarmStartersAsync());
+
             var successMessage = $"Successfully cached {watchesAdded} out of {scrapedWatches.Count} watches";
             _logger.LogInformation(successMessage);
             return (true, successMessage, watchesAdded);
@@ -154,6 +158,10 @@ public class WatchCacheService
             _context.Watches.RemoveRange(watchesToDelete);
 
             await _context.SaveChangesAsync();
+
+            // Catalogue changed — invalidate cached concierge answers and re-warm the starters.
+            if (deletedCount > 0)
+                BackgroundJob.Enqueue<ChatService>(x => x.InvalidateAndRewarmStartersAsync());
 
             var successMessage = brandId.HasValue
                 ? $"Successfully deleted {deletedCount} watches for brand ID {brandId}. Kept 9 showcase watches."

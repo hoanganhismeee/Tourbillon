@@ -109,6 +109,31 @@ public class ChatService
     // displaced by alternatives that ranked just outside the card limit.
     private const int DiscoveryPoolSize = 24;
 
+    // Response cache: a context-free first-turn message resolves to the same cards + prose every
+    // time, so we cache the whole turn and skip the classify → search → chat → plan LLM chain.
+    // Version-keyed so a single counter bump invalidates every entry on a catalogue change.
+    private const string ResponseCacheVersionKey = "chat:resp:ver";
+    private static readonly TimeSpan ResponseCacheTtl = TimeSpan.FromHours(12);
+
+    // Mirrors the frontend EXAMPLE_PROMPTS (ChatPanel.tsx). Pre-warmed so the suggestions a user is
+    // most likely to click return instantly. Keep in sync with the frontend list.
+    internal static readonly string[] StarterPrompts =
+    [
+        "Compare the Aquanaut and the Overseas",
+        "Tell me about Patek Philippe",
+        "Sporty watches under $20,000",
+        "Something elegant for a formal dinner",
+        "Best diving watch from Rolex",
+    ];
+
+    // What a cached turn stores: the response served to the client plus the session state that the
+    // live path would have persisted, so follow-up turns work identically after a cache hit.
+    private sealed class CachedChatTurn
+    {
+        public ChatApiResponse Response { get; set; } = new();
+        public ChatSessionState? SessionState { get; set; }
+    }
+
     // Lazy-loaded catalogue roster — built once and reused for the service lifetime.
     private string? _catalogueRoster;
     private const string UnsupportedQueryMessage = "Tourbillon is your concierge for luxury watches — brands, collections, comparisons, and catalogue picks by style, size, material, or budget. Pick one of the starters below, or tell me a brand, a budget, or an occasion and I'll take it from there.";
@@ -226,6 +251,9 @@ public class ChatService
         public List<string> GroundedWatchSlugs { get; set; } = [];
         public List<string> GroundedBrandNames { get; set; } = [];
         public List<string> GroundedCollectionNames { get; set; } = [];
+        // True when the AI draft failed validation twice and we fell back to deterministic text —
+        // a degraded reply that must never be written into the response cache.
+        public bool Fallback { get; set; }
     }
 
     private sealed class AiDraftValidation
@@ -424,6 +452,7 @@ public class ChatService
         string? behaviorSummary = null,
         string? preferredLanguage = null,
         bool isAdmin = false,
+        bool bypassResponseCache = false,
         CancellationToken cancellationToken = default)
     {
         var disableLimit = _config.GetValue<bool>("ChatSettings:DisableLimitInDev");
@@ -451,6 +480,29 @@ public class ChatService
         var lastWatchCards = await GetLastWatchCardsAsync(sessionId);
         var compareScope = await GetCompareScopeAsync(sessionId);
         var sessionState = await GetSessionStateAsync(sessionId);
+
+        // A turn is cacheable only when nothing personal or contextual shapes the answer: a fresh
+        // first message, no behavioural personalization, and no carried-over session scope. Such a
+        // turn is a pure function of (query, language, catalogue) — safe to share across users.
+        var langKey = preferredLanguage ?? "auto";
+        var responseCacheable = sessionHistory.Count == 0
+            && string.IsNullOrWhiteSpace(behaviorSummary)
+            && (sessionState == null
+                || (sessionState.ExcludedBrandIds.Count == 0 && string.IsNullOrEmpty(sessionState.FollowUpMode)));
+
+        if (responseCacheable && !bypassResponseCache)
+        {
+            var hit = await TryServeCachedTurnAsync(
+                sessionId, message, langKey, sessionHistory,
+                quotaSubject, dailyLimit, disableLimit, isAdmin, cancellationToken);
+            if (hit != null)
+            {
+                _logger.LogInformation("Chat response cache HIT session={SessionId} elapsed={ElapsedMs}ms",
+                    sessionId, routingSw.ElapsedMilliseconds);
+                return hit;
+            }
+        }
+
         var history = sessionHistory
             .TakeLast(10)
             .Select(m => new ChatHistoryEntry { Role = m.Role, Content = m.Content })
@@ -516,6 +568,7 @@ public class ChatService
             ? PlanSuggestedActionsAsync(resolution, message, watchCards, actions, sessionState)
             : Task.FromResult<IReadOnlyList<PlannedAction>>(Array.Empty<PlannedAction>());
 
+        var aiDraftFallback = false;
         if (resolution.UseAi)
         {
             if (!string.IsNullOrWhiteSpace(behaviorSummary))
@@ -540,6 +593,7 @@ public class ChatService
             await Task.WhenAll(aiDraftTask, plannerTask);
 
             var aiDraft = await aiDraftTask;
+            aiDraftFallback = aiDraft.Fallback;
             var aiResult = aiDraft.Message;
             // Skip unsupported-entity rejection for referenced_watch — the AI naturally
             // weaves in related entities from conversation history, which is correct behaviour
@@ -607,7 +661,7 @@ public class ChatService
             watchCards.Count,
             routingSw.ElapsedMilliseconds);
 
-        return new ChatApiResponse
+        var apiResponse = new ChatApiResponse
         {
             Message = aiMessage,
             WatchCards = watchCards,
@@ -615,10 +669,154 @@ public class ChatService
             DailyUsed = disableLimit || isAdmin ? null : quotaStatus?.DailyUsed,
             DailyLimit = disableLimit || isAdmin ? null : dailyLimit,
         };
+
+        // Store a context-free turn for reuse. Skip degraded replies (AI fallback / canned error)
+        // and card-less answers (greetings, refusals) — only genuine, grounded results are cached.
+        if (responseCacheable && watchCards.Count > 0 && !aiDraftFallback && !IsCannedMessage(aiMessage))
+            await StoreCachedTurnAsync(message, langKey, apiResponse, nextSessionState);
+
+        return apiResponse;
     }
+
+    private static bool IsCannedMessage(string message) =>
+        message == UnsupportedQueryMessage || message == NoCloseMatchMessage
+        || message == ProcessingFallbackMessage || message == GreetingMessage;
 
     public async Task ClearSessionAsync(string sessionId) =>
         await _redis.RemoveHashAsync($"chat:session:{sessionId}");
+
+    // ── Response cache ──────────────────────────────────────────────────────────────────────
+
+    // Serves a previously-cached context-free turn: charges quota (so cached turns still count),
+    // replays the session persistence the live path would have done, then returns the response.
+    // Returns null on a miss / unusable entry so the caller falls through to the live pipeline.
+    private async Task<ChatApiResponse?> TryServeCachedTurnAsync(
+        string sessionId,
+        string message,
+        string langKey,
+        List<ChatMessage> sessionHistory,
+        string quotaSubject,
+        int dailyLimit,
+        bool disableLimit,
+        bool isAdmin,
+        CancellationToken cancellationToken)
+    {
+        var cacheKey = await BuildResponseCacheKeyAsync(message, langKey);
+        var json = await _redis.GetStringAsync(cacheKey);
+        if (string.IsNullOrEmpty(json))
+            return null;
+
+        CachedChatTurn? cached;
+        try { cached = JsonSerializer.Deserialize<CachedChatTurn>(json, _jsonOptions); }
+        catch (JsonException) { return null; }
+        if (cached?.Response == null || cached.Response.WatchCards.Count == 0)
+            return null;
+
+        // Cached turns still count toward the daily limit; the live path charges here too.
+        if (!disableLimit && !isAdmin)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var charge = await _quota.ChargeAsync("chat", quotaSubject, dailyLimit, disabled: false, isAdmin: false);
+            if (charge.RateLimited)
+                return new ChatApiResponse
+                {
+                    RateLimited = true,
+                    DailyUsed = charge.DailyUsed,
+                    DailyLimit = charge.DailyLimit,
+                    Message = DailyQuotaMessage.Replace("5", charge.DailyLimit.ToString()),
+                };
+            cached.Response.DailyUsed = charge.DailyUsed;
+            cached.Response.DailyLimit = dailyLimit;
+        }
+        else
+        {
+            cached.Response.DailyUsed = null;
+            cached.Response.DailyLimit = null;
+        }
+
+        // Replay the persistence so follow-up turns share the live path's grounding.
+        sessionHistory.Add(new ChatMessage { Role = "user", Content = message });
+        sessionHistory.Add(new ChatMessage { Role = "assistant", Content = cached.Response.Message });
+        await SaveSessionHistoryAsync(sessionId, sessionHistory);
+        await SaveLastWatchCardsAsync(sessionId, cached.Response.WatchCards);
+        await SaveCompareScopeAsync(sessionId, await BuildCompareScopeAsync(cached.Response.Actions));
+        if (cached.SessionState != null)
+            await SaveSessionStateAsync(sessionId, cached.SessionState);
+
+        return cached.Response;
+    }
+
+    private async Task StoreCachedTurnAsync(string message, string langKey, ChatApiResponse response, ChatSessionState? sessionState)
+    {
+        try
+        {
+            // Strip user-specific quota fields — they are re-stamped on every hit.
+            var stored = new CachedChatTurn
+            {
+                Response = new ChatApiResponse
+                {
+                    Message = response.Message,
+                    WatchCards = response.WatchCards,
+                    Actions = response.Actions,
+                },
+                SessionState = sessionState,
+            };
+            var cacheKey = await BuildResponseCacheKeyAsync(message, langKey);
+            await _redis.SetStringAsync(cacheKey, JsonSerializer.Serialize(stored, _jsonOptions), ResponseCacheTtl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Chat response cache store failed");
+        }
+    }
+
+    private async Task<string> BuildResponseCacheKeyAsync(string query, string langKey)
+    {
+        var version = await _redis.GetCounterAsync(ResponseCacheVersionKey) ?? 0;
+        return $"chat:resp:{version}:{langKey}:{NormalizeCacheQuery(query)}";
+    }
+
+    private static string NormalizeCacheQuery(string query)
+    {
+        var normalized = query.Trim().ToLowerInvariant();
+        normalized = Regex.Replace(normalized, @"[^\w\s]", "");
+        normalized = Regex.Replace(normalized, @"\s+", " ");
+        return normalized.Trim();
+    }
+
+    // Pre-computes and caches the starter prompts, bypassing the lookup so every run refreshes the
+    // stored answer. Runs as a background job on startup, on a schedule, and after a catalogue
+    // change. isAdmin bypasses the quota; a throwaway session keeps it out of any real conversation.
+    public async Task WarmStartersAsync()
+    {
+        foreach (var prompt in StarterPrompts)
+        {
+            var warmSession = $"__warm__:{Guid.NewGuid():N}";
+            try
+            {
+                await HandleMessageAsync(
+                    warmSession, prompt, userId: null, ipAddress: "warmup",
+                    behaviorSummary: null, preferredLanguage: null, isAdmin: true, bypassResponseCache: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Chat starter warm failed prompt={Prompt}", prompt);
+            }
+            finally
+            {
+                await ClearSessionAsync(warmSession);
+            }
+        }
+        _logger.LogInformation("Chat starter cache warmed prompts={Count}", StarterPrompts.Length);
+    }
+
+    // Bumps the cache version (orphaning every existing entry) then re-warms the starters. Enqueued
+    // after a catalogue mutation so cached prices and cards never go stale.
+    public async Task InvalidateAndRewarmStartersAsync()
+    {
+        await _redis.IncrementAsync(ResponseCacheVersionKey);
+        await WarmStartersAsync();
+    }
 
     private static bool CanBypassChatQuotaBeforeRouting(string message)
     {
@@ -931,7 +1129,7 @@ public class ChatService
             validation.FailureReason ?? "unknown",
             correctedValidation.FailureReason ?? "unknown");
 
-        return new AiChatDraft { Message = fallbackMessage };
+        return new AiChatDraft { Message = fallbackMessage, Fallback = true };
     }
 
     private async Task<AiChatDraft> CallAiServiceAsync(
