@@ -42,7 +42,7 @@ public class ChatController : ControllerBase
                 request.BehaviorSummary,
                 request.PreferredLanguage,
                 isAdmin,
-                HttpContext.RequestAborted);
+                cancellationToken: HttpContext.RequestAborted);
         }
         catch (OperationCanceledException)
         {
