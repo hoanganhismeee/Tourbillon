@@ -21,6 +21,7 @@ IntentClass = Literal[
     "brand_info",
     "collection_info",
     "brand_history",
+    "advice_request",
     "discovery",
     "non_watch",
     "unclear",
