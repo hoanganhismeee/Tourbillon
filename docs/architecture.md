@@ -291,6 +291,8 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 
 **Parallel wording + chip planning:** For AI-backed replies with watch cards, `ChatService` now calls `/chat` and `/plan-actions` in parallel. Planner suggestions are merged only after slug/href validation against the visible cards; if planner output is unusable or the call fails, the old deterministic compare/brand/collection chip logic still runs.
 
+**Advisory mode (June 2026):** The `advice_request` intent is the concierge's advisor persona, distinct from `discovery` (a catalogue filter). Personal-fit / suitability queries ("do I suit a diving watch, female 26", "should I get gold or steel") route to `BuildAdviceResolutionAsync`, which reuses the discovery search + grounding pipeline but caps the curated set to `AdviceCardLimit` (3) and sets `ChatResolution.AiMode = "advisor"`. The backend threads that structured flag to `/chat`, where `ADVISOR_GUIDANCE` (ai-service `prompts/chat.py`) makes the wording lead with genuine personal-fit reasoning (wrist scale, lifestyle, occasion, styling) before the picks, and acknowledge honestly when the surfaced watches do not match its own advice. A no-catalogue-fit advice query still answers in advisory prose with a Smart Search action rather than a bare "no matches". Pure spec briefs stay `discovery`; named 2-brand choices stay `brand_decision`.
+
 **Two-tier search routing (April 2026):**
 
 | Query type | Detection | Search path | Token cost |
