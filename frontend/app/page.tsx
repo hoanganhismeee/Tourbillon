@@ -101,7 +101,7 @@ const education = [
     school: "University of Technology Sydney",
     degree: "Bachelor of Engineering (Honours), Software Engineering",
     dates: "Feb 2023 — Nov 2026 (Expected)",
-    logo: "/UTS.jpg",
+    wam: "WAM 80",
   },
 ];
 
@@ -414,20 +414,14 @@ export default function PortfolioHubPage() {
                 className="flex flex-col gap-5 border-t border-[var(--stu-line-soft)] pt-6 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="flex items-center gap-5">
-                  <span className="inline-flex shrink-0 items-center justify-center rounded-lg bg-white px-3.5 py-2.5">
-                    <Image
-                      src={e.logo}
-                      alt={e.school}
-                      width={132}
-                      height={50}
-                      className="h-7 w-auto object-contain"
-                    />
-                  </span>
                   <div>
                     <h3 className="stu-display text-[1.4rem] font-semibold leading-tight text-[var(--stu-text)]">
                       {e.school}
                     </h3>
                     <p className="mt-1.5 text-[0.97rem] text-[var(--stu-muted)]">{e.degree}</p>
+                    <p className="stu-mono mt-2 text-[11px] uppercase tracking-[0.16em] text-[var(--stu-accent)]">
+                      {e.wam}
+                    </p>
                   </div>
                 </div>
                 <span className="stu-mono shrink-0 text-[11px] uppercase tracking-[0.16em] text-[var(--stu-faint)] sm:text-right">
