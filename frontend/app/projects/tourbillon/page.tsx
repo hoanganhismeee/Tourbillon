@@ -283,8 +283,7 @@ export default function TourbillonPortfolioPage() {
 
           <dl className="atl-rise mt-12 grid max-w-md grid-cols-2 gap-6 border-t border-[var(--atl-rule)] pt-7" style={{ animationDelay: "400ms" }}>
             {[
-              { k: "Stack", v: ".NET · Next.js" },
-              { k: "AI cost", v: "< $2 / mo" },
+              { k: "Stack", v: ".NET · Next.js · Python AI" },
             ].map((item) => (
               <div key={item.k}>
                 <dt className="atl-mono text-[10px] uppercase tracking-[0.24em] text-[var(--atl-faint)]">{item.k}</dt>
