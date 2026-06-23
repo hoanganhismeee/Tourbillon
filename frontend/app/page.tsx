@@ -75,7 +75,7 @@ const projects = [
     name: "Tourbillon",
     meta: "2025 — 2026 · Full-stack web",
     blurb:
-      "A luxury watch e-commerce platform with an AI concierge, plain-English smart search, and a Watch DNA taste profile. A .NET 8 API, a Next.js 15 frontend, and a Python AI service — production AI spend held under $2/month.",
+      "A luxury watch e-commerce platform with an AI concierge, plain-English smart search, and a Watch DNA taste profile. A .NET 8 API, a Next.js 15 frontend, and a Python AI service.",
     tags: ["Next.js 15", ".NET 8", "PostgreSQL", "pgvector", "Claude"],
     links: [
       { label: "Visit live site", href: "/tourbillon", external: false },
