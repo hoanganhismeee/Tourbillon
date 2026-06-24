@@ -51,6 +51,7 @@
 | AI Intent Classifier (POST /classify replaces 9 regex routing predicates; "unclear" falls back to regex) | Done | 14 |
 | Chat Concierge — Flexible Routing + Token-Optimized Search (SQL brand path, semantic router, descriptor blacklist fallback, 200-word limit, cursor fallback, explicit dispatcher messages) | Done | 14.5 |
 | Chat Concierge — Planner Chips + Classifier-First Follow-Ups (`/plan-actions`, backend validation, deterministic fallback) | Done | 14.6 |
+| Chat Concierge — Advisory Mode (`advice_request` intent, advice-led wording for personal-fit queries, tight curated picks, honest no-fit guidance) | Done | 14.7 |
 | Storage Abstraction + S3 + CloudFront Migration | Done | 15 |
 | Production Deployment (Railway + Neon + Upstash + Vercel + GitHub Actions CD) | Done | 16 |
 | Kubernetes (container orchestration, HPA, rolling deployments) | Planned | ? |

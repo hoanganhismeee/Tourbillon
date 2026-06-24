@@ -75,7 +75,7 @@ const projects = [
     name: "Tourbillon",
     meta: "2025 — 2026 · Full-stack web",
     blurb:
-      "A luxury watch e-commerce platform with an AI concierge, plain-English smart search, and a Watch DNA taste profile. A .NET 8 API, a Next.js 15 frontend, and a Python AI service — production AI spend held under $2/month.",
+      "A luxury watch e-commerce platform with an AI concierge, plain-English smart search, and a Watch DNA taste profile. A .NET 8 API, a Next.js 15 frontend, and a Python AI service.",
     tags: ["Next.js 15", ".NET 8", "PostgreSQL", "pgvector", "Claude"],
     links: [
       { label: "Visit live site", href: "/tourbillon", external: false, newTab: true },
@@ -101,7 +101,7 @@ const education = [
     school: "University of Technology Sydney",
     degree: "Bachelor of Engineering (Honours), Software Engineering",
     dates: "Feb 2023 — Nov 2026 (Expected)",
-    logo: "/UTS.jpg",
+    wam: "WAM 80",
   },
 ];
 
@@ -416,20 +416,14 @@ export default function PortfolioHubPage() {
                 className="flex flex-col gap-5 border-t border-[var(--stu-line-soft)] pt-6 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="flex items-center gap-5">
-                  <span className="inline-flex shrink-0 items-center justify-center rounded-lg bg-white px-3.5 py-2.5">
-                    <Image
-                      src={e.logo}
-                      alt={e.school}
-                      width={132}
-                      height={50}
-                      className="h-7 w-auto object-contain"
-                    />
-                  </span>
                   <div>
                     <h3 className="stu-display text-[1.4rem] font-semibold leading-tight text-[var(--stu-text)]">
                       {e.school}
                     </h3>
                     <p className="mt-1.5 text-[0.97rem] text-[var(--stu-muted)]">{e.degree}</p>
+                    <p className="stu-mono mt-2 text-[11px] uppercase tracking-[0.16em] text-[var(--stu-accent)]">
+                      {e.wam}
+                    </p>
                   </div>
                 </div>
                 <span className="stu-mono shrink-0 text-[11px] uppercase tracking-[0.16em] text-[var(--stu-faint)] sm:text-right">

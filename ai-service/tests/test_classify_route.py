@@ -66,6 +66,16 @@ class ClassifyRouteTests(unittest.TestCase):
                 result = self._classify(intent)
                 self.assertEqual(intent, result["intent"])
 
+    def test_advice_request_round_trips(self) -> None:
+        result = self._classify("advice_request")
+        self.assertEqual("advice_request", result["intent"])
+
+    def test_prompt_documents_advice_request_and_boundary(self) -> None:
+        """The classifier prompt must offer advice_request and keep spec briefs in discovery."""
+        from prompts.classify import CLASSIFY_SYSTEM_PROMPT
+        self.assertIn("advice_request", CLASSIFY_SYSTEM_PROMPT)
+        self.assertIn("stay discovery", CLASSIFY_SYSTEM_PROMPT)
+
     def test_unknown_intent_replaced_with_unclear(self) -> None:
         result = self._classify("hallucinated_intent")
         self.assertEqual("unclear", result["intent"])

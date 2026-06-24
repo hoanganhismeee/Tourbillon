@@ -105,9 +105,8 @@ public class ChatService
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly TimeSpan SessionTtl = TimeSpan.FromHours(1);
     private const int DiscoveryCardLimit = 10;
-    // Wider candidate pool fed into brand-diversity so a dominant brand's surplus cards can be
-    // displaced by alternatives that ranked just outside the card limit.
-    private const int DiscoveryPoolSize = 24;
+    // Advisor mode surfaces a tight, hand-picked set rather than a wide discovery row.
+    private const int AdviceCardLimit = 3;
 
     // Response cache: a context-free first-turn message resolves to the same cards + prose every
     // time, so we cache the whole turn and skip the classify → search → chat → plan LLM chain.
@@ -139,6 +138,7 @@ public class ChatService
     private const string UnsupportedQueryMessage = "Tourbillon is your concierge for luxury watches — brands, collections, comparisons, and catalogue picks by style, size, material, or budget. Pick one of the starters below, or tell me a brand, a budget, or an occasion and I'll take it from there.";
     private const string NoCloseMatchMessage = "Nothing in the current Tourbillon catalogue lines up with that brief. Try one of the starters below, or rework the request with a specific brand, collection, reference, size, material, or budget and I'll find the closest matches.";
     private const string ProcessingFallbackMessage = "Give me a second chance on that one — try a starter below, or rephrase with a brand, a model, a comparison, a style, or a budget and Tourbillon will surface the right catalogue matches.";
+    private const string AdviceNoMatchMessage = "Tell me a little more — your budget, your wrist size, and how dressy you want it to read — and Tourbillon can point you to the right pieces. You can also open Smart Search to explore the full catalogue.";
     private const string DailyQuotaMessage = "You have reached your daily concierge quota of 5 messages. Please come back tomorrow.";
     private const string GreetingMessage = "Hello. Tourbillon can help compare watches, explain brands or collections, and narrow a brief into real catalogue options. Try something like \"compare the Aquanaut and the Overseas\", \"tell me about Vacheron Constantin\", or \"JLC Reverso under 50k\".";
 
@@ -232,6 +232,9 @@ public class ChatService
         public string? ResponseLanguage { get; set; }
         public bool AllowWebEnrichment { get; set; }
         public string? WebQuery { get; set; }
+        // "advisor" routes the AI wording layer into advice-led mode (lead with personal-fit
+        // guidance, then a tight curated set). Null keeps the default concierge wording.
+        public string? AiMode { get; set; }
         // Populated by each routing branch for structured tracing.
         public string RoutingPath { get; set; } = "unknown";
         // Populated when WatchFinderService is called; mirrors WatchFinderResult.SearchPath.
@@ -283,6 +286,7 @@ public class ChatService
         public const string BrandInfo           = "brand_info";
         public const string CollectionInfo      = "collection_info";
         public const string BrandHistory        = "brand_history";
+        public const string AdviceRequest       = "advice_request";
         public const string Discovery           = "discovery";
         public const string NonWatch            = "non_watch";
         public const string Unclear             = "unclear";
@@ -1095,6 +1099,7 @@ public class ChatService
             responseLanguage,
             allowWebEnrichment,
             webQuery,
+            resolution.AiMode,
             cancellationToken);
 
         var validation = await ValidateAiDraftAsync(aiDraft, resolution);
@@ -1116,6 +1121,7 @@ public class ChatService
             responseLanguage,
             allowWebEnrichment,
             webQuery,
+            resolution.AiMode,
             cancellationToken);
 
         var correctedValidation = await ValidateAiDraftAsync(correctedDraft, resolution);
@@ -1139,6 +1145,7 @@ public class ChatService
         string? responseLanguage = null,
         bool allowWebEnrichment = false,
         string? webQuery = null,
+        string? mode = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -1159,6 +1166,7 @@ public class ChatService
                 responseLanguage,
                 allowWebEnrichment,
                 webQuery,
+                mode,
             };
             var resp = await httpClient.PostAsJsonAsync("/chat", payload, cancellationToken);
             chatSw.Stop();
@@ -1754,6 +1762,9 @@ public class ChatService
                 return await BuildEntityInfoResolutionAsync(
                     canonicalMessage, mentions, allowWebEnrichment: true);
 
+            case ChatIntent.AdviceRequest:
+                return await BuildAdviceResolutionAsync(canonicalMessage, mentions, excludedBrandIds);
+
             case ChatIntent.Discovery:
             {
                 // Simple brand/collection reference (no descriptors) → pure SQL sample, no LLM search cost.
@@ -1810,6 +1821,57 @@ public class ChatService
             default:
                 return null;
         }
+    }
+
+    // Advisor mode: lead with personal-fit guidance, then a tight curated set. Reuses the
+    // discovery search + grounding pipeline but caps the cards and flags the AI wording layer
+    // to advise rather than just list matches.
+    private async Task<ChatResolution?> BuildAdviceResolutionAsync(
+        string canonicalMessage,
+        EntityMentions mentions,
+        List<int> excludedBrandIds)
+    {
+        var searchResult = excludedBrandIds.Count > 0
+            ? await _watchFinderService.FindWatchesAsync(canonicalMessage, excludedBrandIds)
+            : await _watchFinderService.FindWatchesAsync(canonicalMessage);
+        searchResult ??= new WatchFinderResult();
+
+        if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
+            return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
+
+        // No catalogue fit: still advise in prose and point to the broader tool rather than
+        // dead-ending with a bare "no matches" line.
+        if (searchResult.Watches.Count == 0)
+        {
+            return new ChatResolution
+            {
+                UseAi = true,
+                AiMode = "advisor",
+                Query = canonicalMessage,
+                Message = AdviceNoMatchMessage,
+                Actions =
+                [
+                    new ChatAction
+                    {
+                        Type = "search",
+                        Query = canonicalMessage,
+                        Label = "Open Smart Search"
+                    }
+                ],
+                RoutingPath = "advice_no_match"
+            };
+        }
+
+        var resolution = await BuildDiscoveryResolutionAsync(
+            canonicalMessage,
+            searchResult,
+            excludedBrandIds,
+            mentions: mentions,
+            cardLimit: AdviceCardLimit,
+            aiMode: "advisor");
+        resolution.SearchPath = searchResult.SearchPath;
+        resolution.RoutingPath = "advice";
+        return resolution;
     }
 
     private async Task<ChatResolution?> TryResolveRecommendationRevisionAsync(
@@ -2404,37 +2466,6 @@ public class ChatService
         return 3;
     }
 
-    // Spread brands across the shortlist so a single house can't fill every card. Walks the
-    // (already prestige-ordered) list keeping each brand under a per-position cap; watches over
-    // the cap are deferred to the tail so they still appear when no other brand can fill a slot.
-    // Mirrors CatalogueOrderingService's diversity caps used by the watch-listing Featured order.
-    private static List<Watch> ApplyDiscoveryBrandDiversity(List<Watch> ordered)
-    {
-        if (ordered.Count <= 1) return ordered;
-
-        var result = new List<Watch>();
-        var deferred = new List<Watch>();
-        var brandCounts = new Dictionary<int, int>();
-
-        foreach (var watch in ordered)
-        {
-            var count = brandCounts.GetValueOrDefault(watch.BrandId);
-            if (count >= DiscoveryBrandCapForPosition(result.Count))
-            {
-                deferred.Add(watch);
-                continue;
-            }
-            result.Add(watch);
-            brandCounts[watch.BrandId] = count + 1;
-        }
-
-        result.AddRange(deferred);
-        return result;
-    }
-
-    // At most 2 of one brand before position 6 (guarantees a varied visible head), then 3.
-    private static int DiscoveryBrandCapForPosition(int position) => position < 6 ? 2 : 3;
-
     private static ChatSessionState BuildUpdatedRecommendationState(
         ChatSessionState? existingState,
         List<Watch> watches,
@@ -2849,46 +2880,27 @@ public class ChatService
         bool includeSearchAction = true,
         EntityMentions? mentions = null,
         string? revisionSummary = null,
-        IReadOnlyCollection<string>? rejectedWatchSlugs = null)
+        IReadOnlyCollection<string>? rejectedWatchSlugs = null,
+        int cardLimit = DiscoveryCardLimit,
+        string? aiMode = null)
     {
-        // Pull a wider candidate pool than the card limit so brand-diversity has alternatives to
-        // promote when one brand dominates the ranking. OtherCandidates are the same-query
-        // matches that ranked just outside Watches.
-        var poolIds = result.Watches
-            .Concat(result.OtherCandidates)
-            .Select(w => w.Id)
-            .Distinct()
-            .Take(DiscoveryPoolSize)
-            .ToList();
-        var pool = await LoadWatchesByIdsAsync(poolIds);
+        var topIds = result.Watches.Take(DiscoveryCardLimit).Select(w => w.Id).Distinct().ToList();
+        var ordered = await LoadWatchesByIdsAsync(topIds);
         var requestedDirections = DetectDiscoveryDirections(query);
-        // The wider pool feeds diversity but must not inflate the shortlist: show as many cards
-        // as the search ranked as top matches (capped at the card limit). OtherCandidates only
-        // displace a dominant brand's surplus within that size, they don't pad it out.
-        var targetCardCount = Math.Min(result.Watches.Count, DiscoveryCardLimit);
+        ordered = await DiversifyDiscoveryWatchesAsync(
+            query,
+            ordered,
+            requestedDirections,
+            mentions,
+            excludedBrandIds);
 
-        // Sinks Price-on-Request below priced matches. A discovery shortlist is a list of buyable
-        // recommendations, so a priced in-budget piece should always lead an expensive PoR one —
-        // not just on budget queries. Stable: preserves the upstream order within each group.
-        static List<Watch> SinkPriceOnRequest(IEnumerable<Watch> watches) =>
-            [.. watches.OrderBy(w => w.CurrentPrice <= 0 ? 1 : 0)];
-
-        List<Watch> ordered;
-        if (requestedDirections.Count >= 2)
+        // For unidirectional queries the diversifier does nothing, so WatchFinder's raw
+        // vector ranking determines order. Apply a stable prestige sort so higher-tier
+        // brands surface first regardless of embedding score — same tier weights as the
+        // watch listing Featured sort (PP=5, VC/AP/Rolex=4, JLC/Omega=3, others=1).
+        if (requestedDirections.Count < 2)
         {
-            // Multi-direction brief (e.g. "sporty and dressy"): balance across the requested
-            // directions, which the directional diversifier handles.
-            ordered = await DiversifyDiscoveryWatchesAsync(
-                query, pool, requestedDirections, mentions, excludedBrandIds);
-            ordered = SinkPriceOnRequest(ordered);
-        }
-        else
-        {
-            // Unidirectional brief: WatchFinder's ranking determines order. Apply a stable
-            // prestige sort so higher-tier brands surface first (same tier weights as the watch
-            // listing Featured sort: PP=5, VC/AP/Rolex=4, JLC/Omega=3, others=1), then spread
-            // brands so no single house fills the shortlist, then take the card limit.
-            ordered = [.. pool.OrderByDescending(GetBrandPrestigeTier)];
+            ordered = [.. ordered.OrderByDescending(GetBrandPrestigeTier)];
 
             // Cap tier-2 brands (e.g. Frédérique Constant) at 3 cards when higher-tier
             // alternatives are present — prevents a single accessible-luxury brand from
@@ -2906,13 +2918,6 @@ public class ChatService
                     })
                     .ToList();
             }
-
-            ordered = ApplyDiscoveryBrandDiversity(ordered);
-            // Sink PoR BEFORE truncating: prestige tier can rank an in-budget priced piece below
-            // many expensive PoR watches, so truncating first would drop the affordable matches the
-            // user actually asked for (e.g. the only priced sub-$8k sport watches).
-            ordered = SinkPriceOnRequest(ordered);
-            ordered = ordered.Take(targetCardCount).ToList();
         }
 
         if (rejectedWatchSlugs is { Count: > 0 })
@@ -2923,6 +2928,11 @@ public class ChatService
                 .Take(DiscoveryCardLimit)
                 .ToList();
         }
+
+        // Cap to the requested width (advisor mode tightens this) so the surfaced cards and the
+        // catalogue context handed to the AI describe the same set of watches.
+        if (ordered.Count > cardLimit)
+            ordered = ordered.Take(cardLimit).ToList();
 
         if (ordered.Count == 0)
         {
@@ -3014,7 +3024,7 @@ public class ChatService
             ordered,
             result.QueryIntent?.Style,
             includeSearchAction);
-        var discoveryCards = ordered.Select(ToChatWatchCard).Take(DiscoveryCardLimit).ToList();
+        var discoveryCards = ordered.Select(ToChatWatchCard).Take(cardLimit).ToList();
         var suggestedCompareSlugs = discoveryCards
             .Take(2)
             .Select(card => card.Slug)
@@ -3025,6 +3035,7 @@ public class ChatService
         {
             return new ChatResolution
             {
+                AiMode = aiMode,
                 Message = coverageMessage,
                 WatchCards = discoveryCards,
                 Actions = actions,
@@ -3040,6 +3051,7 @@ public class ChatService
         return new ChatResolution
         {
             UseAi = true,
+            AiMode = aiMode,
             Message = BuildGroundedDiscoveryMessage(ordered, includeSearchAction, requestedDirections),
             Query = query,
             Context = context,

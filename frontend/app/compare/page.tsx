@@ -185,8 +185,9 @@ const ComparePage = () => {
         </div>
       </ScrollFade>
 
-      {/* Watch header cards — same grid as spec table so columns align */}
-      <div className="overflow-x-auto pb-6">
+      {/* Watch header cards — same grid as spec table so columns align. Same overflow handling
+          as the spec sections below: horizontal-only scroll, no stray vertical scrollbar. */}
+      <div className="overflow-x-auto overflow-y-clip pb-6 scrollbar-hide">
         <div className="grid gap-4" style={{ gridTemplateColumns: colTemplate }}>
           {/* Editorial spacer occupies the label column */}
           <EditorialSpacer count={watchCount} />
@@ -305,8 +306,11 @@ const ComparePage = () => {
         </label>
       </div>
 
-      {/* Spec comparison sections */}
-      <div className="overflow-x-auto space-y-8">
+      {/* Spec comparison sections. overflow-x:auto enables horizontal scroll on narrow screens,
+          but that forces overflow-y to compute as `auto` — and ScrollFade's translateY on the
+          sections then overflows it by ~30px, producing a stray inner scrollbar. overflow-y-clip
+          keeps it a horizontal-only scroller; scrollbar-hide matches the site's hidden-scrollbar look. */}
+      <div className="overflow-x-auto overflow-y-clip space-y-8 scrollbar-hide">
         {parsedSpecs.some(s => s?.productionStatus) && (
           <div>
             <h2 className="text-[13px] font-semibold uppercase tracking-[0.35em] text-[#bfa68a] mb-3 font-inter">Status</h2>
