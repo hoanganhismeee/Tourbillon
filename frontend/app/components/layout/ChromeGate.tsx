@@ -14,6 +14,7 @@ import AnimatedLayout from "@/app/scrollMotion/AnimatedLayout";
 const BARE_ROUTES = [
   { prefix: "/projects/tourbillon", bg: "#efe7d8" }, // Atelier ivory (case study)
   { prefix: "/projects/fuelup", bg: "#efe7d8" }, // Atelier ivory (case study)
+  { prefix: "/projects/storefrontiq", bg: "#efe7d8" }, // Atelier ivory (case study)
   { prefix: "/", bg: "#1e1512" }, // warm brown (portfolio landing at root)
 ];
 
