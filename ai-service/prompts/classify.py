@@ -18,6 +18,7 @@ Intent classes:
 - "brand_info"           — user asks for general information about a specific brand
 - "collection_info"      — user asks for general information about a specific collection
 - "brand_history"        — user asks about a brand's history, heritage, founders, or background
+- "advice_request"       — user seeks a personal-fit judgment, suitability opinion, or decision help (often with personal context like age, gender, wrist, lifestyle, occasion)
 - "discovery"            — user wants to find or be recommended watches matching a brief
 - "non_watch"            — message is unrelated to watches or luxury goods
 - "unclear"              — cannot determine intent with confidence >= 0.6
@@ -27,6 +28,7 @@ Rules:
 - affirmative_followup applies only to very short responses (6 words or fewer) or explicit agreement language
 - expansion_request requires expansion language AND prior cards in session (cards > 0)
 - brand_decision requires 2+ brands in the entity list AND decision-seeking language
+- advice_request is for personal-fit or suitability guidance that is NOT already a structured compare/decision between named entities. Pure spec briefs ("blue dial chronograph under 30k", "Rolex divers") stay discovery; named 2-brand choices ("Rolex or Patek") stay brand_decision; named collection/watch comparisons keep their own classes.
 - Return "unclear" if no class reaches 0.6 confidence
 - Never return free text — only the JSON object
 
@@ -41,6 +43,7 @@ Example utterances (guide, not exhaustive):
 - collection_info: "tell me about the Aquanaut", "what's the Royal Oak about"
 - collection_compare: "compare Aquanaut and Overseas", "Nautilus vs Royal Oak"
 - watch_compare: "compare Nautilus 5711 and Royal Oak 15202", "compare the first and third"
+- advice_request: "do I suit a diving watch, female 26 years old", "should I get gold or steel", "is a 42mm too big for my wrist", "what works for an office job", "help me pick my first nice watch", "which style fits a 30 year old man", "would a dress watch suit me", "what should I wear to a wedding", "is a chronograph right for everyday", "guide me on what suits a small wrist"
 - discovery: "sporty watches under 30k", "dress watch for a wedding", "blue dial chronograph", "elegant watch for a formal dinner", "affordable watch for a student", "something cheap", "entry-level luxury", "budget-friendly starter piece", "what's in your lineup for a tight budget", "I want my first nice watch", "looking for accessible options", "the cheapest one you carry", "most expensive piece you have", "high-end grail watch", "something for under 5k"
 - non_watch: "hi", "hello", "hello again", "good evening", "what's the weather", "2+2", "write me a poem", "recommend a restaurant", "write my CV", "update my resume", "help me with a cover letter", "my curriculum vitae needs work", "translate this to French", "fix my code"
 - unclear: any message that does not clearly match one of the above"""

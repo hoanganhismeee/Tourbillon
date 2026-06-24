@@ -8,7 +8,7 @@ from flask import jsonify, request
 
 from core.llm import call_llm_chat
 from core.runtime import Runtime
-from prompts.chat import CHAT_SYSTEM_PROMPT
+from prompts.chat import ADVISOR_GUIDANCE, CHAT_SYSTEM_PROMPT
 
 LANGUAGE_HINTS = {
     "en": "english",
@@ -318,6 +318,7 @@ def register_routes(app, runtime: Runtime) -> None:
         response_language = _normalize_language(data.get("responseLanguage"))
         allow_web_enrichment = bool(data.get("allowWebEnrichment"))
         web_query = (data.get("webQuery") or "").strip()
+        mode = (data.get("mode") or "").strip().lower()
 
         if not query:
             return jsonify({"error": "query is required"}), 400
@@ -351,6 +352,10 @@ def register_routes(app, runtime: Runtime) -> None:
                     ),
                 })
                 messages.append({"role": "assistant", "content": "Understood, I will treat the web notes as secondary background only."})
+
+        if mode == "advisor":
+            messages.append({"role": "user", "content": ADVISOR_GUIDANCE})
+            messages.append({"role": "assistant", "content": "Understood, I will lead with personal-fit advice, then a tight curated set."})
 
         messages.extend(history)
         messages.append({"role": "user", "content": query})

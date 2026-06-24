@@ -2999,4 +2999,86 @@ public class ChatServiceTests
         Assert.Equal(2, result.WatchCards.Count);
         watchFinder.VerifyAll();
     }
+
+    [Fact]
+    public async Task HandleMessageAsync_AdviceRequest_LeadsWithAdvisorModeAndTightCuratedSet()
+    {
+        using var context = CreateContext();
+        var brand = new Brand { Id = 1, Name = "Tudor", Slug = "tudor" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Black Bay", Slug = "tudor-black-bay" };
+        var watches = Enumerable.Range(0, 5).Select(i => new Watch
+        {
+            Id = 100 + i,
+            BrandId = 1,
+            Brand = brand,
+            CollectionId = 10,
+            Collection = collection,
+            Name = $"M7920{i}-0001",
+            Slug = $"tudor-black-bay-m7920{i}-0001",
+            Description = "Tudor Black Bay dive watch",
+            CurrentPrice = 4000m + i * 100m,
+            Specs = "{\"case\":{\"diameter\":\"39mm\"}}"
+        }).ToList();
+
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync(It.IsAny<string>()))
+            .ReturnsAsync(new WatchFinderResult
+            {
+                Watches = watches.Select(ToDto).ToList(),
+                OtherCandidates = [],
+                SearchPath = "vector"
+            });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"On a slimmer wrist a 39mm case reads best, and these fit that brief.\",\"groundedWatchSlugs\":[],\"groundedBrandNames\":[],\"groundedCollectionNames\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var classifier = new FakeClassifier(_ => new IntentClassification("advice_request", 0.95));
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
+        var result = await service.HandleMessageAsync(
+            "session-1", "do I suit a diving watch, female 26 years old", null, "127.0.0.1");
+
+        // Advisor wording mode is signalled to the ai-service so it leads with personal-fit advice.
+        Assert.Contains("\"mode\":\"advisor\"", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
+        // Curated set is tightened to AdviceCardLimit (3) rather than the wide discovery row.
+        Assert.Equal(3, result.WatchCards.Count);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_AdviceRequest_NoCatalogueFit_AdvisesAndOffersSmartSearch()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync(It.IsAny<string>()))
+            .ReturnsAsync(new WatchFinderResult { Watches = [], OtherCandidates = [], SearchPath = "vector" });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"Tell me your budget and wrist size and I can point you the right way.\",\"groundedWatchSlugs\":[],\"groundedBrandNames\":[],\"groundedCollectionNames\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+
+        var classifier = new FakeClassifier(_ => new IntentClassification("advice_request", 0.95));
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
+        var result = await service.HandleMessageAsync(
+            "session-1", "should I get a watch for an office job", null, "127.0.0.1");
+
+        // No catalogue fit still routes through advisor wording (not a bare "no matches").
+        Assert.Equal(1, handler.CallCount);
+        Assert.Contains("\"mode\":\"advisor\"", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
+        // Card-less advice points the user to the broader catalogue tool.
+        Assert.Empty(result.WatchCards);
+        Assert.Contains(result.Actions, a => a.Type == "search");
+    }
 }
