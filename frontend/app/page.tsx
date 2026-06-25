@@ -75,7 +75,7 @@ const projects = [
     name: "StorefrontIQ",
     meta: "Jun 2026 — Current · Data analytics",
     blurb:
-      "A multi-tenant retail analytics platform. Ingests messy Square, Shopify, and WooCommerce sales exports, normalizes them, detects anomalies, and generates plain-language AI digests. Tenant isolation enforced by PostgreSQL RLS.",
+      "A multi-tenant retail analytics platform. Ingests messy Square, Shopify, and WooCommerce sales exports, then surfaces trends, restock recommendations, ad-driven vs. organic growth, and holiday/weekend patterns. An LLM layer generates plain-language digests and actionable suggestions.",
     tags: ["Python", "Next.js 15", "PostgreSQL", "Pydantic", "Ollama"],
     links: [
       { label: "Read case study", href: "/projects/storefrontiq", external: false, newTab: false },
