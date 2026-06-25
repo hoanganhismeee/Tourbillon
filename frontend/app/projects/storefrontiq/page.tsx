@@ -27,8 +27,8 @@ function GitHubIcon({ size = 15 }: { size?: number }) {
 
 const features = [
   {
-    title: "Sources",
-    text: "Brings Shopify (and probably Square, WooCommerce) exports into one consistent shape, despite three formats that look nothing alike.",
+    title: "Unify three channels",
+    text: "Brings Shopify, WooCommerce, and Square exports into one consistent shape, despite three formats that look nothing alike.",
   },
   {
     title: "Clean data honestly",
@@ -39,16 +39,20 @@ const features = [
     text: "Asserts that no rows go missing — received equals loaded plus quarantined — and fails loudly if the numbers don't balance.",
   },
   {
-    title: "Track unified metrics",
-    text: "Revenue, order count, and average order value, with a per-channel breakdown over time.",
+    title: "Surface trends",
+    text: "Track how revenue, orders, and each channel move over time, so the direction of the business is obvious rather than buried in a spreadsheet.",
   },
   {
-    title: "Detect anomalies",
-    text: "Flags days that are unusually far from normal, using a seasonality-aware baseline so it doesn't just flag every weekend.",
+    title: "Flag risks early",
+    text: "Watch for days and channels drifting unusually far from a seasonality-aware baseline, turning quiet problems into risks you can see before they compound.",
   },
   {
-    title: "Write plain-English digests",
-    text: "A short AI summary of the period that only describes numbers already computed — it never does the math itself and never invents figures.",
+    title: "Recommend next steps",
+    text: "Turn the findings into a short list of suggested actions — grounded only in the numbers already computed, not in guesswork.",
+  },
+  {
+    title: "Explain it in plain English",
+    text: "An LLM writes the brief — the trends that matter, the risks worth watching, the recommendations — describing only figures the pipeline computed, never inventing them.",
   },
   {
     title: "Isolate every tenant",
@@ -56,7 +60,7 @@ const features = [
   },
   {
     title: "Explore in a dashboard",
-    text: "One clean analytics screen: unified totals, channel split, the anomaly feed, and the latest digest.",
+    text: "One clean analytics screen: unified totals, per-channel comparison, the risk feed, and the latest AI brief.",
   },
 ];
 
@@ -248,10 +252,11 @@ export default function StorefrontIQPortfolioPage() {
             Storefront<span className="text-[var(--atl-oxblood)]">IQ.</span>
           </h1>
           <p className="atl-rise mt-7 max-w-2xl text-[1.1rem] leading-[1.7] text-[var(--atl-soft)]" style={{ animationDelay: "240ms" }}>
-            A retail analytics platform built around the messy part &mdash; it takes the same
-            sales, planned to record three different ways by three platforms, and turns them into
-            numbers you can trust: honest data cleaning, reconciliation that has to balance,
-            seasonality-aware anomaly detection, and plain-English AI digest.
+            A retail analytics platform I&rsquo;m building to take the same sales &mdash;
+            recorded three different ways by Shopify, WooCommerce, and Square &mdash; and turn
+            them into insight you can act on: trends worth noticing, risks worth watching, and
+            a recommendation or two, on top of numbers cleaned and reconciled so you can trust
+            them.
           </p>
 
           <div className="atl-rise mt-8 flex flex-wrap items-center gap-3" style={{ animationDelay: "320ms" }}>
@@ -268,7 +273,7 @@ export default function StorefrontIQPortfolioPage() {
           <dl className="atl-rise mt-12 grid max-w-lg grid-cols-3 gap-6 border-t border-[var(--atl-rule)] pt-7" style={{ animationDelay: "400ms" }}>
             {[
               { k: "Stack", v: "Python · Next.js · PostgreSQL" },
-              { k: "Cost", v: "$0 / mo" },
+              { k: "Status", v: "In design" },
               { k: "Role", v: "Full-stack" },
             ].map((item) => (
               <div key={item.k}>
@@ -293,7 +298,7 @@ export default function StorefrontIQPortfolioPage() {
             </p>
             <div className="lg:col-span-7 space-y-5 text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
               <p>
-                My previous main stack is full-stack webapp development &mdash; 
+                My main stack is full-stack web app development, 
                 and StorefrontIQ was about widening that: I wanted to
                 expand into data analytics and data engineering, which is a genuinely
                 different kind of problem from the apps I usually build. The fastest way to
@@ -319,7 +324,7 @@ export default function StorefrontIQPortfolioPage() {
 
         {/* Features */}
         <ScrollFade triggerOnce className="py-20">
-          <SectionHead index="02 / 05" kicker="Capabilities" title="What StorefrontIQ can do." />
+          <SectionHead index="02 / 05" kicker="Planned scope" title="What I'm building it to do." />
           <div className="grid grid-cols-1 gap-x-12 md:grid-cols-2">
             {features.map((feature, i) => (
               <div
@@ -368,10 +373,10 @@ export default function StorefrontIQPortfolioPage() {
         <ScrollFade triggerOnce className="py-20">
           <SectionHead index="04 / 05" kicker="Architecture" title="How the system is organised." />
           <p className="mb-8 max-w-2xl text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
-            The project is split into two planes, each with one clear job. A local data
-            pipeline does all the heavy lifting offline &mdash; reshaping, cleaning,
-            reconciling, analysing, and generating the digest &mdash; and writes its results
-            to Postgres. A thin serving layer then reads those pre-computed rows.
+            I&rsquo;ve designed it as two planes, each with one clear job. A local data
+            pipeline does the heavy lifting offline &mdash; reshaping, cleaning, reconciling,
+            analysing, and writing the AI brief &mdash; then stores its results in Postgres. A
+            thin serving layer just reads those pre-computed rows.
           </p>
           <div className="border border-[var(--atl-rule)] bg-[var(--atl-paper-2)]/70">
             <div className="flex items-center justify-between gap-4 border-b border-[var(--atl-rule)] px-5 py-3">
@@ -392,21 +397,21 @@ export default function StorefrontIQPortfolioPage() {
 
         {/* Closing */}
         <ScrollFade triggerOnce className="py-20">
-          <SectionHead index="05 / 05" kicker="Intent" title="What this project demonstrates." />
+          <SectionHead index="05 / 05" kicker="Intent" title="What I want it to prove." />
           <blockquote className="atl-italic max-w-3xl text-[2rem] font-light leading-[1.32] text-[var(--atl-ink)] md:text-[2.6rem]">
             &ldquo;I wanted to get good at the part of software most demos skip &mdash;
             making messy data trustworthy.&rdquo;
           </blockquote>
           <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-2">
             <p className="text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
-              StorefrontIQ shows I can design a multi-tenant data model, enforce isolation at
-              the database itself, clean and reconcile real-world data without losing a row,
-              and turn the result into analysis I can stand behind.
+              StorefrontIQ is where I&rsquo;m learning to design a multi-tenant data model,
+              enforce isolation at the database itself, clean and reconcile real-world data
+              without losing a row, and turn the result into analysis I can stand behind.
             </p>
             <p className="text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
-              More than that, it&rsquo;s the project where I moved into data analytics and
-              data engineering on purpose &mdash; territory my earlier work hadn&rsquo;t
-              touched. The questions driving it were new for me: what is this data really
+              More than that, it&rsquo;s the project where I&rsquo;m moving into data analytics
+              and data engineering on purpose &mdash; territory my earlier work hasn&rsquo;t
+              touched. The questions driving it are new for me: what is this data really
               saying, where is it lying, and how do I prove my answer holds up?
             </p>
           </div>
