@@ -75,7 +75,7 @@ const projects = [
     name: "StorefrontIQ",
     meta: "Jun 2026 — Current · Data analytics",
     blurb:
-      "A multi-tenant retail analytics platform. Ingests messy Square, Shopify, and WooCommerce sales exports, then surfaces trends, restock recommendations, ad-driven vs. organic growth, and holiday/weekend patterns. An LLM layer generates plain-language digests and actionable suggestions.",
+      "A multi-tenant retail analytics platform. Ingests messy Square, Shopify, and WooCommerce sales exports, then surfaces trends, risk, restock recommendations, impact with/without ads, and holiday/weekend patterns. An LLM generate overall summary and suggestions.",
     tags: ["Python", "Next.js 15", "PostgreSQL", "Pydantic", "Ollama"],
     links: [
       { label: "Read case study", href: "/projects/storefrontiq", external: false, newTab: false },
@@ -86,7 +86,7 @@ const projects = [
     name: "Tourbillon",
     meta: "Oct 2025 — Apr 2026 · Full-stack web",
     blurb:
-      "A luxury watch e-commerce platform with an AI concierge, plain-English smart search, and a Watch DNA taste profile. A .NET 8 API, a Next.js 15 frontend, and a Python AI service.",
+      "A luxury watch e-commerce platform with an AI concierge, plain-English smart search, side-by-side comparison, wrist-size visualization, and a Watch DNA taste profile built from browsing behavior. A .NET 8 API, a Next.js 15 frontend, and a Python AI service.",
     tags: ["Next.js 15", ".NET 8", "PostgreSQL", "pgvector", "Claude"],
     links: [
       { label: "Visit live site", href: "/tourbillon", external: false, newTab: true },
