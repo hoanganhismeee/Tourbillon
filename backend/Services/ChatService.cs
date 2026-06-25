@@ -2466,6 +2466,51 @@ public class ChatService
         return 3;
     }
 
+    // Weaves other-brand candidates into a shortlist dominated by one brand so several brands
+    // surface, displacing the dominant brand's surplus rather than growing the list. Round-robin
+    // (dominant brand first) keeps the strongest dominant pick leading and is stable within each
+    // brand, preserving the upstream ranking order. Other-brand candidates that share the dominant
+    // brand or are already present are ignored, so single-brand shortlists pass through untouched.
+    private static List<Watch> ApplyDiscoveryBrandDiversity(List<Watch> dominant, List<Watch> otherCandidates)
+    {
+        if (dominant.Count == 0 || otherCandidates.Count == 0)
+            return dominant;
+
+        var targetCount = dominant.Count;
+        var presentIds = dominant.Select(w => w.Id).ToHashSet();
+        var dominantBrandId = dominant
+            .GroupBy(w => w.BrandId)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Key)
+            .First().Key;
+
+        var injectable = otherCandidates
+            .Where(w => w.BrandId != dominantBrandId && presentIds.Add(w.Id))
+            .ToList();
+        if (injectable.Count == 0)
+            return dominant;
+
+        var brandQueues = dominant
+            .Concat(injectable)
+            .GroupBy(w => w.BrandId)
+            .OrderByDescending(g => g.Key == dominantBrandId)
+            .Select(g => new Queue<Watch>(g))
+            .ToList();
+
+        var diversified = new List<Watch>(targetCount);
+        while (diversified.Count < targetCount && brandQueues.Any(q => q.Count > 0))
+        {
+            foreach (var queue in brandQueues)
+            {
+                if (queue.Count == 0) continue;
+                diversified.Add(queue.Dequeue());
+                if (diversified.Count >= targetCount) break;
+            }
+        }
+
+        return diversified;
+    }
+
     private static ChatSessionState BuildUpdatedRecommendationState(
         ChatSessionState? existingState,
         List<Watch> watches,
@@ -2900,6 +2945,16 @@ public class ChatService
         // watch listing Featured sort (PP=5, VC/AP/Rolex=4, JLC/Omega=3, others=1).
         if (requestedDirections.Count < 2)
         {
+            // Pull other-brand runners-up in so a single dominant brand doesn't monopolise the
+            // shortlist — they displace the dominant brand's surplus rather than padding it out.
+            var otherCandidateIds = result.OtherCandidates
+                .Select(w => w.Id)
+                .Where(id => !topIds.Contains(id))
+                .Distinct()
+                .ToList();
+            if (otherCandidateIds.Count > 0)
+                ordered = ApplyDiscoveryBrandDiversity(ordered, await LoadWatchesByIdsAsync(otherCandidateIds));
+
             ordered = [.. ordered.OrderByDescending(GetBrandPrestigeTier)];
 
             // Cap tier-2 brands (e.g. Frédérique Constant) at 3 cards when higher-tier
@@ -2928,6 +2983,11 @@ public class ChatService
                 .Take(DiscoveryCardLimit)
                 .ToList();
         }
+
+        // Sink Price-on-Request below priced matches before truncating: a discovery shortlist is a
+        // list of buyable recommendations, so an in-budget priced piece must lead an expensive PoR
+        // one even when prestige tier would otherwise rank PoR first. Stable within each group.
+        ordered = [.. ordered.OrderBy(w => w.CurrentPrice <= 0 ? 1 : 0)];
 
         // Cap to the requested width (advisor mode tightens this) so the surfaced cards and the
         // catalogue context handed to the AI describe the same set of watches.
