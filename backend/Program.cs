@@ -67,10 +67,15 @@ builder.Services.AddDbContext<TourbillonContext>(options =>
     options.UseNpgsql(pgDataSource, npgsqlOptions => npgsqlOptions.UseVector()));
 
 // Register Hangfire with PostgreSQL storage for durable background jobs.
-// Polling/heartbeat intervals are stretched from their ~15-30s defaults to a
-// minute so an idle backend stops querying Postgres long enough for Neon to
-// suspend. Jobs are enqueued by user actions (which wake the container), so a
-// sub-minute dispatch delay is an acceptable trade for the compute savings.
+// Every poll/heartbeat is a Postgres query, and Neon only scales its serverless
+// compute to zero after ~5 minutes with no activity. A 1-minute interval reset
+// that timer on every tick, so the compute never suspended and billed ~24/7. The
+// intervals are now 15 minutes (well past Neon's 5-min window) and share one
+// period so they stay phase-aligned — Postgres is hit in a short burst, then sits
+// idle long enough to suspend between bursts. Jobs are also enqueued by user
+// actions (which wake the compute anyway), so a dispatch delay of up to the poll
+// interval is an acceptable trade for the compute savings.
+const int hangfirePollMinutes = 15;
 builder.Services.AddHangfire(config => config
     .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
     .UseSimpleAssemblyNameTypeSerializer()
@@ -79,7 +84,7 @@ builder.Services.AddHangfire(config => config
         o => o.UseNpgsqlConnection(hangfireConnectionString),
         new PostgreSqlStorageOptions
         {
-            QueuePollInterval = TimeSpan.FromMinutes(1),
+            QueuePollInterval = TimeSpan.FromMinutes(hangfirePollMinutes),
             InvisibilityTimeout = TimeSpan.FromMinutes(30),
             DistributedLockTimeout = TimeSpan.FromMinutes(10),
             UseSlidingInvisibilityTimeout = true,
@@ -87,9 +92,12 @@ builder.Services.AddHangfire(config => config
 builder.Services.AddHangfireServer(options =>
 {
     options.WorkerCount = 2;
-    options.SchedulePollingInterval = TimeSpan.FromMinutes(1);
-    options.HeartbeatInterval = TimeSpan.FromMinutes(1);
-    options.ServerCheckInterval = TimeSpan.FromMinutes(5);
+    options.SchedulePollingInterval = TimeSpan.FromMinutes(hangfirePollMinutes);
+    options.HeartbeatInterval = TimeSpan.FromMinutes(hangfirePollMinutes);
+    // Watchdog runs on the same cadence; ServerTimeout must comfortably exceed the
+    // heartbeat interval so this single server is never reaped between heartbeats.
+    options.ServerCheckInterval = TimeSpan.FromMinutes(hangfirePollMinutes);
+    options.ServerTimeout = TimeSpan.FromMinutes(hangfirePollMinutes * 2);
 });
 
 // Register Redis for distributed state (rate limiting, auth codes, chat sessions)
