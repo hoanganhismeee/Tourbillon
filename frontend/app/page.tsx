@@ -72,8 +72,19 @@ const experience = [
 
 const projects = [
   {
+    name: "StorefrontIQ",
+    meta: "Jun 2026 — Current · Data analytics",
+    blurb:
+      "A multi-tenant retail analytics platform. Ingests messy Square, Shopify, and WooCommerce sales exports, normalizes them, detects anomalies, and generates plain-language AI digests. Tenant isolation enforced by PostgreSQL RLS.",
+    tags: ["Python", "Next.js 15", "PostgreSQL", "Pydantic", "Ollama"],
+    links: [
+      { label: "Read case study", href: "/projects/storefrontiq", external: false, newTab: false },
+      { label: "GitHub", href: "https://github.com/hoanganhismeee/StorefrontIQ", external: true, newTab: false },
+    ],
+  },
+  {
     name: "Tourbillon",
-    meta: "2025 — 2026 · Full-stack web",
+    meta: "Oct 2025 — Apr 2026 · Full-stack web",
     blurb:
       "A luxury watch e-commerce platform with an AI concierge, plain-English smart search, and a Watch DNA taste profile. A .NET 8 API, a Next.js 15 frontend, and a Python AI service.",
     tags: ["Next.js 15", ".NET 8", "PostgreSQL", "pgvector", "Claude"],
@@ -85,24 +96,13 @@ const projects = [
   },
   {
     name: "FuelUp",
-    meta: "2025 · Mobile app",
+    meta: "Aug 2025 — Nov 2025 · Mobile app",
     blurb:
       "A cross-platform fitness and nutrition companion with AI food and workout recommendations that gracefully fall back to rule-based logic. React Native (Expo) with a Node, Express, and PostgreSQL API.",
     tags: ["React Native", "Expo", "Node", "PostgreSQL", "OpenAI"],
     links: [
       { label: "Read case study", href: "/projects/fuelup", external: false, newTab: false },
       { label: "GitHub", href: "https://github.com/Scorpio-2410/FuelUp", external: true, newTab: false },
-    ],
-  },
-  {
-    name: "StorefrontIQ",
-    meta: "2026 · Data analytics",
-    blurb:
-      "A multi-tenant retail analytics platform. Ingests messy Square, Shopify, and WooCommerce sales exports, normalizes them, detects anomalies, and generates plain-language AI digests. Tenant isolation enforced by PostgreSQL RLS.",
-    tags: ["Python", "Next.js 15", "PostgreSQL", "Pydantic", "Ollama"],
-    links: [
-      { label: "Read case study", href: "/projects/storefrontiq", external: false, newTab: false },
-      { label: "GitHub", href: "https://github.com/hoanganhismeee/StorefrontIQ", external: true, newTab: false },
     ],
   },
 ];
