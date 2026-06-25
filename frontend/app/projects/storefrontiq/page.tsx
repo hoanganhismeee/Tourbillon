@@ -79,55 +79,65 @@ const stackGroups = [
   },
 ];
 
-const architectureDiagram = `LOCAL DEVELOPMENT  (data plane)
+const architectureDiagram = `LOCAL · DATA PLANE — runs offline, does the heavy lifting
 
- Public dataset (Olist — real, anonymized orders)
-   |
-   v
-+---------------------------+
-| Export emulator           |
-| Square / Shopify / Woo    |
-| (real formats + quirks)   |
-+-------------+-------------+
-              |
-              v
-+---------------------------+
-| Python pipeline           |
-| adapters -> Pydantic ->   |
-| normalize -> load         |
-+------+-------------+------+
-       |             |
-       v             v
-+-------------+   +---------------------------+
-| PostgreSQL  |   | Analytics (SQL z-score)   |
-| RLS by      |<--| + LLM digest (Ollama)     |
-| tenant_id   |   | qwen2.5:3b  (local)       |
-+-------------+   +---------------------------+
+┌───────────────────────────────┐
+│ Olist public dataset          │
+│ real, anonymized orders       │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Export emulator               │
+│ Square · Shopify · Woo        │
+│ real formats, real quirks     │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Python pipeline               │
+│ adapt → Pydantic → normalize  │
+│ reconcile → load              │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ PostgreSQL                    │
+│ RLS by tenant_id              │
+└───────────────┬───────────────┘
+                │  analytics reads rows, writes results back
+                ▼
+┌───────────────────────────────┐
+│ Analytics + AI digest         │
+│ SQL z-score (seasonal)        │
+│ qwen2.5:3b · Ollama (local)   │
+└───────────────────────────────┘
 
- Reconciliation -> received = loaded + quarantined
- Digest         -> pre-generated, stored as text
+check  → received = loaded + quarantined
+digest → pre-generated once, stored as text
 
 
-PRODUCTION  (serving plane)
+PRODUCTION · SERVING PLANE — thin, reads pre-computed rows
 
- Browser
-   |
-   v
-+---------------------------+
-| Vercel                    |
-| Next.js 15 app            |
-+-------------+-------------+
-              |
-              | Route Handler sets tenant context
-              | SET LOCAL app.current_tenant
-              v
-+---------------------------+
-| Neon PostgreSQL           |
-| RLS enforces isolation    |
-+---------------------------+
+┌───────────────────────────────┐
+│ Browser                       │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Vercel · Next.js 15           │
+│ route handler sets tenant     │
+│ SET LOCAL app.current_tenant  │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Neon PostgreSQL               │
+│ RLS enforces isolation        │
+└───────────────────────────────┘
 
- No backend server, no LLM at request time
- GitHub Actions -> CI (incl. RLS isolation test)`;
+no backend server · no LLM at request time
+CI (GitHub Actions) runs the RLS isolation test`;
 
 function SectionHead({ index, kicker, title }: { index: string; kicker: string; title: string }) {
   return (
@@ -229,7 +239,7 @@ export default function StorefrontIQPortfolioPage() {
         {/* Hero */}
         <section className="pb-20 pt-8 md:pt-10">
           <p className="atl-rise atl-mono text-[12px] uppercase tracking-[0.36em] text-[var(--atl-oxblood)]" style={{ animationDelay: "80ms" }}>
-            Case Study &middot; Multi-tenant retail analytics
+            Case Study &middot; Multi-channel sales analytics
           </p>
           <h1
             className="atl-rise atl-display mt-6 text-[3.8rem] font-medium leading-[0.92] tracking-[-0.02em] text-[var(--atl-ink)] sm:text-[5.4rem] lg:text-[6.4rem]"
@@ -238,9 +248,11 @@ export default function StorefrontIQPortfolioPage() {
             Storefront<span className="text-[var(--atl-oxblood)]">IQ.</span>
           </h1>
           <p className="atl-rise mt-7 max-w-2xl text-[1.1rem] leading-[1.7] text-[var(--atl-soft)]" style={{ animationDelay: "240ms" }}>
-            A multi-tenant retail analytics platform that turns messy, multi-channel sales
-            data into insight you can trust &mdash; honest data cleaning, anomaly detection,
-            plain-English AI digests, and tenant isolation enforced by the database itself.
+            A retail analytics platform built around the messy part &mdash; it takes the same
+            sales, recorded three different ways by three platforms, and turns them into
+            numbers you can trust: honest data cleaning, reconciliation that has to balance,
+            seasonality-aware anomaly detection, plain-English AI digests, and tenant
+            isolation enforced by the database itself.
           </p>
 
           <div className="atl-rise mt-8 flex flex-wrap items-center gap-3" style={{ animationDelay: "320ms" }}>
@@ -270,33 +282,35 @@ export default function StorefrontIQPortfolioPage() {
 
         {/* About */}
         <ScrollFade triggerOnce className="py-20">
-          <SectionHead index="01 / 05" kicker="About" title="Why StorefrontIQ, and why this project?" />
+          <SectionHead index="01 / 05" kicker="About" title="Why I built this one." />
           <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
             <p className="atl-display lg:col-span-5 text-[1.5rem] font-light leading-[1.4] text-[var(--atl-ink)]">
               <span className="atl-display float-left mr-3 mt-1 text-[4.4rem] font-medium leading-[0.7] text-[var(--atl-oxblood)]">
-                T
+                M
               </span>
-              ourbillon proved I could carry a personal idea all the way through to a
-              finished product. StorefrontIQ comes from the opposite direction &mdash; I went
-              looking for the kind of problem I was weakest at.
+              y earlier projects were product-shaped &mdash; features, screens, things
+              people click. StorefrontIQ was a deliberate step in another direction: a
+              project to get genuinely better at working with data.
             </p>
             <div className="lg:col-span-7 space-y-5 text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
               <p>
-                I&rsquo;m comfortable building features. What I wanted to get genuinely good at
-                is the unglamorous half of engineering: taking messy, real-world data that
-                doesn&rsquo;t agree with itself and turning it into something you can reason
-                about and trust.
+                I&rsquo;d been wanting to lean further into data analytics and data
+                engineering &mdash; the part of the stack my earlier work touched the least.
+                The fastest way to actually learn it, rather than just read about it, was to
+                pick a problem that left me no choice but to do it end to end.
               </p>
               <p>
-                Sales data is a perfect version of that problem &mdash; every platform describes
-                the same sale differently, and most of the real work lives in the
-                reconciliation, not the interface.
+                Retail sales turned out to be a good one. Square, Shopify, and WooCommerce
+                each record the same sale differently, so before you can analyse anything you
+                first have to reconcile three exports that disagree on dates, currencies,
+                refunds, and what even counts as an order. Most of the real work lives there,
+                well before the first chart.
               </p>
               <p>
-                So I built StorefrontIQ deliberately as a problem-solving and data-analytics
-                project. The point isn&rsquo;t a flashy UI. It&rsquo;s to show I can clean
-                data correctly, prove I haven&rsquo;t lost or corrupted anything along the way,
-                and pull real signal out of the result.
+                So this was never meant to be a flashy interface. It&rsquo;s where I taught
+                myself to take messy, real-world data, clean it without quietly losing or
+                corrupting anything, prove that I hadn&rsquo;t, and pull out signal I can
+                actually defend.
               </p>
             </div>
           </div>
@@ -385,14 +399,14 @@ export default function StorefrontIQPortfolioPage() {
           <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-2">
             <p className="text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
               StorefrontIQ shows I can design a multi-tenant data model, enforce isolation at
-              the database, clean and reconcile real-world data without losing anything, and
-              turn it into analysis I can actually defend.
+              the database itself, clean and reconcile real-world data without losing a row,
+              and turn the result into analysis I can stand behind.
             </p>
             <p className="text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
-              I built it to push past building features into the harder questions: what is
-              this data really saying, what&rsquo;s wrong with it, and how do I prove my
-              answer is correct? That&rsquo;s the problem-solving and data side of
-              engineering &mdash; the part I most wanted to grow.
+              More than that, it&rsquo;s the project where I moved into data analytics and
+              data engineering on purpose &mdash; territory my earlier work hadn&rsquo;t
+              touched. The questions driving it were new for me: what is this data really
+              saying, where is it lying, and how do I prove my answer holds up?
             </p>
           </div>
         </ScrollFade>
