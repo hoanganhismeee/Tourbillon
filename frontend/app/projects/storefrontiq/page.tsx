@@ -27,8 +27,8 @@ function GitHubIcon({ size = 15 }: { size?: number }) {
 
 const features = [
   {
-    title: "Unify three channels",
-    text: "Brings Square, Shopify, and WooCommerce exports into one consistent shape, despite three formats that look nothing alike.",
+    title: "Sources",
+    text: "Brings Shopify (and probably Square, WooCommerce) exports into one consistent shape, despite three formats that look nothing alike.",
   },
   {
     title: "Clean data honestly",
@@ -249,10 +249,9 @@ export default function StorefrontIQPortfolioPage() {
           </h1>
           <p className="atl-rise mt-7 max-w-2xl text-[1.1rem] leading-[1.7] text-[var(--atl-soft)]" style={{ animationDelay: "240ms" }}>
             A retail analytics platform built around the messy part &mdash; it takes the same
-            sales, recorded three different ways by three platforms, and turns them into
+            sales, planned to record three different ways by three platforms, and turns them into
             numbers you can trust: honest data cleaning, reconciliation that has to balance,
-            seasonality-aware anomaly detection, plain-English AI digests, and tenant
-            isolation enforced by the database itself.
+            seasonality-aware anomaly detection, and plain-English AI digest.
           </p>
 
           <div className="atl-rise mt-8 flex flex-wrap items-center gap-3" style={{ animationDelay: "320ms" }}>
@@ -294,10 +293,12 @@ export default function StorefrontIQPortfolioPage() {
             </p>
             <div className="lg:col-span-7 space-y-5 text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
               <p>
-                I&rsquo;d been wanting to lean further into data analytics and data
-                engineering &mdash; the part of the stack my earlier work touched the least.
-                The fastest way to actually learn it, rather than just read about it, was to
-                pick a problem that left me no choice but to do it end to end.
+                My previous main stack is full-stack webapp development &mdash; 
+                and StorefrontIQ was about widening that: I wanted to
+                expand into data analytics and data engineering, which is a genuinely
+                different kind of problem from the apps I usually build. The fastest way to
+                actually learn it, rather than just read about it, was to pick something that
+                left me no choice but to do it end to end.
               </p>
               <p>
                 Retail sales turned out to be a good one. Square, Shopify, and WooCommerce
