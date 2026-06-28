@@ -18,7 +18,7 @@ const mono = IBM_Plex_Mono({ variable: "--font-mono-studio", subsets: ["latin"],
 export const metadata: Metadata = {
   title: "Hoang Anh Chu — Portfolio",
   description:
-    "Hoang Anh Chu (Brandon) — full-stack software engineer with an AI focus. Selected work: Tourbillon, FuelUp, and StorefrontIQ.",
+    "Hoang Anh Chu (Brandon) — full-stack software engineer with an AI focus. Selected work: Tourbillon and FuelUp.",
 };
 
 // Subtle film-grain data URI, layered over the brown for a tactile, atmospheric texture.
@@ -71,17 +71,6 @@ const experience = [
 ];
 
 const projects = [
-  {
-    name: "StorefrontIQ",
-    meta: "Jun 2026 — Current · Data analytics",
-    blurb:
-      "A multi-tenant retail analytics platform. Ingests messy Square, Shopify, and WooCommerce sales exports, then surfaces trends, risk, restock recommendations, impact with/without ads, and holiday/weekend patterns. An LLM generate overall summary and suggestions.",
-    tags: ["Python", "Next.js 15", "PostgreSQL", "Pydantic", "Ollama"],
-    links: [
-      { label: "Read case study", href: "/projects/storefrontiq", external: false, newTab: false },
-      { label: "GitHub", href: "https://github.com/hoanganhismeee/StorefrontIQ", external: true, newTab: false },
-    ],
-  },
   {
     name: "Tourbillon",
     meta: "Oct 2025 — Apr 2026 · Full-stack web",
