@@ -101,7 +101,7 @@ const education = [
     school: "University of Technology Sydney",
     degree: "Bachelor of Engineering (Honours), Software Engineering",
     dates: "Feb 2023 — Nov 2026 (Expected)",
-    wam: "WAM 80",
+    wam: "WAM 79.19",
   },
 ];
 
