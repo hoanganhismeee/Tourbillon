@@ -242,10 +242,10 @@ export default function PortfolioHubPage() {
 
             <div className="stu-rise mt-9 flex flex-wrap items-center gap-3" style={{ animationDelay: "280ms" }}>
               <a
-                href="mailto:hoanganh31012005@gmail.com"
+                href="https://drive.google.com/file/d/1wcWvvPld5kCtAiNABVGnVz-83J73nNUp/view?usp=sharing"
                 className="group inline-flex items-center gap-2 rounded-md bg-[var(--stu-accent)] px-5 py-3 text-[13px] font-semibold tracking-[0.02em] text-[#211710] transition-colors hover:bg-[var(--stu-accent-hover)]"
               >
-                Email me
+                My Resume
                 <span className="stu-arrow" aria-hidden>&rarr;</span>
               </a>
               <a
