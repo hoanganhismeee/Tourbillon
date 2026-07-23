@@ -27,7 +27,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Hoang Anh Chu — StorefrontIQ",
   description:
-    "Portfolio case study: StorefrontIQ, a multi-tenant retail analytics platform built by Hoang Anh Chu (Brandon).",
+    "Portfolio case study: StorefrontIQ, an open multi-channel retail analytics platform built by Hoang Anh Chu (Brandon).",
 };
 
 export default function StorefrontIQPortfolioLayout({

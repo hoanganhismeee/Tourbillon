@@ -1,6 +1,6 @@
 // StorefrontIQ portfolio case study — "Atelier" standalone design (matches /projects/tourbillon).
 // Light ivory editorial layout (engine-turned guilloche, deep-ink serif, oxblood accent)
-// presenting Hoang Anh Chu's multi-tenant retail analytics platform as a printed dossier.
+// presenting Hoang Anh Chu's open multi-channel retail analytics platform as a printed dossier.
 // Deliberately NOT part of the Tourbillon site aesthetic; chrome is hidden via ChromeGate.
 import ScrollFade from "../../scrollMotion/ScrollFade";
 import { BackToPortfolio } from "../PortfolioBackNav";
@@ -27,6 +27,10 @@ function GitHubIcon({ size = 15 }: { size?: number }) {
 
 const features = [
   {
+    title: "Browse sample shops",
+    text: "Open the site with no login and pick from a set of sample shops, each selling different items across two or three platforms — ready to analyse in one click.",
+  },
+  {
     title: "Unify three channels",
     text: "Brings Shopify, WooCommerce, and Square exports into one consistent shape, despite three formats that look nothing alike.",
   },
@@ -37,6 +41,10 @@ const features = [
   {
     title: "Reconcile every run",
     text: "Asserts that no rows go missing — received equals loaded plus quarantined — and fails loudly if the numbers don't balance.",
+  },
+  {
+    title: "Analyse one channel or all",
+    text: "Look at a single platform's export on its own, or combine all of a shop's platforms and reconcile them into one like-for-like picture.",
   },
   {
     title: "Surface trends",
@@ -52,15 +60,11 @@ const features = [
   },
   {
     title: "Explain it in plain English",
-    text: "An LLM writes the brief — the trends that matter, the risks worth watching, the recommendations — describing only figures the pipeline computed, never inventing them.",
+    text: "Claude Haiku writes the brief — the trends that matter, the risks worth watching, the recommendations — describing only figures the pipeline computed, never inventing them.",
   },
   {
-    title: "Isolate every tenant",
-    text: "Each tenant can only see their own data, enforced by PostgreSQL Row-Level Security rather than by hoping a query filtered correctly.",
-  },
-  {
-    title: "Explore in a dashboard",
-    text: "One clean analytics screen: unified totals, per-channel comparison, the risk feed, and the latest AI brief.",
+    title: "Export the clean data",
+    text: "Download the cleaned, reconciled dataset back to your device as CSV, so the trustworthy version is yours to keep and take further.",
   },
 ];
 
@@ -71,7 +75,7 @@ const stackGroups = [
   },
   {
     title: "Analytics & AI",
-    items: ["PostgreSQL (z-score)", "Qwen2.5 3B-Instruct", "Ollama (local)"],
+    items: ["PostgreSQL (z-score)", "Claude Haiku (prod)", "Ollama · Qwen2.5 3B (dev)"],
   },
   {
     title: "Frontend",
@@ -93,6 +97,7 @@ const architectureDiagram = `LOCAL · DATA PLANE — runs offline, does the heav
                 ▼
 ┌───────────────────────────────┐
 │ Export emulator               │
+│ ~10 synthetic shops           │
 │ Square · Shopify · Woo        │
 │ real formats, real quirks     │
 └───────────────┬───────────────┘
@@ -107,18 +112,18 @@ const architectureDiagram = `LOCAL · DATA PLANE — runs offline, does the heav
                 ▼
 ┌───────────────────────────────┐
 │ PostgreSQL                    │
-│ RLS by tenant_id              │
+│ shops · channels              │
 └───────────────┬───────────────┘
                 │  analytics reads rows, writes results back
                 ▼
 ┌───────────────────────────────┐
 │ Analytics + AI digest         │
 │ SQL z-score (seasonal)        │
-│ qwen2.5:3b · Ollama (local)   │
+│ Claude Haiku · Ollama         │
 └───────────────────────────────┘
 
 check  → received = loaded + quarantined
-digest → pre-generated once, stored as text
+digest → generated per run, stored as text
 
 
 PRODUCTION · SERVING PLANE — thin, reads pre-computed rows
@@ -130,18 +135,18 @@ PRODUCTION · SERVING PLANE — thin, reads pre-computed rows
                 ▼
 ┌───────────────────────────────┐
 │ Vercel · Next.js 15           │
-│ route handler sets tenant     │
-│ SET LOCAL app.current_tenant  │
+│ reads by shop_id (open)       │
+│ no auth · shop is a param     │
 └───────────────┬───────────────┘
                 │
                 ▼
 ┌───────────────────────────────┐
 │ Neon PostgreSQL               │
-│ RLS enforces isolation        │
+│ serves pre-computed rows      │
 └───────────────────────────────┘
 
 no backend server · no LLM at request time
-CI (GitHub Actions) runs the RLS isolation test`;
+CI (GitHub Actions) runs reconciliation + scoping tests`;
 
 function SectionHead({ index, kicker, title }: { index: string; kicker: string; title: string }) {
   return (
@@ -252,11 +257,12 @@ export default function StorefrontIQPortfolioPage() {
             Storefront<span className="text-[var(--atl-oxblood)]">IQ.</span>
           </h1>
           <p className="atl-rise mt-7 max-w-2xl text-[1.1rem] leading-[1.7] text-[var(--atl-soft)]" style={{ animationDelay: "240ms" }}>
-            A retail analytics platform I&rsquo;m building to take the same sales &mdash;
-            recorded three different ways by Shopify, WooCommerce, and Square &mdash; and turn
-            them into insight you can act on: trends worth noticing, risks worth watching, and
-            a recommendation or two, on top of numbers cleaned and reconciled so you can trust
-            them.
+            An open retail analytics demo I&rsquo;m building: browse a set of sample shops, pick
+            one, and analyse a single platform or combine them all. It takes the same sales
+            &mdash; recorded three different ways by Shopify, WooCommerce, and Square &mdash; and
+            turns them into insight you can act on: trends worth noticing, risks worth watching,
+            and a recommendation or two, on top of numbers cleaned and reconciled so you can
+            trust them &mdash; and export.
           </p>
 
           <div className="atl-rise mt-8 flex flex-wrap items-center gap-3" style={{ animationDelay: "320ms" }}>
@@ -404,9 +410,9 @@ export default function StorefrontIQPortfolioPage() {
           </blockquote>
           <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-2">
             <p className="text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
-              StorefrontIQ is where I&rsquo;m learning to design a multi-tenant data model,
-              enforce isolation at the database itself, clean and reconcile real-world data
-              without losing a row, and turn the result into analysis I can stand behind.
+              StorefrontIQ is where I&rsquo;m learning to design a canonical data model,
+              clean and reconcile real-world data without losing a row, prove that the numbers
+              balance, and turn the result into analysis I can stand behind.
             </p>
             <p className="text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
               More than that, it&rsquo;s the project where I&rsquo;m moving into data analytics
