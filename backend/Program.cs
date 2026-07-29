@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using System.IO;
 using Hangfire;
-using Hangfire.PostgreSql;
+using Hangfire.Redis.StackExchange;
 using Npgsql;
 using Pgvector.EntityFrameworkCore;
 using StackExchange.Redis;
@@ -59,57 +59,55 @@ var efConnectionString = new NpgsqlConnectionStringBuilder(basePgBuilder.Connect
 {
     MaxPoolSize = 20,
 }.ToString();
-var hangfireConnectionString = basePgBuilder.ConnectionString;
 var pgDataSourceBuilder = new NpgsqlDataSourceBuilder(efConnectionString);
 pgDataSourceBuilder.UseVector();
 var pgDataSource = pgDataSourceBuilder.Build();
 builder.Services.AddDbContext<TourbillonContext>(options =>
     options.UseNpgsql(pgDataSource, npgsqlOptions => npgsqlOptions.UseVector()));
 
-// Register Hangfire with PostgreSQL storage for durable background jobs.
-// Every poll/heartbeat is a Postgres query, and Neon only scales its serverless
-// compute to zero after ~5 minutes with no activity. A 1-minute interval reset
-// that timer on every tick, so the compute never suspended and billed ~24/7. The
-// intervals are now 15 minutes (well past Neon's 5-min window) and share one
-// period so they stay phase-aligned — Postgres is hit in a short burst, then sits
-// idle long enough to suspend between bursts. Jobs are also enqueued by user
-// actions (which wake the compute anyway), so a dispatch delay of up to the poll
-// interval is an acceptable trade for the compute savings.
-const int hangfirePollMinutes = 15;
+// Register Redis for distributed state (rate limiting, auth codes, chat sessions).
+// Built before Hangfire so job storage can share this single multiplexer rather
+// than opening a second connection to the same server.
+var redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
+var redisMultiplexer = ConnectionMultiplexer.Connect(redisConnectionString);
+builder.Services.AddSingleton<IConnectionMultiplexer>(redisMultiplexer);
+builder.Services.AddSingleton<IRedisService, RedisService>();
+
+// Register Hangfire with Redis storage for durable background jobs. Postgres storage
+// polled the database on a fixed cadence — its CountersAggregator alone runs every 5
+// minutes, exactly Neon's autosuspend window, so the serverless compute could never
+// suspend and billed ~24/7. Redis keeps that traffic off Neon entirely, and its
+// blocking fetch dispatches queued jobs in seconds instead of after a poll interval.
+// The server intervals below are sized against Upstash's free command budget.
 builder.Services.AddHangfire(config => config
     .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
     .UseSimpleAssemblyNameTypeSerializer()
     .UseRecommendedSerializerSettings()
-    .UsePostgreSqlStorage(
-        o => o.UseNpgsqlConnection(hangfireConnectionString),
-        new PostgreSqlStorageOptions
+    .UseRedisStorage(
+        redisMultiplexer,
+        new RedisStorageOptions
         {
-            QueuePollInterval = TimeSpan.FromMinutes(hangfirePollMinutes),
+            // 3-minute blocking fetch; returns the instant a job is pushed.
+            FetchTimeout = TimeSpan.FromMinutes(3),
+            ExpiryCheckInterval = TimeSpan.FromHours(6),
             InvisibilityTimeout = TimeSpan.FromMinutes(30),
-            DistributedLockTimeout = TimeSpan.FromMinutes(10),
-            UseSlidingInvisibilityTimeout = true,
         }));
 builder.Services.AddHangfireServer(options =>
 {
     options.WorkerCount = 2;
-    options.SchedulePollingInterval = TimeSpan.FromMinutes(hangfirePollMinutes);
-    options.HeartbeatInterval = TimeSpan.FromMinutes(hangfirePollMinutes);
-    // Watchdog runs on the same cadence; ServerTimeout must comfortably exceed the
-    // heartbeat interval so this single server is never reaped between heartbeats.
-    options.ServerCheckInterval = TimeSpan.FromMinutes(hangfirePollMinutes);
-    options.ServerTimeout = TimeSpan.FromMinutes(hangfirePollMinutes * 2);
+    // Drives cron and delayed jobs; the daily and 6-hourly schedules tolerate this.
+    options.SchedulePollingInterval = TimeSpan.FromMinutes(5);
+    options.HeartbeatInterval = TimeSpan.FromMinutes(5);
+    // ServerTimeout must comfortably exceed the heartbeat interval so this single
+    // server is never reaped between heartbeats.
+    options.ServerCheckInterval = TimeSpan.FromMinutes(15);
+    options.ServerTimeout = TimeSpan.FromMinutes(30);
 });
-
-// Register Redis for distributed state (rate limiting, auth codes, chat sessions)
-var redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
-builder.Services.AddSingleton<IConnectionMultiplexer>(
-    ConnectionMultiplexer.Connect(redisConnectionString));
-builder.Services.AddSingleton<IRedisService, RedisService>();
 
 // Register health checks — postgres + redis (Unhealthy on failure), ai-service (Degraded on failure)
 builder.Services.AddTransient<AiServiceHealthCheck>();
 builder.Services.AddHealthChecks()
-    .AddNpgSql(pgConnectionString, name: "postgres",
+    .AddNpgSql(efConnectionString, name: "postgres",
         failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy,
         tags: ["ready"])
     .AddRedis(redisConnectionString, name: "redis",
@@ -372,40 +370,49 @@ using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<TourbillonContext>();
 
-    // Create database if it doesn't exist (for Neon cloud)
-    try
+    // Create the database if it doesn't exist. Development only: managed providers
+    // (Neon) provision the database up front, so in production this only wakes the
+    // serverless compute on every boot for a check that can never succeed.
+    if (app.Environment.IsDevelopment())
     {
-        var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-        var connectionStringBuilder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
-        var databaseName = connectionStringBuilder.Database;
-
-        // Connect to postgres database to create our database
-        connectionStringBuilder.Database = "postgres";
-
-        using (var conn = new Npgsql.NpgsqlConnection(connectionStringBuilder.ToString()))
+        try
         {
-            await conn.OpenAsync();
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+            var connectionStringBuilder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
+            var databaseName = connectionStringBuilder.Database;
 
-            // Check if database exists
-            using (var cmd = new Npgsql.NpgsqlCommand($"SELECT 1 FROM pg_database WHERE datname = '{databaseName}'", conn))
+            // Connect to the postgres maintenance database to create our database
+            connectionStringBuilder.Database = "postgres";
+
+            using (var conn = new Npgsql.NpgsqlConnection(connectionStringBuilder.ToString()))
             {
-                var exists = await cmd.ExecuteScalarAsync();
+                await conn.OpenAsync();
 
-                if (exists == null)
+                // Check if database exists
+                using (var cmd = new Npgsql.NpgsqlCommand(
+                    "SELECT 1 FROM pg_database WHERE datname = @name", conn))
                 {
-                    // Database doesn't exist, create it
-                    using (var createCmd = new Npgsql.NpgsqlCommand($"CREATE DATABASE {databaseName}", conn))
+                    cmd.Parameters.AddWithValue("name", databaseName!);
+                    var exists = await cmd.ExecuteScalarAsync();
+
+                    if (exists == null)
                     {
-                        await createCmd.ExecuteNonQueryAsync();
-                        Console.WriteLine($"Created database: {databaseName}");
+                        // Database doesn't exist, create it. Identifiers cannot be
+                        // parameterised, so quote it rather than interpolating raw.
+                        var quotedName = "\"" + databaseName!.Replace("\"", "\"\"") + "\"";
+                        using (var createCmd = new Npgsql.NpgsqlCommand($"CREATE DATABASE {quotedName}", conn))
+                        {
+                            await createCmd.ExecuteNonQueryAsync();
+                            Console.WriteLine($"Created database: {databaseName}");
+                        }
                     }
                 }
             }
         }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Database creation check: {ex.Message}");
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Database creation check: {ex.Message}");
+        }
     }
 
     context.Database.Migrate(); // Apply pending migrations

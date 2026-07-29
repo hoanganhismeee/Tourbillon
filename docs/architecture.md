@@ -442,7 +442,7 @@ Frontend runs locally (`npm run dev`) — intentionally excluded from Docker for
 - **Secrets**: `.env` file at project root (gitignored), template in `.env.example`
 - **CORS**: Configurable via `ALLOWED_ORIGINS` env var
 - **Caching**: Persistent semantic query cache (QueryCaches in PostgreSQL). Redis (`redis:7-alpine`) for auth codes, rate limiting, and chat sessions via `IRedisService`.
-- **Background work**: Hangfire with PostgreSQL storage. Dashboard at `/hangfire`. All fire-and-forget patterns use `BackgroundJob.Enqueue<T>` for durability and retry.
+- **Background work**: Hangfire with Redis storage. Dashboard at `/hangfire`. All fire-and-forget patterns use `BackgroundJob.Enqueue<T>` for durability and retry. Storage is deliberately not PostgreSQL — Hangfire's Postgres provider polls the database continuously (its counter aggregator alone every 5 minutes), which prevented Neon's serverless compute from ever suspending.
 - **CDN**: Cloudinary remains available; S3 + CloudFront is supported behind the storage abstraction and can be enabled after migration.
 - **CI/CD**: GitHub Actions (`.github/workflows/ci.yml`) — backend build + test, frontend type-check on push/PR
 - **IaC**: None
@@ -468,7 +468,7 @@ Frontend runs locally (`npm run dev`) — intentionally excluded from Docker for
 | Milestone | Status |
 |---|---|
 | CI/CD (GitHub Actions) | Done — `.github/workflows/ci.yml`, backend build + tests, frontend tsc |
-| Durable Background Jobs (Hangfire) | Done — PostgreSQL-backed, dashboard at `/hangfire` |
+| Durable Background Jobs (Hangfire) | Done — Redis-backed, dashboard at `/hangfire` |
 | Redis | Done — `redis:7-alpine` in Docker, auth codes / rate limits / chat sessions |
 | Observability (Serilog + health checks) | Done |
 | Advisor CRM | Done — inquiry page, Hangfire status auto-advance |

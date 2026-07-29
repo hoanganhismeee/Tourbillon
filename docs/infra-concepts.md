@@ -51,7 +51,9 @@ Services that change:
 - `WatchFinderService` — embedding + cache updates (2 locations)
 - `WatchEditorialService` — editorial chunk embedding
 
-Dependencies: `Hangfire.Core`, `Hangfire.AspNetCore`, `Hangfire.PostgreSql` NuGet packages.
+Dependencies: `Hangfire.Core`, `Hangfire.AspNetCore`, `Hangfire.Redis.StackExchange` NuGet packages.
+
+Storage is Redis rather than PostgreSQL. Hangfire's Postgres provider polls the database on fixed timers — its `CountersAggregator` runs every 5 minutes regardless of whether any job exists — which matches Neon's 5-minute autosuspend window and kept the serverless compute billing 24/7. Redis keeps that polling off the database, and its blocking fetch dispatches queued jobs in seconds instead of after a poll interval.
 
 ### Why it matters
 
