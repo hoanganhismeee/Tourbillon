@@ -117,6 +117,17 @@ const projects = [
   },
 ];
 
+const competitions = [
+  {
+    name: "Sensitive Biometric Data Management for Disaster-Displaced Communities",
+    event: "USyd Humanitarian Innovation Hackathon",
+    date: "Jul 2026",
+    blurb:
+      "Designed a biometric deduplication system where no party ever holds a readable fingerprint — secret-shared matching between two independent trustees — weighing the privacy, security, and offline trade-offs for displaced populations in low-connectivity Pacific Island settings.",
+    href: "https://hack-eng.sydney.edu.au",
+  },
+];
+
 const education = [
   {
     school: "University of Technology Sydney",
@@ -425,6 +436,42 @@ export default function PortfolioHubPage() {
                   )}
                 </div>
               </article>
+            ))}
+          </div>
+        </ScrollFade>
+
+        {/* Competitions */}
+        <ScrollFade triggerOnce className="border-t border-[var(--stu-line)] py-20">
+          <SectionHead title="Competitions" />
+          <div className="mt-12 space-y-10">
+            {competitions.map((c) => (
+              <div key={c.name} className="border-t border-[var(--stu-line-soft)] pt-6">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-8">
+                  <div>
+                    <h3 className="stu-display max-w-2xl text-[1.4rem] font-semibold leading-tight text-[var(--stu-text)]">
+                      {c.name}
+                    </h3>
+                    <p className="stu-mono mt-1.5 text-[12px] uppercase tracking-[0.16em] text-[var(--stu-accent)]">
+                      {c.event}
+                    </p>
+                  </div>
+                  <div className="stu-mono shrink-0 text-[11px] uppercase tracking-[0.16em] text-[var(--stu-faint)] sm:text-right">
+                    {c.date}
+                  </div>
+                </div>
+                <p className="mt-5 max-w-3xl text-[0.97rem] leading-[1.7] text-[var(--stu-muted)]">
+                  {c.blurb}
+                </p>
+                <a
+                  href={c.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group stu-mono mt-6 inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.14em] text-[var(--stu-text)]"
+                >
+                  <span className="stu-link">Event site</span>
+                  <span className="stu-arrow text-[var(--stu-accent)]" aria-hidden>↗</span>
+                </a>
+              </div>
             ))}
           </div>
         </ScrollFade>
