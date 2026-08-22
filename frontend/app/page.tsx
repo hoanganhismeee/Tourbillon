@@ -48,6 +48,16 @@ const marquee = [
 
 const experience = [
   {
+    company: "WaterTight Group",
+    role: "Process Re-engineering Intern",
+    dates: "Jul 2026 — Present",
+    location: "Milperra, NSW",
+    points: [
+      "Mapped the end-to-end process across multiple client contracts — job intake through review, invoicing, and client submission — documenting manual steps that had never been written down.",
+      "Turned those specifications into a build-ready design for an external process-automation firm, covering the variations and exception branches at each step, swim-lane process maps, and field-level data mappings.",
+    ],
+  },
+  {
     company: "FPT Software",
     role: "Software Engineer Intern",
     dates: "Dec 2025 — May 2026",
@@ -246,9 +256,9 @@ export default function PortfolioHubPage() {
               className="stu-rise mt-8 max-w-xl text-[1.05rem] leading-[1.75] text-[var(--stu-muted)]"
               style={{ animationDelay: "200ms" }}
             >
-              Final-year Software Engineering (Honours) at UTS, graduating November 2026. I ship
-              full-stack, AI-driven products — through internships at FPT Software and Sensear,
-              and projects like Tourbillon and FuelUp.
+              Final-year Software Engineering student at UTS, graduating December 2026. I ship
+              full-stack, AI-driven products — through internships at WaterTight Group, FPT
+              Software, and Sensear, and projects like Tourbillon and FuelUp.
             </p>
 
             <div className="stu-rise mt-9 flex flex-wrap items-center gap-3" style={{ animationDelay: "280ms" }}>
