@@ -120,8 +120,8 @@ const projects = [
 const education = [
   {
     school: "University of Technology Sydney",
-    degree: "Bachelor of Engineering (Honours), Software Engineering",
-    dates: "Feb 2023 — Nov 2026 (Expected)",
+    degree: "Bachelor of Computing Science (Honours), Software Engineering",
+    dates: "Feb 2023 — Dec 2026 (Expected)",
     wam: "WAM 79.19",
   },
 ];
