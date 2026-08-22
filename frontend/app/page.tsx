@@ -145,7 +145,7 @@ const skillGroups = [
     items: ["Docker", "GitHub Actions", "AWS S3", "CloudFront", "Railway", "Vercel", "Neon", "Upstash"],
   },
   { title: "Databases", items: ["PostgreSQL", "SurrealDB", "pgvector", "Redis"] },
-  { title: "Tools & Practices", items: ["Git", "Jira", "Confluence", "Cursor", "Agile Scrum", "SOLID"] },
+  { title: "Tools & Practices", items: ["Git", "Jira", "Confluence", "Cursor", "Visual Studio", "Agile Scrum", "SOLID"] },
 ];
 
 // Plain grotesk section title.
@@ -535,7 +535,7 @@ export default function PortfolioHubPage() {
         <div className="mx-auto w-full max-w-[1140px] px-6 pt-10 sm:px-10 lg:px-14">
           <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
             <a
-              href="mailto:hoanganh31012005@gmail.com"
+              href="mailto:hoanga3101@gmail.com"
               className="group stu-mono inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.16em] text-[var(--stu-text)]"
             >
               <span className="stu-link">Email</span>

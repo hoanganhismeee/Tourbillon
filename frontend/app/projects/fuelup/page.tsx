@@ -257,7 +257,7 @@ export default function FuelUpPortfolioPage() {
                 <GitHubIcon /> GitHub
               </a>
               <a
-                href="mailto:hoanganh31012005@gmail.com"
+                href="mailto:hoanga3101@gmail.com"
                 className="atl-tag inline-flex items-center gap-2 px-4 py-2.5 text-[12px] uppercase tracking-[0.18em] text-[var(--atl-ink)] transition-colors"
               >
                 Email
