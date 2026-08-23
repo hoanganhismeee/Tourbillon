@@ -11,8 +11,8 @@ import ScrollFade from '@/app/scrollMotion/ScrollFade';
 const contactItems = [
   {
     label: 'Email',
-    value: 'hoanganh31012005@gmail.com',
-    href: 'mailto:hoanganh31012005@gmail.com',
+    value: 'hoanga3101@gmail.com',
+    href: 'mailto:hoanga3101@gmail.com',
   },
   {
     label: 'Phone',
@@ -159,7 +159,7 @@ export default function ContactPage() {
               </button>
 
               <a
-                href="mailto:hoanganh31012005@gmail.com"
+                href="mailto:hoanga3101@gmail.com"
                 className="relative inline-flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[#bfa68a] border border-[#bfa68a]/25 px-12 py-4 hover:bg-[#bfa68a]/8 hover:border-[#bfa68a]/40 transition-all duration-500 group overflow-hidden"
               >
                 <span className="transform transition-transform duration-500 group-hover:-translate-x-3">
