@@ -33,7 +33,7 @@ const features = [
   },
   {
     title: "Search in plain English",
-    text: "Smart Search turns a request like “thin rose gold dress watch” into relevant results.",
+    text: "Smart Search reads a request like “thin rose gold dress watch”, turns it into catalogue filters, then ranks what is left by meaning rather than keywords.",
   },
   {
     title: "Compare with context",
@@ -41,15 +41,15 @@ const features = [
   },
   {
     title: "Save personal picks",
-    text: "Signed-in users save favourites and organise watches into collections for later.",
+    text: "Signed-in users — by email or Google — save favourites and organise watches into collections for later.",
   },
   {
     title: "Build a Watch DNA profile",
-    text: "Browsing activity learns a user’s taste to support more personal recommendations.",
+    text: "Browsing activity is scored into a taste profile that shapes recommendations, with no model call on the page request.",
   },
   {
     title: "Ask the concierge",
-    text: "A chat assistant answers watch questions, compares options, and guides the catalogue.",
+    text: "A chat assistant that acts as well as answers — it runs searches, pulls up watch cards, and sets up comparisons inside the app.",
   },
   {
     title: "Contact an advisor",
@@ -57,7 +57,7 @@ const features = [
   },
   {
     title: "Manage the platform",
-    text: "An admin area handles watch data, images, editorial, embeddings, and search upkeep.",
+    text: "An admin area, gated by role-based access, handles watch data, images, editorial, embeddings, and search upkeep.",
   },
 ];
 
@@ -68,7 +68,7 @@ const stackGroups = [
   },
   {
     title: "Backend",
-    items: ["ASP.NET Core Web API", ".NET 8", "Entity Framework Core", "ASP.NET Identity", "Hangfire"],
+    items: ["ASP.NET Core Web API", ".NET 8", "Entity Framework Core", "ASP.NET Identity", "Google OAuth", "Hangfire", "Serilog", "xUnit"],
   },
   {
     title: "AI & Search",
@@ -281,9 +281,11 @@ export default function TourbillonPortfolioPage() {
             </a>
           </div>
 
-          <dl className="atl-rise mt-12 grid max-w-md grid-cols-2 gap-6 border-t border-[var(--atl-rule)] pt-7" style={{ animationDelay: "400ms" }}>
+          <dl className="atl-rise mt-12 grid max-w-lg grid-cols-3 gap-6 border-t border-[var(--atl-rule)] pt-7" style={{ animationDelay: "400ms" }}>
             {[
               { k: "Stack", v: ".NET · Next.js · Python AI" },
+              { k: "Scale", v: "13 maisons · 51 collections" },
+              { k: "Role", v: "Full-stack" },
             ].map((item) => (
               <div key={item.k}>
                 <dt className="atl-mono text-[10px] uppercase tracking-[0.24em] text-[var(--atl-faint)]">{item.k}</dt>
@@ -372,7 +374,9 @@ export default function TourbillonPortfolioPage() {
           <p className="mb-8 max-w-2xl text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
             The app is split so each part has one clear job: the frontend owns experience, the
             backend owns business logic and data, and a separate AI service keeps prompts and
-            model logic out of the .NET layer.
+            model logic out of the .NET layer. Hangfire moves slow work off the request path,
+            Serilog and health checks make the running system observable, and GitHub Actions
+            runs the unit tests on every push.
           </p>
           <div className="border border-[var(--atl-rule)] bg-[var(--atl-paper-2)]/70">
             <div className="flex items-center justify-between gap-4 border-b border-[var(--atl-rule)] px-5 py-3">
@@ -401,7 +405,7 @@ export default function TourbillonPortfolioPage() {
           <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-2">
             <p className="text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
               Tourbillon shows I can work across frontend, backend, database, AI services,
-              authentication, deployment-style tooling, and user experience &mdash; and carry a
+              authentication, deployment and CI, and user experience &mdash; and carry a
               personal idea through to a finished product.
             </p>
             <p className="text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
