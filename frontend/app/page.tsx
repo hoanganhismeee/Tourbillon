@@ -80,6 +80,15 @@ const experience = [
   },
 ];
 
+const education = [
+  {
+    school: "University of Technology Sydney",
+    degree: "Bachelor of Computing Science (Honours), Software Engineering",
+    dates: "Feb 2023 — Dec 2026 (Expected)",
+    wam: "WAM 79.19",
+  },
+];
+
 const projects = [
   {
     name: "StorefrontIQ",
@@ -125,15 +134,6 @@ const competitions = [
     blurb:
       "Designed a biometric deduplication system where no party ever holds a readable fingerprint — secret-shared matching between two independent trustees — weighing the privacy, security, and offline trade-offs for displaced populations in low-connectivity Pacific Island settings.",
     href: "https://hack-eng.sydney.edu.au",
-  },
-];
-
-const education = [
-  {
-    school: "University of Technology Sydney",
-    degree: "Bachelor of Computing Science (Honours), Software Engineering",
-    dates: "Feb 2023 — Dec 2026 (Expected)",
-    wam: "WAM 79.19",
   },
 ];
 
