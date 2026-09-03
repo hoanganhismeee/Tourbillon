@@ -4,9 +4,7 @@
 // Fallback (embed unavailable): LLM parse → SQL filter → LLM rerank
 
 using Hangfire;
-using System.Globalization;
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -229,7 +227,7 @@ public class WatchFinderService : IWatchFinderService
             quotaCharged = true;
         }
 
-        var normalizedQuery = NormalizeQueryPhrases(query);
+        var normalizedQuery = QueryNormalizer.ExpandCompoundTerms(query);
         var deterministicIntent = await ParseQueryIntentAsync(normalizedQuery);
         ApplyBrandExclusions(deterministicIntent, excludedBrandIds);
         if (deterministicIntent == null && !HasWatchDomainSignal(normalizedQuery))
@@ -759,10 +757,10 @@ public class WatchFinderService : IWatchFinderService
 
     internal static int DirectSqlScore(string query, Watch watch, QueryIntent? intent, bool isReferenceLike)
     {
-        var queryKey = NormaliseEntityText(query);
-        var watchNameKey = NormaliseEntityText(watch.Name);
-        var collectionKey = NormaliseEntityText(watch.Collection?.Name ?? "");
-        var brandKey = NormaliseEntityText(watch.Brand?.Name ?? "");
+        var queryKey = QueryNormalizer.CompactText(query);
+        var watchNameKey = QueryNormalizer.CompactText(watch.Name);
+        var collectionKey = QueryNormalizer.CompactText(watch.Collection?.Name ?? "");
+        var brandKey = QueryNormalizer.CompactText(watch.Brand?.Name ?? "");
         var directTokens = TokenizeDirectQuery(query);
 
         var score = 0;
@@ -1137,30 +1135,6 @@ public class WatchFinderService : IWatchFinderService
     }
 
     // Brand alias map — short names users commonly type to the canonical DB brand name.
-    private static readonly Dictionary<string, string> _brandAliases = new(StringComparer.OrdinalIgnoreCase)
-    {
-        // Abbreviations
-        ["JLC"]  = "Jaeger-LeCoultre",
-        ["AP"]   = "Audemars Piguet",
-        ["VC"]   = "Vacheron Constantin",
-        ["PP"]   = "Patek Philippe",
-        ["ALS"]  = "A. Lange & Söhne",
-        ["GS"]   = "Grand Seiko",
-        ["GO"]   = "Glashütte Original",
-        ["FC"]   = "Frederique Constant",
-        // Common shorthand (first word or popular nickname)
-        ["Vacheron"]   = "Vacheron Constantin",
-        ["Patek"]      = "Patek Philippe",
-        ["Audemars"]   = "Audemars Piguet",
-        ["Lange"]      = "A. Lange & Söhne",
-        ["Glashutte"]  = "Glashütte Original",
-        ["Glashütte"]  = "Glashütte Original",
-        ["Frederique"] = "Frederique Constant",
-        ["FP Journe"]  = "F.P.Journe",
-        ["FPJourne"]   = "F.P.Journe",
-        ["Journe"]     = "F.P.Journe",
-    };
-
     // LLM-based intent extraction — calls /watch-finder/parse and maps the result to QueryIntent.
     // Runs in parallel with EmbedQueryAsync. Returns null on parse failure (graceful degradation).
     private async Task<QueryIntent?> ParseIntentFromLlmAsync(HttpClient httpClient, string query, QueryIntent? deterministicIntent = null)
@@ -1235,7 +1209,7 @@ public class WatchFinderService : IWatchFinderService
     private static QueryIntent? MapParsedIntentToQueryIntent(
         ParsedIntent parsed, List<Brand> brands, List<Collection> collections, string query)
     {
-        query = NormalizeQueryPhrases(query);
+        query = QueryNormalizer.ExpandCompoundTerms(query);
         var intent = new QueryIntent();
 
         // ── Price (always hard) ───────────────────────────────────────────────────
@@ -1254,11 +1228,11 @@ public class WatchFinderService : IWatchFinderService
         // Step 2: fallback — also scan the raw query for brands the LLM may have missed.
         // Checks alias shortcuts (JLC, VC, etc.) then full DB brand names.
         var matched = new HashSet<int>(matchedBrands.Select(b => b!.Id));
-        foreach (var (alias, canonical) in _brandAliases)
+        foreach (var (alias, canonical) in QueryNormalizer.BrandAliases)
         {
             if (Regex.IsMatch(query, @$"\b{Regex.Escape(alias)}\b", RegexOptions.IgnoreCase))
             {
-                var b = brands.FirstOrDefault(br => br.Name.Equals(canonical, StringComparison.OrdinalIgnoreCase));
+                var b = QueryNormalizer.TryResolveBrand(canonical, brands);
                 if (b != null && matched.Add(b.Id)) matchedBrands.Add(b);
             }
         }
@@ -1433,7 +1407,7 @@ public class WatchFinderService : IWatchFinderService
         var tokens = TokenizeQuery(query)
             .Where(token => blockedTokens == null || !blockedTokens.Contains(token))
             .ToList();
-        var normalisedQuery = NormaliseEntityText(query);
+        var normalisedQuery = QueryNormalizer.CompactText(query);
         if (tokens.Count == 0 && normalisedQuery.Length == 0) return [];
 
         var pool = matchedBrandIds.Count > 0
@@ -1453,7 +1427,7 @@ public class WatchFinderService : IWatchFinderService
 
     private static int CollectionTokenScore(Collection collection, string normalisedQuery, List<string> tokens)
     {
-        var collectionKey = NormaliseEntityText(collection.Name);
+        var collectionKey = QueryNormalizer.CompactText(collection.Name);
         if (collectionKey.Length >= 4 && normalisedQuery.Contains(collectionKey))
             return 300 + collectionKey.Length;
 
@@ -1563,26 +1537,6 @@ public class WatchFinderService : IWatchFinderService
             .Where(t => !CollectionTokenStopWords.Contains(t))
             .Distinct()
             .ToList();
-
-    private static string NormaliseEntityText(string text)
-    {
-        var decomposed = text.Normalize(NormalizationForm.FormD);
-        var stripped = new string(decomposed
-            .Where(ch => CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
-            .ToArray())
-            .Normalize(NormalizationForm.FormC);
-        return Regex.Replace(stripped.ToLowerInvariant(), @"[^a-z0-9]+", "");
-    }
-
-    private static string NormalizeQueryPhrases(string query)
-    {
-        var normalized = Regex.Replace(query, @"\bsportwatch(es)?\b", "sport watch$1", RegexOptions.IgnoreCase);
-        normalized = Regex.Replace(normalized, @"\bdresswatch(es)?\b", "dress watch$1", RegexOptions.IgnoreCase);
-        normalized = Regex.Replace(normalized, @"\bdivewatch(es)?\b", "dive watch$1", RegexOptions.IgnoreCase);
-        normalized = Regex.Replace(normalized, @"\bdiverwatch(es)?\b", "diver watch$1", RegexOptions.IgnoreCase);
-        normalized = Regex.Replace(normalized, @"\btoolwatch(es)?\b", "tool watch$1", RegexOptions.IgnoreCase);
-        return Regex.Replace(normalized, @"\s+", " ").Trim();
-    }
 
     private static readonly HashSet<string> CollectionTokenStopWords = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -1740,7 +1694,7 @@ public class WatchFinderService : IWatchFinderService
     // explicit terms. Kept conservative so it only recovers obvious brand/spec constraints.
     private async Task<QueryIntent?> ParseQueryIntentAsync(string query)
     {
-        query = NormalizeQueryPhrases(query);
+        query = QueryNormalizer.ExpandCompoundTerms(query);
         var intent = new QueryIntent();
 
         // ── Brand matching ────────────────────────────────────────────────────────
@@ -1752,12 +1706,11 @@ public class WatchFinderService : IWatchFinderService
 
         // Check aliases first — word-boundary match to prevent "chronograph" matching "AP"
         var resolvedCanonicals = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (alias, canonical) in _brandAliases)
+        foreach (var (alias, canonical) in QueryNormalizer.BrandAliases)
         {
             if (Regex.IsMatch(query, @$"\b{Regex.Escape(alias)}\b", RegexOptions.IgnoreCase))
             {
-                var b = brands.FirstOrDefault(br =>
-                    br.Name.Equals(canonical, StringComparison.OrdinalIgnoreCase));
+                var b = QueryNormalizer.TryResolveBrand(canonical, brands);
                 if (b != null && resolvedCanonicals.Add(b.Name))
                     matchedBrands.Add(b);
             }
@@ -1768,7 +1721,7 @@ public class WatchFinderService : IWatchFinderService
         {
             var matchesBrandName =
                 query.Contains(brand.Name, StringComparison.OrdinalIgnoreCase)
-                || NormaliseEntityText(query).Contains(NormaliseEntityText(brand.Name), StringComparison.OrdinalIgnoreCase);
+                || QueryNormalizer.CompactText(query).Contains(QueryNormalizer.CompactText(brand.Name), StringComparison.OrdinalIgnoreCase);
             if (matchesBrandName && resolvedCanonicals.Add(brand.Name))
             {
                 matchedBrands.Add(brand);
@@ -1790,13 +1743,13 @@ public class WatchFinderService : IWatchFinderService
         var pool = matchedBrandIds.Count > 0
             ? collections.Where(c => matchedBrandIds.Contains(c.BrandId)).ToList()
             : collections;
-        var normalisedQuery = NormaliseEntityText(query);
+        var normalisedQuery = QueryNormalizer.CompactText(query);
 
         var exactCollections = pool
             .OrderByDescending(c => c.Name.Length)
             .Where(c =>
                 query.Contains(c.Name, StringComparison.OrdinalIgnoreCase) ||
-                (NormaliseEntityText(c.Name).Length >= 4 && normalisedQuery.Contains(NormaliseEntityText(c.Name))))
+                (QueryNormalizer.CompactText(c.Name).Length >= 4 && normalisedQuery.Contains(QueryNormalizer.CompactText(c.Name))))
             .ToList();
 
         // If no hit within the brand pool, try all collections (e.g. generic query).
@@ -1806,7 +1759,7 @@ public class WatchFinderService : IWatchFinderService
                 .OrderByDescending(c => c.Name.Length)
                 .Where(c =>
                     query.Contains(c.Name, StringComparison.OrdinalIgnoreCase) ||
-                    (NormaliseEntityText(c.Name).Length >= 4 && normalisedQuery.Contains(NormaliseEntityText(c.Name))))
+                    (QueryNormalizer.CompactText(c.Name).Length >= 4 && normalisedQuery.Contains(QueryNormalizer.CompactText(c.Name))))
                 .ToList();
         }
 
@@ -1837,7 +1790,7 @@ public class WatchFinderService : IWatchFinderService
     // water resistance, style, complications, power reserve). Extracted for unit testing.
     internal static void ApplyRegexFilters(string query, QueryIntent intent)
     {
-        query = NormalizeQueryPhrases(query);
+        query = QueryNormalizer.ExpandCompoundTerms(query);
         var q = query;
 
         // ── Price matching ──────────────────────────────────────────────────────────

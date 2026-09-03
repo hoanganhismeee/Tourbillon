@@ -2,11 +2,9 @@
 // Resolves exact watches, compare requests, and discovery redirects before using the LLM,
 // then sends only compact Tourbillon-specific context to ai-service when explanation helps.
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using System.Globalization;
 using backend.Database;
 using backend.Models;
 using Microsoft.EntityFrameworkCore;
@@ -180,28 +178,6 @@ public class ChatService
     };
 
     // Brand name aliases shared with WatchFinderService.
-    private static readonly Dictionary<string, string> _brandAliases = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["JLC"] = "Jaeger-LeCoultre",
-        ["AP"] = "Audemars Piguet",
-        ["VC"] = "Vacheron Constantin",
-        ["PP"] = "Patek Philippe",
-        ["ALS"] = "A. Lange & Sohne",
-        ["GS"] = "Grand Seiko",
-        ["GO"] = "Glashutte Original",
-        ["FC"] = "Frederique Constant",
-        ["Vacheron"] = "Vacheron Constantin",
-        ["Patek"] = "Patek Philippe",
-        ["Audemars"] = "Audemars Piguet",
-        ["Lange"] = "A. Lange & Sohne",
-        ["ALange"] = "A. Lange & Sohne",
-        ["Glashutte"] = "Glashutte Original",
-        ["Frederique"] = "Frederique Constant",
-        ["FP Journe"] = "F.P.Journe",
-        ["FPJourne"] = "F.P.Journe",
-        ["Journe"] = "F.P.Journe",
-    };
-
     private static readonly Dictionary<string, string> _cursorAliases = new(StringComparer.OrdinalIgnoreCase)
     {
         ["default"] = "default",
@@ -1358,22 +1334,22 @@ public class ChatService
         var collections = await GetCachedCollectionsAsync();
         var mentions = new EntityMentions();
         var matchedBrandIds = new HashSet<int>();
-        var normalizedQuery = NormalizeEntityText(query);
+        var normalizedQuery = QueryNormalizer.NormalizeText(query);
 
-        foreach (var (alias, canonical) in _brandAliases)
+        foreach (var (alias, canonical) in QueryNormalizer.BrandAliases)
         {
             if (!Regex.IsMatch(query, $@"\b{Regex.Escape(alias)}\b", RegexOptions.IgnoreCase))
                 continue;
 
             var brand = brands.FirstOrDefault(b =>
-                string.Equals(NormalizeEntityText(b.Name), NormalizeEntityText(canonical), StringComparison.OrdinalIgnoreCase));
+                string.Equals(QueryNormalizer.NormalizeText(b.Name), QueryNormalizer.NormalizeText(canonical), StringComparison.OrdinalIgnoreCase));
             if (brand != null && matchedBrandIds.Add(brand.Id))
                 mentions.Brands.Add(brand);
         }
 
         foreach (var brand in brands.OrderByDescending(b => b.Name.Length))
         {
-            var normalizedName = NormalizeEntityText(brand.Name);
+            var normalizedName = QueryNormalizer.NormalizeText(brand.Name);
             if (!query.Contains(brand.Name, StringComparison.OrdinalIgnoreCase) && !normalizedQuery.Contains(normalizedName))
                 continue;
 
@@ -1404,7 +1380,7 @@ public class ChatService
         var matchedCollectionIds = new HashSet<int>();
         foreach (var collection in collectionPool.OrderByDescending(c => c.Name.Length))
         {
-            var normalizedName = NormalizeEntityText(collection.Name);
+            var normalizedName = QueryNormalizer.NormalizeText(collection.Name);
 
             // Skip single-word generic collection names (e.g. "Collection", "Series") — they match
             // too loosely against everyday English and pollute entity resolution.
@@ -1450,10 +1426,10 @@ public class ChatService
             && !Regex.IsMatch(query, @"\bcursor\s+to\b", RegexOptions.IgnoreCase))
             return null;
 
-        var normalized = NormalizeEntityText(query);
+        var normalized = QueryNormalizer.NormalizeText(query);
         var resolvedCursor = _cursorAliases
             .OrderByDescending(alias => alias.Key.Length)
-            .FirstOrDefault(alias => normalized.Contains(NormalizeEntityText(alias.Key), StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(alias => normalized.Contains(QueryNormalizer.NormalizeText(alias.Key), StringComparison.OrdinalIgnoreCase));
 
         if (string.IsNullOrWhiteSpace(resolvedCursor.Value))
         {
@@ -3499,12 +3475,12 @@ public class ChatService
 
     private static bool MentionsResolvedCatalogueEntity(string message, List<ChatWatchCard> watchCards)
     {
-        var normalizedMessage = NormalizeEntityText(message);
+        var normalizedMessage = QueryNormalizer.NormalizeText(message);
         var candidates = watchCards
             .Take(3)
             .SelectMany(card => new[] { card.BrandName, card.CollectionName, card.Name })
             .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => NormalizeEntityText(value!))
+            .Select(value => QueryNormalizer.NormalizeText(value!))
             .Where(value => value.Length >= 4)
             .Distinct(StringComparer.OrdinalIgnoreCase);
 
@@ -3516,14 +3492,14 @@ public class ChatService
         if (string.IsNullOrWhiteSpace(message) || resolution.WatchCards.Count == 0)
             return false;
 
-        var normalizedMessage = NormalizeEntityText(message);
+        var normalizedMessage = QueryNormalizer.NormalizeText(message);
         if (string.IsNullOrWhiteSpace(normalizedMessage))
             return false;
 
         var allowedNames = resolution.WatchCards
             .SelectMany(card => new[] { card.BrandName, card.CollectionName, card.Name })
             .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => NormalizeEntityText(value!))
+            .Select(value => QueryNormalizer.NormalizeText(value!))
             .Where(value => value.Length >= 4)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -3539,7 +3515,7 @@ public class ChatService
         var knownNames = brandNames
             .Concat(collectionNames)
             .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => NormalizeEntityText(name))
+            .Select(name => QueryNormalizer.NormalizeText(name))
             .Where(name => name.Length >= 4)
             .Where(name => !_genericCollectionWords.Contains(name))
             .Distinct(StringComparer.OrdinalIgnoreCase);
@@ -4436,20 +4412,9 @@ public class ChatService
     private static int CountWords(string query) =>
         Regex.Matches(query, @"\b[\w'-]+\b").Count;
 
-    private static string NormalizeEntityText(string value)
-    {
-        var decomposed = value.Normalize(NormalizationForm.FormD);
-        var stripped = new string(decomposed
-            .Where(ch => CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
-            .ToArray())
-            .Normalize(NormalizationForm.FormC);
-        var compact = Regex.Replace(stripped.ToLowerInvariant(), @"[^\p{L}\p{Nd}]+", " ");
-        return Regex.Replace(compact, @"\s+", " ").Trim();
-    }
-
     private static NormalizedUserQuery NormalizeUserQuery(string query)
     {
-        var repairedQuery = NormalizeCompoundWatchTerms(query);
+        var repairedQuery = QueryNormalizer.ExpandCompoundTerms(query);
         var repairNotes = new List<string>();
 
         if (!string.Equals(repairedQuery, query, StringComparison.Ordinal))
@@ -4472,7 +4437,7 @@ public class ChatService
 
     private static List<Brand> ResolveFuzzyBrands(string query, List<Brand> brands)
     {
-        var normalizedQuery = NormalizeEntityText(query);
+        var normalizedQuery = QueryNormalizer.NormalizeText(query);
         if (string.IsNullOrWhiteSpace(normalizedQuery))
             return [];
 
@@ -4483,7 +4448,7 @@ public class ChatService
         var candidates = new List<(Brand Brand, int Distance, int TokenCount)>();
         foreach (var brand in brands)
         {
-            var normalizedBrand = NormalizeEntityText(brand.Name);
+            var normalizedBrand = QueryNormalizer.NormalizeText(brand.Name);
             if (string.IsNullOrWhiteSpace(normalizedBrand) || normalizedQuery.Contains(normalizedBrand, StringComparison.OrdinalIgnoreCase))
                 continue;
 
@@ -4537,15 +4502,15 @@ public class ChatService
         if (string.IsNullOrWhiteSpace(query))
             return query;
 
-        var canonicalQuery = NormalizeCompoundWatchTerms(NormalizeOrdinalTypos(query));
+        var canonicalQuery = QueryNormalizer.ExpandCompoundTerms(NormalizeOrdinalTypos(query));
         foreach (var brand in mentions.Brands.OrderByDescending(brand => brand.Name.Length))
         {
-            var aliases = _brandAliases
+            var aliases = QueryNormalizer.BrandAliases
                 .Where(alias =>
                     LooksLikeBrandAcronymAlias(alias.Key)
                     && string.Equals(
-                        NormalizeEntityText(alias.Value),
-                        NormalizeEntityText(brand.Name),
+                        QueryNormalizer.NormalizeText(alias.Value),
+                        QueryNormalizer.NormalizeText(brand.Name),
                         StringComparison.OrdinalIgnoreCase))
                 .Select(alias => alias.Key)
                 .Where(alias => !string.Equals(alias, brand.Name, StringComparison.OrdinalIgnoreCase))
@@ -4556,27 +4521,27 @@ public class ChatService
                 canonicalQuery = Regex.Replace(canonicalQuery, $@"\b{Regex.Escape(alias)}\b", brand.Name, RegexOptions.IgnoreCase);
         }
 
-        var normalizedCanonicalQuery = NormalizeEntityText(canonicalQuery);
+        var normalizedCanonicalQuery = QueryNormalizer.NormalizeText(canonicalQuery);
         foreach (var brand in mentions.Brands.OrderByDescending(brand => brand.Name.Length))
         {
-            var normalizedBrandName = NormalizeEntityText(brand.Name);
+            var normalizedBrandName = QueryNormalizer.NormalizeText(brand.Name);
             if (string.IsNullOrWhiteSpace(normalizedBrandName)
                 || normalizedCanonicalQuery.Contains(normalizedBrandName, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             canonicalQuery = $"{canonicalQuery.Trim()} {brand.Name}".Trim();
-            normalizedCanonicalQuery = NormalizeEntityText(canonicalQuery);
+            normalizedCanonicalQuery = QueryNormalizer.NormalizeText(canonicalQuery);
         }
 
         foreach (var collection in mentions.Collections.OrderByDescending(collection => collection.Name.Length))
         {
-            var normalizedCollectionName = NormalizeEntityText(collection.Name);
+            var normalizedCollectionName = QueryNormalizer.NormalizeText(collection.Name);
             if (string.IsNullOrWhiteSpace(normalizedCollectionName)
                 || normalizedCanonicalQuery.Contains(normalizedCollectionName, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             canonicalQuery = $"{canonicalQuery.Trim()} {collection.Name}".Trim();
-            normalizedCanonicalQuery = NormalizeEntityText(canonicalQuery);
+            normalizedCanonicalQuery = QueryNormalizer.NormalizeText(canonicalQuery);
         }
 
         return canonicalQuery;
@@ -4587,15 +4552,6 @@ public class ChatService
         var lettersOnly = new string(alias.Where(char.IsLetter).ToArray());
         return lettersOnly.Length is >= 2 and <= 4
             && lettersOnly.All(char.IsUpper);
-    }
-
-    private static string NormalizeCompoundWatchTerms(string query)
-    {
-        var normalized = Regex.Replace(query, @"\bsportwatch(es)?\b", "sport watch$1", RegexOptions.IgnoreCase);
-        normalized = Regex.Replace(normalized, @"\bdresswatch(es)?\b", "dress watch$1", RegexOptions.IgnoreCase);
-        normalized = Regex.Replace(normalized, @"\bdivewatch(es)?\b", "dive watch$1", RegexOptions.IgnoreCase);
-        normalized = Regex.Replace(normalized, @"\btoolwatch(es)?\b", "tool watch$1", RegexOptions.IgnoreCase);
-        return normalized;
     }
 
     private static string BuildBrandContext(Brand brand)
@@ -4697,7 +4653,7 @@ public class ChatService
 
     private static string BuildSmartSearchQuery(string originalQuery, List<Watch> ordered, EntityMentions? mentions = null)
     {
-        var cleaned = NormalizeCompoundWatchTerms(originalQuery.Trim());
+        var cleaned = QueryNormalizer.ExpandCompoundTerms(originalQuery.Trim());
 
         if (string.IsNullOrWhiteSpace(cleaned))
             cleaned = originalQuery.Trim();
@@ -4773,7 +4729,7 @@ public class ChatService
         foreach (var collection in requestedCollections.Concat(distinctCollections).Distinct(StringComparer.OrdinalIgnoreCase))
             descriptor = RemoveSearchTerm(descriptor, collection, allowPlural: true);
 
-        foreach (var alias in _brandAliases.Where(alias =>
+        foreach (var alias in QueryNormalizer.BrandAliases.Where(alias =>
             requestedBrands.Concat(distinctBrands).Contains(alias.Value, StringComparer.OrdinalIgnoreCase)))
         {
             descriptor = RemoveSearchTerm(descriptor, alias.Key, allowPlural: true);
@@ -4815,7 +4771,7 @@ public class ChatService
 
     private static string? ExtractSmartSearchStyleHint(string query)
     {
-        var normalized = NormalizeCompoundWatchTerms(query);
+        var normalized = QueryNormalizer.ExpandCompoundTerms(query);
         if (Regex.IsMatch(normalized, @"\bsport\s*watch", RegexOptions.IgnoreCase))
             return "sport watch";
         if (Regex.IsMatch(normalized, @"\bdress\s*watch", RegexOptions.IgnoreCase))
@@ -4930,7 +4886,7 @@ public class ChatService
 
     private static string ExtractRecommendationCorrectionFocus(string query)
     {
-        var cleaned = NormalizeCompoundWatchTerms(query);
+        var cleaned = QueryNormalizer.ExpandCompoundTerms(query);
         cleaned = Regex.Replace(cleaned, @"\b(?:those|these|them|they|that|this|are|is|were|was|not|isn't|aren't|don't|do not|doesn't|does not|too|more|less|really|quite|feel|feels|look|looks|seem|seems|show me|give me|i want|i need|something|else|another|different|direction|wrong|right|related|enough|what i meant|options?|ones?)\b", " ", RegexOptions.IgnoreCase);
         return Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
     }
