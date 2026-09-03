@@ -424,6 +424,63 @@ Once scraping is complete, `SitemapScraperService`, `BrandScraperService`, scrap
 
 ---
 
+## Reference Architecture Alignment
+
+The target architecture splits into six layers: user channels, a shared query
+understanding and routing layer, SmartSearch, the AI chatbot, caching, and
+data/infrastructure. Most of it is built. This table records what is actually
+implemented against that target so the gaps stay tracked rather than rediscovered.
+
+| Layer / Box | Implementation | Status |
+|---|---|---|
+| Query classification, intent detection | `POST /classify` + `POST /route` (ai-service), 14 intent classes | Done |
+| Query normalization | Implemented **twice** — see "Duplicated query understanding" below | Partial |
+| Deterministic search — exact match, structured filters | `DeterministicWatchSearchService` | Done |
+| Deterministic search — PostgreSQL full-text | No `to_tsvector` / `tsquery` anywhere; `SearchController` uses `ILIKE '%token%'` with a hand-rolled score | Missing |
+| Deterministic search — trigram / fuzzy | No `pg_trgm`, no `similarity()` | Missing |
+| Semantic search — pgvector cosine, top-K | `WatchFinderService.VectorSearchAsync`, HNSW index | Done |
+| Hybrid ranking — lexical + vector + popularity fusion | No fusion. Paths are either/or: `direct_sql_*` or `vector_*`, never blended | Missing |
+| Search result aggregator | `direct_sql_merged`, dedupe, brand diversity pass | Done |
+| Product data hydration | `WatchDto.FromWatch` + `IStorageService` | Done |
+| Conversation manager | Four independent Redis hash fields, written non-atomically | Partial |
+| Intent and action planner | `ChatService.DispatchByIntentAsync` + `ActionPlannerService` | Done |
+| Tool orchestrator | Nine inline `_watchFinderService` call sites, not a distinct layer | Partial |
+| Knowledge retrieval — catalog, descriptions | `WatchEditorialContent` / `WatchEditorialLink` | Done |
+| Knowledge retrieval — FAQs, guides, policies | No corpus | Missing |
+| LLM orchestration, response formatter | `POST /chat`, watch cards, backend-issued actions | Done |
+| Search result cache | `chat:resp:{version}` in Redis, version-bumped on invalidation | Done |
+| Semantic cache | `QueryCaches` table in **PostgreSQL**, not Redis | Diverges |
+| Conversation cache | `chat:session:{id}` in Redis, 1h TTL | Done |
+| Background jobs — cache invalidation | `ChatService.InvalidateAndRewarmStartersAsync` | Done |
+| Background jobs — embedding generation, re-index | Manual via `AdminController`, not a Hangfire job | Missing |
+| Monitoring — logs | Serilog, structured routing traces (`path=`, `finder=`) | Done |
+| Monitoring — metrics, distributed tracing | No OpenTelemetry, no `ActivitySource` | Missing |
+| API gateway | Auth and rate limiting are per-controller behind the Next.js proxy; no distinct gateway | Diverges |
+
+### Duplicated query understanding
+
+The target draws query understanding as one shared layer feeding both SmartSearch
+and the chatbot. It was implemented independently on each side, and the two copies
+drifted:
+
+| Primitive | Chat concierge | Smart Search | Drift |
+|---|---|---|---|
+| Brand alias table | `ChatService._brandAliases` | `WatchFinderService._brandAliases` | Chat lacked the `Glashütte` (umlaut) key; Smart Search lacked `ALange`. Values disagreed on diacritics (`Sohne` vs `Söhne`) |
+| Entity text normalization | `NormalizeEntityText` — space-separated, Unicode-aware | `NormaliseEntityText` — compacted, ASCII-only | Different output for the same input, both consumed by `.Contains` matching |
+| Compound term expansion | `NormalizeCompoundWatchTerms` | `NormalizeQueryPhrases` | Chat did not expand `diverwatch` and did not collapse whitespace |
+
+This matters because the chat path canonicalizes a query and then hands the result
+to `FindWatchesAsync`, which normalizes it again under different rules. Any
+asymmetry surfaces as the concierge and Smart Search resolving different brands
+for the same words.
+
+These primitives now live in `QueryNormalizer` (`backend/Services/QueryNormalizer.cs`);
+both services delegate to it. Alias-to-brand resolution compares on `CompactText`
+rather than exact string equality, so diacritic spelling in the alias table can no
+longer decide whether a brand resolves.
+
+---
+
 ## Current Infrastructure State
 
 ```
