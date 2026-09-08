@@ -53,8 +53,8 @@ const experience = [
     dates: "Jul 2026 — Present",
     location: "Milperra, NSW",
     points: [
-      "Mapped the end-to-end process across multiple client contracts — job intake through review, invoicing, and client submission — documenting manual steps that had never been written down.",
-      "Turned those specifications into a build-ready design for an external process-automation firm, covering the variations and exception branches at each step, swim-lane process maps, and field-level data mappings.",
+      "Analysed and produced Process Definition Documents for end-to-end workflows across multiple client contracts — workflow steps, business rules, exceptions, system interactions, and field-level data mappings.",
+      "Participated in regular workflow reviews with managers and a specialist automation consultancy to clarify implementation requirements.",
     ],
   },
   {
@@ -105,8 +105,8 @@ const projects = [
     name: "Tourbillon",
     meta: "Oct 2025 — Apr 2026 · Full-stack web",
     blurb:
-      "A luxury watch e-commerce platform with an AI concierge, plain-English smart search, side-by-side comparison, wrist-size visualization, and a Watch DNA taste profile built from browsing behavior. A .NET 8 API, a Next.js 15 frontend, and a Python AI service.",
-    tags: ["Next.js 15", ".NET 8", "PostgreSQL", "pgvector", "Claude"],
+      "A luxury watch e-commerce platform cataloguing 13 maisons across 51 collections. Plain-English search parses a query into SQL pre-filters, then reranks the shortlist by pgvector cosine similarity with a persistent semantic cache. A chat concierge that acts rather than answers — triggering catalogue search, rendering product cards, and building comparisons in-app — plus behavioural personalisation scored at browse time. A .NET 8 API, a Next.js 15 frontend, and a Python AI microservice.",
+    tags: ["Next.js 15", ".NET 8", "PostgreSQL", "pgvector", "Redis", "Docker", "Claude"],
     links: [
       { label: "Visit live site", href: "/tourbillon", external: false, newTab: true },
       { label: "Read case study", href: "/projects/tourbillon", external: false, newTab: false },
@@ -117,8 +117,8 @@ const projects = [
     name: "FuelUp",
     meta: "Aug 2025 — Nov 2025 · Mobile app",
     blurb:
-      "A cross-platform fitness and nutrition companion with AI food and workout recommendations that gracefully fall back to rule-based logic. React Native (Expo) with a Node, Express, and PostgreSQL API.",
-    tags: ["React Native", "Expo", "Node", "PostgreSQL", "OpenAI"],
+      "A cross-platform fitness and nutrition companion combining workout planning, meal tracking, step monitoring, and progress insights. RESTful APIs cover workout management, calorie and macronutrient calculations, activity history, and progress data, with personalised plans built from user goals, dietary preferences, fitness levels, and weekly schedules. React Native (Expo) and TypeScript over a Node and PostgreSQL backend.",
+    tags: ["React Native (Expo)", "TypeScript", "Node.js", "PostgreSQL"],
     links: [
       { label: "Read case study", href: "/projects/fuelup", external: false, newTab: false },
       { label: "GitHub", href: "https://github.com/Scorpio-2410/FuelUp", external: true, newTab: false },
@@ -138,14 +138,15 @@ const competitions = [
 ];
 
 const skillGroups = [
-  { title: "Languages", items: ["C#", "Python", "Java", "TypeScript", "JavaScript"] },
-  { title: "Frameworks", items: ["ASP.NET Core (.NET 8)", "React", "Next.js", "Node.js", "Expo"] },
+  { title: "Programming Languages", items: ["C#", "Python", "Java", "TypeScript", "JavaScript"] },
+  { title: "Frameworks", items: ["ASP.NET Core (.NET 8)", "Next.js", "Node.js", "React Native (Expo)"] },
   {
     title: "Cloud & DevOps",
-    items: ["Docker", "GitHub Actions", "AWS S3", "CloudFront", "Railway", "Vercel", "Neon", "Upstash"],
+    items: ["Docker", "AWS (S3, CloudFront)", "Vercel", "GitHub Actions", "Railway", "Neon", "Upstash"],
   },
   { title: "Databases", items: ["PostgreSQL", "SurrealDB", "pgvector", "Redis"] },
   { title: "Tools & Practices", items: ["Git", "Jira", "Confluence", "Cursor", "Visual Studio", "Agile Scrum", "SOLID"] },
+  { title: "Spoken Languages", items: ["English", "Vietnamese"] },
 ];
 
 // Plain grotesk section title.
@@ -267,9 +268,10 @@ export default function PortfolioHubPage() {
               className="stu-rise mt-8 max-w-xl text-[1.05rem] leading-[1.75] text-[var(--stu-muted)]"
               style={{ animationDelay: "200ms" }}
             >
-              Final-year Software Engineering student at UTS, graduating December 2026. I ship
-              full-stack, AI-driven products — through internships at WaterTight Group, FPT
-              Software, and Sensear, and projects like Tourbillon and FuelUp.
+              Software engineer with shipping experience in full-stack and AI-driven applications,
+              through internships at WaterTight Group, FPT Software, and Sensear and projects like
+              Tourbillon and FuelUp. I build AI and automation into customer-facing features,
+              internal systems, and testing. Graduating December 2026 from UTS.
             </p>
 
             <div className="stu-rise mt-9 flex flex-wrap items-center gap-3" style={{ animationDelay: "280ms" }}>
