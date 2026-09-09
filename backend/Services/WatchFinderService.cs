@@ -847,7 +847,7 @@ public class WatchFinderService : IWatchFinderService
             return false;
 
         if (intent.MovementType != null
-            && !(specs?.Movement?.Type?.Contains(intent.MovementType, StringComparison.OrdinalIgnoreCase) ?? false))
+            && NormaliseMovementFamily(specs?.Movement?.Type) != NormaliseMovementFamily(intent.MovementType))
             return false;
 
         if (intent.WaterResistance != null)
@@ -1469,6 +1469,30 @@ public class WatchFinderService : IWatchFinderService
     private static bool DialColourMatches(string? storedDial, string canonicalWanted) =>
         NormaliseDialColour(storedDial) == canonicalWanted;
 
+    // The catalogue spells movement type 23 ways — "Automatic", "Self-winding", "Automatic
+    // manufacture", "Spring Drive automatic" are one thing to a buyer, and 97 of the 228
+    // automatics do not contain the word "automatic". Substring matching on the query's word
+    // found only the literal spelling and silently dropped the rest.
+    /// The diameter patterns above accept the figure either before or after the bound word, so
+    /// the value lands in whichever of the two groups matched.
+    private static double? ParseDiameterGroup(Match match)
+    {
+        var text = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+        return double.TryParse(text, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : null;
+    }
+
+    internal static string? NormaliseMovementFamily(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var r = raw.ToLowerInvariant();
+        if (r.Contains("quartz") || r.Contains("electromechanical")) return "Quartz";
+        if (r.Contains("self-winding") || r.Contains("self winding")
+            || r.Contains("automatic") || r.Contains("spring drive")) return "Automatic";
+        if (r.Contains("hand-wound") || r.Contains("hand wound") || r.Contains("manual")) return "Manual";
+        return null;
+    }
+
     private static string? NormaliseMaterial(string? raw)
     {
         if (raw == null) return null;
@@ -1975,7 +1999,7 @@ public class WatchFinderService : IWatchFinderService
         // kept off `q` so brand and collection resolution still see the original wording.
         var priceQuery = QueryNormalizer.NormalizeNumberWords(q);
         var between = Regex.Match(priceQuery,
-            @"between\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)\s*(?:and|to|[-–])\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
+            @"between\s*\$?\s*(\d[\d,]*)\s*(k?)\b(?!\s*mm)\s*(?:and|to|[-–])\s*\$?\s*(\d[\d,]*)\s*(k?)\b(?!\s*mm)",
             RegexOptions.IgnoreCase);
         if (between.Success)
         {
@@ -1987,13 +2011,26 @@ public class WatchFinderService : IWatchFinderService
         else
         {
             var upper = Regex.Match(priceQuery,
-                @"(?:under|below|less\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
+                @"(?:under|below|less\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)\b(?!\s*mm)",
                 RegexOptions.IgnoreCase);
             if (upper.Success)
                 intent.MaxPrice = ParsePriceToken(upper.Groups[1].Value, upper.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
 
+            // "nothing over 20k" and "no more than 20k" are ceilings. Matching the lower-bound
+            // pattern first would read them as floors and return the exact opposite band.
+            var negatedUpper = Regex.Match(priceQuery,
+                @"\b(?:nothing|not(?:hing)?|no)\s+(?:more\s+than|over|above)\s*\$?\s*(\d[\d,]*)\s*(k?)\b(?!\s*mm)",
+                RegexOptions.IgnoreCase);
+            if (negatedUpper.Success)
+            {
+                intent.MaxPrice = ParsePriceToken(
+                    negatedUpper.Groups[1].Value,
+                    negatedUpper.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
+                priceQuery = priceQuery.Remove(negatedUpper.Index, negatedUpper.Length);
+            }
+
             var lower = Regex.Match(priceQuery,
-                @"(?:over|above|more\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
+                @"(?:over|above|more\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)\b(?!\s*mm)",
                 RegexOptions.IgnoreCase);
             if (lower.Success)
                 intent.MinPrice = ParsePriceToken(lower.Groups[1].Value, lower.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
@@ -2001,7 +2038,7 @@ public class WatchFinderService : IWatchFinderService
             if (intent.MinPrice == null && intent.MaxPrice == null)
             {
                 var approximate = Regex.Match(priceQuery,
-                    @"(?:around|about|roughly|approximately|approx\.?|near|close\s+to|~)\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
+                    @"(?:around|about|roughly|approximately|approx\.?|near|close\s+to|~)\s*\$?\s*(\d[\d,]*)\s*(k?)\b(?!\s*mm)",
                     RegexOptions.IgnoreCase);
                 if (approximate.Success)
                 {
@@ -2015,7 +2052,7 @@ public class WatchFinderService : IWatchFinderService
             if (intent.MaxPrice == null && intent.MinPrice == null)
             {
                 var budgetCap = Regex.Match(priceQuery,
-                    @"\b(?:budget|cap|ceiling|max(?:imum)?|up\s+to)\s*(?:of|is)?\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
+                    @"\b(?:budget|cap|ceiling|max(?:imum)?|up\s+to)\s*(?:of|is)?\s*\$?\s*(\d[\d,]*)\s*(k?)\b(?!\s*mm)",
                     RegexOptions.IgnoreCase);
                 if (budgetCap.Success)
                 {
@@ -2050,13 +2087,36 @@ public class WatchFinderService : IWatchFinderService
         }
         else
         {
-            var diamExact = Regex.Match(q, @"(\d+(?:\.\d+)?)\s*mm", RegexOptions.IgnoreCase);
-            if (diamExact.Success && double.TryParse(diamExact.Groups[1].Value,
-                    System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out var ex))
+            // A bound has to be read before the bare "40mm" pattern, which pins the diameter to
+            // exactly that figure. "under 40mm" pinned to 40.0 returns only the watches measuring
+            // precisely 40mm and drops every smaller one the user asked for.
+            var diamCeiling = Regex.Match(q,
+                @"(?:under|below|less\s+than|up\s+to|smaller\s+than|at\s+most)\s*(\d+(?:\.\d+)?)\s*mm"
+                + @"|(\d+(?:\.\d+)?)\s*mm\s*(?:or\s+(?:smaller|less|under)|and\s+(?:under|below))",
+                RegexOptions.IgnoreCase);
+            var diamFloor = Regex.Match(q,
+                @"(?:over|above|more\s+than|larger\s+than|bigger\s+than|at\s+least)\s*(\d+(?:\.\d+)?)\s*mm"
+                + @"|(\d+(?:\.\d+)?)\s*mm\s*(?:or\s+(?:larger|bigger|more)|and\s+(?:above|over|up))",
+                RegexOptions.IgnoreCase);
+
+            if (diamCeiling.Success)
             {
-                intent.MinDiameterMm = ex;
-                intent.MaxDiameterMm = ex;
+                intent.MaxDiameterMm = ParseDiameterGroup(diamCeiling);
+            }
+            else if (diamFloor.Success)
+            {
+                intent.MinDiameterMm = ParseDiameterGroup(diamFloor);
+            }
+            else
+            {
+                var diamExact = Regex.Match(q, @"(\d+(?:\.\d+)?)\s*mm", RegexOptions.IgnoreCase);
+                if (diamExact.Success && double.TryParse(diamExact.Groups[1].Value,
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out var ex))
+                {
+                    intent.MinDiameterMm = ex;
+                    intent.MaxDiameterMm = ex;
+                }
             }
         }
 
