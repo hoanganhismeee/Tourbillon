@@ -4626,7 +4626,49 @@ public class ChatService
         // in the format [Name](/brands/{slug}) and [Name](/collections/{slug}).
         var brandRef = string.IsNullOrWhiteSpace(brandSlug) ? brandName : $"{brandName} (Slug: {brandSlug})";
         var collectionRef = string.IsNullOrWhiteSpace(collectionSlug) ? collectionName : $"{collectionName} (Slug: {collectionSlug})";
-        return $"Watch \"{BuildWatchTitle(watch)}\" (Slug: {watch.Slug}): Brand {brandRef}; Collection {collectionRef}; Price {FormatPrice(watch.CurrentPrice)}; Description {watch.Description}; Specs {watch.Specs}";
+        return $"Watch \"{BuildWatchTitle(watch)}\" (Slug: {watch.Slug}): Brand {brandRef}; Collection {collectionRef}; Price {FormatPrice(watch.CurrentPrice)}; Description {Summarise(watch.Description)}; Specs {BuildChatSpecs(watch.Specs)}";
+    }
+
+    // Roughly the length of two sentences. The model's job here is wording, not reproducing
+    // the catalogue, and the editorial copy runs to ~370 characters per watch — sent for ten
+    // cards on every turn, that is a large share of the request for prose nobody quotes back.
+    private const int ChatDescriptionLimit = 180;
+
+    /// Trims editorial copy to its opening sentences, cutting on a sentence boundary so the
+    /// model never sees a fragment that ends mid-clause.
+    internal static string Summarise(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return "";
+        var text = description.Trim();
+        if (text.Length <= ChatDescriptionLimit) return text;
+
+        var cut = text.LastIndexOfAny(['.', '!', '?'], Math.Min(ChatDescriptionLimit, text.Length - 1));
+        return cut > 40 ? text[..(cut + 1)] : text[..ChatDescriptionLimit].TrimEnd() + "…";
+    }
+
+    /// The specification fields a buyer actually asks about, as a short phrase instead of the
+    /// stored JSON. The raw blob averages 758 characters per watch and carries caliber names,
+    /// beat rates, jewel counts and clasp types that never appear in an answer; keeping the
+    /// fields that do appear preserves what the model can be asked while cutting the rest.
+    internal static string BuildChatSpecs(string? specsJson)
+    {
+        if (string.IsNullOrWhiteSpace(specsJson)) return "";
+        WatchSpecs? specs;
+        try { specs = System.Text.Json.JsonSerializer.Deserialize<WatchSpecs>(specsJson); }
+        catch (System.Text.Json.JsonException) { return ""; }
+        if (specs == null) return "";
+
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(specs.Case?.Material))        parts.Add(specs.Case.Material!);
+        if (!string.IsNullOrWhiteSpace(specs.Case?.Diameter))        parts.Add(specs.Case.Diameter!);
+        if (!string.IsNullOrWhiteSpace(specs.Case?.WaterResistance)) parts.Add($"water resistance {specs.Case.WaterResistance}");
+        if (!string.IsNullOrWhiteSpace(specs.Dial?.Color))           parts.Add($"{specs.Dial.Color} dial");
+        if (!string.IsNullOrWhiteSpace(specs.Movement?.Type))        parts.Add(specs.Movement.Type!);
+        if (!string.IsNullOrWhiteSpace(specs.Movement?.PowerReserve)) parts.Add($"power reserve {specs.Movement.PowerReserve}");
+        if (specs.Movement?.Functions is { Count: > 0 } functions)   parts.Add(string.Join(", ", functions.Take(6)));
+        if (!string.IsNullOrWhiteSpace(specs.Strap?.Material))       parts.Add(specs.Strap.Material!);
+
+        return string.Join("; ", parts);
     }
 
     private static string BuildWatchTitle(Watch watch)
