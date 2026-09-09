@@ -21,5 +21,12 @@ public class QueryCache
     /// Values: "watch_finder" | "rag_chat"
     public string Feature { get; set; } = "watch_finder";
 
+    /// Retrieval pipeline and embedding model this result was produced under. Lookups ignore
+    /// entries stamped with a different version, so changing either self-invalidates the cache
+    /// instead of silently serving answers computed by code that no longer exists. Critical for
+    /// the embedding model in particular: vectors from a different model are not comparable, so
+    /// a mismatched entry would return arbitrary results rather than merely stale ones.
+    public string PipelineVersion { get; set; } = "";
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

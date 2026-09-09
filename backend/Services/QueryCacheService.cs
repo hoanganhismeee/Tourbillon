@@ -27,10 +27,27 @@ public class QueryCacheService
     // phrasings but rejects queries with genuinely different intent.
     private const float SimilarityThreshold = 0.92f;
 
-    public QueryCacheService(TourbillonContext context, ILogger<QueryCacheService> logger)
+    // Bump this whenever the retrieval pipeline or the embedding model changes. Entries stamped
+    // with any other version are invisible to lookups, so a deploy invalidates its own stale
+    // results without anyone remembering to call the admin clear endpoint. Overridable via
+    // QueryCache:Version to force invalidation from configuration alone.
+    private const string DefaultPipelineVersion = "v1-nomic-embed-text-768";
+
+    // Backstop for drift no version bump accounts for — a repriced watch, a re-scrape. Entries
+    // older than this are ignored even when the version still matches.
+    private const int DefaultMaxAgeDays = 30;
+
+    private readonly string _pipelineVersion;
+    private readonly TimeSpan _maxAge;
+
+    public QueryCacheService(TourbillonContext context, ILogger<QueryCacheService> logger,
+        IConfiguration? config = null)
     {
         _context = context;
         _logger = logger;
+        _pipelineVersion = config?["QueryCache:Version"] ?? DefaultPipelineVersion;
+        _maxAge = TimeSpan.FromDays(
+            config?.GetValue<int?>("QueryCache:MaxAgeDays") ?? DefaultMaxAgeDays);
     }
 
     /// Finds the nearest cached result by cosine similarity, scoped to a feature.
@@ -41,8 +58,13 @@ public class QueryCacheService
 
         // ORDER BY cosine distance within the feature scope — pgvector translates to <=> operator.
         // FirstOrDefaultAsync handles the empty-set case directly, no need for a separate CountAsync.
+        // Version and age filter before the nearest-neighbour scan, not after: an expired or
+        // wrong-version entry must not win the ordering and shadow a valid one behind it.
+        var cutoff = DateTime.UtcNow - _maxAge;
         var nearest = await _context.QueryCaches
-            .Where(q => q.Feature == feature)
+            .Where(q => q.Feature == feature
+                && q.PipelineVersion == _pipelineVersion
+                && q.CreatedAt >= cutoff)
             .OrderBy(q => q.QueryEmbedding.CosineDistance(queryVector))
             .FirstOrDefaultAsync();
 
@@ -79,6 +101,8 @@ public class QueryCacheService
                 OtherCandidates = result.OtherCandidates,
                 MatchDetails = result.MatchDetails,
                 ParsedIntent = null,
+                // Keep the originating path so a later cache hit can report what produced it.
+                SearchPath = result.SearchPath,
             };
 
             _context.QueryCaches.Add(new QueryCache
@@ -87,6 +111,7 @@ public class QueryCacheService
                 QueryEmbedding = new Vector(queryEmbedding),
                 ResultJson = JsonSerializer.Serialize(toCache, _jsonOptions),
                 Feature = feature,
+                PipelineVersion = _pipelineVersion,
                 CreatedAt = DateTime.UtcNow,
             });
 
