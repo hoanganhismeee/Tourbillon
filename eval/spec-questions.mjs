@@ -22,6 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadCatalogue } from './catalogue.mjs';
+import { grade } from './grading.mjs';
 import { mulberry32 } from './metrics.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -107,93 +108,6 @@ function buildQuestions(catalogue, { seed = 20260909 } = {}) {
   return questions;
 }
 
-// -- Grading -------------------------------------------------------------------
-
-const REFUSAL = /\b(don't have|do not have|not sure|no information|unable to|isn't listed|is not listed|not specified|couldn't find|could not find|no model with that reference)\b/i;
-
-/// Only a figure carrying the unit counts as an assertion about the field. An earlier version
-/// tested the unit against the whole answer, and "hours?|hr|h\b" matched the h in "watch",
-/// which turned every refusal into a hallucination.
-function gradeNumber(answer, expected, unit) {
-  const text = answer.toLowerCase();
-  const stated = [];
-
-  // Ranges are one assertion, not two: the catalogue stores "min. 38 - max. 48 hours" and an
-  // answer of "38-48 hours" is correct on both ends. Capturing only the figure adjacent to the
-  // unit would score the true answer as a hallucination.
-  for (const m of text.matchAll(/((?:\d+(?:[.,]\d+)?)(?:\s*[-–—/]\s*\d+(?:[.,]\d+)?)*)\s*([a-z]+)/g)) {
-    if (!unit.test(m[2])) continue;
-    for (const n of m[1].split(/[-–—/]/)) {
-      const v = Number(n.trim().replace(',', '.'));
-      if (!Number.isNaN(v)) stated.push(v);
-    }
-  }
-
-  if (stated.some(n => Math.abs(n - Number(expected)) < 0.51)) return 'correct';
-  if (stated.length > 0) return 'wrong';
-  return 'absent';
-}
-
-// Competing values per field. Naming a different one of these is an assertion, and only then
-// is an answer wrong; saying nothing about the field is a non-answer, which is a different
-// failure and must not be counted as a hallucination.
-const VOCABULARY = {
-  'case material': ['steel', 'titanium', 'platinum', 'ceramic', 'carbon', 'tantalum',
-                    'rose gold', 'pink gold', 'white gold', 'yellow gold', 'gold'],
-  'dial colour': ['black', 'blue', 'silver', 'white', 'green', 'grey', 'gray', 'brown',
-                  'salmon', 'champagne', 'slate', 'anthracite', 'openworked', 'skeleton',
-                  'transparent', 'sapphire', 'mother-of-pearl'],
-  'movement type': ['automatic', 'self-winding', 'selfwinding', 'manual', 'hand-wound',
-                    'hand wound', 'quartz', 'spring drive'],
-};
-
-// Words that mean the same thing to a buyer. The catalogue and the model rarely spell a
-// material or a winding type the same way.
-const SYNONYMS = {
-  'rose gold': ['rose gold', 'pink gold', '5n'],
-  'pink gold': ['rose gold', 'pink gold', '5n'],
-  automatic: ['automatic', 'self-winding', 'selfwinding', 'automatique', 'spring drive'],
-  manual: ['manual', 'hand-wound', 'hand wound', 'manually wound', 'hand-winding'],
-  transparent: ['transparent', 'sapphire', 'openworked', 'skeleton'],
-};
-
-/// Text fields are graded on the distinctive word, not the whole string: the catalogue says
-/// "18K rose gold" where an answer reasonably says "rose gold".
-function gradeText(answer, expected, field) {
-  const text = answer.toLowerCase();
-  const value = String(expected).toLowerCase();
-
-  const accepted = new Set();
-  for (const [canonical, words] of Object.entries(SYNONYMS)) {
-    if (value.includes(canonical)) words.forEach(w => accepted.add(w));
-  }
-  // Fall back to the distinctive words of the stored value itself.
-  for (const t of value.replace(/[^a-z\s-]/g, ' ').split(/\s+/)) {
-    if (t.length >= 4 && !['with', 'case', 'dial'].includes(t)) accepted.add(t);
-  }
-  if (accepted.size === 0) accepted.add(value);
-
-  if ([...accepted].some(t => text.includes(t))) return 'correct';
-  if (REFUSAL.test(text)) return 'absent';
-
-  // Only a competing value from the same field makes this an assertion. Anything else — a
-  // generic product blurb, a change of subject — is a non-answer.
-  const competing = (VOCABULARY[field] ?? []).filter(v => !accepted.has(v));
-  return competing.some(v => text.includes(v)) ? 'wrong' : 'absent';
-}
-
-/// An answer that never mentions the reference is describing some other watch. That is a
-/// retrieval miss, not a false claim about this watch's specs, and scoring the two the same
-/// way would blame the prose for something the search did.
-function isOffTarget(answer, reference) {
-  const text = answer.toLowerCase();
-  if (text.includes(reference.toLowerCase())) return false;
-  // Also accept a distinctive fragment, so "5711/1A-010" still counts when the answer
-  // writes "5711/1A" or just "5711".
-  const parts = reference.toLowerCase().match(/[a-z0-9]{4,}/g) ?? [];
-  return !parts.some(part => text.includes(part));
-}
-
 // -- Run -----------------------------------------------------------------------
 
 async function ask(query) {
@@ -228,11 +142,10 @@ async function main() {
       const res = await ask(q.query);
       answer = res.text;
       cards = res.cards;
-      if (REFUSAL.test(answer)) verdict = 'absent';
-      else if (isOffTarget(answer, q.reference)) verdict = 'off-target';
-      else verdict = q.kind === 'number'
-        ? gradeNumber(answer, q.expected, q.unit)
-        : gradeText(answer, q.expected, q.field);
+      verdict = grade({
+        answer, expected: q.expected, kind: q.kind,
+        unit: q.unit, field: q.field, reference: q.reference,
+      });
     } catch (err) {
       answer = err.message;
     }
