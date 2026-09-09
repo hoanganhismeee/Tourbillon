@@ -1828,7 +1828,12 @@ public class WatchFinderService : IWatchFinderService
         var q = query;
 
         // ── Price matching ──────────────────────────────────────────────────────────
-        var between = Regex.Match(q,
+        // Spelled-out amounts are rewritten as digits for the price patterns only. A price is
+        // structural, so extracting it should never need a model; before this, "fifty thousand
+        // dollars" fell through to the LLM parse purely for want of a digit. The substitution is
+        // kept off `q` so brand and collection resolution still see the original wording.
+        var priceQuery = QueryNormalizer.NormalizeNumberWords(q);
+        var between = Regex.Match(priceQuery,
             @"between\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)\s*(?:and|to|[-–])\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
             RegexOptions.IgnoreCase);
         if (between.Success)
@@ -1840,13 +1845,13 @@ public class WatchFinderService : IWatchFinderService
         }
         else
         {
-            var upper = Regex.Match(q,
+            var upper = Regex.Match(priceQuery,
                 @"(?:under|below|less\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
                 RegexOptions.IgnoreCase);
             if (upper.Success)
                 intent.MaxPrice = ParsePriceToken(upper.Groups[1].Value, upper.Groups[2].Value.Equals("k", StringComparison.OrdinalIgnoreCase));
 
-            var lower = Regex.Match(q,
+            var lower = Regex.Match(priceQuery,
                 @"(?:over|above|more\s+than)\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
                 RegexOptions.IgnoreCase);
             if (lower.Success)
@@ -1854,7 +1859,7 @@ public class WatchFinderService : IWatchFinderService
 
             if (intent.MinPrice == null && intent.MaxPrice == null)
             {
-                var approximate = Regex.Match(q,
+                var approximate = Regex.Match(priceQuery,
                     @"(?:around|about|roughly|approximately|approx\.?|near|close\s+to|~)\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
                     RegexOptions.IgnoreCase);
                 if (approximate.Success)
@@ -1868,7 +1873,7 @@ public class WatchFinderService : IWatchFinderService
 
             if (intent.MaxPrice == null && intent.MinPrice == null)
             {
-                var budgetCap = Regex.Match(q,
+                var budgetCap = Regex.Match(priceQuery,
                     @"\b(?:budget|cap|ceiling|max(?:imum)?|up\s+to)\s*(?:of|is)?\s*\$?\s*(\d[\d,]*)\s*(k?)(?!\s*mm)",
                     RegexOptions.IgnoreCase);
                 if (budgetCap.Success)
