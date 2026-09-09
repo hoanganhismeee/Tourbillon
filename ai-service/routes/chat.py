@@ -323,12 +323,11 @@ def register_routes(app, runtime: Runtime) -> None:
         if not query:
             return jsonify({"error": "query is required"}), 400
 
+        # Message order is chosen for prompt caching: everything that repeats across turns
+        # goes first, everything that changes per turn goes last. The per-turn product
+        # context used to sit directly after the system prompt, which meant every turn
+        # diverged at that position and no prefix was ever reusable.
         messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
-
-        context_block = "\n\n".join(context)
-        if context_block:
-            messages.append({"role": "user", "content": f"Relevant product context:\n{context_block}"})
-            messages.append({"role": "assistant", "content": "Understood, I have the context."})
 
         if response_language:
             messages.append({
@@ -339,6 +338,24 @@ def register_routes(app, runtime: Runtime) -> None:
                 ),
             })
             messages.append({"role": "assistant", "content": "Understood, I will stay in the requested language."})
+
+        if mode == "advisor":
+            messages.append({"role": "user", "content": ADVISOR_GUIDANCE})
+            messages.append({"role": "assistant", "content": "Understood, I will lead with personal-fit advice, then a tight curated set."})
+
+        messages.extend(history)
+
+        # End of the repeating prefix. Marking the last message here is what lets turn N read
+        # turns 1..N-1 from cache; marking the current turn instead would write an entry that
+        # nothing ever reads. Haiku 4.5 needs 4096 tokens before any entry forms, so the first
+        # turn or two of a session still pay full price while the history grows into it.
+        if len(messages) > 1:
+            messages[-1] = {**messages[-1], "_cache_breakpoint": True}
+
+        context_block = "\n\n".join(context)
+        if context_block:
+            messages.append({"role": "user", "content": f"Relevant product context:\n{context_block}"})
+            messages.append({"role": "assistant", "content": "Understood, I have the context."})
 
         if allow_web_enrichment and web_query:
             web_notes = _fetch_web_notes(web_query)
@@ -353,11 +370,6 @@ def register_routes(app, runtime: Runtime) -> None:
                 })
                 messages.append({"role": "assistant", "content": "Understood, I will treat the web notes as secondary background only."})
 
-        if mode == "advisor":
-            messages.append({"role": "user", "content": ADVISOR_GUIDANCE})
-            messages.append({"role": "assistant", "content": "Understood, I will lead with personal-fit advice, then a tight curated set."})
-
-        messages.extend(history)
         messages.append({"role": "user", "content": query})
 
         try:

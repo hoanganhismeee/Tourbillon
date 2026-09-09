@@ -118,8 +118,18 @@ def call_llm_chat(
         for msg in messages:
             if msg.get("role") == "system":
                 system = msg.get("content") or ""
-            else:
-                chat_messages.append(msg)
+                continue
+            # "_cache_breakpoint" marks the end of the repeating prefix. Callers set it on the
+            # last message that is identical from one turn to the next; the key is internal and
+            # must not reach the API.
+            clean = {k: v for k, v in msg.items() if not k.startswith("_")}
+            if msg.get("_cache_breakpoint") and isinstance(clean.get("content"), str):
+                clean["content"] = [{
+                    "type": "text",
+                    "text": clean["content"],
+                    "cache_control": {"type": "ephemeral"},
+                }]
+            chat_messages.append(clean)
         system_payload = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}] if system else []
         t0 = time.perf_counter()
         response = runtime.anthropic_client.messages.create(
@@ -132,17 +142,24 @@ def call_llm_chat(
         ms = (time.perf_counter() - t0) * 1000
         u = getattr(response, "usage", None)
         cache_read = getattr(u, "cache_read_input_tokens", 0) or 0
+        # Writes are logged too: a prefix below the model's minimum caches nothing and reports
+        # zero for both, which is indistinguishable from "written but never read" unless the
+        # write is visible. That ambiguity is what hid this being broken.
+        cache_write = getattr(u, "cache_creation_input_tokens", 0) or 0
         cache_hit = " CACHE_HIT" if cache_read > 0 else ""
         _log(
             f"[LLM chat] {ms:.0f}ms | in={getattr(u,'input_tokens','?')} "
-            f"out={getattr(u,'output_tokens','?')} cache_read={cache_read}{cache_hit}"
+            f"out={getattr(u,'output_tokens','?')} cache_read={cache_read} "
+            f"cache_write={cache_write}{cache_hit}"
         )
         return response.content[0].text if response.content else ""
 
     t0 = time.perf_counter()
+    # Ollama has no prompt cache, so the breakpoint marker is meaningless here — but it is an
+    # internal key and the OpenAI-compatible client would forward it as-is.
     response = runtime.client.chat.completions.create(
         model=runtime.llm_model,
-        messages=messages,
+        messages=[{k: v for k, v in m.items() if not k.startswith("_")} for m in messages],
         temperature=temperature,
         max_tokens=max_tokens,
     )
