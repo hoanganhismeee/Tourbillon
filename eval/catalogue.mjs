@@ -42,6 +42,7 @@ export async function loadCatalogue(baseUrl) {
       caseMaterial: lower(specs?.case?.material),
       caseBack: lower(specs?.case?.caseBack),
       movementType: lower(specs?.movement?.type),
+      movementFamily: normaliseMovement(lower(specs?.movement?.type)),
       powerReserveH: parseFirstNumber(specs?.movement?.powerReserve),
       functions: (specs?.movement?.functions ?? []).map(f => lower(f)),
       dialColour: lower(specs?.dial?.color),
@@ -93,7 +94,7 @@ export function matchesTruth(w, truth) {
   if (truth.materialAny != null && !truth.materialAny.some(m => w.caseMaterial.includes(m))) return false;
   if (truth.materialNone != null && truth.materialNone.some(m => w.caseMaterial.includes(m))) return false;
   if (truth.caseBackAny != null && !truth.caseBackAny.some(c => w.caseBack.includes(c))) return false;
-  if (truth.movementAny != null && !truth.movementAny.some(m => w.movementType.includes(m))) return false;
+  if (truth.movementAny != null && !truth.movementAny.includes(w.movementFamily)) return false;
   if (truth.dialAny != null && !truth.dialAny.some(c => w.dialColour.includes(c))) return false;
   if (truth.strapAny != null && !truth.strapAny.some(s => w.strapMaterial.includes(s))) return false;
   if (truth.styleAny != null && !truth.styleAny.some(s => w.collectionStyles.includes(s))) return false;
@@ -144,10 +145,25 @@ export function summariseFacets(catalogue) {
     brands: tally(records, r => r.brandName),
     styles: tally(records, r => r.collectionStyles, true),
     materials: tally(records, r => normaliseMaterial(r.caseMaterial)),
-    movements: tally(records, r => r.movementType || '(unknown)'),
+    movements: tally(records, r => r.movementFamily),
     dials: tally(records, r => r.dialColour || '(unknown)'),
     functions: tally(records, r => r.functions, true),
   };
+}
+
+/// The catalogue records movement type in 23 different spellings scraped from brand sites.
+/// "Self-winding", "automatic manufacture" and "spring drive automatic" are all the same thing
+/// to a buyer, so labels match on this family rather than on raw substrings, which would
+/// silently under-count every automatic that a brand happens to describe differently.
+export function normaliseMovement(type) {
+  if (!type) return '(unknown)';
+  if (type.includes('quartz')) return 'quartz';
+  if (type.includes('electromechanical')) return 'quartz';
+  if (type.includes('self-winding') || type.includes('self winding')) return 'automatic';
+  if (type.includes('automatic') || type.includes('spring drive')) return 'automatic';
+  if (type.includes('hand-wound') || type.includes('hand wound')) return 'manual';
+  if (type.includes('manual')) return 'manual';
+  return 'other';
 }
 
 /// Collapses free-text case material into the handful of buckets a query would ask for.

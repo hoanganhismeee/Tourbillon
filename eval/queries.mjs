@@ -14,10 +14,12 @@ import { normaliseMaterial, relevantIds } from './catalogue.mjs';
 
 export const HANDWRITTEN = [
   // Occasion and suitability
+  // "Dress" alone covers 62% of this catalogue, so it never discriminates on its own.
+  // Understated is the operative word: modest size, and not a precious metal that shouts.
   { id: 'h01', category: 'descriptor', query: 'something understated I can wear to the office every day',
-    truth: { styleAny: ['dress'], diameterMax: 40 } },
-  { id: 'h02', category: 'descriptor', query: 'a watch that works with a suit but is not boring',
-    truth: { styleAny: ['dress'], diameterMax: 41 } },
+    truth: { styleAny: ['dress'], diameterMax: 39, materialNone: ['rose gold', 'yellow gold', 'pink gold'] } },
+  { id: 'h02', category: 'descriptor', query: 'a dress watch with some complication, works with a suit',
+    truth: { styleAny: ['dress'], functionsAny: ['moon phase', 'perpetual calendar', 'chronograph'] } },
   { id: 'h03', category: 'descriptor', query: 'first serious watch for someone starting a collection',
     truth: { priceMax: 20000, movementAny: ['automatic'] } },
   { id: 'h04', category: 'descriptor', query: 'something I can actually take diving, not just splash proof',
@@ -29,12 +31,14 @@ export const HANDWRITTEN = [
   { id: 'h07', category: 'descriptor', query: 'a bold statement piece with real wrist presence',
     truth: { diameterMin: 44 } },
   // "Warm" excludes white gold and platinum, which read as cold despite being precious metals.
-  { id: 'h08', category: 'descriptor', query: 'something warm looking rather than cold steel',
-    truth: { materialAny: ['rose gold', 'pink gold', 'yellow gold'] } },
+  { id: 'h08', category: 'descriptor', query: 'something warm looking on a leather strap, not cold steel',
+    truth: { materialAny: ['rose gold', 'pink gold', 'yellow gold'], strapAny: ['leather', 'alligator', 'calf'] } },
   { id: 'h09', category: 'descriptor', query: 'an automatic I can leave off the wrist over a long weekend',
-    truth: { movementAny: ['automatic'], powerReserveMin: 65 } },
-  { id: 'h10', category: 'descriptor', query: 'I want to see the movement working through the back',
-    truth: { caseBackAny: ['transparent', 'sapphire', 'open', 'display'] } },
+    truth: { movementAny: ['automatic'], powerReserveMin: 70 } },
+  // Almost everything here has a sapphire caseback, so that label separates nothing.
+  // The discriminating version of the same intent is a dial you can see through.
+  { id: 'h10', category: 'descriptor', query: 'I want to see the mechanism from the front',
+    truth: { dialAny: ['openworked', 'skeleton', 'sapphire'] } },
 
   // Complications described in plain language
   { id: 'h11', category: 'descriptor', query: 'a steel watch with a date window',
@@ -45,8 +49,11 @@ export const HANDWRITTEN = [
     truth: { functionsAny: ['moon'] } },
   { id: 'h14', category: 'descriptor', query: 'useful for tracking a second time zone when I travel',
     truth: { functionsAny: ['gmt', 'dual time', 'second time', 'world time', 'worldtime'] } },
+  // Time-only means time only: a subsidiary seconds register or a power-reserve hand
+  // already breaks the brief, so they are excluded alongside the obvious complications.
   { id: 'h15', category: 'descriptor', query: 'a clean dress dial with nothing on it but the hands',
-    truth: { styleAny: ['dress'], functionsNone: ['chronograph', 'moon', 'perpetual', 'calendar', 'date'] } },
+    truth: { styleAny: ['dress'],
+             functionsNone: ['chronograph', 'moon', 'perpetual', 'calendar', 'date', 'seconds', 'power-reserve'] } },
 
   // Aesthetic language
   { id: 'h16', category: 'descriptor', query: 'a deep blue face',
@@ -54,7 +61,7 @@ export const HANDWRITTEN = [
   { id: 'h17', category: 'descriptor', query: 'classic black dial on a leather strap',
     truth: { dialAny: ['black'], strapAny: ['leather', 'alligator', 'calf'] } },
   { id: 'h18', category: 'descriptor', query: 'silver or white dial, very traditional',
-    truth: { dialAny: ['silver', 'white'], styleAny: ['dress'] } },
+    truth: { dialAny: ['silver', 'white'], styleAny: ['dress'], diameterMax: 40 } },
   { id: 'h19', category: 'descriptor', query: 'green dial sports watch on a bracelet',
     truth: { dialAny: ['green'] } },
   { id: 'h20', category: 'descriptor', query: 'a dress watch on a metal bracelet, not a strap',
@@ -71,8 +78,8 @@ export const HANDWRITTEN = [
     truth: { priceMin: 1, priceMax: 20000 } },
 
   // Negation and exclusion - the case that breaks naive vector search
-  { id: 'h25', category: 'exclusion', query: 'a dress watch but definitely not gold',
-    truth: { styleAny: ['dress'], materialNone: ['gold'] } },
+  { id: 'h25', category: 'exclusion', query: 'a dress watch under 40mm, but definitely not gold',
+    truth: { styleAny: ['dress'], diameterMax: 40, materialNone: ['gold'] } },
   { id: 'h26', category: 'exclusion', query: 'a sports watch, anything except a chronograph',
     truth: { styleAny: ['sport', 'diver'], functionsNone: ['chronograph'] } },
 
@@ -83,8 +90,8 @@ export const HANDWRITTEN = [
     truth: { dialAny: ['blue'], functionsAny: ['chronograph'], priceMin: 1, priceMax: 30000 } },
   { id: 'h29', category: 'compound', query: 'rose gold dress watch on leather, 38mm or smaller',
     truth: { materialAny: ['rose gold', 'pink gold'], diameterMax: 38, strapAny: ['leather', 'alligator', 'calf'] } },
-  { id: 'h30', category: 'compound', query: 'long power reserve so it survives a weekend off the wrist',
-    truth: { powerReserveMin: 60 } },
+  { id: 'h30', category: 'compound', query: 'a week of power reserve so it keeps running in the drawer',
+    truth: { powerReserveMin: 120 } },
 ];
 
 // -- Generated set ------------------------------------------------------------
@@ -134,7 +141,7 @@ export function buildGenerated(catalogue, { seed = 1234, perGroup = 6 } = {}) {
 
   // Case material.
   const materials = [...countBy(catalogue.records, r => normaliseMaterial(r.caseMaterial)).entries()]
-    .filter(([m, n]) => n >= 8 && m !== '(unknown)').map(([m]) => m);
+    .filter(([m, n]) => n >= 8 && m !== '(unknown)' && m !== 'gold (other)').map(([m]) => m);
   for (const material of pick(materials, Math.min(perGroup, 5))) {
     queries.push({
       id: `g-material-${slugish(material)}`, category: 'material', query: `${material} case watches`,
