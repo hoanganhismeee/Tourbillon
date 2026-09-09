@@ -7,7 +7,7 @@
 //   node eval/run-eval.mjs --inspect            # what the catalogue actually contains
 //   node eval/run-eval.mjs --validate           # label health, no API calls to the search arms
 //   node eval/run-eval.mjs                      # full run, both arms
-//   node eval/run-eval.mjs --arms=smart --k=10  # single arm
+//   node eval/run-eval.mjs --arms=smart,concierge  # pick arms: keyword, smart, concierge
 //   BASE_URL=http://localhost:5248 node eval/run-eval.mjs
 //
 // Requires: backend running, WatchFinderSettings:DisableLimitInDev=true (otherwise the daily
@@ -54,6 +54,34 @@ const ARM_IMPLS = {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = await res.json();
     return { ids: (body.watches ?? []).map(w => w.id), meta: {} };
+  },
+
+  // The concierge reaches the same WatchFinderService, so scoring the cards it returns against
+  // the same labels isolates what its own routing and dispatch layer costs: any recall the
+  // concierge loses relative to `smart` is lost between the two, not in retrieval.
+  // One fresh session per query, because the golden set is single-turn and shared session
+  // state would let one query's context leak into the next.
+  concierge: async query => {
+    const sessionId = `eval-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    try {
+      const res = await fetch(`${BASE_URL}/api/chat/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, message: query }),
+        signal: AbortSignal.timeout(180_000),
+      });
+      if (res.status === 429) throw new Error('429 quota — set ChatSettings:DisableLimitInDev=true');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json();
+      return {
+        ids: (body.watchCards ?? []).map(c => c.id),
+        meta: { searchPath: body.finderPath ?? body.path ?? 'concierge' },
+      };
+    } finally {
+      await fetch(`${BASE_URL}/api/chat/session/${sessionId}`, {
+        method: 'DELETE', signal: AbortSignal.timeout(10_000),
+      }).catch(() => {});
+    }
   },
 
   // Deterministic catalogue path, then pgvector, then LLM rerank. searchPath tells us which
