@@ -48,6 +48,17 @@ export function hitAtK(ranked, relevant, k) {
   return ranked.slice(0, k).some(id => relevant.has(id)) ? 1 : 0;
 }
 
+/// The highest recall@k this query can reach: a result list holds k items, so a label matching
+/// more than k watches caps the score at k/|relevant| however good the ranking is.
+///
+/// Reporting raw recall without this understates the system and, worse, hides which categories
+/// are actually broken — a label matching 76 watches caps recall@10 at 0.13, so 0.13 there is
+/// a perfect score while 0.13 against a 20-watch label is a poor one.
+export function recallCeiling(relevantCount, k) {
+  if (!relevantCount || relevantCount <= 0) return null;
+  return Math.min(1, k / relevantCount);
+}
+
 export function mean(values) {
   const usable = values.filter(v => v !== null && !Number.isNaN(v));
   if (usable.length === 0) return null;

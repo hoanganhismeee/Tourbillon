@@ -21,7 +21,7 @@ import { loadCatalogue, summariseFacets } from './catalogue.mjs';
 import { HANDWRITTEN, buildGenerated, validateQueries } from './queries.mjs';
 import {
   recallAtK, precisionAtK, reciprocalRank, ndcgAtK, hitAtK,
-  mean, percentile, bootstrapCI, pairedBootstrap,
+  mean, percentile, bootstrapCI, pairedBootstrap, recallCeiling,
 } from './metrics.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -161,6 +161,7 @@ async function runArm(arm, queries) {
       const row = {
         pass, queryId: q.id, category: q.category, query: q.query,
         relevantCount: q.relevantCount, returned: ids.length, latencyMs, error, ...meta,
+        ceiling: recallCeiling(q.relevantCount, K),
         recall: error ? null : recallAtK(ids, q.relevant, K),
         precision: error ? null : precisionAtK(ids, q.relevant, PRECISION_K),
         mrr: error ? null : reciprocalRank(ids, q.relevant, K),
@@ -241,16 +242,33 @@ function printScores(results, queries) {
       `${Math.round(percentile(lat, 95)).toString().padStart(9)}`);
   }
 
-  // Per-category recall exposes where the pipeline earns its cost. Expect the two arms to be
-  // close on reference and brand lookups, and far apart on descriptor and compound briefs.
+  // Recall is shown against its own ceiling. A label matching more watches than k caps the
+  // score however good the ranking is, so the raw number conflates label breadth with system
+  // quality: 0.13 against a 76-watch label is a perfect result, 0.13 against a 20-watch label
+  // is a poor one. The share of ceiling is what says whether a category actually works.
   const categories = [...new Set(queries.map(q => q.category))].sort();
-  console.log(`\n${BOLD}Recall@${K} by category${RESET}`);
-  console.log(`  ${'category'.padEnd(14)}${'n'.padStart(4)}${Object.keys(results).map(a => a.padStart(10)).join('')}`);
+  const arms = Object.keys(results);
+  console.log(`
+${BOLD}Recall@${K} by category${RESET} ${DIM}(share of ceiling in brackets)${RESET}`);
+  console.log(`  ${'category'.padEnd(14)}${'n'.padStart(4)}${'ceiling'.padStart(9)}` +
+    arms.map(a => a.padStart(17)).join(''));
   for (const cat of categories) {
-    const n = queries.filter(q => q.category === cat).length;
-    const cells = Object.values(results).map(rows =>
-      fmt(mean(rows.filter(r => r.category === cat).map(r => r.recall))).padStart(10)).join('');
-    console.log(`  ${cat.padEnd(14)}${String(n).padStart(4)}${cells}`);
+    const inCat = rows => rows.filter(r => r.category === cat);
+    const ceiling = mean(inCat(results[arms[0]]).map(r => r.ceiling));
+    const cells = arms.map(arm => {
+      const recall = mean(inCat(results[arm]).map(r => r.recall));
+      const share = recall != null && ceiling ? `${((recall / ceiling) * 100).toFixed(0)}%` : '-';
+      return `${fmt(recall)} (${share})`.padStart(17);
+    }).join('');
+    console.log(`  ${cat.padEnd(14)}${String(inCat(results[arms[0]]).length).padStart(4)}${fmt(ceiling).padStart(9)}${cells}`);
+  }
+
+  const overallCeiling = mean(results[arms[0]].map(r => r.ceiling));
+  console.log(`
+  ${DIM}A perfect ranker scores ${fmt(overallCeiling)} on this set, not 1.000.${RESET}`);
+  for (const arm of arms) {
+    const recall = mean(results[arm].map(r => r.recall));
+    console.log(`  ${DIM}${arm.padEnd(11)}${fmt(recall)} = ${((recall / overallCeiling) * 100).toFixed(0)}% of achievable${RESET}`);
   }
 }
 
