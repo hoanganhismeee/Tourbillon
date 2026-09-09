@@ -85,10 +85,17 @@ services:
       - ollama_data:/root/.ollama
     environment:
       FLASK_ENV: production
-      LLM_BASE_URL: http://localhost:11434/v1
-      LLM_MODEL: qwen2.5:7b
+      # Generation defaults to the local model; set LLM_BASE_URL/LLM_MODEL/LLM_API_KEY in .env
+      # to run against Anthropic instead. Embeddings stay on the in-container Ollama either way,
+      # and EMBED_BASE_URL is passed explicitly because an unset value is what marks "no embed
+      # backend configured".
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://localhost:11434/v1}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
       BASE_LLM_MODEL: ${BASE_LLM_MODEL:-qwen2.5:7b}
       LLM_API_KEY: ${LLM_API_KEY:-ollama}
+      EMBED_BASE_URL: ${EMBED_BASE_URL:-http://localhost:11434/v1}
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      EMBED_API_KEY: ${EMBED_API_KEY:-ollama}
       OLLAMA_FLASH_ATTENTION: 1
       OLLAMA_KEEP_ALIVE: -1
       # Two models are in the hot path — the generation model and nomic-embed-text — and a
