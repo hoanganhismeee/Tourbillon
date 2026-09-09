@@ -91,7 +91,11 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-ollama}
       OLLAMA_FLASH_ATTENTION: 1
       OLLAMA_KEEP_ALIVE: -1
-      OLLAMA_MAX_LOADED_MODELS: 1
+      # Two models are in the hot path — the generation model and nomic-embed-text — and a
+      # single search alternates between them. At a limit of 1 ollama evicted and reloaded on
+      # every alternation, which is where most of the embed and parse latency was going.
+      # Together they fit the reserved VRAM (~4.9 GB + ~0.3 GB).
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-2}
     healthcheck:
       # Sentinel file written by entrypoint.sh only after both LLM and embed models are warm.
       # Backend depends on this — it will not start serving traffic until AI is ready.
