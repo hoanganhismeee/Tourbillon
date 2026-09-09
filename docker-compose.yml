@@ -57,6 +57,11 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       Redis__ConnectionString: redis:6379
       AiService__BaseUrl: http://ai-service:5000
+      # The stack runs with ASPNETCORE_ENVIRONMENT=Production, so appsettings.Development.json
+      # is never loaded and the daily AI quotas would apply to local work after 5 searches.
+      # Railway sets these to false; here they default open so evaluation runs are not truncated.
+      WatchFinderSettings__DisableLimitInDev: ${WATCH_FINDER_DISABLE_LIMIT:-true}
+      ChatSettings__DisableLimitInDev: ${CHAT_DISABLE_LIMIT:-true}
       Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
       Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
       AWS__AccessKeyId: ${AWS_ACCESS_KEY_ID:-}
