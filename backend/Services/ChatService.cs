@@ -3525,6 +3525,41 @@ public class ChatService
             && normalizedMessage.Contains(name, StringComparison.OrdinalIgnoreCase));
     }
 
+    // Words that carry no request of their own once the watch has been named. Anything left
+    // after these and the watch's own name is the user actually asking for something.
+    private static readonly HashSet<string> _lookupFillerWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "the", "a", "an", "this", "that", "it", "its", "of", "for", "on", "in", "with", "and",
+        "or", "to", "is", "are", "was", "were", "be", "do", "does", "did", "please", "show",
+        "me", "see", "find", "get", "look", "up", "watch", "watches", "timepiece", "model",
+        "reference", "ref", "info", "details",
+    };
+
+    /// True when the message asks something beyond naming the watch. Structural, not semantic:
+    /// it strips the resolved watch's own words and the filler that surrounds a bare lookup,
+    /// and asks whether anything is left. A bare reference gets the deterministic card blurb,
+    /// which is fast and free; a real question needs the model, which has the specs in context.
+    internal static bool AsksBeyondNamingWatch(string? query, string watchName, string? brandName, string? collectionName)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return false;
+
+        var named = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var source in new[] { watchName, brandName, collectionName })
+        {
+            foreach (var token in QueryNormalizer.NormalizeText(source).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                named.Add(token);
+        }
+
+        var remaining = QueryNormalizer.NormalizeText(query)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(token => !named.Contains(token) && !_lookupFillerWords.Contains(token))
+            .ToList();
+
+        // One stray token is more often a typo or a leftover fragment than a question; two is
+        // a request. "5711 specs" reads as a lookup, "what movement does 5711 use" does not.
+        return remaining.Count >= 2;
+    }
+
     private ChatResolution BuildExactWatchResolution(Watch watch, string? canonicalQuery = null)
     {
         var brandLink = watch.Brand != null && !string.IsNullOrWhiteSpace(watch.Brand.Slug)
@@ -3538,13 +3573,28 @@ public class ChatService
             ? $"It sits in {collectionLink} from {brandLink}"
             : $"It comes from {brandLink}";
 
-        return new ChatResolution
+        // Naming a watch is not the same as asking about it. The blurb below answers "which
+        // watch is this"; it cannot answer "what is the case made of", and returning it for
+        // both left factual questions unanswered because the model was never called.
+        var asksSomething = AsksBeyondNamingWatch(
+            canonicalQuery, watch.Name, watch.Brand?.Name, watch.Collection?.Name);
+
+        var resolution = new ChatResolution
         {
-            Message = $"{watchLink} is the closest exact match in Tourbillon's catalogue. {place} and is listed at {FormatPrice(watch.CurrentPrice)}. If you want, Tourbillon can also compare it with another watch or help you explore adjacent models."
-                .Replace("  ", " "),
+            Message = asksSomething
+                ? ""
+                : $"{watchLink} is the closest exact match in Tourbillon's catalogue. {place} and is listed at {FormatPrice(watch.CurrentPrice)}. If you want, Tourbillon can also compare it with another watch or help you explore adjacent models."
+                    .Replace("  ", " "),
+            UseAi = asksSomething,
+            Query = canonicalQuery ?? watch.Name,
             WatchCards = [ToChatWatchCard(watch)],
             SessionState = BuildSessionStateFromWatches([watch], "watch_cards", canonicalQuery ?? watch.Name)
         };
+
+        if (asksSomething)
+            resolution.Context.Add(BuildWatchContext(watch));
+
+        return resolution;
     }
 
     // Handles "Vacheron and A. Lange, which should I choose?" style queries.
