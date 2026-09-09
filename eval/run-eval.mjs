@@ -235,15 +235,37 @@ function printPaths(results) {
   const total = Object.values(paths).reduce((a, r) => a + r.length, 0);
   if (!total) return;
 
+  // Recall is scored per path, not just per arm, because the architectural question is not
+  // "is Smart Search better" but "which of its stages earns its cost". A path that is slow and
+  // no more accurate than the cheap SQL path is a candidate for deletion, and this is the
+  // table that says so. Paths are chosen by the router, so these are observational groups
+  // over different queries, not a controlled comparison - read them as a signal to dig into.
   console.log(`\n${BOLD}Smart Search path distribution${RESET}`);
+  console.log(`  ${'path'.padEnd(34)}${'n'.padStart(4)}${'share'.padStart(7)}${'recall'.padStart(9)}${'p50 ms'.padStart(9)}${'p95 ms'.padStart(9)}`);
   for (const [path, group] of Object.entries(paths).sort((a, b) => b[1].length - a[1].length)) {
     const lat = group.map(r => r.latencyMs);
     console.log(`  ${path.padEnd(34)}${String(group.length).padStart(4)}` +
-      ` ${((group.length / total) * 100).toFixed(0).padStart(3)}%` +
-      `${DIM}   p50 ${Math.round(percentile(lat, 50))}ms  p95 ${Math.round(percentile(lat, 95))}ms${RESET}`);
+      `${((group.length / total) * 100).toFixed(0) + '%'}`.padStart(7) +
+      `${fmt(mean(group.map(r => r.recall))).padStart(9)}` +
+      `${Math.round(percentile(lat, 50)).toString().padStart(9)}` +
+      `${Math.round(percentile(lat, 95)).toString().padStart(9)}`);
   }
   const llm = rows.filter(r => (r.searchPath ?? '').includes('rerank')).length;
   console.log(`  ${DIM}LLM rerank invoked on ${llm}/${total} queries (${((llm / total) * 100).toFixed(0)}%)${RESET}`);
+
+  // A query served from the persistent semantic cache replays an answer computed by an earlier
+  // run, possibly under different code. Those rows score the cache, not the pipeline, so the
+  // run is only reproducible once they are gone. Loud rather than silent: a stale cache quietly
+  // flattering (or damning) a category is the easiest way to draw a wrong conclusion here.
+  const cached = rows.filter(r => (r.searchPath ?? '').startsWith('cache_hit'));
+  if (cached.length) {
+    console.log(`\n  ${YELLOW}${cached.length}/${total} queries were served from the semantic cache${RESET}`);
+    console.log(`  ${DIM}Those measure a previous run, not the current pipeline. Clear it for a clean`);
+    console.log(`  comparison: DELETE /api/admin/query-cache (admin auth required).${RESET}`);
+    for (const r of cached.slice(0, 8)) {
+      console.log(`    ${DIM}${fmt(r.recall)}  "${r.query.slice(0, 46)}"${RESET}`);
+    }
+  }
 }
 
 /// Paired bootstrap on the per-query deltas. Two arms scored on the same queries are paired
