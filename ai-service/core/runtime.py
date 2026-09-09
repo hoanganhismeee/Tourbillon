@@ -63,7 +63,8 @@ def create_runtime() -> Runtime:
     llm_model = os.getenv("LLM_MODEL", "qwen2.5:7b")
     llm_api_key = os.getenv("LLM_API_KEY", "ollama")
 
-    embed_base_url = os.getenv("EMBED_BASE_URL", "http://localhost:11434/v1")
+    embed_base_url_env = os.getenv("EMBED_BASE_URL")
+    embed_base_url = embed_base_url_env or "http://localhost:11434/v1"
     embed_model = os.getenv("EMBED_MODEL", "nomic-embed-text")
     embed_api_key = os.getenv("EMBED_API_KEY", "ollama")
 
@@ -78,10 +79,12 @@ def create_runtime() -> Runtime:
         if rate_limit_rpm > 0:
             rate_limiter = RateLimiter(max_calls=rate_limit_rpm, window_seconds=60.0)
 
-    # Embed client is None when running in production mode without a configured embed backend.
-    # Production (use_anthropic=True) with the default Ollama EMBED_BASE_URL means no embed service.
-    # Set EMBED_BASE_URL + EMBED_API_KEY env vars to enable cloud embeddings in production.
-    has_embed = not (use_anthropic and embed_base_url == "http://localhost:11434/v1")
+    # An explicitly configured EMBED_BASE_URL is always honoured; only the unset case falls back
+    # on the local Ollama default, which exists solely for the all-local setup. Inferring "no
+    # embed backend" from the URL matching that default silently disabled embeddings for a
+    # hybrid deployment — Anthropic for generation, local Ollama for embeddings — which is a
+    # legitimate configuration and the one used to benchmark the pipeline.
+    has_embed = embed_base_url_env is not None or not use_anthropic
     embed_client = OpenAI(base_url=embed_base_url, api_key=embed_api_key) if has_embed else None
 
     if use_anthropic and not has_embed:
