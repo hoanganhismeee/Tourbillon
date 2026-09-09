@@ -134,6 +134,24 @@ public class QueryCacheService
             ? await _context.QueryCaches.CountAsync()
             : await _context.QueryCaches.Where(q => q.Feature == feature).CountAsync();
 
+    /// Deletes entries no lookup can reach: a superseded pipeline version, or past the max age.
+    /// Without this the table only grows — a version bump makes every existing row invisible but
+    /// leaves it stored, and StoreAsync then writes a fresh row for the same query because the
+    /// duplicate check cannot see the old one either. Returns how many rows were removed.
+    public async Task<int> PurgeStaleAsync()
+    {
+        var cutoff = DateTime.UtcNow - _maxAge;
+        var removed = await _context.QueryCaches
+            .Where(q => q.PipelineVersion != _pipelineVersion || q.CreatedAt < cutoff)
+            .ExecuteDeleteAsync();
+
+        if (removed > 0)
+            _logger.LogInformation("QueryCache purged {Removed} stale entries, keeping version={Version}",
+                removed, _pipelineVersion);
+
+        return removed;
+    }
+
     /// Clears all cached query results.
     public async Task ClearAsync()
     {

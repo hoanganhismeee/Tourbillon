@@ -421,6 +421,17 @@ using (var scope = app.Services.CreateScope())
 
     // Ensure Admin role exists
     await DbInitializer.EnsureAdminSetupAsync(scope.ServiceProvider);
+
+    // Startup is exactly when a pipeline version bump takes effect, so it is also when the
+    // entries that bump just orphaned can be dropped. One DELETE; failure must not stop boot.
+    try
+    {
+        await scope.ServiceProvider.GetRequiredService<QueryCacheService>().PurgeStaleAsync();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Query cache purge skipped: {ex.Message}");
+    }
 }
 
 // Recurring jobs — Hangfire stores the schedule in its own tables and re-registers
