@@ -83,6 +83,10 @@ public class QueryIntent
     /// Canonical dial colour ("Blue", "Silver"...). Catalogue dials are free text with 112
     /// distinct spellings, so both sides are normalised to this small set before matching.
     public string? DialColour { get; set; }
+    /// The wording the user actually used ("argenté", "silver-toned"). Matching happens on the
+    /// canonical bucket so nothing is missed, but the user's own spelling ranks first — asking
+    /// for "argenté" and getting silver watches with no argenté among them reads as a miss.
+    public string? DialColourPhrase { get; set; }
     /// Materials and complications the user ruled out ("not gold", "except a chronograph").
     /// Separate from the positive lists because a negation must never be read as a request.
     public List<string> ExcludedMaterials { get; set; } = [];
@@ -885,6 +889,15 @@ public class WatchFinderService : IWatchFinderService
         else if ((intent.MinDiameterMm != null || intent.MaxDiameterMm != null) && diameterMm != null) score += 50;
         if (intent.CaseMaterial != null && specs?.Case?.Material != null) score += 40;
         if (intent.MovementType != null && specs?.Movement?.Type != null) score += 35;
+        if (intent.DialColour != null && specs?.Dial?.Color != null)
+        {
+            score += 40;
+            // Ranked above a bucket-only match so the user's own wording surfaces first, while
+            // the rest of the colour family stays in the result set behind it.
+            if (intent.DialColourPhrase != null && specs.Dial.Color.Contains(
+                    intent.DialColourPhrase, StringComparison.OrdinalIgnoreCase))
+                score += 55;
+        }
         if (intent.WaterResistance != null && waterMetres != null) score += 60;
         else if (intent.WaterResistanceBuckets.Count > 0 && waterMetres != null) score += 45;
         else if (intent.WaterResistanceBuckets.Count > 0 && waterMetres == null)
@@ -1223,6 +1236,7 @@ public class WatchFinderService : IWatchFinderService
         }
         primary.CaseMaterial ??= fallback.CaseMaterial;
         primary.DialColour ??= fallback.DialColour;
+        primary.DialColourPhrase ??= fallback.DialColourPhrase;
         if (primary.ExcludedMaterials.Count == 0) primary.ExcludedMaterials = fallback.ExcludedMaterials;
         if (primary.ExcludedComplications.Count == 0) primary.ExcludedComplications = fallback.ExcludedComplications;
         primary.MovementType ??= fallback.MovementType;
@@ -2078,6 +2092,7 @@ public class WatchFinderService : IWatchFinderService
                 ? dialPhrase.Groups["colour"].Value
                 : dialPhrase.Groups["colour2"].Value;
             intent.DialColour = NormaliseDialColour(colourText);
+            if (intent.DialColour != null) intent.DialColourPhrase = colourText.Trim();
         }
 
         // ── Movement type matching ──────────────────────────────────────────────────
