@@ -31,9 +31,10 @@ public class QueryCacheService
     // with any other version are invisible to lookups, so a deploy invalidates its own stale
     // results without anyone remembering to call the admin clear endpoint. Overridable via
     // QueryCache:Version to force invalidation from configuration alone.
-    // v2: generation moved from qwen2.5:7b to claude-haiku-4-5. Results cached under v1 were
-    // ranked by a different model, so they are not answers this pipeline would give.
-    private const string DefaultPipelineVersion = "v2-haiku-nomic-embed-text-768";
+    // v3: dial colour became a deterministic filter dimension, so dial queries are answered
+    // by SQL rather than by vector similarity and return a different result set.
+    // v2: generation moved from qwen2.5:7b to claude-haiku-4-5.
+    private const string DefaultPipelineVersion = "v3-dialcolour-haiku-nomic-768";
 
     // Backstop for drift no version bump accounts for — a repriced watch, a re-scrape. Entries
     // older than this are ignored even when the version still matches.

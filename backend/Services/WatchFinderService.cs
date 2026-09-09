@@ -80,6 +80,13 @@ public class QueryIntent
     /// Spec-level filters — frontend uses these to pre-select filter bar dropdowns.
     /// Not applied as SQL WHERE (stored in Watch.Specs JSON, not columns).
     public string? CaseMaterial { get; set; }
+    /// Canonical dial colour ("Blue", "Silver"...). Catalogue dials are free text with 112
+    /// distinct spellings, so both sides are normalised to this small set before matching.
+    public string? DialColour { get; set; }
+    /// Materials and complications the user ruled out ("not gold", "except a chronograph").
+    /// Separate from the positive lists because a negation must never be read as a request.
+    public List<string> ExcludedMaterials { get; set; } = [];
+    public List<string> ExcludedComplications { get; set; } = [];
     public string? MovementType { get; set; }
     public string? WaterResistance { get; set; }
     /// Style category — "sport", "dress", "diver". Resolved to collection IDs via DB taxonomy.
@@ -700,6 +707,8 @@ public class WatchFinderService : IWatchFinderService
         && (intent.MinPrice != null || intent.MaxPrice != null
             || intent.MinDiameterMm != null || intent.MaxDiameterMm != null
             || intent.CaseMaterial != null || intent.MovementType != null
+            || intent.DialColour != null
+            || intent.ExcludedMaterials.Count > 0 || intent.ExcludedComplications.Count > 0
             || intent.WaterResistance != null || intent.WaterResistanceBuckets.Count > 0
             || intent.Style != null || intent.Complications.Count > 0
             || intent.PowerReserves.Count > 0);
@@ -819,6 +828,18 @@ public class WatchFinderService : IWatchFinderService
 
         if (intent.CaseMaterial != null
             && !(specs?.Case?.Material?.Contains(intent.CaseMaterial, StringComparison.OrdinalIgnoreCase) ?? false))
+            return false;
+
+        if (intent.DialColour != null
+            && !DialColourMatches(specs?.Dial?.Color, intent.DialColour))
+            return false;
+
+        if (intent.ExcludedMaterials.Count > 0 && specs?.Case?.Material is { } excludedCandidate
+            && intent.ExcludedMaterials.Any(m => excludedCandidate.Contains(m, StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        if (intent.ExcludedComplications.Count > 0 && intent.ExcludedComplications.Any(
+                complication => functions.Any(fn => fn.Contains(complication, StringComparison.OrdinalIgnoreCase))))
             return false;
 
         if (intent.MovementType != null
@@ -1201,6 +1222,9 @@ public class WatchFinderService : IWatchFinderService
             primary.MaxDiameterMm = fallback.MaxDiameterMm;
         }
         primary.CaseMaterial ??= fallback.CaseMaterial;
+        primary.DialColour ??= fallback.DialColour;
+        if (primary.ExcludedMaterials.Count == 0) primary.ExcludedMaterials = fallback.ExcludedMaterials;
+        if (primary.ExcludedComplications.Count == 0) primary.ExcludedComplications = fallback.ExcludedComplications;
         primary.MovementType ??= fallback.MovementType;
         primary.WaterResistance ??= fallback.WaterResistance;
         primary.Style ??= fallback.Style;
@@ -1316,7 +1340,8 @@ public class WatchFinderService : IWatchFinderService
         // Return null if nothing was extracted — avoids unnecessary intent propagation
         if (intent.BrandId == null && intent.CollectionId == null && intent.BrandIds.Count == 0 && intent.CollectionIds.Count == 0
             && intent.MaxPrice == null && intent.MinPrice == null
-            && intent.Style == null && intent.CaseMaterial == null
+            && intent.Style == null && intent.CaseMaterial == null && intent.DialColour == null
+            && intent.ExcludedMaterials.Count == 0 && intent.ExcludedComplications.Count == 0
             && intent.WaterResistanceBuckets.Count == 0
             && intent.Complications.Count == 0 && intent.PowerReserves.Count == 0
             && intent.MinDiameterMm == null && intent.MaxDiameterMm == null)
@@ -1332,6 +1357,103 @@ public class WatchFinderService : IWatchFinderService
         "quartz"                          => "Quartz",
         _                                 => null,
     };
+
+    // Terms a user can rule out, mapped to the value stored in the catalogue. Kept deliberately
+    // small: a negation the parser does not recognise must fall through to the semantic path
+    // rather than be half-applied, which would be worse than not handling it at all.
+    private static readonly (string Pattern, string Material)[] ExcludableMaterials =
+    [
+        (@"(?:rose|pink)\s+gold", "rose gold"),
+        (@"white\s+gold", "white gold"),
+        (@"yellow\s+gold", "yellow gold"),
+        (@"gold", "gold"),
+        (@"(?:stainless\s+)?steel", "steel"),
+        (@"titanium", "titanium"),
+        (@"platinum", "platinum"),
+        (@"ceramic", "ceramic"),
+    ];
+
+    private static readonly (string Pattern, string Complication)[] ExcludableComplications =
+    [
+        (@"chronographs?", "chronograph"),
+        (@"moon\s?phases?", "moon"),
+        (@"perpetual\s+calendars?", "perpetual calendar"),
+        (@"annual\s+calendars?", "annual calendar"),
+        (@"tourbillons?", "tourbillon"),
+        (@"gmts?|dual\s+time", "gmt"),
+        (@"date\s+windows?|dates?", "date"),
+    ];
+
+    /// Pulls "not X" / "except X" / "without X" out of the query into the exclusion lists and
+    /// returns the query with those spans removed, so the positive matchers never see them.
+    /// Only the span belonging to a recognised term is cut — the rest of the sentence stays,
+    /// because "a dress watch under 40mm, but definitely not gold" still has to yield the
+    /// style and the size.
+    internal static string ExtractExclusions(string query, QueryIntent intent)
+    {
+        const string lead = @"\b(?:not|no|without|except(?:\s+for)?|excluding|other\s+than|apart\s+from|anything\s+but)\b[\s,]*(?:a|an|the)?\s*";
+
+        foreach (var (pattern, material) in ExcludableMaterials)
+        {
+            var match = Regex.Match(query, lead + $@"(?<term>{pattern})\b", RegexOptions.IgnoreCase);
+            if (!match.Success) continue;
+            if (!intent.ExcludedMaterials.Contains(material)) intent.ExcludedMaterials.Add(material);
+            query = query.Remove(match.Index, match.Length);
+        }
+
+        foreach (var (pattern, complication) in ExcludableComplications)
+        {
+            var match = Regex.Match(query, lead + $@"(?<term>{pattern})\b", RegexOptions.IgnoreCase);
+            if (!match.Success) continue;
+            if (!intent.ExcludedComplications.Contains(complication)) intent.ExcludedComplications.Add(complication);
+            query = query.Remove(match.Index, match.Length);
+        }
+
+        return Regex.Replace(query, @"\s{2,}", " ").Trim();
+    }
+
+    // Catalogue dials are scraped free text: 112 distinct spellings across the catalogue, where
+    // "argenté", "silver-toned", "silvered grey" and "silver guilloché" are all the same colour
+    // to a buyer. Both the query and the stored value collapse to this set before matching, so
+    // a dial query can be served by SQL instead of falling through to the vector pipeline.
+    private static readonly (string Canonical, string[] Spellings)[] DialColourVocabulary =
+    [
+        ("Silver", ["silver", "silvered", "silver-toned", "silver toned", "argente", "argenté", "argent"]),
+        ("Black",  ["black", "noir", "onyx"]),
+        ("Blue",   ["blue", "bleu", "navy"]),
+        ("Green",  ["green", "vert", "olive"]),
+        ("White",  ["white", "blanc", "ivory", "cream", "opaline"]),
+        ("Grey",   ["grey", "gray", "anthracite", "slate", "graphite"]),
+        ("Brown",  ["brown", "chocolate", "bronze dial"]),
+        ("Salmon", ["salmon"]),
+        ("Champagne", ["champagne"]),
+        ("Skeleton", ["openworked", "skeleton", "skeletonised", "skeletonized", "sapphire"]),
+    ];
+
+    /// Maps any dial description — a stored spec value or a phrase from a query — onto the
+    /// canonical colour set. Returns null when nothing recognisable is present.
+    internal static string? NormaliseDialColour(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var normalised = QueryNormalizer.NormalizeText(raw);
+
+        foreach (var (canonical, spellings) in DialColourVocabulary)
+        {
+            foreach (var spelling in spellings)
+            {
+                // Compare on normalised text so diacritics never decide the outcome:
+                // "argenté" and "argente" have to reach the same bucket.
+                if (normalised.Contains(QueryNormalizer.NormalizeText(spelling), StringComparison.Ordinal))
+                    return canonical;
+            }
+        }
+        return null;
+    }
+
+    /// True when a stored dial value denotes the requested colour. Substring comparison would
+    /// be wrong here: the stored text is a phrase like "silver-toned sunburst", not a colour name.
+    private static bool DialColourMatches(string? storedDial, string canonicalWanted) =>
+        NormaliseDialColour(storedDial) == canonicalWanted;
 
     private static string? NormaliseMaterial(string? raw)
     {
@@ -1812,6 +1934,8 @@ public class WatchFinderService : IWatchFinderService
             && intent.MaxPrice == null && intent.MinPrice == null
             && intent.MinDiameterMm == null && intent.MaxDiameterMm == null
             && intent.CaseMaterial == null && intent.MovementType == null
+            && intent.DialColour == null
+            && intent.ExcludedMaterials.Count == 0 && intent.ExcludedComplications.Count == 0
             && intent.WaterResistance == null && intent.Style == null
             && intent.Complications.Count == 0 && intent.PowerReserves.Count == 0
             && intent.WaterResistanceBuckets.Count == 0)
@@ -1825,7 +1949,10 @@ public class WatchFinderService : IWatchFinderService
     internal static void ApplyRegexFilters(string query, QueryIntent intent)
     {
         query = QueryNormalizer.ExpandCompoundTerms(query);
-        var q = query;
+        // Negations are read first and cut out of the working string. Order matters: left in,
+        // "not gold" would reach the material matcher below and be recorded as a request for
+        // gold — the exact inverse of what was asked.
+        var q = ExtractExclusions(query, intent);
 
         // ── Price matching ──────────────────────────────────────────────────────────
         // Spelled-out amounts are rewritten as digits for the price patterns only. A price is
@@ -1936,6 +2063,21 @@ public class WatchFinderService : IWatchFinderService
                 intent.CaseMaterial = label;
                 break;
             }
+        }
+
+        // ── Dial colour matching ────────────────────────────────────────────────────
+        // A colour only counts when the query ties it to the dial ("blue dial", "dial in
+        // silver", "a deep blue face"). Left unqualified it usually describes the case or the
+        // strap — "rose gold watch" is a material request, not a request for a gold dial.
+        var dialPhrase = Regex.Match(q,
+            @"\b(?<colour>[\p{L}-]+(?:\s+[\p{L}-]+)?)\s+(?:dial|face)\b|\b(?:dial|face)\s+(?:in|is)\s+(?<colour2>[\p{L}-]+)",
+            RegexOptions.IgnoreCase);
+        if (dialPhrase.Success)
+        {
+            var colourText = dialPhrase.Groups["colour"].Success
+                ? dialPhrase.Groups["colour"].Value
+                : dialPhrase.Groups["colour2"].Value;
+            intent.DialColour = NormaliseDialColour(colourText);
         }
 
         // ── Movement type matching ──────────────────────────────────────────────────

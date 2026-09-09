@@ -637,7 +637,7 @@ public class WatchFinderServiceTests
         using var context = CreateContext();
         var service = CreateServiceWithClassifier(context, new FakeClassifier("discovery", 1.0));
 
-        var result = await service.FindWatchesAsync("a deep blue face");
+        var result = await service.FindWatchesAsync("something my father would like");
 
         Assert.NotEqual("non_watch", result.SearchPath);
     }
@@ -660,7 +660,7 @@ public class WatchFinderServiceTests
         // A failed /classify call surfaces as unclear at zero confidence, which is not a verdict.
         var service = CreateServiceWithClassifier(context, new FakeClassifier("unclear", 0.0));
 
-        var result = await service.FindWatchesAsync("a deep blue face");
+        var result = await service.FindWatchesAsync("something my father would like");
 
         Assert.Equal("non_watch", result.SearchPath);
     }
@@ -671,7 +671,7 @@ public class WatchFinderServiceTests
         using var context = CreateContext();
         var service = CreateServiceWithClassifier(context, classifier: null);
 
-        var result = await service.FindWatchesAsync("a deep blue face");
+        var result = await service.FindWatchesAsync("something my father would like");
 
         Assert.Equal("non_watch", result.SearchPath);
     }
