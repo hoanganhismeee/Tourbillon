@@ -57,16 +57,23 @@ public class SearchController : ControllerBase
                 .Include(w => w.Collection)
                 .AsQueryable();
 
+            // One ILike group per token, combined with UNION. EF cannot translate an Any()
+            // over a local array whose element feeds the ILike pattern, so the tokens are
+            // unrolled into separate translatable queries instead of one OR chain.
             if (tokens.Length > 0)
             {
-                watchQuery = watchQuery.Where(w =>
-                    tokens.Any(t =>
-                        EF.Functions.ILike(w.Name, $"%{t}%") ||
-                        (w.Description != null && EF.Functions.ILike(w.Description, $"%{t}%")) ||
-                        EF.Functions.ILike(w.Brand.Name, $"%{t}%") ||
-                        (w.Collection != null && EF.Functions.ILike(w.Collection.Name, $"%{t}%"))
-                    )
-                );
+                IQueryable<Watch>? matched = null;
+                foreach (var token in tokens)
+                {
+                    var pattern = $"%{token}%";
+                    var perToken = watchQuery.Where(w =>
+                        EF.Functions.ILike(w.Name, pattern) ||
+                        (w.Description != null && EF.Functions.ILike(w.Description, pattern)) ||
+                        EF.Functions.ILike(w.Brand.Name, pattern) ||
+                        (w.Collection != null && EF.Functions.ILike(w.Collection.Name, pattern)));
+                    matched = matched == null ? perToken : matched.Union(perToken);
+                }
+                watchQuery = matched!;
             }
 
             var watches = await watchQuery.ToListAsync();
