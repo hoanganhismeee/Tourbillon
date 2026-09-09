@@ -2049,7 +2049,7 @@ public class WatchFinderService : IWatchFinderService
                     (int)resp.StatusCode, sw.ElapsedMilliseconds);
                 return null;
             }
-            _logger.LogDebug("Embed {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            _logger.LogInformation("WatchFinder embed {ElapsedMs}ms", sw.ElapsedMilliseconds);
             var json = await resp.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
             if (!json.TryGetProperty("embeddings", out var embEl)) return null;
             var embeddings = JsonSerializer.Deserialize<List<float[]>>(embEl.GetRawText(), _jsonOptions);
@@ -2067,9 +2067,14 @@ public class WatchFinderService : IWatchFinderService
     // Parse intent from AI service — runs concurrently with DB load
     private async Task<ParsedIntent?> ParseIntentAsync(HttpClient httpClient, string query)
     {
+        // Timed at Information alongside the rerank call: these are the two LLM round trips on
+        // the semantic path, and without both being visible a slow search cannot be attributed.
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var parseResp = await httpClient.PostAsJsonAsync("/watch-finder/parse", new { query });
+            _logger.LogInformation("WatchFinder parse {ElapsedMs}ms status={Status}",
+                sw.ElapsedMilliseconds, (int)parseResp.StatusCode);
             if (!parseResp.IsSuccessStatusCode) return null;
             var json = await parseResp.Content.ReadFromJsonAsync<JsonElement>();
             if (json.TryGetProperty("intent", out var intentEl))
