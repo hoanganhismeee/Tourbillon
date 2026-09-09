@@ -1574,10 +1574,17 @@ public class WatchFinderService : IWatchFinderService
         HashSet<int> matchedBrandIds,
         HashSet<string>? blockedTokens = null)
     {
-        var tokens = TokenizeQuery(query)
+        // Money units are rewritten to digits before any name is matched. "twenty grand" is an
+        // amount, but "grand" on its own is the first word of Grand Seiko and Grand Complications,
+        // and matching it there resolved a collection nobody named — which then filtered the
+        // search to that collection under a $20,000 ceiling and returned nothing.
+        // NormalizeNumberWords only consumes a scale word when a number precedes it, so the
+        // brand and collection names themselves come through untouched.
+        var forMatching = QueryNormalizer.NormalizeNumberWords(query);
+        var tokens = TokenizeQuery(forMatching)
             .Where(token => blockedTokens == null || !blockedTokens.Contains(token))
             .ToList();
-        var normalisedQuery = QueryNormalizer.CompactText(query);
+        var normalisedQuery = QueryNormalizer.CompactText(forMatching);
         if (tokens.Count == 0 && normalisedQuery.Length == 0) return [];
 
         var pool = matchedBrandIds.Count > 0
