@@ -20,7 +20,6 @@ namespace backend.Services;
 
 public record WatchFinderRequest(string Query);
 
-public record ExplainWatchRequest(string Query, int WatchId);
 
 public record WatchFinderQuotaContext(string SubjectKey, bool IsAdmin);
 

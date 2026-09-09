@@ -285,18 +285,6 @@ export const watchFinderSearch = async (query: string): Promise<WatchFinderResul
   return response.json();
 };
 
-export const watchFinderExplain = async (query: string, watchId: number): Promise<string> => {
-  const response = await fetchWithTimeout('/api/watch-finder-explain', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, watchId }),
-    timeoutMs: 15000,
-  });
-  if (!response.ok) throw new Error('Explain failed');
-  const data = await response.json();
-  return data.explanation as string;
-};
-
 export const fetchFilterOptions = async (): Promise<FilterOptions> => {
   const response = await fetchWithTimeout(`${API_BASE_URL}/watch/filter-options`, {
     credentials: 'include',

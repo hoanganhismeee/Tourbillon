@@ -73,4 +73,3 @@ No explanation field. Include ALL watches."""
 
 RERANK_STRICT_PROMPT = RERANK_SYSTEM_PROMPT + "\n\nJSON array only. Include ALL watches. No text before or after the array."
 
-EXPLAIN_SYSTEM_PROMPT = "You are a luxury watch expert. In one sentence, explain exactly why this watch fits the user's query. Be specific about which features match."
