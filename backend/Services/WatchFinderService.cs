@@ -292,6 +292,13 @@ public class WatchFinderService : IWatchFinderService
                 _logger.LogInformation("WatchFinder cache hit query={QueryPreview}",
                     query.Length > 60 ? query[..60] + "…" : query);
                 cached.QueryIntent = queryIntent;
+                // The stored result carries the path that originally produced it, so without this
+                // a cache hit is indistinguishable from a fresh run of that path — and a serialised
+                // result from before SearchPath existed reports nothing at all. Keep the origin,
+                // prefixed, so telemetry can separate served-from-cache from recomputed.
+                cached.SearchPath = string.IsNullOrEmpty(cached.SearchPath)
+                    ? "cache_hit"
+                    : $"cache_hit:{cached.SearchPath}";
                 return cached;
             }
         }
