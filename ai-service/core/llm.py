@@ -118,18 +118,8 @@ def call_llm_chat(
         for msg in messages:
             if msg.get("role") == "system":
                 system = msg.get("content") or ""
-                continue
-            # "_cache_breakpoint" marks the end of the repeating prefix. Callers set it on the
-            # last message that is identical from one turn to the next; the key is internal and
-            # must not reach the API.
-            clean = {k: v for k, v in msg.items() if not k.startswith("_")}
-            if msg.get("_cache_breakpoint") and isinstance(clean.get("content"), str):
-                clean["content"] = [{
-                    "type": "text",
-                    "text": clean["content"],
-                    "cache_control": {"type": "ephemeral"},
-                }]
-            chat_messages.append(clean)
+            else:
+                chat_messages.append(msg)
         system_payload = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}] if system else []
         t0 = time.perf_counter()
         response = runtime.anthropic_client.messages.create(
@@ -155,11 +145,9 @@ def call_llm_chat(
         return response.content[0].text if response.content else ""
 
     t0 = time.perf_counter()
-    # Ollama has no prompt cache, so the breakpoint marker is meaningless here — but it is an
-    # internal key and the OpenAI-compatible client would forward it as-is.
     response = runtime.client.chat.completions.create(
         model=runtime.llm_model,
-        messages=[{k: v for k, v in m.items() if not k.startswith("_")} for m in messages],
+        messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,
     )
