@@ -606,6 +606,76 @@ public class WatchFinderServiceTests
         Assert.True(WatchFinderService.HasWatchDomainSignal("purple Casio digital from the 80s"));
     }
 
+    // Queries with no word from the domain allowlist: the regex alone would refuse all four,
+    // so what separates them is the classifier verdict the gate now defers to.
+    private static WatchFinderService CreateServiceWithClassifier(
+        TourbillonContext context,
+        IIntentClassifier? classifier)
+    {
+        var httpFactory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        var deterministic = new Mock<IDeterministicWatchSearchService>(MockBehavior.Loose);
+        deterministic
+            .Setup(s => s.TryDirectSqlSearchAsync(It.IsAny<string>(), It.IsAny<QueryIntent?>(), It.IsAny<string>()))
+            .ReturnsAsync(new WatchFinderResult { SearchPath = "direct_sql_deterministic" });
+
+        return new WatchFinderService(
+            httpFactory.Object,
+            deterministic.Object,
+            context,
+            new WatchFilterMapper(),
+            new QueryCacheService(context, NullLogger<QueryCacheService>.Instance),
+            NullLogger<WatchFinderService>.Instance,
+            TestStorage,
+            config: null,
+            quotaService: null,
+            classifier: classifier);
+    }
+
+    [Fact]
+    public async Task FindWatchesAsync_NoDomainVocabularyButClassifiedAsWatchQuery_IsNotRefused()
+    {
+        using var context = CreateContext();
+        var service = CreateServiceWithClassifier(context, new FakeClassifier("discovery", 1.0));
+
+        var result = await service.FindWatchesAsync("a deep blue face");
+
+        Assert.NotEqual("non_watch", result.SearchPath);
+    }
+
+    [Fact]
+    public async Task FindWatchesAsync_ClassifiedAsNonWatchWithConfidence_IsRefused()
+    {
+        using var context = CreateContext();
+        var service = CreateServiceWithClassifier(context, new FakeClassifier("non_watch", 0.95));
+
+        var result = await service.FindWatchesAsync("how do I cook pasta");
+
+        Assert.Equal("non_watch", result.SearchPath);
+    }
+
+    [Fact]
+    public async Task FindWatchesAsync_ClassifierUnreachable_KeepsRegexRefusal()
+    {
+        using var context = CreateContext();
+        // A failed /classify call surfaces as unclear at zero confidence, which is not a verdict.
+        var service = CreateServiceWithClassifier(context, new FakeClassifier("unclear", 0.0));
+
+        var result = await service.FindWatchesAsync("a deep blue face");
+
+        Assert.Equal("non_watch", result.SearchPath);
+    }
+
+    [Fact]
+    public async Task FindWatchesAsync_NoClassifierWired_KeepsRegexRefusal()
+    {
+        using var context = CreateContext();
+        var service = CreateServiceWithClassifier(context, classifier: null);
+
+        var result = await service.FindWatchesAsync("a deep blue face");
+
+        Assert.Equal("non_watch", result.SearchPath);
+    }
+
     [Fact]
     public void BuildFilterStateForDiagnostics_MapsMultiBrandAndCollectionIds()
     {

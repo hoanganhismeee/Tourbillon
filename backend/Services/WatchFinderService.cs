@@ -141,6 +141,7 @@ public class WatchFinderService : IWatchFinderService
     private readonly IStorageService _storage;
     private readonly IConfiguration _config;
     private readonly IAiUsageQuotaService? _quota;
+    private readonly IIntentClassifier? _classifier;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -169,7 +170,8 @@ public class WatchFinderService : IWatchFinderService
         ILogger<WatchFinderService> logger,
         IStorageService storageService,
         IConfiguration? config = null,
-        IAiUsageQuotaService? quotaService = null)
+        IAiUsageQuotaService? quotaService = null,
+        IIntentClassifier? classifier = null)
     {
         _httpClientFactory = httpClientFactory;
         _deterministicSearch = deterministicSearch;
@@ -180,6 +182,7 @@ public class WatchFinderService : IWatchFinderService
         _storage = storageService;
         _config = config ?? new ConfigurationBuilder().Build();
         _quota = quotaService;
+        _classifier = classifier;
     }
 
     /// Strips excluded brand IDs from inclusion lists and stores them for SQL NOT IN filtering.
@@ -230,7 +233,8 @@ public class WatchFinderService : IWatchFinderService
         var normalizedQuery = QueryNormalizer.ExpandCompoundTerms(query);
         var deterministicIntent = await ParseQueryIntentAsync(normalizedQuery);
         ApplyBrandExclusions(deterministicIntent, excludedBrandIds);
-        if (deterministicIntent == null && !HasWatchDomainSignal(normalizedQuery))
+        if (deterministicIntent == null && !HasWatchDomainSignal(normalizedQuery)
+            && await IsOffTopicAsync(query))
         {
             _logger.LogInformation("WatchFinder ignored non-watch query={QueryPreview}",
                 query.Length > 60 ? query[..60] + "..." : query);
@@ -1565,6 +1569,30 @@ public class WatchFinderService : IWatchFinderService
             return true;
 
         return Regex.IsMatch(trimmed, @"^[A-Z]{4,5}$");
+    }
+
+    // A query the classifier calls non_watch is only refused above this confidence. Below it the
+    // verdict is too weak to override the prior that text typed into a watch search box is on-topic.
+    private const double NonWatchConfidence = 0.7;
+
+    /// Second opinion on a query whose wording matched none of the domain vocabulary below.
+    /// That miss is weak evidence: the regex is an allowlist and cannot enumerate how people
+    /// actually phrase a brief ("a deep blue face" is a dial query; "time a lap" is a chronograph).
+    /// So refusal now needs positive evidence of being off-topic, not merely absent evidence of
+    /// being on-topic. When the classifier is unreachable the regex verdict stands, per the
+    /// semantic-first-with-regex-fallback rule the rest of the routing layer follows.
+    private async Task<bool> IsOffTopicAsync(string query)
+    {
+        if (_classifier == null) return true;
+
+        var classification = await _classifier.ClassifyAsync(query, [], [], "none", 0, []);
+
+        // ClassifyAsync reports an unreachable or failed ai-service as unclear at zero confidence,
+        // which is the one case where there is no verdict to defer to.
+        if (classification.Confidence <= 0) return true;
+
+        return classification.Intent == "non_watch"
+            && classification.Confidence >= NonWatchConfidence;
     }
 
     internal static bool HasWatchDomainSignal(string query) =>
