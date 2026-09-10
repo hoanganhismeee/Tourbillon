@@ -1,4 +1,12 @@
 Flask==3.1.1
 openai>=1.0.0
-anthropic>=0.18.0
+# Pinned to the 1.x line. The 0.x -> 1.x bump removed sampling parameters from
+# Messages.create, so an unpinned install silently broke every Anthropic call with a
+# TypeError that surfaced only as "classifier unavailable" in the routing layer.
+anthropic>=1.0,<2.0
 pydantic>=2.0
+
+# Embeddings run in this process: Anthropic has no embeddings endpoint, so a deployment using
+# Anthropic for generation has no other source. all-mpnet-base-v2 is 768-dimensional to match
+# the stored vector(768) columns and needs no remote model code.
+sentence-transformers>=3.0

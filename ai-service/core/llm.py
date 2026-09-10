@@ -75,7 +75,6 @@ def call_llm(
             model=runtime.llm_model,
             system=system_payload,
             messages=[{"role": "user", "content": user_content}],
-            temperature=temperature,
             max_tokens=max_tokens,
         )
         ms = (time.perf_counter() - t0) * 1000
@@ -126,7 +125,6 @@ def call_llm_chat(
             model=runtime.llm_model,
             system=system_payload,
             messages=chat_messages,
-            temperature=temperature,
             max_tokens=max_tokens,
         )
         ms = (time.perf_counter() - t0) * 1000
@@ -173,7 +171,6 @@ def call_llm_with_tools(
             system=system,
             messages=[{"role": "user", "content": user_content}],
             tools=_convert_tools_to_anthropic(tools),
-            temperature=temperature,
             max_tokens=max_tokens,
         )
         result = []
