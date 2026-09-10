@@ -67,4 +67,37 @@ public class WatchFinderVagueQueryCollisionTests
         Assert.Empty(Resolve("starting a collection"));
         Assert.Empty(Resolve("a collection of watches"));
     }
+
+    // -- The same guard on the exact-name path -----------------------------------
+
+    // ParseQueryIntentAsync matches names by containment before fuzzy scoring ever runs, so the
+    // guard has to hold there too — that path, not the fuzzy one, is what actually resolved
+    // "Collection" in production.
+    private static bool Names(int collectionId, string query) =>
+        WatchFinderService.QueryNamesCollection(
+            Collections.First(c => c.Id == collectionId),
+            query,
+            QueryNormalizer.CompactText(query));
+
+    [Theory]
+    [InlineData("first serious watch for someone starting a collection")]
+    [InlineData("help me build a collection")]
+    public void ContainmentIgnoresACollectionNamedAfterAnOrdinaryWord(string query)
+    {
+        Assert.False(Names(2, query));
+    }
+
+    [Theory]
+    [InlineData("master ultra thin")]
+    [InlineData("the Master Ultra Thin in rose gold")]
+    public void ContainmentStillFindsARealName(string query)
+    {
+        Assert.True(Names(1, query));
+    }
+
+    [Fact]
+    public void ContainmentIgnoresSpacingTheWayItAlwaysDid()
+    {
+        Assert.True(Names(3, "royaloak offshore please"));
+    }
 }

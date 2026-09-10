@@ -1746,6 +1746,19 @@ public class WatchFinderService : IWatchFinderService
             .Where(token => token.Length >= 4)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+    /// True when the query spells the collection's name out. The compacted comparison ignores
+    /// spacing and punctuation so "royaloak" finds Royal Oak, and that reach is exactly why the
+    /// name must also carry a distinctive word: Greubel Forsey has a collection named
+    /// "Collection", and unguarded, "someone starting a collection" named it.
+    internal static bool QueryNamesCollection(Collection collection, string query, string normalisedQuery)
+    {
+        if (!HasDistinctiveName(collection.Name)) return false;
+        if (query.Contains(collection.Name, StringComparison.OrdinalIgnoreCase)) return true;
+
+        var key = QueryNormalizer.CompactText(collection.Name);
+        return key.Length >= 4 && normalisedQuery.Contains(key);
+    }
+
     /// True when a collection name contains a word that is not ordinary shopping vocabulary.
     /// Deliberately not TokenizeQuery: that drops tokens under four characters, which would
     /// call a collection named "Oak" undistinctive. Only the stopword list decides here.
@@ -1998,23 +2011,16 @@ public class WatchFinderService : IWatchFinderService
             : collections;
         var normalisedQuery = QueryNormalizer.CompactText(query);
 
-        var exactCollections = pool
+        List<Collection> NamedIn(List<Collection> candidates) => candidates
             .OrderByDescending(c => c.Name.Length)
-            .Where(c =>
-                query.Contains(c.Name, StringComparison.OrdinalIgnoreCase) ||
-                (QueryNormalizer.CompactText(c.Name).Length >= 4 && normalisedQuery.Contains(QueryNormalizer.CompactText(c.Name))))
+            .Where(c => QueryNamesCollection(c, query, normalisedQuery))
             .ToList();
+
+        var exactCollections = NamedIn(pool);
 
         // If no hit within the brand pool, try all collections (e.g. generic query).
         if (exactCollections.Count == 0 && matchedBrandIds.Count > 0)
-        {
-            exactCollections = collections
-                .OrderByDescending(c => c.Name.Length)
-                .Where(c =>
-                    query.Contains(c.Name, StringComparison.OrdinalIgnoreCase) ||
-                    (QueryNormalizer.CompactText(c.Name).Length >= 4 && normalisedQuery.Contains(QueryNormalizer.CompactText(c.Name))))
-                .ToList();
-        }
+            exactCollections = NamedIn(collections);
 
         var blockedCollectionTokens = BuildBlockedCollectionTokens(matchedBrands);
 
