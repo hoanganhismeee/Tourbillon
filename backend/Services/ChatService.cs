@@ -73,6 +73,13 @@ public class ChatApiResponse
     public bool RateLimited { get; set; }
     public int? DailyUsed { get; set; }
     public int? DailyLimit { get; set; }
+
+    /// Which handler answered, and which retrieval stage produced the cards. Smart Search has
+    /// exposed the equivalent on its own response all along; without the same on chat there is
+    /// no way to tell whether a concierge reply came from SQL, from vector search or from
+    /// cache, so no change to the concierge's routing can be measured.
+    public string? RoutingPath { get; set; }
+    public string? FinderPath { get; set; }
 }
 
 public class ChatService
@@ -114,13 +121,19 @@ public class ChatService
 
     // Mirrors the frontend EXAMPLE_PROMPTS (ChatPanel.tsx). Pre-warmed so the suggestions a user is
     // most likely to click return instantly. Keep in sync with the frontend list.
+    //
+    // Weighted toward occasion and open-ended briefs, because those are the questions only the
+    // concierge can answer. A spec brief like "sporty watches under $20,000" routes straight to
+    // deterministic SQL, which is what the search bar already does better — advertising it here
+    // taught users to ask chat for something they should type into Smart Search. The two named
+    // entity prompts stay: comparison and brand background have no equivalent in the search bar.
     internal static readonly string[] StarterPrompts =
     [
+        "Something elegant for a formal dinner",
+        "What should I wear to a summer wedding",
+        "Where do I start with my first serious watch",
         "Compare the Aquanaut and the Overseas",
         "Tell me about Patek Philippe",
-        "Sporty watches under $20,000",
-        "Something elegant for a formal dinner",
-        "Best diving watch from Rolex",
     ];
 
     // What a cached turn stores: the response served to the client plus the session state that the
@@ -648,6 +661,8 @@ public class ChatService
             Actions = actions,
             DailyUsed = disableLimit || isAdmin ? null : quotaStatus?.DailyUsed,
             DailyLimit = disableLimit || isAdmin ? null : dailyLimit,
+            RoutingPath = resolution.RoutingPath,
+            FinderPath = resolution.SearchPath,
         };
 
         // Store a context-free turn for reuse. Skip degraded replies (AI fallback / canned error)

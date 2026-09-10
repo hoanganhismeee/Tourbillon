@@ -13,12 +13,14 @@ import type { ChatWatchCard, ChatAction } from '@/lib/api';
 import { fetchWatchBySlug } from '@/lib/api';
 import { useCompare } from '@/stores/compareStore';
 
+// Kept identical to StarterPrompts in ChatService.cs — the backend pre-warms exactly this list,
+// so a prompt that differs by a character is a cache miss and answers slowly on first click.
 const EXAMPLE_PROMPTS = [
+  'Something elegant for a formal dinner',
+  'What should I wear to a summer wedding',
+  'Where do I start with my first serious watch',
   'Compare the Aquanaut and the Overseas',
   'Tell me about Patek Philippe',
-  'Sporty watches under $20,000',
-  'Something elegant for a formal dinner',
-  'Best diving watch from Rolex',
 ];
 
 const ASSISTANT_REVEAL_START_MS = 140;
