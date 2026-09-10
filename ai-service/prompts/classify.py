@@ -20,10 +20,15 @@ Intent classes:
 - "brand_history"        — user asks about a brand's history, heritage, founders, or background
 - "advice_request"       — user seeks a personal-fit judgment, suitability opinion, or decision help (often with personal context like age, gender, wrist, lifestyle, occasion)
 - "discovery"            — user wants to find or be recommended watches matching a brief
-- "non_watch"            — message is unrelated to watches or luxury goods
+- "non_watch"            — no watch recommendation or watch fact could answer the message
 - "unclear"              — cannot determine intent with confidence >= 0.6
 
 Rules:
+- Every message arrives inside a watch boutique, so read it in that setting. "What do I wear to
+  a job interview", "what to wear for dinner", "what should I put on for a night out" are asking
+  which watch suits the occasion, not which clothes — they are advice_request. An occasion, dress
+  code, or "what should I wear" question is never non_watch. Reserve non_watch for messages no
+  watch could answer at all: greetings, the weather, arithmetic, code, CVs, restaurants.
 - revision_request requires the session to show prior cards were already surfaced (cards > 0)
 - affirmative_followup applies only to very short responses (6 words or fewer) or explicit agreement language
 - expansion_request requires expansion language AND prior cards in session (cards > 0)
