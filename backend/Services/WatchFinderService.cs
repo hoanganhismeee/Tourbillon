@@ -159,7 +159,12 @@ public class WatchFinderService : IWatchFinderService
     };
 
     // Tiered routing thresholds (cosine distance: 0 = identical, 1 = orthogonal)
-    private const float SkipLlmDistance  = 0.20f; // Tier 2: strong match — skip LLM rerank
+    // Cosine distance below which the vector match is decisive enough to skip the LLM rerank.
+    // Configurable because it is the single lever between rerank cost and rerank benefit:
+    // raising it toward 1.0 turns the rerank off entirely, which is how the two can be measured
+    // apart — the eval cannot otherwise tell a weak retriever from a weak reranker.
+    private const float DefaultSkipLlmDistance = 0.20f;
+    private readonly float _skipLlmDistance;
     private const float MaxDistance      = 0.55f; // Tier 4: filter no-matches in DB
     private const float MinRelevance     = 0.35f; // reject results when best match is worse than this
 
@@ -193,6 +198,8 @@ public class WatchFinderService : IWatchFinderService
         _config = config ?? new ConfigurationBuilder().Build();
         _quota = quotaService;
         _classifier = classifier;
+        _skipLlmDistance = _config.GetValue<float?>("WatchFinderSettings:SkipLlmDistance")
+            ?? DefaultSkipLlmDistance;
     }
 
     /// Strips excluded brand IDs from inclusion lists and stores them for SQL NOT IN filtering.
@@ -471,7 +478,7 @@ public class WatchFinderService : IWatchFinderService
             // shown embeddings were off in production reported the opposite.
             SearchPath = AppendWidenedSearchPath(
                 queryEmbedding == null ? "sql_fallback_no_embedding"
-                    : bestDistance < SkipLlmDistance ? "vector" : "vector_llm_candidate",
+                    : bestDistance < _skipLlmDistance ? "vector" : "vector_llm_candidate",
                 widenedSearchKinds)
         };
 
@@ -484,7 +491,7 @@ public class WatchFinderService : IWatchFinderService
             return result;
         }
 
-        if (bestDistance >= SkipLlmDistance && (HasBrandIntent(queryIntent) || HasCollectionIntent(queryIntent)))
+        if (bestDistance >= _skipLlmDistance && (HasBrandIntent(queryIntent) || HasCollectionIntent(queryIntent)))
         {
             var structuredOrdered = candidates
                 .Select(w => new { Watch = w, Score = DirectSqlScore(normalizedQuery, w, queryIntent, false) })
@@ -503,13 +510,13 @@ public class WatchFinderService : IWatchFinderService
         }
 
         // Tier routing: Tier 2 = strong vector match (skip rerank), Tier 3 = LLM rerank
-        var tier = bestDistance < SkipLlmDistance ? 2 : 3;
+        var tier = bestDistance < _skipLlmDistance ? 2 : 3;
         _logger.LogInformation(
             "WatchFinder Tier{Tier} bestDistance={BestDistance:F3} candidates={CandidateCount}",
             tier, bestDistance, candidates.Count);
 
         // Tier 3: LLM rerank — skipped when vector match is already decisive (Tier 2)
-        if (bestDistance >= SkipLlmDistance)
+        if (bestDistance >= _skipLlmDistance)
         {
             await EnsureQuotaChargedAsync();
             var rerankCandidates   = candidates.Take(RerankLimit).ToList();
@@ -1603,27 +1610,50 @@ public class WatchFinderService : IWatchFinderService
             ? collections.Where(c => matchedBrandIds.Contains(c.BrandId)).ToList()
             : collections;
 
+        // A query token that merely appears inside a collection name is not the same as naming
+        // that collection: "small enough for a thin wrist" hits Master Ultra Thin on the single
+        // token "thin". Unscoped, that match then infers Jaeger-LeCoultre and hands a query that
+        // named nothing to the deterministic SQL tier. So with no brand pinned the match has to
+        // account for the whole name — every word of it, typos and all, which still admits
+        // "seamastr oversea" but not one word out of three. Once a brand is pinned the pool is
+        // that brand's shelf and a partial token is meaningful again: "Jaeger-LeCoultre ultra
+        // thin" means the collection, and the brand it implies is one the user already stated.
+        var brandIsPinned = matchedBrandIds.Count > 0;
+
         return pool
-            .Select(c => new { Collection = c, Score = CollectionTokenScore(c, normalisedQuery, tokens) })
-            .Where(x => x.Score >= 100)
+            .Select(c => new { Collection = c, Match = CollectionTokenScore(c, normalisedQuery, tokens) })
+            .Where(x => x.Match.Score >= 100 && (brandIsPinned || x.Match.CoversWholeName))
             .GroupBy(x => x.Collection.Id)
-            .Select(g => g.OrderByDescending(x => x.Score).First())
-            .OrderByDescending(x => x.Score)
+            .Select(g => g.OrderByDescending(x => x.Match.Score).First())
+            .OrderByDescending(x => x.Match.Score)
             .Take(4)
             .Select(x => x.Collection)
             .ToList();
     }
 
-    private static int CollectionTokenScore(Collection collection, string normalisedQuery, List<string> tokens)
+    /// Score plus whether every word of the collection name was accounted for. The caller needs
+    /// the second value because score alone cannot tell a fully-named single-word collection
+    /// ("seamastr" for Seamaster, 100) from one stray word of a three-word name ("thin" for
+    /// Master Ultra Thin, 200) — the weaker-looking match is the one that is actually meant.
+    private readonly record struct CollectionMatch(int Score, bool CoversWholeName);
+
+    private static CollectionMatch CollectionTokenScore(Collection collection, string normalisedQuery, List<string> tokens)
     {
+        // Whole-name containment runs on the compacted query, so it bypasses the stopword filter
+        // the token path applies. That matters for a name that is itself ordinary English:
+        // Greubel Forsey has a collection named "Collection", and "starting a collection" matched
+        // it outright. Require the name to carry at least one word a shopper would not use by
+        // accident before letting containment score at all.
         var collectionKey = QueryNormalizer.CompactText(collection.Name);
-        if (collectionKey.Length >= 4 && normalisedQuery.Contains(collectionKey))
-            return 300 + collectionKey.Length;
+        if (collectionKey.Length >= 4 && HasDistinctiveName(collection.Name)
+            && normalisedQuery.Contains(collectionKey))
+            return new CollectionMatch(300 + collectionKey.Length, true);
 
         var nameTokens = TokenizeQuery(collection.Name);
-        if (nameTokens.Count == 0) return 0;
+        if (nameTokens.Count == 0) return default;
 
         var score = 0;
+        var matchedNameTokens = new HashSet<string>();
         foreach (var queryToken in tokens)
         {
             foreach (var nameToken in nameTokens)
@@ -1631,10 +1661,13 @@ public class WatchFinderService : IWatchFinderService
                 if (nameToken == queryToken) score += 200;
                 else if (nameToken.StartsWith(queryToken) || queryToken.StartsWith(nameToken)) score += 120;
                 else if (IsFuzzyTokenMatch(nameToken, queryToken)) score += 100;
+                else continue;
+
+                matchedNameTokens.Add(nameToken);
             }
         }
 
-        return score;
+        return new CollectionMatch(score, matchedNameTokens.Count == nameTokens.Count);
     }
 
     private static void ApplyCollectionMatches(QueryIntent intent, IEnumerable<Collection> matches)
@@ -1712,6 +1745,13 @@ public class WatchFinderService : IWatchFinderService
             .SelectMany(brand => TokenizeQuery(brand.Name))
             .Where(token => token.Length >= 4)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    /// True when a collection name contains a word that is not ordinary shopping vocabulary.
+    /// Deliberately not TokenizeQuery: that drops tokens under four characters, which would
+    /// call a collection named "Oak" undistinctive. Only the stopword list decides here.
+    private static bool HasDistinctiveName(string name) =>
+        Regex.Split(name.ToLowerInvariant(), @"[^a-z0-9]+")
+            .Any(t => t.Length >= 3 && !CollectionTokenStopWords.Contains(t));
 
     private static List<string> TokenizeQuery(string text) =>
         Regex.Split(text.ToLowerInvariant(), @"[^a-z0-9]+")
