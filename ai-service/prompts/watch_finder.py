@@ -39,6 +39,10 @@ Key guidance:
 - maxPrice / minPrice: number in USD. "under 10k" → maxPrice: 10000. "exactly 5000" → both maxPrice and minPrice: 5000. null if not stated.
     Explicit numbers ALWAYS take priority. When no number is given but the phrasing still implies a budget bracket, translate it into the numeric intent that best fits a luxury watch boutique. Use your own judgement:
       - Low-entry / student / starter / accessible / cheap / affordable phrasing → a modest maxPrice that still fits Tourbillon's lower tier.
+      - A first purchase belongs in that same bracket however it is worded — "my first serious
+        watch", "where do I start", "first real watch", "starting a collection". Someone buying
+        their first piece is not shopping for a six-figure grail, so cap it rather than leaving
+        the field null and letting the top of the catalogue answer.
       - Mid-range / reasonable / without breaking the bank → a moderate maxPrice.
       - High-end / flagship / grail / ultra-luxury / no budget / money no object → set a high minPrice instead of a cap, so the search reaches the top of the catalogue.
     Leave both fields null only if the phrasing carries no budget cue at all.
