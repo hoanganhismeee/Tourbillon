@@ -465,8 +465,13 @@ public class WatchFinderService : IWatchFinderService
             OtherCandidates = candidates.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
             MatchDetails = [],
             ParsedIntent = null,
+            // The label has to say which stage actually produced these candidates. When the embed
+            // call fails the block above loads them from SQL, and calling that "vector" made the
+            // path telemetry describe a stage that never ran — the one signal that would have
+            // shown embeddings were off in production reported the opposite.
             SearchPath = AppendWidenedSearchPath(
-                bestDistance < SkipLlmDistance ? "vector" : "vector_llm_candidate",
+                queryEmbedding == null ? "sql_fallback_no_embedding"
+                    : bestDistance < SkipLlmDistance ? "vector" : "vector_llm_candidate",
                 widenedSearchKinds)
         };
 
@@ -491,7 +496,9 @@ public class WatchFinderService : IWatchFinderService
 
             result.Watches = structuredOrdered.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList();
             result.OtherCandidates = structuredOrdered.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList();
-            result.SearchPath = AppendWidenedSearchPath("vector_structured_skip_rerank", widenedSearchKinds);
+            result.SearchPath = AppendWidenedSearchPath(
+                queryEmbedding == null ? "sql_fallback_structured" : "vector_structured_skip_rerank",
+                widenedSearchKinds);
             return result;
         }
 
@@ -579,7 +586,12 @@ public class WatchFinderService : IWatchFinderService
                         {
                             Score = scoreMap[w.Id].Score
                         });
-                    result.SearchPath = AppendWidenedSearchPath("vector_llm_rerank", widenedSearchKinds);
+                    // Same rule as the candidate label above: rerank can run over SQL-loaded
+                    // candidates when embeddings are unavailable, and the path must not claim
+                    // a vector stage that did not happen.
+                    result.SearchPath = AppendWidenedSearchPath(
+                        queryEmbedding == null ? "sql_fallback_llm_rerank" : "vector_llm_rerank",
+                        widenedSearchKinds);
                 }
             }
         }
