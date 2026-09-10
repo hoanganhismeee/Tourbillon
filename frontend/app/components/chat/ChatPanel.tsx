@@ -19,6 +19,8 @@ const EXAMPLE_PROMPTS = [
   'Something elegant for a formal dinner',
   'What should I wear to a summer wedding',
   'Where do I start with my first serious watch',
+  'Sporty watches under $20,000',
+  'Best diving watch from Rolex',
   'Compare the Aquanaut and the Overseas',
   'Tell me about Patek Philippe',
 ];

@@ -122,16 +122,17 @@ public class ChatService
     // Mirrors the frontend EXAMPLE_PROMPTS (ChatPanel.tsx). Pre-warmed so the suggestions a user is
     // most likely to click return instantly. Keep in sync with the frontend list.
     //
-    // Weighted toward occasion and open-ended briefs, because those are the questions only the
-    // concierge can answer. A spec brief like "sporty watches under $20,000" routes straight to
-    // deterministic SQL, which is what the search bar already does better — advertising it here
-    // taught users to ask chat for something they should type into Smart Search. The two named
-    // entity prompts stay: comparison and brand background have no equivalent in the search bar.
+    // Ordered, not filtered. The concierge handles spec briefs too — they route to the same
+    // deterministic SQL the search bar uses — so those prompts stay. But the open-ended occasion
+    // questions come first, because they are the ones a user would not think to type into a search
+    // box, and the top chips are the ones that get clicked.
     internal static readonly string[] StarterPrompts =
     [
         "Something elegant for a formal dinner",
         "What should I wear to a summer wedding",
         "Where do I start with my first serious watch",
+        "Sporty watches under $20,000",
+        "Best diving watch from Rolex",
         "Compare the Aquanaut and the Overseas",
         "Tell me about Patek Philippe",
     ];
