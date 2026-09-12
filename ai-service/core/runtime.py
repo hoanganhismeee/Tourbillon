@@ -42,12 +42,20 @@ class Runtime:
     embed_base_url: str
     embed_model: str
     client: OpenAI
-    embed_client: Any  # OpenAI | None — None when no embed backend is available
+    embed_client: Any  # OpenAI | None — None when no HTTP embed backend is available
     cache: dict[str, dict] = field(default_factory=dict)
     model_ready: bool = False
     use_anthropic: bool = False
     anthropic_client: Any = None
     rate_limiter: Any = None  # RateLimiter | None
+    # SentenceTransformer | None — the model running inside this process, used when no HTTP
+    # embed backend is configured. Anthropic has no embeddings endpoint, so a deployment that
+    # uses Anthropic for generation has nothing to embed with unless one of these two exists.
+    local_embed_model: Any = None
+
+    @property
+    def has_embeddings(self) -> bool:
+        return self.embed_client is not None or self.local_embed_model is not None
 
 
 def _is_ollama_url(base_url: str) -> bool:
@@ -56,6 +64,39 @@ def _is_ollama_url(base_url: str) -> bool:
 
 def _is_anthropic_url(base_url: str) -> bool:
     return "anthropic.com" in base_url
+
+
+# Weights are baked into the production image at build time, so this is a load from disk
+# rather than a download. Kept module-level and lazy so importing runtime stays cheap.
+def _load_local_embed_model(model_name: str):
+    """Loads the embedding model into this process. Returns None if it cannot be loaded.
+
+    This is how production embeds at all: Anthropic has no embeddings endpoint, so a
+    deployment that uses Anthropic for generation has nothing to embed with unless the model
+    runs here. It is also the default locally, so both environments produce vectors in the
+    same space — a dev setup on a different embedding model measures something production
+    never does.
+
+    all-mpnet-base-v2 is 768-dimensional, matching the stored vector(768) columns, and needs
+    no remote code. nomic-embed-text is the same size but ships custom modeling code that
+    only loads under transformers 4.x, which would mean pinning two libraries to old majors.
+    """
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ImportError:
+        print("sentence-transformers not installed — no in-process embedding available.")
+        return None
+
+    try:
+        model = SentenceTransformer(model_name)
+        # Renamed in sentence-transformers 6; support both so a version bump is not a break.
+        dims = (model.get_embedding_dimension() if hasattr(model, "get_embedding_dimension")
+                else model.get_sentence_embedding_dimension())
+        print(f"Loaded in-process embedding model {model_name} ({dims} dimensions).")
+        return model
+    except Exception as exc:  # noqa: BLE001 — startup must not fail on a model problem
+        print(f"Could not load in-process embedding model {model_name}: {exc}")
+        return None
 
 
 def create_runtime() -> Runtime:
@@ -87,8 +128,16 @@ def create_runtime() -> Runtime:
     has_embed = embed_base_url_env is not None or not use_anthropic
     embed_client = OpenAI(base_url=embed_base_url, api_key=embed_api_key) if has_embed else None
 
-    if use_anthropic and not has_embed:
-        print("No embed backend configured — /embed will return 503. Set EMBED_BASE_URL + EMBED_API_KEY to enable.")
+    # With no HTTP embed backend, run the model here instead of giving up. This is the default
+    # in both environments, so dev and production embed into the same space; EMBED_BASE_URL
+    # remains the escape hatch for pointing at a hosted embeddings service instead.
+    local_embed_model = None
+    if not has_embed:
+        local_embed_model = _load_local_embed_model(
+            os.getenv("LOCAL_EMBED_MODEL", "sentence-transformers/all-mpnet-base-v2"))
+        if local_embed_model is None:
+            print("No embed backend configured — /embed will return 503. "
+                  "Set EMBED_BASE_URL + EMBED_API_KEY, or install sentence-transformers.")
 
     return Runtime(
         llm_base_url=llm_base_url,
@@ -101,6 +150,7 @@ def create_runtime() -> Runtime:
         use_anthropic=use_anthropic,
         anthropic_client=anthropic_client,
         rate_limiter=rate_limiter,
+        local_embed_model=local_embed_model,
     )
 
 
