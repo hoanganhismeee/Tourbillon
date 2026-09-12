@@ -31,11 +31,13 @@ public class QueryCacheService
     // with any other version are invisible to lookups, so a deploy invalidates its own stale
     // results without anyone remembering to call the admin clear endpoint. Overridable via
     // QueryCache:Version to force invalidation from configuration alone.
-    // v4: movement types match on a family rather than a substring, diameter and price bounds
-    // read "under"/"over" correctly, and a millimetre figure is no longer parsed as a price.
+    // v5: embeddings moved from nomic-embed-text to all-mpnet-base-v2, running in the
+    // ai-service process. Vectors from two models are incomparable, so every v4 entry is not
+    // stale but meaningless.
+    // v4: movement families, diameter and price bounds.
     // v3: dial colour became a deterministic filter dimension.
     // v2: generation moved from qwen2.5:7b to claude-haiku-4-5.
-    private const string DefaultPipelineVersion = "v4-bounds-dialcolour-haiku-nomic-768";
+    private const string DefaultPipelineVersion = "v5-mpnet768-haiku";
 
     // Backstop for drift no version bump accounts for — a repriced watch, a re-scrape. Entries
     // older than this are ignored even when the version still matches.
