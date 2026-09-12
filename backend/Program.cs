@@ -432,6 +432,21 @@ using (var scope = app.Services.CreateScope())
     {
         Console.WriteLine($"Query cache purge skipped: {ex.Message}");
     }
+
+    // Watch embeddings from a previous model are incomparable, not merely stale, so they are
+    // dropped here and refilled in the background — regenerating over a thousand chunks inline
+    // would hold up the boot the healthcheck is waiting on.
+    try
+    {
+        var removed = await scope.ServiceProvider
+            .GetRequiredService<WatchEmbeddingService>().PurgeForeignModelEmbeddingsAsync();
+        if (removed > 0)
+            BackgroundJob.Enqueue<WatchEmbeddingService>(service => service.GenerateMissingAsync());
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Embedding model check skipped: {ex.Message}");
+    }
 }
 
 // Recurring jobs — Hangfire stores the schedule in its own tables and re-registers

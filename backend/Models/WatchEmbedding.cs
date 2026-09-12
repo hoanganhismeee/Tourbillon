@@ -18,8 +18,15 @@ public class WatchEmbedding
     /// The text that was embedded — stored for debugging and re-embedding
     public string ChunkText { get; set; } = "";
 
-    /// 768-dim vector (nomic-embed-text). Null until embedding is generated.
+    /// 768-dim vector. Null until embedding is generated.
     public Vector? Embedding { get; set; }
+
+    /// Which embedding model produced this vector. Vectors from different models live in
+    /// different spaces and cannot be compared, so a model swap does not make results stale —
+    /// it makes them meaningless. VectorSearchAsync filters on this, which turns a swap into
+    /// "no vector hits, fall back to SQL" instead of "confident nonsense"; startup then purges
+    /// the foreign rows and a background job refills them.
+    public string EmbeddingModel { get; set; } = "";
 
     /// Feature this embedding serves. Allows filtering per-feature without a separate table.
     /// Values: "watch_finder" | "editorial" | "rag_chat"

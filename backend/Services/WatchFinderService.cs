@@ -1117,8 +1117,15 @@ public class WatchFinderService : IWatchFinderService
         // to an implicit JOIN, and the final Select projects only (WatchId, Distance)
         // so EF would drop any Include here anyway. Watches are reloaded with Brand
         // and Collection in the second query below.
+        // The model stamp is part of the base filter, not an optimisation. A vector from another
+        // model is not stale, it is in a different space, and cosine distance against it returns
+        // a confident wrong answer rather than no answer. Startup purges foreign vectors, but
+        // that purge is best-effort; this clause is what makes a failed purge degrade to "no
+        // vector hits, fall back to SQL" instead of nonsense.
         var q = _context.WatchEmbeddings
-            .Where(e => e.Feature == "watch_finder" && e.Embedding != null && e.Embedding.CosineDistance(queryVector) < MaxDistance);
+            .Where(e => e.Feature == "watch_finder"
+                && e.EmbeddingModel == WatchEmbeddingService.CurrentEmbeddingModel
+                && e.Embedding != null && e.Embedding.CosineDistance(queryVector) < MaxDistance);
 
         // Hard SQL pre-filters from parsed intent — eliminate irrelevant candidates entirely.
         // Price 0 = "Price on Request"; never exclude PoR watches from a price-filtered search.

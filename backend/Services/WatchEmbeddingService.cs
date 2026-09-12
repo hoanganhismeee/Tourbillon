@@ -18,6 +18,12 @@ public class WatchEmbeddingService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<WatchEmbeddingService> _logger;
 
+    // Bump when ai-service changes which model serves /embed. Vectors from two models are not
+    // stale relative to each other, they are incomparable — searching one space with the
+    // other's vector returns confident nonsense rather than nothing. Every write stamps this,
+    // VectorSearchAsync filters on it, and startup purges whatever no longer matches.
+    internal const string CurrentEmbeddingModel = "all-mpnet-base-v2";
+
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public WatchEmbeddingService(
@@ -28,6 +34,22 @@ public class WatchEmbeddingService
         _context = context;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+    }
+
+    /// Deletes every embedding a different model produced. Search already filters them out, so
+    /// this is about reclaiming the rows and triggering a refill, not about correctness.
+    public async Task<int> PurgeForeignModelEmbeddingsAsync()
+    {
+        var removed = await _context.WatchEmbeddings
+            .Where(e => e.EmbeddingModel != CurrentEmbeddingModel)
+            .ExecuteDeleteAsync();
+
+        if (removed > 0)
+            _logger.LogInformation(
+                "Removed {Removed} embeddings from a previous model; regenerating for {Model}",
+                removed, CurrentEmbeddingModel);
+
+        return removed;
     }
 
     /// Generates and upserts all 4 chunk embeddings for a single watch.
@@ -78,6 +100,7 @@ public class WatchEmbeddingService
                 WatchId = watchId,
                 ChunkType = chunks[i].ChunkType,
                 ChunkText = chunks[i].Text,
+                EmbeddingModel = CurrentEmbeddingModel,
                 Embedding = new Vector(embeddings[i]),
                 Feature = "watch_finder",
                 UpdatedAt = DateTime.UtcNow,
@@ -191,6 +214,7 @@ public class WatchEmbeddingService
                         WatchId = watch.Id,
                         ChunkType = chunks[j].ChunkType,
                         ChunkText = chunks[j].Text,
+                        EmbeddingModel = CurrentEmbeddingModel,
                         Embedding = new Vector(embeddings[offset + j]),
                         UpdatedAt = now,
                     });
@@ -284,6 +308,7 @@ public class WatchEmbeddingService
                     WatchId    = batch[j].Watch.Id,
                     ChunkType  = "editorial",
                     ChunkText  = batch[j].Text,
+                    EmbeddingModel = CurrentEmbeddingModel,
                     Embedding  = new Vector(embeddings[j]),
                     Feature    = "editorial",
                     UpdatedAt  = now,
