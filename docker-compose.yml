@@ -61,6 +61,8 @@ services:
       # is never loaded and the daily AI quotas would apply to local work after 5 searches.
       # Railway sets these to false; here they default open so evaluation runs are not truncated.
       WatchFinderSettings__DisableLimitInDev: ${WATCH_FINDER_DISABLE_LIMIT:-true}
+      # Raise toward 1.0 to disable the LLM rerank — used to measure the retriever alone.
+      WatchFinderSettings__SkipLlmDistance: ${SKIP_LLM_DISTANCE:-0.20}
       ChatSettings__DisableLimitInDev: ${CHAT_DISABLE_LIMIT:-true}
       Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
       Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
@@ -86,22 +88,22 @@ services:
     environment:
       FLASK_ENV: production
       # Generation defaults to the local model; set LLM_BASE_URL/LLM_MODEL/LLM_API_KEY in .env
-      # to run against Anthropic instead. Embeddings stay on the in-container Ollama either way,
-      # and EMBED_BASE_URL is passed explicitly because an unset value is what marks "no embed
-      # backend configured".
+      # to run against Anthropic instead.
       LLM_BASE_URL: ${LLM_BASE_URL:-http://localhost:11434/v1}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
       BASE_LLM_MODEL: ${BASE_LLM_MODEL:-qwen2.5:7b}
       LLM_API_KEY: ${LLM_API_KEY:-ollama}
-      EMBED_BASE_URL: ${EMBED_BASE_URL:-http://localhost:11434/v1}
-      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
-      EMBED_API_KEY: ${EMBED_API_KEY:-ollama}
+      # Embeddings run inside the ai-service process, the same as production — a dev setup on
+      # a different embedding model would measure a pipeline production never runs. Set
+      # EMBED_BASE_URL to point at a hosted embeddings service instead.
+      EMBED_BASE_URL: ${EMBED_BASE_URL:-}
+      LOCAL_EMBED_MODEL: ${LOCAL_EMBED_MODEL:-sentence-transformers/all-mpnet-base-v2}
       OLLAMA_FLASH_ATTENTION: 1
       OLLAMA_KEEP_ALIVE: -1
-      # Two models are in the hot path — the generation model and nomic-embed-text — and a
-      # single search alternates between them. At a limit of 1 ollama evicted and reloaded on
-      # every alternation, which is where most of the embed and parse latency was going.
-      # Together they fit the reserved VRAM (~4.9 GB + ~0.3 GB).
+      # Was raised from 1 when generation and nomic-embed-text both ran here and a single search
+      # alternated between them, evicting and reloading each time. Embeddings have since moved
+      # in-process, so ollama only serves generation and this headroom is spare — entrypoint.sh
+      # still pulls and warms nomic-embed-text, and dropping that is the remaining cleanup.
       OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-2}
     healthcheck:
       # Sentinel file written by entrypoint.sh only after both LLM and embed models are warm.
