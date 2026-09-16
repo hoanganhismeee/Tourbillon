@@ -18,7 +18,8 @@ node eval/run-eval.mjs --scope=semantic --arms=keyword,concierge         # open-
 ```
 
 Set `WatchFinderSettings:DisableLimitInDev=true` first, otherwise the daily quota rejects the run
-after 5 queries. A full run is ~60 queries per arm, sequential, so allow a few minutes.
+after 5 queries. Each scope holds 50 queries and runs sequentially per arm. The `vector` and
+`hybrid` arms embed every query in-process, which takes a few seconds each on CPU.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -68,15 +69,29 @@ with the definition instead of having to trust a hand-picked list.
 for the office" is decided from the brief alone. Labelling by eyeballing what the pipeline
 returned would score the pipeline against itself.
 
+The set is 100 queries, split evenly by the subsystem that owns them:
+
+| Scope | Owner | n | Categories |
+|---|---|---|---|
+| `spec` | Smart Search | 50 | reference, brand, brand alias, collection, brand + budget, budget, material, size, dial, complication, water resistance, movement, style, exclusion, compound |
+| `semantic` | concierge | 50 | occasion, persona, aesthetic, lifestyle, collector, fit, budget with a vibe |
+
+The split follows what the query needs, not how it is worded. "Something that can time a lap" is a
+chronograph and "a proper strong diver" is a water-resistance floor, so both are `spec`: resolving
+everyday wording to a facet is the parser's vocabulary job. `semantic` keeps only briefs that name no
+facet at all, where the label is a judgement a knowledgeable salesperson would make.
+
 Two sources feed the set:
 
-- `HANDWRITTEN` — ~30 queries where relevance is a judgement call: occasion, taste, negation,
-  compound briefs. These are the queries a keyword index structurally cannot serve.
+- `HANDWRITTEN` — 89 queries, each with a comment recording why its label reads the brief the way
+  it does, so a reviewer can argue with the reasoning rather than with a list of ids.
 - `buildGenerated` — mechanical facet queries derived from the catalogue at runtime (exact
   reference lookup, brand, brand + budget, size band, material, dial, complication). Exact by
-  construction, seeded so the sample is identical on every run.
+  construction, seeded so the sample is identical on every run, and capped by `GENERATED_CAPS`
+  so repetitive facet lookups do not crowd out the handwritten wording.
 
-`--validate` rejects three kinds of bad label before scoring: **empty** (no catalogue match, so
+`--validate` rejects four kinds of bad label before scoring: **invalid_key** (a truth key the
+matcher does not read, which would silently widen the label), **empty** (no catalogue match, so
 the label is wrong), **too_broad** (matches over `--max-share` of the catalogue, so any arm scores
 well and the metric discriminates nothing), and **thin** (under 2 matches, so recall jumps between
 0 and 0.5 on a single result).
@@ -98,7 +113,7 @@ stay in the catalogue but can never satisfy a budget constraint, because their p
 Recall and precision trade off against each other, which is why both are reported. A pipeline that
 returns the entire catalogue has perfect recall and useless precision.
 
-**Why the confidence interval matters.** With ~60 queries a point estimate is noisy. The harness
+**Why the confidence interval matters.** With 50 queries per scope a point estimate is noisy. The harness
 reports a bootstrap interval on recall and a **paired** bootstrap on the arm-to-arm delta. Pairing
 (scoring both arms on the same queries and bootstrapping the per-query differences) removes
 query-difficulty variance, which would otherwise swamp the effect being measured. A delta whose
@@ -112,8 +127,9 @@ Four blocks, in the order they matter:
 1. **Golden set** — label health. Fix anything flagged before believing the scores.
 2. **Retrieval quality** — the headline table, plus recall broken down by category. The breakdown
    is where the interesting story is: expect the arms to be close on `reference` and `brand`
-   lookups, where a keyword index is already adequate, and far apart on `descriptor` and
-   `compound`, which is what the vector and rerank stages are actually paying for.
+   lookups, where a keyword index is already adequate, and far apart on plain-language facets,
+   compound briefs and the semantic categories, which is what everything beyond keyword matching
+   is paying for.
 3. **Path distribution** — which internal path served each query, measured per request rather than
    assumed from the code. This is the evidence behind any claim about keeping queries off the LLM.
 4. **smart vs keyword** — the paired delta, then every query where the new pipeline is *worse*.
@@ -135,7 +151,7 @@ because it bounds how much the number can be trusted. Name the baseline, because
 comparison is not a measurement.
 
 If the paired interval crosses zero, the honest move is to say the pipeline matched the baseline
-on quality while doing something else better — latency, cost, or the descriptor category — rather
+on quality while doing something else better — latency, cost, or one scope — rather
 than quoting a delta the data does not support.
 
 ## Extending it

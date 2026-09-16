@@ -80,12 +80,25 @@ Ba lý do:
 
 ### Hai nguồn câu hỏi
 
-`HANDWRITTEN` — khoảng 30 câu mà việc đúng/sai là một phán đoán: dịp dùng, gu, phủ định.
-Đây là loại mà keyword index về bản chất không phục vụ được.
+Bộ câu hỏi có 100 câu, chia đều theo hệ thống phụ trách:
+
+| Scope | Phụ trách | n | Category |
+|---|---|---|---|
+| `spec` | Smart Search | 50 | reference, brand, brand alias, collection, brand + budget, budget, material, size, dial, complication, water resistance, movement, style, exclusion, compound |
+| `semantic` | concierge | 50 | occasion, persona, aesthetic, lifestyle, collector, fit, budget kèm gu |
+
+Chia theo **câu hỏi cần gì**, không theo cách diễn đạt. "Something that can time a lap" là
+chronograph, "a proper strong diver" là ngưỡng water resistance — cả hai thuộc `spec`, vì dịch
+chữ thường ngày sang facet là việc của lớp từ vựng trong parser. `semantic` chỉ giữ những câu
+không gọi tên facet nào, nơi nhãn là phán đoán của một người bán hàng am hiểu.
+
+`HANDWRITTEN` — 89 câu, mỗi câu có comment ghi lý do nhãn đọc brief theo cách đó, để người
+review cãi được với lập luận thay vì với một danh sách id.
 
 `buildGenerated` — câu hỏi cơ học sinh tự động từ catalogue lúc chạy: tra mã tham chiếu,
 brand, brand + ngân sách, khoảng kích cỡ, chất liệu, màu mặt số, complication. Chính xác
-theo cấu tạo, và dùng seeded PRNG nên hai lần chạy cho ra cùng một bộ mẫu.
+theo cấu tạo, dùng seeded PRNG nên hai lần chạy cho ra cùng một bộ mẫu, và bị giới hạn bởi
+`GENERATED_CAPS` để phần tra cứu lặp lại không lấn át câu viết tay.
 
 ---
 
@@ -108,7 +121,7 @@ dù hệ thống hoàn hảo.
 Nghĩa là con số recall thô trộn lẫn hai thứ khác nhau: hệ thống xếp hạng tốt đến đâu, và
 nhãn rộng đến đâu.
 
-Trên bộ query này, **trần là 0.463**. Một hệ thống hoàn hảo đạt 0.463, không phải 1.000.
+Trên bộ 61 câu cũ, **trần là 0.463**. Một hệ thống hoàn hảo đạt 0.463, không phải 1.000.
 
 Nên harness in ra cả trần và tỉ lệ đạt được:
 
@@ -124,7 +137,7 @@ tế là **0% → 100% mức khả thi**.
 
 ### Vì sao cần khoảng tin cậy
 
-Với 61 câu hỏi, một điểm số đơn lẻ là nhiễu. Lấy 61 câu khác có thể ra số khác.
+Với 50 câu mỗi scope, một điểm số đơn lẻ là nhiễu. Lấy 50 câu khác có thể ra số khác.
 
 **Bootstrap**: lấy mẫu lại có hoàn lại từ chính các điểm số đó, 2000 lần, mỗi lần tính trung
 bình → được phân phối của trung bình → lấy phân vị 2.5% và 97.5%.
@@ -140,10 +153,11 @@ hay dễ — thứ nếu không sẽ nhấn chìm hiệu ứng cần đo.
 
 ## 4. Kiểm tra sức khoẻ nhãn
 
-Nhãn xấu làm phép đo vô nghĩa. `--validate` loại ba loại trước khi chấm:
+Nhãn xấu làm phép đo vô nghĩa. `--validate` loại bốn loại trước khi chấm:
 
 | Trạng thái | Nghĩa là | Vì sao loại |
 |---|---|---|
+| `invalid_key` | Nhãn dùng key mà matcher không đọc | Key lạ bị bỏ qua im lặng, nhãn rộng hơn chữ viết |
 | `empty` | Khớp 0 chiếc | Nhãn sai, không phải hệ thống sai |
 | `too_broad` | Khớp hơn 25% catalogue | Trả bừa cũng trúng, không phân biệt được arm nào tốt hơn |
 | `thin` | Dưới 2 chiếc | Recall nhảy giữa 0 và 0.5 tuỳ một kết quả duy nhất |
@@ -296,10 +310,10 @@ Bộ đo này đo **"search có trả về đúng thứ khớp spec không"**. N
 **"người dùng có hài lòng không"**. Hai thứ khác nhau, và chỉ A/B test với người thật mới đo
 được cái thứ hai.
 
-n = 61. Đủ để phát hiện hiệu ứng lớn, không đủ cho hiệu ứng nhỏ. Đó là lý do mọi delta đều
-kèm khoảng tin cậy.
+n = 50 mỗi scope. Đủ để phát hiện hiệu ứng lớn, không đủ cho hiệu ứng nhỏ. Đó là lý do mọi
+delta đều kèm khoảng tin cậy.
 
-Relevance mang tính chủ quan, và điều đó không giải được. Cách hạn chế: hai phần ba bộ query
-là loại có đáp án khách quan và sinh tự động; phần chủ quan tách riêng, báo điểm riêng; và vì
+Relevance mang tính chủ quan, và điều đó không giải được. Cách hạn chế: nửa `spec` có đáp án
+khách quan vì quy về facet; nửa `semantic` chủ quan, được tách riêng và báo điểm riêng; và vì
 cả hai arm chấm bằng cùng bộ nhãn, thiên lệch trong định nghĩa triệt tiêu ở phép trừ — nên
 con số đáng quote là **delta**, không phải giá trị tuyệt đối.
