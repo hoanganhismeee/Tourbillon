@@ -7,7 +7,7 @@
 //   node eval/run-eval.mjs --inspect            # what the catalogue actually contains
 //   node eval/run-eval.mjs --validate           # label health, no API calls to the search arms
 //   node eval/run-eval.mjs                      # full run, both arms
-//   node eval/run-eval.mjs --arms=keyword,vector,hybrid  # first arm is the baseline for every delta
+//   node eval/run-eval.mjs --arms=bm25,keyword,vector,hybrid,smart  # first arm is the baseline for every delta
 //   node eval/run-eval.mjs --scope=spec          # only the facet queries the parser owns
 //   node eval/run-eval.mjs --scope=semantic --arms=keyword,concierge   # only open-ended briefs
 //   node eval/run-eval.mjs --from=eval/results/eval-<stamp>.json   # re-print a saved run, no API calls
@@ -22,7 +22,6 @@ import { fileURLToPath } from 'node:url';
 
 import { loadCatalogue, summariseFacets } from './catalogue.mjs';
 import { HANDWRITTEN, buildGenerated, validateQueries, scopeOf } from './queries.mjs';
-import { reciprocalRankFusion } from './fusion.mjs';
 import {
   recallAtK, precisionAtK, reciprocalRank, ndcgAtK, hitAtK,
   mean, percentile, bootstrapCI, pairedBootstrap, recallCeiling, significance,
@@ -42,9 +41,6 @@ const ARMS = String(args.arms ?? 'keyword,smart').split(',').map(s => s.trim()).
 // semantic (open-ended briefs the concierge owns), or all. Scoring an arm on the queries the
 // other subsystem now serves measures a scope decision, not retrieval quality.
 const SCOPE = String(args.scope ?? 'all').trim();
-// Rank constant for the hybrid arm's fusion. 60 comes from the original RRF paper; it is a flag
-// because it is the one knob deciding whether agreement or a single list's top hit wins.
-const RRF_K = Number(args['rrf-k'] ?? 60);
 const LIMIT = args.limit ? Number(args.limit) : null;
 const PASSES = Number(args.passes ?? 1);
 const DELAY_MS = Number(args.delay ?? 0);
@@ -57,8 +53,8 @@ const MAX_SHARE = Number(args['max-share'] ?? 0.25);
 // that endpoint exposes. Nothing else in the harness knows which arm it is scoring.
 
 const ARM_IMPLS = {
-  // Existing full-text/fuzzy search. This is the honest "before" number: what the site
-  // returned before any embedding or LLM work, not a strawman built for the comparison.
+  // The site's own search bar: substring matching with a hand-built score. Kept as the
+  // "what the site shipped" number; bm25 is the standard lexical baseline to compare against.
   keyword: async query => {
     const res = await fetch(`${BASE_URL}/api/search?q=${encodeURIComponent(query)}`,
       { signal: AbortSignal.timeout(60_000) });
@@ -113,36 +109,34 @@ const ARM_IMPLS = {
     };
   },
 
-  // The retriever with nothing in front of it: embed the query, rank by cosine distance, return.
-  // No parser, no rerank, no cache. This is what the vector index is worth on its own, and the
-  // number the hybrid arm has to beat before fusion is worth shipping.
-  vector: async query => {
-    const res = await fetch(`${BASE_URL}/api/watch/find`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, mode: 'vector' }),
-      signal: AbortSignal.timeout(180_000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = await res.json();
-    return { ids: (body.watches ?? []).map(w => w.id), meta: { searchPath: body.searchPath ?? 'vector_only' } };
-  },
+  // The three retrieval designs below run with no parser, no rerank and no cache, so each is
+  // measured on its own terms rather than through whatever the full pipeline routed it to.
 
-  // Lexical and vector rankings fused by reciprocal rank. Only the positions are used: an ILike
-  // relevance score and a cosine distance share no scale, and normalising them would invent one.
-  // Both requests run in parallel, so the arm's latency is the slower of the two, not their sum.
-  hybrid: async query => {
-    const [lexical, vector] = await Promise.all([ARM_IMPLS.keyword(query), ARM_IMPLS.vector(query)]);
-    return {
-      ids: reciprocalRankFusion([lexical.ids, vector.ids], { k: RRF_K }),
-      meta: {
-        searchPath: `hybrid_rrf_k${RRF_K}`,
-        lexicalReturned: lexical.ids.length,
-        vectorReturned: vector.ids.length,
-      },
-    };
-  },
+  // BM25F over brand, collection, reference, description and spec values: the standard lexical
+  // baseline, as opposed to the site's substring search in the keyword arm.
+  bm25: query => findWithMode(query, 'bm25'),
+
+  // Cosine similarity over watch embeddings: what the vector index is worth alone.
+  vector: query => findWithMode(query, 'vector'),
+
+  // BM25F and vector rankings fused by reciprocal rank in the backend. Only positions are
+  // combined, because a BM25 score and a cosine distance share no scale.
+  hybrid: query => findWithMode(query, 'hybrid'),
 };
+
+/// Calls the finder with a retrieval mode. The backend refuses an unknown mode, so a typo here
+/// fails loudly instead of quietly scoring the full pipeline under the wrong name.
+async function findWithMode(query, mode) {
+  const res = await fetch(`${BASE_URL}/api/watch/find`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, mode }),
+    signal: AbortSignal.timeout(180_000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const body = await res.json();
+  return { ids: (body.watches ?? []).map(w => w.id), meta: { searchPath: body.searchPath ?? mode } };
+}
 
 // -- Main ---------------------------------------------------------------------
 
@@ -335,9 +329,9 @@ ${BOLD}Recall@${K} by category${RESET} ${DIM}(share of ceiling in brackets)${RES
 /// Which internal path served each query. This is the number behind any claim about
 /// keeping queries off the LLM: it is measured per request, not assumed from the code.
 function printPaths(results) {
-  // Whichever arm reports a path. smart is the one with tiers worth attributing; vector and
-  // hybrid report a single constant path, which still makes the latency split readable.
-  const rows = results.smart ?? results.vector ?? results.hybrid;
+  // Whichever arm reports a path. smart is the one with tiers worth attributing; hybrid reports
+  // when one retriever contributed nothing, which is the failure worth seeing.
+  const rows = results.smart ?? results.hybrid ?? results.vector;
   if (!rows) return;
   const paths = groupBy(rows.filter(r => r.searchPath), r => r.searchPath);
   const total = Object.values(paths).reduce((a, r) => a + r.length, 0);

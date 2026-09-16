@@ -13,8 +13,9 @@ make up                                    # backend must be reachable
 node eval/run-eval.mjs --inspect           # what the catalogue actually contains
 node eval/run-eval.mjs --validate          # label health only, no search calls
 node eval/run-eval.mjs                     # full run, both arms
-node eval/run-eval.mjs --scope=spec --arms=keyword,smart,vector,hybrid   # facet queries
-node eval/run-eval.mjs --scope=semantic --arms=keyword,concierge         # open-ended briefs
+node eval/run-eval.mjs --scope=spec --arms=bm25,keyword,vector,hybrid,smart         # facet queries
+node eval/run-eval.mjs --scope=semantic --arms=bm25,keyword,vector,hybrid,concierge  # open-ended briefs
+node eval/run-eval.mjs --from=eval/results/eval-<stamp>.json   # re-print a saved run, no API calls
 ```
 
 Set `WatchFinderSettings:DisableLimitInDev=true` first, otherwise the daily quota rejects the run
@@ -24,15 +25,15 @@ after 5 queries. Each scope holds 50 queries and runs sequentially per arm. The 
 | Flag | Default | Purpose |
 |---|---|---|
 | `--base-url` / `BASE_URL` | `http://localhost:5248` | Target backend |
-| `--arms` | `keyword,smart` | Which arms to score: `keyword`, `vector`, `hybrid`, `smart`, `concierge` |
+| `--arms` | `keyword,smart` | Arms to score: `bm25`, `keyword`, `vector`, `hybrid`, `smart`, `concierge`. The first is the baseline every other arm is compared against |
 | `--scope` | `all` | `spec` for facet queries, `semantic` for open-ended briefs |
-| `--rrf-k` | `60` | Rank constant for the `hybrid` arm's fusion |
 | `--k` | `10` | Cutoff for recall, MRR, nDCG, hit rate |
 | `--pk` | `5` | Cutoff for precision |
 | `--max-share` | `0.25` | Reject labels matching more than this share of the catalogue |
 | `--passes` | `1` | Repeat the set; pass 2 shows the semantic cache warm |
 | `--limit` | all | Score only the first N queries (smoke runs) |
 | `--delay` | `0` | Milliseconds between requests |
+| `--from` | none | Re-print the report from a saved JSON run instead of calling any arm |
 
 Each run writes a full per-query JSON record to `eval/results/`.
 
@@ -40,17 +41,23 @@ Each run writes a full per-query JSON record to `eval/results/`.
 
 | Arm | What it calls | What it isolates |
 |---|---|---|
-| `keyword` | `GET /api/search` | Lexical matching over name, description, brand and collection. |
+| `bm25` | `POST /api/watch/find` with `mode=bm25` | BM25F lexical ranking: the standard lexical baseline. |
+| `keyword` | `GET /api/search` | The site's search bar: substring matching with a hand-built score. |
 | `vector` | `POST /api/watch/find` with `mode=vector` | The embedding index alone: no parser, no rerank, no cache. |
-| `hybrid` | both of the above, fused | Whether combining the two rankings beats either on its own. |
+| `hybrid` | `POST /api/watch/find` with `mode=hybrid` | BM25F and vector rankings fused by reciprocal rank in the backend. |
 | `smart` | `POST /api/watch/find` | The deterministic parser that serves facet queries. |
 | `concierge` | `POST /api/chat/message` | The chat path, which owns the open-ended briefs. |
 
-`hybrid` fuses the lexical and vector rankings with reciprocal rank fusion: an id scores
-`1 / (k + rank)` in each list it appears in, and the scores are summed. Only positions are used,
-because an ILike relevance score and a cosine distance share no scale and normalising them would
-invent one. `k` sets how much one first place is worth against agreement between both retrievers:
-small `k` lets a single top hit dominate, large `k` rewards ids both lists returned.
+`bm25` ranks with BM25F (`backend/Services/Bm25WatchIndex.cs`), an in-memory index over brand,
+collection and styles, reference, description and spec values. Unlike the keyword arm it weighs
+rare terms above common ones (IDF), stops rewarding a term after a few repetitions (saturation) and
+discounts long fields (length normalisation). Brand aliases are indexed as synonyms.
+
+`hybrid` fuses the BM25F and vector rankings with reciprocal rank fusion
+(`backend/Services/ReciprocalRankFusion.cs`): an id scores `1 / (k + rank)` in each list it appears
+in, and the scores are summed. Only positions are used, because a BM25 score and a cosine distance
+share no scale and normalising them would invent one. `k` is 60, the value from the original paper:
+large enough that ids both retrievers agree on outrank a single retriever's first place.
 
 `--scope` is what keeps the comparison fair once search and chat own different query types:
 `spec` for the facet queries the parser serves, `semantic` for the briefs the concierge serves.

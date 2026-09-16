@@ -26,9 +26,10 @@ lộ ra khi đọc code hay dùng thử.
 
 | Arm | Gọi gì | Vai trò |
 |---|---|---|
-| `keyword` | `GET /api/search` | Baseline lexical — khớp chuỗi trên tên, mô tả, brand, collection |
+| `bm25` | `POST /api/watch/find` (`mode=bm25`) | Baseline lexical chuẩn ngành — BM25F |
+| `keyword` | `GET /api/search` | Ô search của site — khớp chuỗi con với bảng điểm tự viết |
 | `vector` | `POST /api/watch/find` (`mode=vector`) | Chỉ riêng vector index: không parser, không rerank, không cache |
-| `hybrid` | cả hai ở trên, fuse bằng RRF | Gộp hai bảng xếp hạng có hơn từng cái riêng lẻ không |
+| `hybrid` | `POST /api/watch/find` (`mode=hybrid`) | BM25F và vector, fuse bằng RRF trong backend |
 | `smart` | `POST /api/watch/find` | Deterministic parser, phục vụ câu hỏi dạng facet |
 | `concierge` | `POST /api/chat/message` | Chat, phụ trách câu hỏi mở |
 
@@ -44,6 +45,24 @@ gu, sự phù hợp) — phần concierge phụ trách.
 Chấm một arm trên nửa nó không còn phục vụ thì con số thu được nói về **quyết định phạm vi**, không
 phải về chất lượng retrieval. `--scope` sinh ra để tránh đúng nhầm lẫn đó.
 
+### BM25 và BM25F
+
+Công thức chấm điểm lexical chuẩn của ngành, khác ô search cũ ở ba điểm:
+
+| | Ô search cũ (`keyword`) | BM25 |
+|---|---|---|
+| **IDF** — từ hiếm nặng hơn từ phổ biến | không: "watch" nặng ngang "tourbillon" | có |
+| **Saturation** — lặp 10 lần không đáng gấp 10 | không | có (`k1 = 1.2`) |
+| **Length normalisation** — field dài không tự thắng | không | có (`b` theo từng field) |
+
+**BM25F** là biến thể nhiều field: tần suất ở mỗi field được nhân trọng số và chuẩn hoá độ dài,
+cộng lại, rồi **mới** bão hoà một lần. Ở đây có năm field: brand (kèm alias như JLC), collection
+(kèm style như sport, diver), reference, description, giá trị trong specs. Trọng số đặt theo bản
+chất field, không tinh chỉnh trên bộ đo — tinh chỉnh trên chính bộ dùng để chấm là tự chấm điểm mình.
+
+Catalogue chỉ vài trăm chiếc nên index nằm trong memory (`backend/Services/Bm25WatchIndex.cs`),
+không cần Elasticsearch hay extension Postgres, và tự dựng lại mỗi 10 phút.
+
 ### RRF (reciprocal rank fusion)
 
 Cách gộp hai bảng xếp hạng mà không cần hai điểm số cùng thang đo:
@@ -52,8 +71,9 @@ Cách gộp hai bảng xếp hạng mà không cần hai điểm số cùng than
 score(id) = tổng trên từng list của   1 / (k + vị trí trong list)
 ```
 
-Chỉ dùng **vị trí**, không dùng điểm. Lý do: điểm relevance của ILike và cosine distance không cùng
-đơn vị — chuẩn hoá chúng về một thang là tự bịa ra một thang không tồn tại.
+Chỉ dùng **vị trí**, không dùng điểm. Lý do: điểm BM25 và cosine distance không cùng đơn vị —
+chuẩn hoá chúng về một thang là tự bịa ra một thang không tồn tại. Code nằm ở
+`backend/Services/ReciprocalRankFusion.cs`.
 
 `k` quyết định một vị trí số 1 đáng giá bao nhiêu so với sự đồng thuận: k nhỏ thì top 1 của một list
 áp đảo, k lớn thì id nào cả hai list cùng trả về sẽ thắng. Mặc định 60 là giá trị từ bài báo gốc.
@@ -200,8 +220,7 @@ docker compose exec -T redis sh -lc \
 | `queries.mjs` | Bộ câu hỏi có nhãn — handwritten + generated. |
 | `metrics.mjs` | Recall, precision, MRR, nDCG, percentile, bootstrap, trần recall. |
 | `metrics.test.mjs` | Test cho metrics. |
-| `fusion.mjs` | RRF — gộp nhiều bảng xếp hạng thành một. |
-| `fusion.test.mjs` | Test cho RRF. |
+| `queries.test.mjs` | Test cấu trúc bộ câu hỏi: key hợp lệ, scope đã đăng ký. |
 | `spec-questions.mjs` | Đo độ chính xác khi concierge trả lời câu hỏi về spec. |
 | `grading.mjs` | Logic chấm điểm thuần cho spec-questions. |
 | `grading.test.mjs` | Test cho grader. |
@@ -227,14 +246,16 @@ node eval/run-eval.mjs --inspect           # catalogue thật có gì
 node eval/run-eval.mjs --validate          # sức khoẻ nhãn, không gọi search
 node eval/run-eval.mjs                     # keyword + smart
 node eval/run-eval.mjs --arms=concierge    # chỉ chat
-node eval/run-eval.mjs --scope=spec --arms=keyword,smart,vector,hybrid   # nhóm facet
-node eval/run-eval.mjs --scope=semantic --arms=keyword,concierge         # nhóm câu hỏi mở
+node eval/run-eval.mjs --scope=spec --arms=bm25,keyword,vector,hybrid,smart          # nhóm facet
+node eval/run-eval.mjs --scope=semantic --arms=bm25,keyword,vector,hybrid,concierge   # nhóm câu hỏi mở
+node eval/run-eval.mjs --from=eval/results/eval-<stamp>.json   # in lại một lần chạy, không gọi API
 
 node eval/spec-questions.mjs --out=before   # đo trước khi sửa
 node eval/spec-questions.mjs --out=after    # đo sau
 node eval/spec-questions.mjs --compare=before,after
 
-node --test eval/metrics.test.mjs eval/grading.test.mjs eval/fusion.test.mjs   # test của bộ đo
+node --test eval/metrics.test.mjs eval/grading.test.mjs eval/queries.test.mjs  # test của bộ đo
+cd backend.Tests && dotnet test --filter "FullyQualifiedName~Bm25|FullyQualifiedName~ReciprocalRank"  # BM25, RRF
 ```
 
 Cần `WatchFinderSettings:DisableLimitInDev=true`, không thì quota chặn sau 5 câu.
@@ -246,8 +267,9 @@ Cần `WatchFinderSettings:DisableLimitInDev=true`, không thì quota chặn sau
 | Arm | Chi phí | Vì sao |
 |---|---|---|
 | `keyword` | $0 | Không gọi model |
+| `bm25` | $0 | Index trong memory của backend |
 | `vector` | $0 | Embedding chạy in-process trong ai-service |
-| `hybrid` | $0 | Hai request trên, fuse ở phía harness |
+| `hybrid` | $0 | BM25F + vector, fuse trong backend |
 | `smart` | ~$0.05 | Chỉ ~5–16% query chạm LLM |
 | `concierge` | ~$0.30 | Mọi lượt đều gọi model để viết lời |
 | `spec-questions` | ~$0.12 | 24 lượt chat |
