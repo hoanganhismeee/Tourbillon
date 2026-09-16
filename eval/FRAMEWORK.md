@@ -26,12 +26,37 @@ lộ ra khi đọc code hay dùng thử.
 
 | Arm | Gọi gì | Vai trò |
 |---|---|---|
-| `keyword` | `GET /api/search` | Baseline — hệ thống trước khi có AI |
-| `smart` | `POST /api/watch/find` | Pipeline đầy đủ |
-| `concierge` | `POST /api/chat/message` | Chat, dùng chung retrieval engine |
+| `keyword` | `GET /api/search` | Baseline lexical — khớp chuỗi trên tên, mô tả, brand, collection |
+| `vector` | `POST /api/watch/find` (`mode=vector`) | Chỉ riêng vector index: không parser, không rerank, không cache |
+| `hybrid` | cả hai ở trên, fuse bằng RRF | Gộp hai bảng xếp hạng có hơn từng cái riêng lẻ không |
+| `smart` | `POST /api/watch/find` | Deterministic parser, phục vụ câu hỏi dạng facet |
+| `concierge` | `POST /api/chat/message` | Chat, phụ trách câu hỏi mở |
 
 Chênh lệch giữa `smart` và `keyword` là giá trị AI mang lại. Chênh lệch giữa `concierge` và
 `smart` là chi phí riêng của tầng chat — vì cả hai gọi cùng một `WatchFinderService`.
+
+### Scope
+
+**Scope = nửa nào của bộ câu hỏi.** `spec` là câu hỏi dạng facet (brand, giá, kích cỡ, chất liệu,
+màu mặt số, phủ định) — phần deterministic parser phụ trách. `semantic` là câu hỏi mở (dịp dùng,
+gu, sự phù hợp) — phần concierge phụ trách.
+
+Chấm một arm trên nửa nó không còn phục vụ thì con số thu được nói về **quyết định phạm vi**, không
+phải về chất lượng retrieval. `--scope` sinh ra để tránh đúng nhầm lẫn đó.
+
+### RRF (reciprocal rank fusion)
+
+Cách gộp hai bảng xếp hạng mà không cần hai điểm số cùng thang đo:
+
+```
+score(id) = tổng trên từng list của   1 / (k + vị trí trong list)
+```
+
+Chỉ dùng **vị trí**, không dùng điểm. Lý do: điểm relevance của ILike và cosine distance không cùng
+đơn vị — chuẩn hoá chúng về một thang là tự bịa ra một thang không tồn tại.
+
+`k` quyết định một vị trí số 1 đáng giá bao nhiêu so với sự đồng thuận: k nhỏ thì top 1 của một list
+áp đảo, k lớn thì id nào cả hai list cùng trả về sẽ thắng. Mặc định 60 là giá trị từ bài báo gốc.
 
 ### Nhãn (label)
 
@@ -161,6 +186,8 @@ docker compose exec -T redis sh -lc \
 | `queries.mjs` | Bộ câu hỏi có nhãn — handwritten + generated. |
 | `metrics.mjs` | Recall, precision, MRR, nDCG, percentile, bootstrap, trần recall. |
 | `metrics.test.mjs` | Test cho metrics. |
+| `fusion.mjs` | RRF — gộp nhiều bảng xếp hạng thành một. |
+| `fusion.test.mjs` | Test cho RRF. |
 | `spec-questions.mjs` | Đo độ chính xác khi concierge trả lời câu hỏi về spec. |
 | `grading.mjs` | Logic chấm điểm thuần cho spec-questions. |
 | `grading.test.mjs` | Test cho grader. |
@@ -186,12 +213,14 @@ node eval/run-eval.mjs --inspect           # catalogue thật có gì
 node eval/run-eval.mjs --validate          # sức khoẻ nhãn, không gọi search
 node eval/run-eval.mjs                     # keyword + smart
 node eval/run-eval.mjs --arms=concierge    # chỉ chat
+node eval/run-eval.mjs --scope=spec --arms=keyword,smart,vector,hybrid   # nhóm facet
+node eval/run-eval.mjs --scope=semantic --arms=keyword,concierge         # nhóm câu hỏi mở
 
 node eval/spec-questions.mjs --out=before   # đo trước khi sửa
 node eval/spec-questions.mjs --out=after    # đo sau
 node eval/spec-questions.mjs --compare=before,after
 
-node --test eval/                          # test của chính bộ đo
+node --test eval/metrics.test.mjs eval/grading.test.mjs eval/fusion.test.mjs   # test của bộ đo
 ```
 
 Cần `WatchFinderSettings:DisableLimitInDev=true`, không thì quota chặn sau 5 câu.
@@ -203,6 +232,8 @@ Cần `WatchFinderSettings:DisableLimitInDev=true`, không thì quota chặn sau
 | Arm | Chi phí | Vì sao |
 |---|---|---|
 | `keyword` | $0 | Không gọi model |
+| `vector` | $0 | Embedding chạy in-process trong ai-service |
+| `hybrid` | $0 | Hai request trên, fuse ở phía harness |
 | `smart` | ~$0.05 | Chỉ ~5–16% query chạm LLM |
 | `concierge` | ~$0.30 | Mọi lượt đều gọi model để viết lời |
 | `spec-questions` | ~$0.12 | 24 lượt chat |

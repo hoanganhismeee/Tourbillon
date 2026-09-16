@@ -13,6 +13,8 @@ make up                                    # backend must be reachable
 node eval/run-eval.mjs --inspect           # what the catalogue actually contains
 node eval/run-eval.mjs --validate          # label health only, no search calls
 node eval/run-eval.mjs                     # full run, both arms
+node eval/run-eval.mjs --scope=spec --arms=keyword,smart,vector,hybrid   # facet queries
+node eval/run-eval.mjs --scope=semantic --arms=keyword,concierge         # open-ended briefs
 ```
 
 Set `WatchFinderSettings:DisableLimitInDev=true` first, otherwise the daily quota rejects the run
@@ -21,7 +23,9 @@ after 5 queries. A full run is ~60 queries per arm, sequential, so allow a few m
 | Flag | Default | Purpose |
 |---|---|---|
 | `--base-url` / `BASE_URL` | `http://localhost:5248` | Target backend |
-| `--arms` | `keyword,smart` | Which arms to score |
+| `--arms` | `keyword,smart` | Which arms to score: `keyword`, `vector`, `hybrid`, `smart`, `concierge` |
+| `--scope` | `all` | `spec` for facet queries, `semantic` for open-ended briefs |
+| `--rrf-k` | `60` | Rank constant for the `hybrid` arm's fusion |
 | `--k` | `10` | Cutoff for recall, MRR, nDCG, hit rate |
 | `--pk` | `5` | Cutoff for precision |
 | `--max-share` | `0.25` | Reject labels matching more than this share of the catalogue |
@@ -30,6 +34,26 @@ after 5 queries. A full run is ~60 queries per arm, sequential, so allow a few m
 | `--delay` | `0` | Milliseconds between requests |
 
 Each run writes a full per-query JSON record to `eval/results/`.
+
+## The arms
+
+| Arm | What it calls | What it isolates |
+|---|---|---|
+| `keyword` | `GET /api/search` | Lexical matching over name, description, brand and collection. |
+| `vector` | `POST /api/watch/find` with `mode=vector` | The embedding index alone: no parser, no rerank, no cache. |
+| `hybrid` | both of the above, fused | Whether combining the two rankings beats either on its own. |
+| `smart` | `POST /api/watch/find` | The deterministic parser that serves facet queries. |
+| `concierge` | `POST /api/chat/message` | The chat path, which owns the open-ended briefs. |
+
+`hybrid` fuses the lexical and vector rankings with reciprocal rank fusion: an id scores
+`1 / (k + rank)` in each list it appears in, and the scores are summed. Only positions are used,
+because an ILike relevance score and a cosine distance share no scale and normalising them would
+invent one. `k` sets how much one first place is worth against agreement between both retrievers:
+small `k` lets a single top hit dominate, large `k` rewards ids both lists returned.
+
+`--scope` is what keeps the comparison fair once search and chat own different query types:
+`spec` for the facet queries the parser serves, `semantic` for the briefs the concierge serves.
+Scoring an arm on the half it no longer claims measures a scope decision, not retrieval quality.
 
 ## How ground truth is built
 

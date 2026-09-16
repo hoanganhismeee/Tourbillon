@@ -180,6 +180,26 @@ export function buildGenerated(catalogue, { seed = 1234, perGroup = 6 } = {}) {
   return queries.filter(q => q.truth != null);
 }
 
+// -- Scope --------------------------------------------------------------------
+// Which subsystem owns a category now that Smart Search is deterministic-only and the concierge
+// answers open-ended briefs. Scoring both on one mixed set charges each arm for queries it no
+// longer claims to serve, which reads as a regression rather than as a scope change.
+
+const SCOPE_BY_CATEGORY = {
+  // Stated as facets, so a parser can compile them to SQL with no model call.
+  reference: 'spec', brand: 'spec', brand_budget: 'spec', budget: 'spec',
+  material: 'spec', size: 'spec', dial: 'spec', complication: 'spec',
+  exclusion: 'spec', compound: 'spec',
+  // Stated as occasion, taste or suitability, with no field to filter on.
+  descriptor: 'semantic',
+};
+
+/// Scope a query belongs to. Unknown categories default to spec: a new facet category is the
+/// common case, and landing in the measured set is safer than being silently dropped.
+export function scopeOf(query) {
+  return SCOPE_BY_CATEGORY[query.category] ?? 'spec';
+}
+
 // -- Label validation ---------------------------------------------------------
 
 /// A label is only useful if it is neither empty nor so broad that any result set scores well.

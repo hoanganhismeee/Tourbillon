@@ -7,7 +7,9 @@
 //   node eval/run-eval.mjs --inspect            # what the catalogue actually contains
 //   node eval/run-eval.mjs --validate           # label health, no API calls to the search arms
 //   node eval/run-eval.mjs                      # full run, both arms
-//   node eval/run-eval.mjs --arms=smart,concierge  # pick arms: keyword, smart, concierge
+//   node eval/run-eval.mjs --arms=smart,concierge  # arms: keyword, smart, vector, hybrid, concierge
+//   node eval/run-eval.mjs --scope=spec          # only the facet queries the parser owns
+//   node eval/run-eval.mjs --scope=semantic --arms=keyword,concierge   # only open-ended briefs
 //   BASE_URL=http://localhost:5248 node eval/run-eval.mjs
 //
 // Requires: backend running, WatchFinderSettings:DisableLimitInDev=true (otherwise the daily
@@ -18,7 +20,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadCatalogue, summariseFacets } from './catalogue.mjs';
-import { HANDWRITTEN, buildGenerated, validateQueries } from './queries.mjs';
+import { HANDWRITTEN, buildGenerated, validateQueries, scopeOf } from './queries.mjs';
+import { reciprocalRankFusion } from './fusion.mjs';
 import {
   recallAtK, precisionAtK, reciprocalRank, ndcgAtK, hitAtK,
   mean, percentile, bootstrapCI, pairedBootstrap, recallCeiling,
@@ -34,6 +37,13 @@ const BASE_URL = args['base-url'] ?? process.env.BASE_URL ?? 'http://localhost:5
 const K = Number(args.k ?? 10);
 const PRECISION_K = Number(args.pk ?? 5);
 const ARMS = String(args.arms ?? 'keyword,smart').split(',').map(s => s.trim()).filter(Boolean);
+// Which half of the golden set to score: spec (facet queries the deterministic parser owns),
+// semantic (open-ended briefs the concierge owns), or all. Scoring an arm on the queries the
+// other subsystem now serves measures a scope decision, not retrieval quality.
+const SCOPE = String(args.scope ?? 'all').trim();
+// Rank constant for the hybrid arm's fusion. 60 comes from the original RRF paper; it is a flag
+// because it is the one knob deciding whether agreement or a single list's top hit wins.
+const RRF_K = Number(args['rrf-k'] ?? 60);
 const LIMIT = args.limit ? Number(args.limit) : null;
 const PASSES = Number(args.passes ?? 1);
 const DELAY_MS = Number(args.delay ?? 0);
@@ -101,12 +111,43 @@ const ARM_IMPLS = {
       meta: { searchPath: body.searchPath ?? 'unknown', rerankSource: body.rerankSource ?? 'unknown' },
     };
   },
+
+  // The retriever with nothing in front of it: embed the query, rank by cosine distance, return.
+  // No parser, no rerank, no cache. This is what the vector index is worth on its own, and the
+  // number the hybrid arm has to beat before fusion is worth shipping.
+  vector: async query => {
+    const res = await fetch(`${BASE_URL}/api/watch/find`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, mode: 'vector' }),
+      signal: AbortSignal.timeout(180_000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+    return { ids: (body.watches ?? []).map(w => w.id), meta: { searchPath: body.searchPath ?? 'vector_only' } };
+  },
+
+  // Lexical and vector rankings fused by reciprocal rank. Only the positions are used: an ILike
+  // relevance score and a cosine distance share no scale, and normalising them would invent one.
+  // Both requests run in parallel, so the arm's latency is the slower of the two, not their sum.
+  hybrid: async query => {
+    const [lexical, vector] = await Promise.all([ARM_IMPLS.keyword(query), ARM_IMPLS.vector(query)]);
+    return {
+      ids: reciprocalRankFusion([lexical.ids, vector.ids], { k: RRF_K }),
+      meta: {
+        searchPath: `hybrid_rrf_k${RRF_K}`,
+        lexicalReturned: lexical.ids.length,
+        vectorReturned: vector.ids.length,
+      },
+    };
+  },
 };
 
 // -- Main ---------------------------------------------------------------------
 
 async function main() {
-  console.log(`${BOLD}Smart Search evaluation${RESET} ${DIM}${BASE_URL}${RESET}\n`);
+  console.log(`${BOLD}Smart Search evaluation${RESET} ${DIM}${BASE_URL}${RESET}`);
+  console.log(`${DIM}scope ${SCOPE}   arms ${ARMS.join(', ')}${RESET}\n`);
 
   const catalogue = await loadCatalogue(BASE_URL).catch(err => {
     console.error(`${RED}Could not load catalogue: ${err.message}${RESET}`);
@@ -119,13 +160,15 @@ async function main() {
   const all = [...HANDWRITTEN, ...buildGenerated(catalogue)];
   const validated = validateQueries(catalogue, all, { maxShare: MAX_SHARE });
   const usable = validated.filter(q => q.status === 'ok');
-  const scored = LIMIT ? usable.slice(0, LIMIT) : usable;
+  const inScope = SCOPE === 'all' ? usable : usable.filter(q => scopeOf(q) === SCOPE);
+  const scored = LIMIT ? inScope.slice(0, LIMIT) : inScope;
 
   printLabelReport(validated, catalogue);
   if (args.validate) return;
 
   if (scored.length === 0) {
-    console.error(`${RED}No usable queries. Fix the labels flagged above before running the arms.${RESET}`);
+    console.error(`${RED}No usable queries in scope "${SCOPE}". Valid scopes: all, spec, semantic.${RESET}`);
+    console.error(`${DIM}If the scope is right, fix the labels flagged above before running the arms.${RESET}`);
     process.exit(1);
   }
 
@@ -275,7 +318,9 @@ ${BOLD}Recall@${K} by category${RESET} ${DIM}(share of ceiling in brackets)${RES
 /// Which internal path served each query. This is the number behind any claim about
 /// keeping queries off the LLM: it is measured per request, not assumed from the code.
 function printPaths(results) {
-  const rows = results.smart;
+  // Whichever arm reports a path. smart is the one with tiers worth attributing; vector and
+  // hybrid report a single constant path, which still makes the latency split readable.
+  const rows = results.smart ?? results.vector ?? results.hybrid;
   if (!rows) return;
   const paths = groupBy(rows.filter(r => r.searchPath), r => r.searchPath);
   const total = Object.values(paths).reduce((a, r) => a + r.length, 0);
@@ -355,7 +400,7 @@ function writeReport(results, queries, catalogue) {
   const file = join(dir, `eval-${stamp}.json`);
   writeFileSync(file, JSON.stringify({
     runAt: new Date().toISOString(),
-    baseUrl: BASE_URL, k: K, precisionK: PRECISION_K, passes: PASSES,
+    baseUrl: BASE_URL, k: K, precisionK: PRECISION_K, passes: PASSES, scope: SCOPE,
     catalogueSize: catalogue.records.length,
     queryCount: queries.length,
     summary: Object.fromEntries(Object.entries(results).map(([arm, rows]) => [arm, {
