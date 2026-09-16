@@ -54,6 +54,11 @@ public class WatchController : ControllerBase
 
         try
         {
+            // mode=vector runs the retriever on its own, which is how an evaluation run
+            // separates what the vector index contributes from what the parser contributes.
+            if (string.Equals(request.Mode, "vector", StringComparison.OrdinalIgnoreCase))
+                return Ok(await _watchFinderService.FindWatchesVectorOnlyAsync(request.Query));
+
             var result = await _watchFinderService.FindWatchesAsync(
                 request.Query,
                 new WatchFinderQuotaContext(GetQuotaSubjectKey(), IsAdminUser()));

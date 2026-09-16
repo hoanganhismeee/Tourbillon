@@ -18,7 +18,9 @@ namespace backend.Services;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
-public record WatchFinderRequest(string Query);
+// Mode selects a retrieval path for measurement: null runs the full pipeline, "vector" runs the
+// retriever alone. Optional so every existing caller and stored payload stays valid.
+public record WatchFinderRequest(string Query, string? Mode = null);
 
 
 public record WatchFinderQuotaContext(string SubjectKey, bool IsAdmin);
@@ -220,6 +222,33 @@ public class WatchFinderService : IWatchFinderService
 
     public Task<WatchFinderResult> FindWatchesAsync(string query, IReadOnlyList<int> excludedBrandIds) =>
         FindWatchesAsync(query, excludedBrandIds, null);
+
+    /// The retriever with nothing in front of it: embed, rank by cosine distance, return.
+    /// No deterministic parse, no LLM rerank, and deliberately no cache read or write, so an
+    /// evaluation arm measures the vector index itself instead of replaying an earlier run.
+    /// No quota charge either: nothing here reaches a paid model.
+    public async Task<WatchFinderResult> FindWatchesVectorOnlyAsync(string query)
+    {
+        var normalizedQuery = QueryNormalizer.ExpandCompoundTerms(query);
+        var httpClient = _httpClientFactory.CreateClient("ai-service");
+        var queryEmbedding = await EmbedQueryAsync(httpClient, normalizedQuery);
+        if (queryEmbedding == null)
+            return EmptyResult(searchPath: "vector_only_no_embedding");
+
+        // allowLooseMatches bypasses the MinRelevance gate on purpose. A baseline has to return
+        // its ranking even when the best match is weak, or the arm silently measures "queries
+        // the gate let through" rather than what the retriever actually ranks first.
+        var (candidates, _) = await VectorSearchAsync(queryEmbedding, intent: null, allowLooseMatches: true);
+
+        return new WatchFinderResult
+        {
+            Watches = candidates.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
+            OtherCandidates = candidates.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
+            MatchDetails = [],
+            ParsedIntent = null,
+            SearchPath = "vector_only",
+        };
+    }
 
     public async Task<WatchFinderResult> FindWatchesAsync(
         string query,
