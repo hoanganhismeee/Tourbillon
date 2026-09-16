@@ -251,10 +251,11 @@ function printLabelReport(validated, catalogue) {
   console.log(`  usable      ${GREEN}${ok.length}${RESET} / ${validated.length}`);
   console.log(`  median relevant per query  ${median(ok.map(q => q.relevantCount)) ?? '-'}`);
 
-  for (const status of ['empty', 'too_broad', 'thin']) {
+  for (const status of ['invalid_key', 'empty', 'too_broad', 'thin']) {
     const rows = byStatus[status] ?? [];
     if (!rows.length) continue;
-    const why = { empty: 'no catalogue match — label wrong or data missing',
+    const why = { invalid_key: 'truth uses a key the matcher ignores — label wider than written',
+                  empty: 'no catalogue match — label wrong or data missing',
                   too_broad: `matches >${(MAX_SHARE * 100).toFixed(0)}% of catalogue — not discriminative`,
                   thin: 'fewer than 2 matches — recall is unstable' }[status];
     console.log(`  ${YELLOW}${status.padEnd(11)}${RESET}${rows.length}  ${DIM}${why}${RESET}`);

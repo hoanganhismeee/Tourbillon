@@ -4,7 +4,7 @@
 // from the live catalogue, so the set scales with the data instead of going stale against it.
 
 import { mulberry32 } from './metrics.mjs';
-import { normaliseMaterial, relevantIds } from './catalogue.mjs';
+import { normaliseMaterial, relevantIds, unknownTruthKeys } from './catalogue.mjs';
 
 // -- Handwritten set ----------------------------------------------------------
 // These are the queries a keyword index cannot serve: intent expressed as occasion, taste or
@@ -185,14 +185,14 @@ export function buildGenerated(catalogue, { seed = 1234, perGroup = 6 } = {}) {
 // answers open-ended briefs. Scoring both on one mixed set charges each arm for queries it no
 // longer claims to serve, which reads as a regression rather than as a scope change.
 
-const SCOPE_BY_CATEGORY = {
+export const SCOPE_BY_CATEGORY = Object.freeze({
   // Stated as facets, so a parser can compile them to SQL with no model call.
   reference: 'spec', brand: 'spec', brand_budget: 'spec', budget: 'spec',
   material: 'spec', size: 'spec', dial: 'spec', complication: 'spec',
   exclusion: 'spec', compound: 'spec',
   // Stated as occasion, taste or suitability, with no field to filter on.
   descriptor: 'semantic',
-};
+});
 
 /// Scope a query belongs to. Unknown categories default to spec: a new facet category is the
 /// common case, and landing in the measured set is safer than being silently dropped.
@@ -209,11 +209,15 @@ export function validateQueries(catalogue, queries, { maxShare = 0.25 } = {}) {
   return queries.map(q => {
     const relevant = relevantIds(catalogue, q.truth);
     const share = total === 0 ? 0 : relevant.size / total;
+    const badKeys = unknownTruthKeys(q.truth);
     let status = 'ok';
-    if (relevant.size === 0) status = 'empty';
+    // Checked first: an unknown key is silently unconstrained, so the label is wider than
+    // written and every other status computed from it would be measuring the typo.
+    if (badKeys.length > 0) status = 'invalid_key';
+    else if (relevant.size === 0) status = 'empty';
     else if (share > maxShare) status = 'too_broad';
     else if (relevant.size < 2 && q.category !== 'reference') status = 'thin';
-    return { ...q, relevant, relevantCount: relevant.size, share, status };
+    return { ...q, relevant, relevantCount: relevant.size, share, status, badKeys };
   });
 }
 

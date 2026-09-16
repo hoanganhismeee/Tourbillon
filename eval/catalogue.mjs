@@ -72,6 +72,19 @@ function parseFirstNumber(value) {
 
 // -- Ground truth -------------------------------------------------------------
 
+/// Every key matchesTruth reads. A key outside this set is silently unconstrained, so a typo
+/// such as `diamterMax` widens the label without failing anything; validation rejects it.
+export const TRUTH_KEYS = new Set([
+  'priceMin', 'priceMax', 'brand', 'brandIn', 'excludeBrand', 'collection',
+  'diameterMin', 'diameterMax', 'waterResistanceMin', 'powerReserveMin',
+  'materialAny', 'materialNone', 'caseBackAny', 'movementAny', 'dialAny', 'strapAny', 'styleAny',
+  'functionsAny', 'functionsAll', 'functionsNone', 'ids',
+]);
+
+export function unknownTruthKeys(truth) {
+  return Object.keys(truth ?? {}).filter(key => !TRUTH_KEYS.has(key));
+}
+
 /// Evaluates one declarative truth spec against one normalised watch record.
 /// Every key present must hold; an absent key is simply not constrained.
 export function matchesTruth(w, truth) {
