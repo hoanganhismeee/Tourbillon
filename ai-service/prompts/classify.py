@@ -27,8 +27,13 @@ Rules:
 - Every message arrives inside a watch boutique, so read it in that setting. "What do I wear to
   a job interview", "what to wear for dinner", "what should I put on for a night out" are asking
   which watch suits the occasion, not which clothes — they are advice_request. An occasion, dress
-  code, or "what should I wear" question is never non_watch. Reserve non_watch for messages no
-  watch could answer at all: greetings, the weather, arithmetic, code, CVs, restaurants.
+  code, or "what should I wear" question is never non_watch.
+- A statement about the user's own life is context for choosing a watch, not small talk: how they
+  travel, the sport they play, the work they do, their daily routine, their wrist. "I cycle to
+  work" and "I'm a chef" are advice_request. So is a watch part named in plain words, such as
+  "the crown" or "the ticking inside", because in this setting it can only mean the watch.
+- Reserve non_watch for messages no watch could answer at all: greetings, the weather, arithmetic,
+  code, CVs, restaurants, travel tips, or chat with no bearing on what someone wears on the wrist.
 - revision_request requires the session to show prior cards were already surfaced (cards > 0)
 - affirmative_followup applies only to very short responses (6 words or fewer) or explicit agreement language
 - expansion_request requires expansion language AND prior cards in session (cards > 0)

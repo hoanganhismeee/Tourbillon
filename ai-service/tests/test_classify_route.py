@@ -76,6 +76,15 @@ class ClassifyRouteTests(unittest.TestCase):
         self.assertIn("advice_request", CLASSIFY_SYSTEM_PROMPT)
         self.assertIn("stay discovery", CLASSIFY_SYSTEM_PROMPT)
 
+    def test_prompt_reads_personal_context_as_a_watch_question(self) -> None:
+        """A remark about travel, sport or work was refused as non_watch at 0.95 confidence."""
+        from prompts.classify import CLASSIFY_SYSTEM_PROMPT
+        self.assertIn("context for choosing a watch", CLASSIFY_SYSTEM_PROMPT)
+        self.assertIn("watch part named in plain words", CLASSIFY_SYSTEM_PROMPT)
+        # The boundary still has to name what stays non_watch, or everything becomes advice.
+        self.assertIn("Reserve non_watch", CLASSIFY_SYSTEM_PROMPT)
+        self.assertIn("travel tips", CLASSIFY_SYSTEM_PROMPT)
+
     def test_unknown_intent_replaced_with_unclear(self) -> None:
         result = self._classify("hallucinated_intent")
         self.assertEqual("unclear", result["intent"])
