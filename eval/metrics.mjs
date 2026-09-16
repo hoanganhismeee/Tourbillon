@@ -115,6 +115,17 @@ export function pairedBootstrap(armA, armB, { iterations = 2000, seed = 7 } = {}
   return { delta: observed, ci, pApprox: atOrBelowZero / iterations, n: deltas.length };
 }
 
+/// Direction of a paired delta once noise is accounted for. An interval entirely above zero is
+/// a real improvement and one entirely below zero is a real regression; only an interval that
+/// crosses zero is inconclusive. Checking the lower bound alone reports every regression, however
+/// clear, as "not significant", which hides exactly the result a comparison exists to catch.
+export function significance(ci) {
+  if (!ci) return 'not significant';
+  if (ci.lo > 0) return 'better';
+  if (ci.hi < 0) return 'worse';
+  return 'not significant';
+}
+
 /// Deterministic PRNG so every run of the harness produces identical intervals and
 /// identical generated queries. Reproducibility is the point of the whole exercise.
 export function mulberry32(seed) {

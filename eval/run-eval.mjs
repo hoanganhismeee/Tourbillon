@@ -10,12 +10,13 @@
 //   node eval/run-eval.mjs --arms=keyword,vector,hybrid  # first arm is the baseline for every delta
 //   node eval/run-eval.mjs --scope=spec          # only the facet queries the parser owns
 //   node eval/run-eval.mjs --scope=semantic --arms=keyword,concierge   # only open-ended briefs
+//   node eval/run-eval.mjs --from=eval/results/eval-<stamp>.json   # re-print a saved run, no API calls
 //   BASE_URL=http://localhost:5248 node eval/run-eval.mjs
 //
 // Requires: backend running, WatchFinderSettings:DisableLimitInDev=true (otherwise the daily
 // quota rejects the run after 5 queries).
 
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,7 +25,7 @@ import { HANDWRITTEN, buildGenerated, validateQueries, scopeOf } from './queries
 import { reciprocalRankFusion } from './fusion.mjs';
 import {
   recallAtK, precisionAtK, reciprocalRank, ndcgAtK, hitAtK,
-  mean, percentile, bootstrapCI, pairedBootstrap, recallCeiling,
+  mean, percentile, bootstrapCI, pairedBootstrap, recallCeiling, significance,
 } from './metrics.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -146,6 +147,7 @@ const ARM_IMPLS = {
 // -- Main ---------------------------------------------------------------------
 
 async function main() {
+  if (args.from) return reprint(String(args.from));
   console.log(`${BOLD}Smart Search evaluation${RESET} ${DIM}${BASE_URL}${RESET}`);
   console.log(`${DIM}scope ${SCOPE}   arms ${ARMS.join(', ')}${RESET}\n`);
 
@@ -182,6 +184,20 @@ async function main() {
   printPaths(results);
   printComparison(results, scored);
   writeReport(results, scored, catalogue);
+}
+
+/// Re-prints the report from a saved run, so a fix to the reporting never means paying for the
+/// model-backed arms again. Only the stored rows are needed; the catalogue is not reloaded.
+function reprint(file) {
+  const saved = JSON.parse(readFileSync(file, 'utf8'));
+  const results = saved.rows;
+  const first = Object.values(results)[0] ?? [];
+  const queries = [...new Map(first.map(r => [r.queryId, { id: r.queryId, category: r.category, query: r.query }])).values()];
+  console.log(`${BOLD}Smart Search evaluation${RESET} ${DIM}replaying ${file}${RESET}`);
+  console.log(`${DIM}run at ${saved.runAt}   scope ${saved.scope ?? 'all'}   arms ${Object.keys(results).join(', ')}${RESET}`);
+  printScores(results, queries);
+  printPaths(results);
+  printComparison(results, queries);
 }
 
 /// Runs one arm over the whole set sequentially. Sequential on purpose: the point of the
@@ -384,7 +400,10 @@ function printPair(results, queries, a, b) {
   for (const metric of ['recall', 'precision', 'mrr', 'ndcg']) {
     const stat = pairedBootstrap(ids.map(id => ma.get(id)[metric]), ids.map(id => mb.get(id)[metric]));
     if (!stat) continue;
-    const sig = stat.ci.lo > 0 ? `${GREEN}significant${RESET}` : `${YELLOW}not significant${RESET}`;
+    const verdict = significance(stat.ci);
+    const sig = verdict === 'better' ? `${GREEN}significantly better${RESET}`
+      : verdict === 'worse' ? `${RED}significantly worse${RESET}`
+      : `${YELLOW}not significant${RESET}`;
     console.log(`  ${metric.padEnd(10)}${(stat.delta >= 0 ? '+' : '')}${stat.delta.toFixed(3)}` +
       `  ${DIM}95% CI [${stat.ci.lo.toFixed(3)}, ${stat.ci.hi.toFixed(3)}]${RESET}  ${sig}`);
   }

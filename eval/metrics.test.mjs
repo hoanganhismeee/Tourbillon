@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { recallAtK, precisionAtK, reciprocalRank, ndcgAtK, recallCeiling, percentile } from './metrics.mjs';
+import { recallAtK, precisionAtK, reciprocalRank, ndcgAtK, recallCeiling, percentile, significance } from './metrics.mjs';
 
 const relevant = new Set([1, 2, 3]);
 
@@ -61,4 +61,19 @@ test('percentile uses nearest rank', () => {
   assert.equal(percentile([1, 2, 3, 4, 5], 50), 3);
   assert.equal(percentile([1, 2, 3, 4, 5], 100), 5);
   assert.equal(percentile([], 50), null);
+});
+
+test('an interval entirely above zero is a significant improvement', () => {
+  assert.equal(significance({ lo: 0.01, hi: 0.2 }), 'better');
+});
+
+test('an interval entirely below zero is a significant regression, not noise', () => {
+  // The first version checked only the lower bound and labelled this "not significant".
+  assert.equal(significance({ lo: -0.253, hi: -0.074 }), 'worse');
+});
+
+test('an interval that crosses zero is inconclusive', () => {
+  assert.equal(significance({ lo: -0.05, hi: 0.1 }), 'not significant');
+  assert.equal(significance({ lo: 0, hi: 0.1 }), 'not significant');
+  assert.equal(significance(null), 'not significant');
 });
