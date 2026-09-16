@@ -7,7 +7,7 @@
 //   node eval/run-eval.mjs --inspect            # what the catalogue actually contains
 //   node eval/run-eval.mjs --validate           # label health, no API calls to the search arms
 //   node eval/run-eval.mjs                      # full run, both arms
-//   node eval/run-eval.mjs --arms=smart,concierge  # arms: keyword, smart, vector, hybrid, concierge
+//   node eval/run-eval.mjs --arms=keyword,vector,hybrid  # first arm is the baseline for every delta
 //   node eval/run-eval.mjs --scope=spec          # only the facet queries the parser owns
 //   node eval/run-eval.mjs --scope=semantic --arms=keyword,concierge   # only open-ended briefs
 //   BASE_URL=http://localhost:5248 node eval/run-eval.mjs
@@ -365,7 +365,13 @@ function printPaths(results) {
 function printComparison(results, queries) {
   const arms = Object.keys(results);
   if (arms.length < 2) return;
-  const [a, b] = arms;
+  // The first arm listed is the baseline and every other arm is compared against it, so a
+  // four-arm run reports three paired deltas instead of silently testing only the first two.
+  const [baseline, ...challengers] = arms;
+  for (const challenger of challengers) printPair(results, queries, baseline, challenger);
+}
+
+function printPair(results, queries, a, b) {
   const byId = rows => {
     const m = new Map();
     for (const r of rows) if (!m.has(r.queryId)) m.set(r.queryId, r);
