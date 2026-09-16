@@ -1869,11 +1869,14 @@ public class WatchFinderService : IWatchFinderService
             && classification.Confidence >= NonWatchConfidence;
     }
 
+    // Positive watch vocabulary, not an off-topic detector. A query without any of these goes to
+    // the classifier, which on "see the mechanism from the front" answered non_watch, so words
+    // that can only describe a watch belong here rather than in a prompt rule.
     internal static bool HasWatchDomainSignal(string query) =>
         IsLikelyReferenceQuery(query)
         || IsLikelyReferenceFragment(query)
         || Regex.IsMatch(query,
-            @"\b(?:watch|watches|timepiece|timepieces|horology|luxury|wrist|diameter|dial|case|bracelet|strap|movement|automatic|manual|quartz|digital|analog|analogue|dress|dressy|dressier|dresswatch|sport|sportwatch|sporty|sportier|diver|diverwatch|diving|water[\s-]?resist(?:ant|ance)?|waterproof|gmt|chronograph|perpetual|annual|calendar|moonphase|tourbillon|repeater|steel|gold|titanium|ceramic|platinum|fancier|classier|refined|elegant)\b",
+            @"\b(?:watch|watches|timepiece|timepieces|horology|luxury|wrist|diameter|dial|case|bracelet|strap|movement|mechanism|mechanical|skeleton|openwork(?:ed)?|automatic|manual|quartz|digital|analog|analogue|dress|dressy|dressier|dresswatch|sport|sportwatch|sporty|sportier|diver|diverwatch|diving|water[\s-]?resist(?:ant|ance)?|waterproof|gmt|chronograph|perpetual|annual|calendar|moonphase|tourbillon|repeater|steel|gold|titanium|ceramic|platinum|fancier|classier|refined|elegant)\b",
             RegexOptions.IgnoreCase)
         || Regex.IsMatch(query,
             @"\b(?:affordable|budget[-\s]?friendly|entry[-\s]?level|accessible|starter)\b|\bstudent\b",
