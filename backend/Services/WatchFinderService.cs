@@ -18,8 +18,8 @@ namespace backend.Services;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
-// Mode selects a retrieval path for measurement: null runs the full pipeline, "vector" runs the
-// retriever alone. Optional so every existing caller and stored payload stays valid.
+// Mode selects a retrieval design for measurement: null runs the full pipeline; "vector", "bm25"
+// and "hybrid" run one retriever or their fusion alone. Optional so existing callers stay valid.
 public record WatchFinderRequest(string Query, string? Mode = null);
 
 

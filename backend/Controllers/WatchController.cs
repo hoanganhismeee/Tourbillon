@@ -47,17 +47,31 @@ public class WatchController : ControllerBase
     }
 
     [HttpPost("find")]
-    public async Task<IActionResult> FindWatches([FromBody] WatchFinderRequest request)
+    public async Task<IActionResult> FindWatches(
+        [FromBody] WatchFinderRequest request,
+        [FromServices] HybridWatchRetrievalService retrieval)
     {
         if (string.IsNullOrWhiteSpace(request.Query))
             return BadRequest(new { error = "Query is required" });
 
         try
         {
-            // mode=vector runs the retriever on its own, which is how an evaluation run
-            // separates what the vector index contributes from what the parser contributes.
-            if (string.Equals(request.Mode, "vector", StringComparison.OrdinalIgnoreCase))
-                return Ok(await _watchFinderService.FindWatchesVectorOnlyAsync(request.Query));
+            // A mode runs one retrieval design on its own, which is how an evaluation run separates
+            // what each contributes. An unknown mode is refused rather than falling through to the
+            // full pipeline, where a typo would silently measure something else.
+            switch (request.Mode?.Trim().ToLowerInvariant())
+            {
+                case null or "":
+                    break;
+                case "vector":
+                    return Ok(await _watchFinderService.FindWatchesVectorOnlyAsync(request.Query));
+                case "bm25":
+                    return Ok(await retrieval.SearchLexicalAsync(request.Query));
+                case "hybrid":
+                    return Ok(await retrieval.SearchHybridAsync(request.Query));
+                default:
+                    return BadRequest(new { error = $"Unknown mode '{request.Mode}'. Use vector, bm25 or hybrid." });
+            }
 
             var result = await _watchFinderService.FindWatchesAsync(
                 request.Query,

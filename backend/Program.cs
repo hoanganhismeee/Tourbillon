@@ -224,6 +224,9 @@ builder.Services.AddScoped<IDeterministicWatchSearchService, DeterministicWatchS
 builder.Services.AddScoped<IWatchFinderService, WatchFinderService>();
 builder.Services.AddScoped<WatchFinderService>();
 builder.Services.AddScoped<WatchEmbeddingService>();
+// BM25F index lives for the process and rebuilds itself; fused retrieval is per request.
+builder.Services.AddSingleton<ILexicalWatchSearch, LexicalWatchSearchService>();
+builder.Services.AddScoped<HybridWatchRetrievalService>();
 builder.Services.AddScoped<QueryCacheService>();
 builder.Services.AddScoped<WatchEditorialService>();
 
