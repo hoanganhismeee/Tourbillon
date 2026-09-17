@@ -154,6 +154,7 @@ public class WatchFinderService : IWatchFinderService
     private readonly IConfiguration _config;
     private readonly IAiUsageQuotaService? _quota;
     private readonly IIntentClassifier? _classifier;
+    private readonly ILexicalWatchSearch? _lexical;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -188,7 +189,8 @@ public class WatchFinderService : IWatchFinderService
         IStorageService storageService,
         IConfiguration? config = null,
         IAiUsageQuotaService? quotaService = null,
-        IIntentClassifier? classifier = null)
+        IIntentClassifier? classifier = null,
+        ILexicalWatchSearch? lexical = null)
     {
         _httpClientFactory = httpClientFactory;
         _deterministicSearch = deterministicSearch;
@@ -200,6 +202,7 @@ public class WatchFinderService : IWatchFinderService
         _config = config ?? new ConfigurationBuilder().Build();
         _quota = quotaService;
         _classifier = classifier;
+        _lexical = lexical;
         _skipLlmDistance = _config.GetValue<float?>("WatchFinderSettings:SkipLlmDistance")
             ?? DefaultSkipLlmDistance;
     }
@@ -222,6 +225,112 @@ public class WatchFinderService : IWatchFinderService
 
     public Task<WatchFinderResult> FindWatchesAsync(string query, IReadOnlyList<int> excludedBrandIds) =>
         FindWatchesAsync(query, excludedBrandIds, null);
+
+    // How deep the lexical fallback reads before hard filters apply. It covers the whole catalogue,
+    // because a filter applied after a shallow ranking could empty a result the catalogue satisfies.
+    private const int LexicalFallbackDepth = 1000;
+
+    /// Smart Search: the fast, model-free path. Deterministic parse and SQL first, then BM25F
+    /// ranking inside the parsed hard filters. Nothing here calls a model, so there is no
+    /// classifier gate, LLM parse, rerank or semantic cache, and the search keeps working when the
+    /// AI service does not. Open-ended briefs belong to the concierge, which keeps those stages.
+    public async Task<WatchFinderResult> SearchCatalogueAsync(string query)
+    {
+        var normalizedQuery = QueryNormalizer.ExpandCompoundTerms(query);
+        var intent = await ParseQueryIntentAsync(normalizedQuery);
+
+        // Nothing parsed and no watch vocabulary: a search box answers that with no results rather
+        // than asking a model whether the query was meant for it.
+        if (intent == null && !HasWatchDomainSignal(normalizedQuery))
+            return EmptyResult(searchPath: "no_watch_signal");
+
+        var direct = await _deterministicSearch.TryDirectSqlSearchAsync(
+            normalizedQuery, intent, "direct_sql_deterministic");
+        if (direct != null)
+            return direct;
+
+        if (intent != null && ShouldUseDeterministicCataloguePath(normalizedQuery, intent))
+        {
+            var fallback = await _deterministicSearch.TryDeterministicCatalogueFallbackAsync(
+                normalizedQuery, intent, "direct_sql_deterministic_fallback");
+            if (fallback != null)
+                return fallback;
+        }
+
+        return await LexicalFallbackAsync(normalizedQuery, intent);
+    }
+
+    /// Ranks the catalogue with BM25F, then keeps only what the parsed hard filters allow, in
+    /// BM25F order. The intent travels with the result so the filter bar still shows what was read.
+    private async Task<WatchFinderResult> LexicalFallbackAsync(string query, QueryIntent? intent)
+    {
+        if (_lexical == null)
+            return EmptyResult(intent, "bm25_unavailable");
+
+        var hits = await _lexical.SearchAsync(query, LexicalFallbackDepth);
+        if (hits.Count == 0)
+            return EmptyResult(intent, "bm25_no_match");
+
+        var ids = hits.Select(hit => hit.Id).ToList();
+        var filtered = await ApplyHardFiltersAsync(
+            _context.Watches
+                .Include(w => w.Brand)
+                .Include(w => w.Collection)
+                .AsNoTracking()
+                .Where(w => ids.Contains(w.Id)),
+            intent);
+        var candidates = await filtered.ToListAsync();
+
+        // IN has no order, so the BM25F ranking is restored from the hit list.
+        var position = ids.Select((id, index) => (id, index)).ToDictionary(p => p.id, p => p.index);
+        var ordered = candidates.OrderBy(w => position[w.Id]).ToList();
+        if (ordered.Count == 0)
+            return EmptyResult(intent, "bm25_filtered_empty");
+
+        return new WatchFinderResult
+        {
+            Watches = ordered.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
+            OtherCandidates = ordered.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
+            MatchDetails = [],
+            ParsedIntent = null,
+            QueryIntent = intent,
+            SearchPath = "bm25_fallback",
+        };
+    }
+
+    /// The constraints a result may never break: brand, brand exclusions, strict collection, price
+    /// and style collections. Price 0 is Price on Request and is never removed by a budget.
+    private async Task<IQueryable<Watch>> ApplyHardFiltersAsync(IQueryable<Watch> query, QueryIntent? intent)
+    {
+        if (intent == null)
+            return query;
+
+        if (intent.BrandId != null)
+            query = query.Where(w => w.BrandId == intent.BrandId);
+        else if (intent.BrandIds.Count > 0)
+            query = query.Where(w => intent.BrandIds.Contains(w.BrandId));
+
+        if (intent.ExcludedBrandIds.Count > 0)
+            query = query.Where(w => !intent.ExcludedBrandIds.Contains(w.BrandId));
+
+        if (HasStrictCollectionIntent(intent) && intent.CollectionId != null)
+            query = query.Where(w => w.CollectionId == intent.CollectionId);
+        if (HasStrictCollectionIntent(intent) && intent.CollectionIds.Count > 0)
+            query = query.Where(w => w.CollectionId != null && intent.CollectionIds.Contains(w.CollectionId.Value));
+        if (intent.MaxPrice != null)
+            query = query.Where(w => w.CurrentPrice == 0 || w.CurrentPrice <= intent.MaxPrice);
+        if (intent.MinPrice != null)
+            query = query.Where(w => w.CurrentPrice == 0 || w.CurrentPrice >= intent.MinPrice);
+
+        if (ShouldApplyStyleSqlFilter(intent))
+        {
+            var styleCollectionIds = await ResolveStyleCollectionIdsAsync(_context, intent.Style);
+            if (styleCollectionIds.Count > 0)
+                query = query.Where(w => w.CollectionId != null && styleCollectionIds.Contains(w.CollectionId.Value));
+        }
+
+        return query;
+    }
 
     /// The retriever with nothing in front of it: embed, rank by cosine distance, return.
     /// No deterministic parse, no LLM rerank, and deliberately no cache read or write, so an
@@ -435,30 +544,12 @@ public class WatchFinderService : IWatchFinderService
                 var brandFilter = queryIntent.BrandId != null
                     ? new[] { queryIntent.BrandId.Value }
                     : queryIntent.BrandIds.ToArray();
-                var fallbackQuery = _context.Watches
-                    .Include(w => w.Brand)
-                    .Include(w => w.Collection)
-                    .AsNoTracking()
-                    .Where(w => brandFilter.Contains(w.BrandId));
-
-                if (queryIntent.ExcludedBrandIds.Count > 0)
-                    fallbackQuery = fallbackQuery.Where(w => !queryIntent.ExcludedBrandIds.Contains(w.BrandId));
-
-                if (HasStrictCollectionIntent(queryIntent) && queryIntent.CollectionId != null)
-                    fallbackQuery = fallbackQuery.Where(w => w.CollectionId == queryIntent.CollectionId);
-                if (HasStrictCollectionIntent(queryIntent) && queryIntent.CollectionIds.Count > 0)
-                    fallbackQuery = fallbackQuery.Where(w => w.CollectionId != null && queryIntent.CollectionIds.Contains(w.CollectionId.Value));
-                if (queryIntent.MaxPrice != null)
-                    fallbackQuery = fallbackQuery.Where(w => w.CurrentPrice == 0 || w.CurrentPrice <= queryIntent.MaxPrice);
-                if (queryIntent.MinPrice != null)
-                    fallbackQuery = fallbackQuery.Where(w => w.CurrentPrice == 0 || w.CurrentPrice >= queryIntent.MinPrice);
-
-                if (ShouldApplyStyleSqlFilter(queryIntent))
-                {
-                    var fallbackStyleCollectionIds = await ResolveStyleCollectionIdsAsync(_context, queryIntent.Style);
-                    if (fallbackStyleCollectionIds.Count > 0)
-                        fallbackQuery = fallbackQuery.Where(w => w.CollectionId != null && fallbackStyleCollectionIds.Contains(w.CollectionId.Value));
-                }
+                var fallbackQuery = await ApplyHardFiltersAsync(
+                    _context.Watches
+                        .Include(w => w.Brand)
+                        .Include(w => w.Collection)
+                        .AsNoTracking(),
+                    queryIntent);
 
                 candidates = await fallbackQuery
                     .OrderByDescending(w => w.Id)

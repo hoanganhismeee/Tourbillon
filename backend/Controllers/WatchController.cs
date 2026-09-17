@@ -21,7 +21,6 @@ public class WatchController : ControllerBase
     private readonly WatchFinderService _watchFinderService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IStorageService _storage;
-    private readonly IAiUsageQuotaService _quota;
     private readonly IConfiguration _config;
     private readonly CatalogueOrderingService _ordering;
     private readonly ITasteProfileService _tasteService;
@@ -31,7 +30,6 @@ public class WatchController : ControllerBase
         WatchFinderService watchFinderService,
         IHttpClientFactory httpClientFactory,
         IStorageService storageService,
-        IAiUsageQuotaService quotaService,
         IConfiguration config,
         CatalogueOrderingService ordering,
         ITasteProfileService tasteService)
@@ -40,7 +38,6 @@ public class WatchController : ControllerBase
         _watchFinderService = watchFinderService;
         _httpClientFactory = httpClientFactory;
         _storage = storageService;
-        _quota = quotaService;
         _config = config;
         _ordering = ordering;
         _tasteService = tasteService;
@@ -54,59 +51,27 @@ public class WatchController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Query))
             return BadRequest(new { error = "Query is required" });
 
-        try
+        // A mode runs one retrieval design on its own, which is how an evaluation run separates what
+        // each contributes. An unknown mode is refused rather than falling through to the default
+        // path, where a typo would silently measure something else.
+        switch (request.Mode?.Trim().ToLowerInvariant())
         {
-            // A mode runs one retrieval design on its own, which is how an evaluation run separates
-            // what each contributes. An unknown mode is refused rather than falling through to the
-            // full pipeline, where a typo would silently measure something else.
-            switch (request.Mode?.Trim().ToLowerInvariant())
-            {
-                case null or "":
-                    break;
-                case "vector":
-                    return Ok(await _watchFinderService.FindWatchesVectorOnlyAsync(request.Query));
-                case "bm25":
-                    return Ok(await retrieval.SearchLexicalAsync(request.Query));
-                case "hybrid":
-                    return Ok(await retrieval.SearchHybridAsync(request.Query));
-                default:
-                    return BadRequest(new { error = $"Unknown mode '{request.Mode}'. Use vector, bm25 or hybrid." });
-            }
+            case null or "":
+                break;
+            case "vector":
+                return Ok(await _watchFinderService.FindWatchesVectorOnlyAsync(request.Query));
+            case "bm25":
+                return Ok(await retrieval.SearchLexicalAsync(request.Query));
+            case "hybrid":
+                return Ok(await retrieval.SearchHybridAsync(request.Query));
+            default:
+                return BadRequest(new { error = $"Unknown mode '{request.Mode}'. Use vector, bm25 or hybrid." });
+        }
 
-            var result = await _watchFinderService.FindWatchesAsync(
-                request.Query,
-                new WatchFinderQuotaContext(GetQuotaSubjectKey(), IsAdminUser()));
-            return Ok(result);
-        }
-        catch (AiQuotaExceededException ex)
-        {
-            return StatusCode(429, BuildQuotaResponse(ex.Status));
-        }
+        // Smart Search never calls a model: no classifier, LLM parse or rerank, and so no AI quota
+        // to charge. Open-ended briefs are the concierge's job.
+        return Ok(await _watchFinderService.SearchCatalogueAsync(request.Query));
     }
-
-    private bool IsAdminUser() =>
-        User.Identity?.IsAuthenticated == true && User.IsInRole("Admin");
-
-    private string GetQuotaSubjectKey()
-    {
-        if (User.Identity?.IsAuthenticated == true)
-        {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!string.IsNullOrWhiteSpace(userId))
-                return userId;
-        }
-
-        return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "anon";
-    }
-
-    private static object BuildQuotaResponse(AiQuotaStatus status) => new
-    {
-        error = "watch_finder_quota_exceeded",
-        message = $"You have reached your daily Smart Search quota of {status.DailyLimit} AI-backed searches. Direct catalogue browsing and cached results remain available.",
-        rateLimited = true,
-        dailyUsed = status.DailyUsed,
-        dailyLimit = status.DailyLimit
-    };
 
     // Returns distinct spec values from the full catalog — used to populate Smart Search filter dropdowns
     [HttpGet("filter-options")]
