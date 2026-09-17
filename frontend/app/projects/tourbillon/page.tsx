@@ -29,11 +29,15 @@ function GitHubIcon({ size = 15 }: { size?: number }) {
 const features = [
   {
     title: "Explore the catalogue",
-    text: "Browse luxury watches by brand, collection, price, material, movement, size, and complications.",
+    text: "Browse 338 watches from 13 maisons by brand, collection, price, material, movement, size, and complications.",
   },
   {
     title: "Search in plain English",
-    text: "Smart Search reads a request like “thin rose gold dress watch”, turns it into catalogue filters, then ranks what is left by meaning rather than keywords.",
+    text: "Smart Search reads “a proper strong diver under 20k” as filters — water resistance of 300 m or more, a price ceiling — and ticks them in the filter bar. It never calls a model, so results arrive in under 30 ms.",
+  },
+  {
+    title: "Ask the concierge",
+    text: "For open briefs like “what should I wear to my own wedding”, the concierge works out what the occasion calls for, finds candidates with keyword and semantic search, and replies with watch cards, comparisons, and links to the right pages.",
   },
   {
     title: "Compare with context",
@@ -46,10 +50,6 @@ const features = [
   {
     title: "Build a Watch DNA profile",
     text: "Browsing activity is scored into a taste profile that shapes recommendations, with no model call on the page request.",
-  },
-  {
-    title: "Ask the concierge",
-    text: "A chat assistant that acts as well as answers — it runs searches, pulls up watch cards, and sets up comparisons inside the app.",
   },
   {
     title: "Contact an advisor",
@@ -72,77 +72,165 @@ const stackGroups = [
   },
   {
     title: "AI & Search",
-    items: ["Python Flask service", "Claude Haiku 4.5", "Ollama (local dev)", "pgvector", "nomic embeddings"],
+    items: ["Python Flask service", "Claude Haiku 4.5", "Ollama (local dev)", "BM25F", "all-mpnet-base-v2", "pgvector", "Reciprocal rank fusion"],
   },
   {
     title: "Data & Infrastructure",
     items: ["PostgreSQL (Neon)", "Redis (Upstash)", "S3 + CloudFront", "Railway", "Vercel", "Docker Compose", "GitHub Actions"],
   },
+  {
+    title: "Evaluation",
+    items: ["Node.js benchmark harness", "Recall@K", "MRR", "nDCG", "Paired bootstrap", "pytest", "node:test"],
+  },
 ];
 
-const architectureDiagram = `LOCAL DEVELOPMENT
+const systemDiagram = ` Browser
+    |
+    v
++--------------------------------+
+| Vercel                         |
+| Next.js 15, /api/backend/*     |
++---------------+----------------+
+                |
+                v
++--------------------------------+          +--------------------------------+
+| Railway: .NET 8 API            |  HTTP    | Railway: Flask AI service      |
+| auth, catalogue, orchestration |--------->| intent, brief reading, rerank, |
+| deterministic query parser     |          | reply wording, action ideas    |
+| BM25F index (in memory)        |          | embeddings (all-mpnet, local)  |
+| Hangfire jobs                  |          +---------------+----------------+
++----+-----------+-----------+---+                          |
+     |           |           |                              v
+     v           v           v                  +--------------------------------+
++----------+ +----------+ +----------------+    | Claude Haiku 4.5               |
+| Neon     | | Upstash  | | S3 +           |    | (Ollama qwen2.5 in local dev)  |
+| Postgres | | Redis    | | CloudFront     |    +--------------------------------+
+| pgvector | | sessions | | images, video  |
++----------+ | jobs     | +----------------+
+             +----------+
 
- Browser
-   |
-   v
-+---------------------------+
-| Next.js 15 frontend       |
-| React 19  .  localhost:3000 |
-+-------------+-------------+
-              |
-              | /api/backend/* proxy
-              v
-+---------------------------+
-| .NET 8 backend API        |
-| localhost:5248            |
-+------+------+------+------+
-       |      |      |
-       |      |      +--------------------+
-       |      |                           |
-       v      v                           v
-+-------------+         +---------------------------+
-| PostgreSQL  |         | Flask AI service          |
-| pgvector    |         | localhost:5000            |
-+-------------+         +-------------+-------------+
-                                          |
-                                          v
-                               +----------------------+
-                               | Ollama               |
-                               | qwen2.5:7b  (local)  |
-                               +----------------------+
+ Locally the same services run under Docker Compose.
+ GitHub Actions runs the tests and deploys on every push to main.`;
 
- Redis      -> auth codes, rate limits, chat sessions
- Hangfire   -> emails, embeddings, background jobs
- Storage    -> IStorageService -> S3 + CloudFront / Cloudinary
+const smartSearchDiagram = ` "a proper strong diver under 20k"
+        |
+        v
+ +------------------------------+
+ | deterministic parser         |
+ |  water resistance >= 300 m   |--> ticks the
+ |  price <= $20,000            |    filter bar
+ +--------------+---------------+
+                |
+   +------------+-------------+-------------------+
+   |                          |                   |
+   v                          v                   v
+ constraints read       words left over     no watch words
+ -> SQL over the        -> BM25F inside     -> no results
+    catalogue              the filters
+   |                          |
+   +------------+-------------+
+                |
+                v
+ ranked results, no model call`;
 
+const conciergeDiagram = ` "what should I wear to my own wedding"
+        |
+        v
+ +--------------------------------+
+ | intent classifier (LLM)        |--> brand info, compare,
+ +---------------+----------------+    follow-ups
+                 |
+                 | advice or discovery
+                 v
+ deterministic parser -> SQL ......... 30% end here
+                 |
+ LLM reads the brief -> SQL .......... 32% end here
+                 |
+                 | still unresolved
+                 v
+     BM25F ---+
+              +---> RRF ---> LLM rerank . 36% end here
+    vector ---+
+                 |
+                 v
+ +--------------------------------+
+ | backend builds watch cards and |
+ | compare / page / search        |
+ | actions                        |
+ +---------------+----------------+
+                 |
+                 v
+ LLM writes the reply; it never
+ triggers an action itself`;
 
-PRODUCTION
+// Two halves of the benchmark, named by what the queries ask for.
+const querySet = [
+  {
+    heading: "50 facet queries",
+    owner: "Answered by Smart Search",
+    text: "Exact reference numbers, brand nicknames and misspellings (“AP”, “patek philipe”), collections, budgets said in words (“nothing over twenty grand”), sizes, case materials, dial colours, complications in plain language (“something that can time a lap”), water resistance and power reserve stated as uses, negations (“anything but Rolex”), and briefs that combine several of these.",
+  },
+  {
+    heading: "50 open-ended briefs",
+    owner: "Answered by the concierge",
+    text: "Occasions (a wedding, a job interview, a black-tie gala), gifts (a graduation, an anniversary), taste (understated, colourful, jewellery-like), lifestyle (hiking, sailing, the gym), collecting (an heirloom, independent watchmaking), fit (a 15 cm wrist, under a shirt cuff), and a budget with a mood attached.",
+  },
+];
 
- Browser
-   |
-   v
-+---------------------------+
-| Vercel                    |
-| Next.js 15 app            |
-+-------------+-------------+
-              |
-              | same-origin /api/backend/*
-              v
-+---------------------------+         +---------------------------+
-| Railway backend           |<------->| Railway ai-service        |
-| .NET 8 API                |         | Flask + Haiku 4.5 (prod)  |
-+------+------+------+------+
-       |      |      |
-       |      |      +--------------------+
-       |      |                           |
-       v      v                           v
-+-------------+  +----------------+   +---------------------------+
-| Neon        |  | Upstash Redis  |   | AWS S3 + CloudFront CDN   |
-| PostgreSQL  |  | sessions / RL  |   | images and video delivery |
-+-------------+  +----------------+   +---------------------------+
+const method = [
+  "Each label states what a right answer is — “a dress watch, 40 mm or smaller, in a precious metal” — rather than listing watches, and was written from the query before any result was seen.",
+  "Every system is compared with BM25, the standard keyword ranking, on the same queries.",
+  "Differences are tested with a paired bootstrap. Only a 95% interval that stays clear of zero counts as a result.",
+  "Recall is read against its ceiling: when 76 watches fit a brief, a list of ten can hold at most 13% of them, however good the ranking.",
+];
 
- GitHub Actions -> CI
- Vercel / Railway -> deployment hosting`;
+type Mark = "win" | "noise";
+type ResultRow = { label: string; values: string[]; emphasis?: number[]; mark?: Mark };
+
+const smartSearchRows: ResultRow[] = [
+  { label: "nDCG@10", values: ["0.73", "0.57", "0.44"], emphasis: [0], mark: "win" },
+  { label: "Precision@5", values: ["0.69", "0.54", "0.39"], emphasis: [0], mark: "win" },
+  { label: "Recall@10, share of ceiling", values: ["76%", "61%", "51%"], emphasis: [0], mark: "win" },
+  { label: "MRR", values: ["0.79", "0.70", "0.55"], emphasis: [0], mark: "noise" },
+  { label: "Hit rate@10", values: ["84%", "84%", "78%"], emphasis: [0], mark: "noise" },
+  { label: "Latency, p95", values: ["29 ms", "7 ms", "159 ms"], emphasis: [0] },
+];
+
+const conciergeRows: ResultRow[] = [
+  { label: "MRR", values: ["0.50", "0.32"], emphasis: [0], mark: "win" },
+  { label: "Precision@5", values: ["0.27", "0.21"], emphasis: [0], mark: "noise" },
+  { label: "nDCG@10", values: ["0.23", "0.17"], emphasis: [0], mark: "noise" },
+  { label: "Recall@10, share of ceiling", values: ["18%", "12%"], emphasis: [0], mark: "noise" },
+  { label: "Hit rate@10", values: ["74%", "66%"], emphasis: [0], mark: "noise" },
+  { label: "Latency, p95", values: ["12.8 s", "5 ms"], emphasis: [0] },
+  { label: "Replies with a relevant action", values: ["60%", "—"], emphasis: [0] },
+];
+
+// The strongest value in each column is emphasised; this table explains a choice, not a winner.
+const retrieverRows: ResultRow[] = [
+  { label: "BM25F", values: ["0.57", "0.62", "0.15"], emphasis: [0, 1] },
+  { label: "Vector search (cosine)", values: ["0.27", "0.41", "0.21"] },
+  { label: "BM25F + vector, fused by RRF", values: ["0.52", "0.62", "0.24"], emphasis: [1, 2] },
+];
+
+const findings = [
+  {
+    term: "Smart Search dropped every model call.",
+    text: "With the LLM stages removed, no quality metric moved significantly and p95 latency fell from 2.8 s to 29 ms. It also keeps working when the AI service is down.",
+  },
+  {
+    term: "Vector search lives only in the concierge.",
+    text: "Shown directly, it ranked facet queries worse than BM25F. As half of a fused candidate pool, it gives the reranker more right answers than either retriever alone.",
+  },
+  {
+    term: "The LLM reranker is still on trial.",
+    text: "Switching it off saved 1.9 s per reply with no significant change in quality, so it stays only until a larger query set settles it.",
+  },
+  {
+    term: "The benchmark caught bugs review had missed.",
+    text: "A 500 on every site search, a dependency upgrade that made the classifier refuse one query in ten, and a significance check that reported clear regressions as noise.",
+  },
+];
 
 // Section heading with a numbered "title block" — mono index, hairline rule, serif title.
 function SectionHead({ index, kicker, title }: { index: string; kicker: string; title: string }) {
@@ -157,6 +245,114 @@ function SectionHead({ index, kicker, title }: { index: string; kicker: string; 
         </h2>
       </div>
       <span className="atl-mono shrink-0 text-[11px] tracking-[0.2em] text-[var(--atl-faint)]">{index}</span>
+    </div>
+  );
+}
+
+// Framed plate shared by every figure: a caption bar over the drawing or table.
+function Plate({ caption, note, children }: { caption: string; note: string; children: React.ReactNode }) {
+  return (
+    <figure className="border border-[var(--atl-rule)] bg-[var(--atl-paper-2)]/70">
+      <figcaption className="flex items-center justify-between gap-4 border-b border-[var(--atl-rule)] px-5 py-3">
+        <span className="atl-mono text-[11px] uppercase tracking-[0.24em] text-[var(--atl-ink)]">{caption}</span>
+        <span className="atl-mono text-right text-[10px] uppercase tracking-[0.2em] text-[var(--atl-faint)]">{note}</span>
+      </figcaption>
+      {children}
+    </figure>
+  );
+}
+
+// One way to find a watch: what it is, how a query flows through it, and how well it did.
+function Subsystem({
+  name,
+  summary,
+  flow,
+  results,
+}: {
+  name: string;
+  summary: string;
+  flow: React.ReactNode;
+  results: React.ReactNode;
+}) {
+  return (
+    <div className="mt-16 border-t border-[var(--atl-rule)] pt-10">
+      <div className="mb-8 max-w-3xl">
+        <h3 className="atl-display text-[1.75rem] font-medium leading-tight text-[var(--atl-ink)]">{name}</h3>
+        <p className="mt-3 text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">{summary}</p>
+      </div>
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
+        {flow}
+        {results}
+      </div>
+    </div>
+  );
+}
+
+// A filled mark for a result that clears the 95% interval, a hollow one for a difference within noise.
+function SignificanceMark({ mark }: { mark?: Mark }) {
+  return (
+    <span className="inline-block w-5 text-left">
+      {mark === "win" && (
+        <>
+          <span aria-hidden className="pl-1.5 text-[0.7em] text-[var(--atl-oxblood)]">●</span>
+          <span className="sr-only">, better than BM25 with 95% confidence</span>
+        </>
+      )}
+      {mark === "noise" && (
+        <>
+          <span aria-hidden className="pl-1.5 text-[0.7em] text-[var(--atl-faint)]">○</span>
+          <span className="sr-only">, difference within noise</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+function ResultTable({ columns, rows, markColumn }: { columns: string[]; rows: ResultRow[]; markColumn?: number }) {
+  return (
+    <div className="overflow-x-auto">
+      {/* Two value columns fit a phone; wider tables keep a floor and scroll inside their plate. */}
+      <table className={`w-full border-collapse text-left ${columns.length > 2 ? "min-w-[360px]" : ""}`}>
+        <thead>
+          <tr className="border-b border-[var(--atl-rule)]">
+            <th scope="col" className="pb-3 font-normal">
+              <span className="sr-only">Measure</span>
+            </th>
+            {columns.map((column) => (
+              <th
+                key={column}
+                scope="col"
+                className="pb-3 pl-4 text-right align-bottom text-[0.8rem] font-normal leading-snug text-[var(--atl-faint)]"
+              >
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label} className="border-b border-[var(--atl-rule-soft)] last:border-b-0">
+              <th scope="row" className="py-3 pr-4 text-left text-[0.95rem] font-normal text-[var(--atl-soft)]">
+                {row.label}
+              </th>
+              {row.values.map((value, i) => {
+                const strong = row.emphasis?.includes(i);
+                return (
+                  <td
+                    key={`${row.label}-${i}`}
+                    className={`atl-display atl-num whitespace-nowrap py-3 pl-4 text-right text-[1.1rem] ${
+                      strong ? "font-medium text-[var(--atl-ink)]" : "text-[var(--atl-faint)]"
+                    }`}
+                  >
+                    {value}
+                    {markColumn === i && <SignificanceMark mark={row.mark} />}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -186,6 +382,7 @@ export default function TourbillonPortfolioPage() {
             .atl-body { font-family: var(--font-hanken), ui-sans-serif, system-ui, sans-serif; }
             .atl-mono { font-family: var(--font-mono-atelier), ui-monospace, "SFMono-Regular", monospace; }
             .atl-italic { font-family: var(--font-fraunces), Georgia, serif; font-style: italic; }
+            .atl-num { font-variant-numeric: lining-nums tabular-nums; }
 
             /* Engine-turned guilloche cross-hatch — faint ink + gold emboss on paper */
             .atl-guilloche {
@@ -217,6 +414,7 @@ export default function TourbillonPortfolioPage() {
               background: linear-gradient(180deg, rgba(255,255,255,0.35), rgba(255,255,255,0));
             }
             .atl-tag:hover { border-color: rgba(124,45,45,0.45); color: var(--atl-oxblood); }
+            .atl-root a:focus-visible { outline: 2px solid var(--atl-oxblood); outline-offset: 3px; }
             @media (prefers-reduced-motion: reduce) {
               .atl-rise { animation: none; opacity: 1; }
             }
@@ -259,9 +457,10 @@ export default function TourbillonPortfolioPage() {
             Tourbillon<span className="text-[var(--atl-oxblood)]">.</span>
           </h1>
           <p className="atl-rise mt-7 max-w-2xl text-[1.1rem] leading-[1.7] text-[var(--atl-soft)]" style={{ animationDelay: "240ms" }}>
-            A full-stack luxury watch e-commerce platform &mdash; an AI concierge,
-            plain-English smart search, and a Watch DNA taste profile, built to show real
-            range from the data model to the interface.
+            A full-stack luxury watch platform with two ways to find a watch: a Smart Search
+            that turns plain English into catalogue filters without calling a model, and an AI
+            concierge that advises on occasions and taste. Both are measured against a
+            100-query benchmark.
           </p>
 
           <div className="atl-rise mt-8 flex flex-wrap items-center gap-3" style={{ animationDelay: "320ms" }}>
@@ -281,10 +480,10 @@ export default function TourbillonPortfolioPage() {
             </a>
           </div>
 
-          <dl className="atl-rise mt-12 grid max-w-lg grid-cols-3 gap-6 border-t border-[var(--atl-rule)] pt-7" style={{ animationDelay: "400ms" }}>
+          <dl className="atl-rise mt-12 grid max-w-2xl grid-cols-1 gap-6 border-t border-[var(--atl-rule)] pt-7 sm:grid-cols-3" style={{ animationDelay: "400ms" }}>
             {[
               { k: "Stack", v: ".NET · Next.js · Python AI" },
-              { k: "Scale", v: "13 maisons · 51 collections" },
+              { k: "Catalogue", v: "13 maisons, 48 collections, 338 watches" },
               { k: "Role", v: "Full-stack" },
             ].map((item) => (
               <div key={item.k}>
@@ -297,7 +496,7 @@ export default function TourbillonPortfolioPage() {
 
         {/* About */}
         <ScrollFade triggerOnce className="py-20">
-          <SectionHead index="01 / 05" kicker="About" title="Why watches, and why this project?" />
+          <SectionHead index="01 / 06" kicker="About" title="Why watches, and why this project?" />
           <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
             <p className="atl-display lg:col-span-5 text-[1.5rem] font-light leading-[1.4] text-[var(--atl-ink)]">
               <span className="atl-display float-left mr-3 mt-1 text-[4.4rem] font-medium leading-[0.7] text-[var(--atl-oxblood)]">
@@ -314,8 +513,8 @@ export default function TourbillonPortfolioPage() {
               </p>
               <p>
                 The goal was never just to look good. I wanted something that behaves like a
-                real product and shows how I approach a larger software project from end to
-                end.
+                real product, and I wanted to be able to prove how well its search works
+                rather than say so.
               </p>
             </div>
           </div>
@@ -323,7 +522,7 @@ export default function TourbillonPortfolioPage() {
 
         {/* Features */}
         <ScrollFade triggerOnce className="py-20">
-          <SectionHead index="02 / 05" kicker="Capabilities" title="What Tourbillon can do." />
+          <SectionHead index="02 / 06" kicker="Capabilities" title="What Tourbillon can do." />
           <div className="grid grid-cols-1 gap-x-12 md:grid-cols-2">
             {features.map((feature, i) => (
               <div
@@ -346,7 +545,7 @@ export default function TourbillonPortfolioPage() {
 
         {/* Tech stack */}
         <ScrollFade triggerOnce className="py-20">
-          <SectionHead index="03 / 05" kicker="Toolkit" title="The stack behind the build." />
+          <SectionHead index="03 / 06" kicker="Toolkit" title="The stack behind the build." />
           <div className="grid grid-cols-1 gap-x-12 gap-y-10 sm:grid-cols-2">
             {stackGroups.map((group) => (
               <div key={group.title} className="border-t border-[var(--atl-rule)] pt-6">
@@ -368,36 +567,168 @@ export default function TourbillonPortfolioPage() {
           </div>
         </ScrollFade>
 
-        {/* Architecture — technical title block */}
-        <ScrollFade triggerOnce className="py-20">
-          <SectionHead index="04 / 05" kicker="Architecture" title="How the system is organised." />
-          <p className="mb-8 max-w-2xl text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
-            The app is split so each part has one clear job: the frontend owns experience, the
-            backend owns business logic and data, and a separate AI service keeps prompts and
-            model logic out of the .NET layer. Hangfire moves slow work off the request path,
-            Serilog and health checks make the running system observable, and GitHub Actions
-            runs the unit tests on every push.
-          </p>
-          <div className="border border-[var(--atl-rule)] bg-[var(--atl-paper-2)]/70">
-            <div className="flex items-center justify-between gap-4 border-b border-[var(--atl-rule)] px-5 py-3">
-              <span className="atl-mono text-[11px] uppercase tracking-[0.24em] text-[var(--atl-ink)]">
-                Fig. 01 &mdash; System Architecture
-              </span>
-              <span className="atl-mono text-[10px] uppercase tracking-[0.24em] text-[var(--atl-faint)]">
-                Local / Production
-              </span>
-            </div>
+        {/* Architecture — the whole system, then each way to find a watch with its results.
+            Taller than five phone screens, so it reveals on first sight rather than at the default
+            20% visibility, which such a section can never reach. */}
+        <ScrollFade triggerOnce threshold={0} className="py-20">
+          <SectionHead index="04 / 06" kicker="Architecture" title="How the system is organised." />
+          <div className="mb-10 grid grid-cols-1 gap-8 text-[1.02rem] leading-[1.8] text-[var(--atl-soft)] lg:grid-cols-2">
+            <p>
+              Three services, each with one job. The Next.js frontend owns the experience. The
+              .NET API owns data, accounts, and every decision about what a visitor sees,
+              including which watches appear and which actions are offered. The Python AI
+              service owns prompts and models, and only ever returns words or structured data.
+            </p>
+            <p>
+              Hangfire runs slow work such as emails and embeddings on Redis, Serilog and health
+              checks keep the running system observable, and GitHub Actions runs the tests and
+              deploys on every push. Smart Search and the concierge share one catalogue but take
+              different routes through it.
+            </p>
+          </div>
+          <Plate caption="Fig. 01 — System" note="Production">
             <div className="overflow-x-auto px-5 py-6">
-              <pre className="atl-mono min-w-[640px] text-[12px] leading-relaxed text-[var(--atl-soft)]">
-                {architectureDiagram}
+              <pre className="atl-mono min-w-[600px] text-[12px] leading-relaxed text-[var(--atl-soft)]">
+                {systemDiagram}
               </pre>
             </div>
+          </Plate>
+
+          <Subsystem
+            name="Smart Search"
+            summary="Typed into the search bar. It reads the constraints a shopper states, including everyday wording such as “a proper strong diver”, compiles them to SQL, and ranks whatever it could not read with BM25F. No step calls a model."
+            flow={
+              <Plate caption="Fig. 02 — Smart Search flow" note="No model call">
+                <div className="overflow-x-auto px-5 py-6">
+                  <pre className="atl-mono min-w-[440px] text-[12px] leading-relaxed text-[var(--atl-soft)]">
+                    {smartSearchDiagram}
+                  </pre>
+                </div>
+              </Plate>
+            }
+            results={
+              <Plate caption="Fig. 03 — Smart Search results" note="50 facet queries">
+                <div className="px-5 py-5">
+                  <ResultTable columns={["Smart Search", "BM25", "Old search bar"]} rows={smartSearchRows} markColumn={0} />
+                  <p className="mt-4 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.9rem] leading-[1.6] text-[var(--atl-soft)]">
+                    The parser reads the constraints a query states with a slot F1 of 0.81, and
+                    almost never reads one wrongly: what it gets wrong, it misses.
+                  </p>
+                </div>
+              </Plate>
+            }
+          />
+
+          <Subsystem
+            name="Concierge"
+            summary="A chat assistant for briefs that name no filter: an occasion, a gift, a way of life. A model reads the brief only when the cheaper stages cannot, candidates come from keyword and semantic search fused together, and the backend decides every card and action shown."
+            flow={
+              <Plate caption="Fig. 04 — Concierge flow" note="Claude Haiku 4.5">
+                <div className="overflow-x-auto px-5 py-6">
+                  <pre className="atl-mono min-w-[440px] text-[12px] leading-relaxed text-[var(--atl-soft)]">
+                    {conciergeDiagram}
+                  </pre>
+                </div>
+              </Plate>
+            }
+            results={
+              <Plate caption="Fig. 05 — Concierge results" note="50 open-ended briefs">
+                <div className="px-5 py-5">
+                  <ResultTable columns={["Concierge", "BM25"]} rows={conciergeRows} markColumn={0} />
+                  <p className="mt-4 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.9rem] leading-[1.6] text-[var(--atl-soft)]">
+                    On the 50 facet queries the concierge is level with Smart Search: no metric
+                    differs significantly, so it can take over search requests as well.
+                  </p>
+                </div>
+              </Plate>
+            }
+          />
+
+          <p className="mt-6 flex flex-wrap gap-x-6 gap-y-1 text-[0.86rem] text-[var(--atl-faint)]">
+            <span><span aria-hidden className="text-[var(--atl-oxblood)]">●</span> better than BM25 with 95% confidence</span>
+            <span><span aria-hidden>○</span> difference within noise</span>
+            <span>Each table compares systems on its own query set; how those were built is below.</span>
+          </p>
+        </ScrollFade>
+
+        {/* Evaluation — how the numbers above were produced, and what they decided. Also tall on
+            phones, so it uses the same first-sight reveal. */}
+        <ScrollFade triggerOnce threshold={0} className="py-20">
+          <SectionHead index="05 / 06" kicker="Evaluation" title="How the numbers were produced." />
+          <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
+            <div className="space-y-5 text-[1.02rem] leading-[1.8] text-[var(--atl-soft)] lg:col-span-5">
+              <p>
+                Search quality is easy to claim and hard to show, so every figure above comes
+                from one benchmark: 100 labelled queries, split by the part of the product that
+                answers them.
+              </p>
+              <ul className="space-y-4 border-t border-[var(--atl-rule)] pt-5">
+                {method.map((line) => (
+                  <li key={line} className="flex gap-3 text-[0.96rem] leading-[1.7]">
+                    <span aria-hidden className="mt-[0.7em] h-px w-3 shrink-0 bg-[var(--atl-oxblood)]" />
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="lg:col-span-7">
+              <Plate caption="Fig. 06 — The query set" note="100 labelled queries">
+                <div className="grid grid-cols-1 divide-y divide-[var(--atl-rule-soft)] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                  {querySet.map((half) => (
+                    <div key={half.heading} className="px-5 py-6">
+                      <h3 className="atl-display text-[1.35rem] font-medium leading-snug text-[var(--atl-ink)]">
+                        {half.heading}
+                      </h3>
+                      <p className="mt-1 text-[0.88rem] text-[var(--atl-oxblood)]">{half.owner}</p>
+                      <p className="mt-4 text-[0.94rem] leading-[1.7] text-[var(--atl-soft)]">{half.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </Plate>
+            </div>
           </div>
+
+          <div className="mt-10">
+            <Plate caption="Fig. 07 — Choosing the retriever" note="Each retriever run on its own">
+              <div className="px-5 py-5">
+                <ResultTable
+                  columns={[
+                    "Results shown directly: nDCG@10, facet",
+                    "Candidates for the reranker: recall@50, facet",
+                    "Recall@50, open-ended",
+                  ]}
+                  rows={retrieverRows}
+                />
+                <p className="mt-4 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.9rem] leading-[1.6] text-[var(--atl-soft)]">
+                  The same retriever does two different jobs. Smart Search shows its ranking
+                  directly, so it uses BM25F alone. The concierge hands a pool of 50 to a
+                  reranker, so it fuses both: the fused pool holds the most right answers on
+                  both kinds of query.
+                </p>
+              </div>
+            </Plate>
+          </div>
+
+          <dl className="mt-14 grid grid-cols-1 gap-x-12 md:grid-cols-2">
+            {findings.map((finding) => (
+              <div key={finding.term} className="border-t border-[var(--atl-rule)] py-6">
+                <dt className="atl-display text-[1.25rem] font-medium leading-snug text-[var(--atl-ink)]">
+                  {finding.term}
+                </dt>
+                <dd className="mt-2 text-[0.96rem] leading-[1.65] text-[var(--atl-soft)]">{finding.text}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-6 max-w-3xl text-[0.9rem] leading-[1.7] text-[var(--atl-faint)]">
+            The labels are my own judgement, and 50 queries per half detects large effects
+            rather than small ones. The numbers compare designs against a baseline; they do
+            not promise how shoppers would respond.
+          </p>
         </ScrollFade>
 
         {/* Closing */}
         <ScrollFade triggerOnce className="py-20">
-          <SectionHead index="05 / 05" kicker="Intent" title="What this project demonstrates." />
+          <SectionHead index="06 / 06" kicker="Intent" title="What this project demonstrates." />
           <blockquote className="atl-italic max-w-3xl text-[2rem] font-light leading-[1.32] text-[var(--atl-ink)] md:text-[2.6rem]">
             &ldquo;I wanted to take a personal idea and turn it into a complete, working
             product &mdash; not another CRUD demo.&rdquo;
@@ -409,8 +740,9 @@ export default function TourbillonPortfolioPage() {
               personal idea through to a finished product.
             </p>
             <p className="text-[1.02rem] leading-[1.8] text-[var(--atl-soft)]">
-              I built it to push past basic CRUD into real product problems: search quality,
-              user state, background jobs, image handling, performance, and clear UI design.
+              It also shows how I make technical decisions: by measuring the alternatives on
+              the same test and keeping what the numbers support, including removing the
+              parts that did not earn their cost.
             </p>
           </div>
         </ScrollFade>
