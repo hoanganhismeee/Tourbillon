@@ -2086,6 +2086,21 @@ public class WatchFinderService : IWatchFinderService
         return intent;
     }
 
+    /// Records a water-resistance floor in metres and ticks every filter bucket at or above it, so
+    /// the filter bar shows what the parser understood.
+    private static void SetWaterResistanceFloor(QueryIntent intent, int metres)
+    {
+        intent.WaterResistance = metres.ToString();
+        if (metres <= 30)
+            intent.WaterResistanceBuckets.AddRange(["Up to 30m", "50m \u2013 120m", "150m \u2013 300m", "600m+"]);
+        else if (metres <= 120)
+            intent.WaterResistanceBuckets.AddRange(["50m \u2013 120m", "150m \u2013 300m", "600m+"]);
+        else if (metres <= 300)
+            intent.WaterResistanceBuckets.AddRange(["150m \u2013 300m", "600m+"]);
+        else
+            intent.WaterResistanceBuckets.Add("600m+");
+    }
+
     // Pure regex extraction — all non-DB parsing (price, diameter, material, movement,
     // water resistance, style, complications, power reserve). Extracted for unit testing.
     internal static void ApplyRegexFilters(string query, QueryIntent intent)
@@ -2274,16 +2289,7 @@ public class WatchFinderService : IWatchFinderService
             RegexOptions.IgnoreCase);
         if (wrExplicit.Success && int.TryParse(wrExplicit.Groups[1].Value, out var wrMetres))
         {
-            intent.WaterResistance = wrMetres.ToString();
-            // Populate bucket list: all buckets at or above this value
-            if (wrMetres <= 30)
-                intent.WaterResistanceBuckets.AddRange(["Up to 30m", "50m \u2013 120m", "150m \u2013 300m", "600m+"]);
-            else if (wrMetres <= 120)
-                intent.WaterResistanceBuckets.AddRange(["50m \u2013 120m", "150m \u2013 300m", "600m+"]);
-            else if (wrMetres <= 300)
-                intent.WaterResistanceBuckets.AddRange(["150m \u2013 300m", "600m+"]);
-            else
-                intent.WaterResistanceBuckets.Add("600m+");
+            SetWaterResistanceFloor(intent, wrMetres);
         }
         // Generic phrase (e.g. "good water resistance", "water resistant") — exclude only "Up to 30m"
         else if (Regex.IsMatch(q,
@@ -2291,6 +2297,25 @@ public class WatchFinderService : IWatchFinderService
             RegexOptions.IgnoreCase))
         {
             intent.WaterResistanceBuckets.AddRange(["50m \u2013 120m", "150m \u2013 300m", "600m+"]);
+        }
+        // A use stated instead of a rating. The floors follow common practice, not any query set:
+        // deep or professional diving means 300m and up, actually diving means the conventional
+        // 200m, and swimming needs 100m. A plain "diver watch" names a category and stays a style
+        // only, because the buckets filter client-side and a 200m floor would hide the divers
+        // rated at ISO 6425's 100m minimum. Contexts such as "beach" are left to the concierge.
+        else if (Regex.IsMatch(q,
+            @"\b(?:serious|proper|strong|professional|pro|deep|saturation|technical)\s+(?:dive|diver|divers|diving)\b",
+            RegexOptions.IgnoreCase))
+        {
+            SetWaterResistanceFloor(intent, 300);
+        }
+        else if (Regex.IsMatch(q, @"\b(?:diving|scuba)\b(?!\s+watch)", RegexOptions.IgnoreCase))
+        {
+            SetWaterResistanceFloor(intent, 200);
+        }
+        else if (Regex.IsMatch(q, @"\b(?:swim|swims|swimming|snorkel(?:l?ing)?|surf|surfing)\b", RegexOptions.IgnoreCase))
+        {
+            SetWaterResistanceFloor(intent, 100);
         }
 
         // ── Style matching ──────────────────────────────────────────────────────────
