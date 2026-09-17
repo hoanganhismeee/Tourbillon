@@ -118,6 +118,17 @@ stay in the catalogue but can never satisfy a budget constraint, because their p
 | **Hit rate@10** | Did the user see anything useful at all? The most legible number for non-engineers. |
 | **p50 / p95 latency** | What a single user waits. The mean hides the LLM rerank tail; p95 is the number worth quoting. |
 
+Three further measurements sit beside the retrieval table:
+
+| Measurement | Arm | Question it answers |
+|---|---|---|
+| **Structured filter accuracy** | `smart` | Did the parser read the constraints the brief states? Slot recall (constraints read), slot precision (parsed constraints that were right) and the share of queries read exactly, on the spec half only. It separates a parse error from a ranking error. |
+| **Action relevance** | `concierge` | Are the compare, navigate and search actions on a reply valid and useful? A comparison is relevant when every compared watch is in the answer set, a destination when at least half its watches are, a hand-off search when two of its first five results are. |
+| **Candidate recall** (`--k=50`) | `bm25`, `vector`, `hybrid` | Does a retriever's pool of 50 contain the answers? This is the job a retriever does for a reranker, and it can rank designs differently from recall@10, which is the job it does when its order is shown directly. |
+
+Structured filter accuracy is a component metric, not a headline: a perfect parse can still rank
+badly, and labels carry judgement no parser can hold (a strap, a date window), which is not scored.
+
 Recall and precision trade off against each other, which is why both are reported. A pipeline that
 returns the entire catalogue has perfect recall and useless precision.
 
@@ -140,8 +151,10 @@ Four blocks, in the order they matter:
    is paying for.
 3. **Path distribution** — which internal path served each query, measured per request rather than
    assumed from the code. This is the evidence behind any claim about keeping queries off the LLM.
-4. **smart vs keyword** — the paired delta, then every query where the new pipeline is *worse*.
-   That regression list is the most useful output in the file; it is the tuning queue.
+4. **Paired deltas** — every arm against the first one listed, then every query where that arm is
+   *worse*. The regression list is the most useful output in the file; it is the tuning queue.
+5. **Structured filter accuracy and action relevance** — printed when an arm returns a parsed
+   intent or actions.
 
 ## Turning the output into a claim
 

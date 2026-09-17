@@ -170,6 +170,56 @@ hay dễ — thứ nếu không sẽ nhấn chìm hiệu ứng cần đo.
 **Luật đọc: khoảng tin cậy cắt qua 0 thì chưa phải kết quả.** Harness in thẳng chữ
 `not significant` để không tự lừa mình.
 
+### Cách đọc bảng
+
+Mỗi **hàng** là một arm, mỗi **cột** là một chỉ số, mỗi **bảng** là một scope.
+
+**Vì sao spec và semantic là hai bảng.** Hai nửa là hai bài thi khác nhau, do hai hệ thống khác
+nhau phụ trách, với nhãn khác bản chất: spec có đáp án khách quan, semantic là phán đoán. Trần
+recall cũng khác (0.498 so với 0.343). Nên:
+
+- **So các hàng trong cùng một bảng** — cùng câu hỏi, cùng nhãn, là so sánh công bằng.
+- **Không so số giữa hai bảng.** Recall 0.378 ở spec và 0.075 ở semantic không nói hệ thống nào
+  tốt hơn; chúng đo hai bài thi khác nhau.
+- **Hàng đầu tiên là baseline.** Mọi delta và khoảng tin cậy đều tính so với nó.
+- **Đọc recall theo trần**, không đọc số thô.
+- **Latency đọc p95**, vì đó là trải nghiệm tệ nhất mà một người dùng thật gặp.
+
+### Structured filter accuracy
+
+Parser đọc đúng bao nhiêu ràng buộc mà câu hỏi nêu ra. So `QueryIntent` với các facet mà nhãn
+spec hàm ý, theo từng ô:
+
+| Chỉ số | Nghĩa |
+|---|---|
+| **slot recall** | Trong các ràng buộc câu hỏi nêu, parser đọc được bao nhiêu |
+| **slot precision** | Trong các ràng buộc parser đọc ra, bao nhiêu là đúng |
+| **read exactly** | Tỉ lệ câu được đọc trọn vẹn, không sót, không sai, không thừa |
+
+Đây là chỉ số **chẩn đoán**, không phải chỉ số tiêu đề: nó tách lỗi *hiểu sai câu hỏi* khỏi lỗi
+*xếp hạng kém*. Parse đúng hoàn toàn vẫn có thể xếp hạng tệ, và nhãn chứa những thứ không parser
+nào giữ được (loại dây, ô ngày) — những phần đó không được chấm.
+
+### Action relevance
+
+Chấm action của concierge bằng chính bộ nhãn dùng để chấm card:
+
+| Action | Hợp lệ | Liên quan |
+|---|---|---|
+| compare | ≥ 2 chiếc khác nhau, đều tồn tại | Mọi chiếc được so đều thuộc tập đáp án |
+| navigate | Trang đích có thật | ≥ 50% đồng hồ ở trang đích khớp nhãn |
+| search | Query không rỗng | Chạy qua Smart Search, ≥ 2/5 kết quả đầu khớp nhãn |
+
+Ngưỡng là quy ước, nên harness in cả điểm trung bình liên tục bên cạnh tỉ lệ đạt ngưỡng.
+
+### Candidate recall (`--k=50`)
+
+Cùng một retriever có thể làm hai việc khác nhau. Khi **thứ tự của nó được hiển thị trực tiếp**
+(Smart Search), chỉ số đúng là recall@10 và MRR. Khi nó **sinh ứng viên cho reranker**
+(concierge), chỉ số đúng là recall@50: nhóm ứng viên có chứa đáp án không, còn thứ tự để
+reranker lo. Hybrid từng thua BM25 ở MRR@10 nhưng lại tốt nhất ở recall@50 — cùng thành phần,
+khác việc, khác kết luận.
+
 ---
 
 ## 4. Kiểm tra sức khoẻ nhãn
@@ -221,6 +271,9 @@ docker compose exec -T redis sh -lc \
 | `queries.mjs` | Bộ câu hỏi có nhãn — handwritten + generated. |
 | `metrics.mjs` | Recall, precision, MRR, nDCG, percentile, bootstrap, trần recall. |
 | `metrics.test.mjs` | Test cho metrics. |
+| `slots.mjs` | Structured filter accuracy — so intent đã parse với facet của nhãn. |
+| `actions.mjs` | Action relevance — chấm compare, navigate, search của concierge. |
+| `slots.test.mjs`, `actions.test.mjs` | Test cho hai module trên. |
 | `queries.test.mjs` | Test cấu trúc bộ câu hỏi: key hợp lệ, scope đã đăng ký. |
 | `spec-questions.mjs` | Đo độ chính xác khi concierge trả lời câu hỏi về spec. |
 | `grading.mjs` | Logic chấm điểm thuần cho spec-questions. |
@@ -255,7 +308,10 @@ node eval/spec-questions.mjs --out=before   # đo trước khi sửa
 node eval/spec-questions.mjs --out=after    # đo sau
 node eval/spec-questions.mjs --compare=before,after
 
-node --test eval/metrics.test.mjs eval/grading.test.mjs eval/queries.test.mjs  # test của bộ đo
+node --test eval/metrics.test.mjs eval/grading.test.mjs eval/queries.test.mjs eval/slots.test.mjs eval/actions.test.mjs
+node eval/run-eval.mjs --scope=semantic --arms=vector,bm25,hybrid --k=50   # candidate recall
+SKIP_LLM_DISTANCE=1.0 docker compose up -d backend          # ablation: tắt rerank
+FUSE_LEXICAL_CANDIDATES=false docker compose up -d backend  # ablation: concierge chỉ dùng vector
 cd backend.Tests && dotnet test --filter "FullyQualifiedName~Bm25|FullyQualifiedName~ReciprocalRank"  # BM25, RRF
 ```
 
