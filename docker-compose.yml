@@ -63,6 +63,8 @@ services:
       WatchFinderSettings__DisableLimitInDev: ${WATCH_FINDER_DISABLE_LIMIT:-true}
       # Raise toward 1.0 to disable the LLM rerank — used to measure the retriever alone.
       WatchFinderSettings__SkipLlmDistance: ${SKIP_LLM_DISTANCE:-0.20}
+      # Set to false to give the concierge's reranker the vector pool alone, for an ablation run.
+      WatchFinderSettings__FuseLexicalCandidates: ${FUSE_LEXICAL_CANDIDATES:-true}
       ChatSettings__DisableLimitInDev: ${CHAT_DISABLE_LIMIT:-true}
       Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
       Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}

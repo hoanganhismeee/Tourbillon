@@ -168,6 +168,11 @@ public class WatchFinderService : IWatchFinderService
     // apart — the eval cannot otherwise tell a weak retriever from a weak reranker.
     private const float DefaultSkipLlmDistance = 0.20f;
     private readonly float _skipLlmDistance;
+    // Whether the concierge's candidate pool fuses BM25F with vector search. On by default; the
+    // switch exists so an evaluation run can measure the reranker on the vector pool alone.
+    private readonly bool _fuseLexicalCandidates;
+    // Size of the fused pool, matching the vector pool it replaces.
+    private const int FusionDepth = 50;
     private const float MaxDistance      = 0.55f; // Tier 4: filter no-matches in DB
     private const float MinRelevance     = 0.35f; // reject results when best match is worse than this
 
@@ -205,6 +210,7 @@ public class WatchFinderService : IWatchFinderService
         _lexical = lexical;
         _skipLlmDistance = _config.GetValue<float?>("WatchFinderSettings:SkipLlmDistance")
             ?? DefaultSkipLlmDistance;
+        _fuseLexicalCandidates = _config.GetValue<bool?>("WatchFinderSettings:FuseLexicalCandidates") ?? true;
     }
 
     /// Strips excluded brand IDs from inclusion lists and stores them for SQL NOT IN filtering.
@@ -330,6 +336,43 @@ public class WatchFinderService : IWatchFinderService
         }
 
         return query;
+    }
+
+    /// Fuses the vector pool with a BM25F ranking held to the same hard filters. Returns the vector
+    /// pool untouched, and false, when there is nothing lexical to add.
+    internal async Task<(List<Watch> Candidates, bool Fused)> FuseLexicalCandidatesAsync(
+        string query, QueryIntent? intent, List<Watch> vectorCandidates)
+    {
+        if (_lexical == null)
+            return (vectorCandidates, false);
+
+        var hits = await _lexical.SearchAsync(query, LexicalFallbackDepth);
+        if (hits.Count == 0)
+            return (vectorCandidates, false);
+
+        var hitIds = hits.Select(hit => hit.Id).ToList();
+        var filtered = await ApplyHardFiltersAsync(
+            _context.Watches
+                .Include(w => w.Brand)
+                .Include(w => w.Collection)
+                .AsNoTracking()
+                .Where(w => hitIds.Contains(w.Id)),
+            intent);
+        var lexicalWatches = await filtered.ToListAsync();
+        if (lexicalWatches.Count == 0)
+            return (vectorCandidates, false);
+
+        var position = hitIds.Select((id, index) => (id, index)).ToDictionary(p => p.id, p => p.index);
+        var lexicalRanked = lexicalWatches.OrderBy(w => position[w.Id]).Take(FusionDepth).ToList();
+
+        var byId = vectorCandidates.Concat(lexicalRanked)
+            .GroupBy(w => w.Id)
+            .ToDictionary(group => group.Key, group => group.First());
+        var fused = ReciprocalRankFusion.Fuse([
+            vectorCandidates.Select(w => w.Id).ToList(),
+            lexicalRanked.Select(w => w.Id).ToList(),
+        ]);
+        return (fused.Take(FusionDepth).Select(id => byId[id]).ToList(), true);
     }
 
     /// The retriever with nothing in front of it: embed, rank by cosine distance, return.
@@ -584,6 +627,22 @@ public class WatchFinderService : IWatchFinderService
             candidates = BrandSpread(filtered, 100);
         }
 
+        // Vector search alone is the weakest pool on facet-like wording: recall@50 was 0.41 against
+        // 0.62 for BM25F on the spec benchmark, while vector found more on open-ended briefs, and
+        // their fusion was best or tied on both. The reranker therefore chooses from the fused
+        // pool. A price-widened pool keeps its cheapest-first order, which the widening notice
+        // describes, so it is left alone.
+        var lexicalFused = false;
+        if (queryEmbedding != null && _fuseLexicalCandidates
+            && !widenedSearchKinds.Contains("price", StringComparer.OrdinalIgnoreCase))
+        {
+            (candidates, lexicalFused) = await FuseLexicalCandidatesAsync(normalizedQuery, queryIntent, candidates);
+        }
+
+        // The path names every stage that produced the pool. The marker sits before "+widened:",
+        // which callers split on to read the widening kinds.
+        string Stage(string basePath) => lexicalFused ? $"{basePath}+bm25" : basePath;
+
         // Base result: top TopMatchLimit by vector/filter order, rest as OtherCandidates.
         // Returned as-is for Tier 2 (strong vector match) and as LLM-fail fallback.
         var result = new WatchFinderResult
@@ -598,7 +657,7 @@ public class WatchFinderService : IWatchFinderService
             // shown embeddings were off in production reported the opposite.
             SearchPath = AppendWidenedSearchPath(
                 queryEmbedding == null ? "sql_fallback_no_embedding"
-                    : bestDistance < _skipLlmDistance ? "vector" : "vector_llm_candidate",
+                    : Stage(bestDistance < _skipLlmDistance ? "vector" : "vector_llm_candidate"),
                 widenedSearchKinds)
         };
 
@@ -624,7 +683,7 @@ public class WatchFinderService : IWatchFinderService
             result.Watches = structuredOrdered.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList();
             result.OtherCandidates = structuredOrdered.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList();
             result.SearchPath = AppendWidenedSearchPath(
-                queryEmbedding == null ? "sql_fallback_structured" : "vector_structured_skip_rerank",
+                queryEmbedding == null ? "sql_fallback_structured" : Stage("vector_structured_skip_rerank"),
                 widenedSearchKinds);
             return result;
         }
@@ -717,7 +776,7 @@ public class WatchFinderService : IWatchFinderService
                     // candidates when embeddings are unavailable, and the path must not claim
                     // a vector stage that did not happen.
                     result.SearchPath = AppendWidenedSearchPath(
-                        queryEmbedding == null ? "sql_fallback_llm_rerank" : "vector_llm_rerank",
+                        queryEmbedding == null ? "sql_fallback_llm_rerank" : Stage("vector_llm_rerank"),
                         widenedSearchKinds);
                 }
             }
