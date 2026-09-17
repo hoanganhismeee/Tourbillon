@@ -22,6 +22,8 @@ import { fileURLToPath } from 'node:url';
 
 import { loadCatalogue, summariseFacets } from './catalogue.mjs';
 import { HANDWRITTEN, buildGenerated, validateQueries, scopeOf } from './queries.mjs';
+import { buildCatalogueIndex, scoreActions, summariseActions } from './actions.mjs';
+import { scoreSlots, summariseSlots } from './slots.mjs';
 import {
   recallAtK, precisionAtK, reciprocalRank, ndcgAtK, hitAtK,
   mean, percentile, bootstrapCI, pairedBootstrap, recallCeiling, significance,
@@ -81,7 +83,13 @@ const ARM_IMPLS = {
       const body = await res.json();
       return {
         ids: (body.watchCards ?? []).map(c => c.id),
-        meta: { searchPath: body.finderPath ?? body.path ?? 'concierge' },
+        meta: {
+          searchPath: body.finderPath ?? body.routingPath ?? 'concierge',
+          routingPath: body.routingPath ?? null,
+          actions: (body.actions ?? []).map(a => ({
+            type: a.type, label: a.label, slugs: a.slugs ?? null, query: a.query ?? null, href: a.href ?? null,
+          })),
+        },
       };
     } finally {
       await fetch(`${BASE_URL}/api/chat/session/${sessionId}`, {
@@ -103,8 +111,12 @@ const ARM_IMPLS = {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = await res.json();
     return {
-      ids: (body.watches ?? []).map(w => w.id),
-      meta: { searchPath: body.searchPath ?? 'unknown', rerankSource: body.rerankSource ?? 'unknown' },
+      ids: rankedIds(body),
+      meta: {
+        searchPath: body.searchPath ?? 'unknown',
+        rerankSource: body.rerankSource ?? 'unknown',
+        queryIntent: body.queryIntent ?? null,
+      },
     };
   },
 
@@ -134,7 +146,13 @@ async function findWithMode(query, mode) {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = await res.json();
-  return { ids: (body.watches ?? []).map(w => w.id), meta: { searchPath: body.searchPath ?? mode } };
+  return { ids: rankedIds(body), meta: { searchPath: body.searchPath ?? mode } };
+}
+
+/// Shown results first, then the rest of the ranked pool. Metrics read the first k, so this only
+/// matters when --k asks for more than the fifteen a results page shows.
+function rankedIds(body) {
+  return [...(body.watches ?? []), ...(body.otherCandidates ?? [])].map(w => w.id);
 }
 
 // -- Main ---------------------------------------------------------------------
@@ -168,14 +186,17 @@ async function main() {
   }
 
   const results = {};
+  const index = buildCatalogueIndex(catalogue);
   for (const arm of ARMS) {
     if (!ARM_IMPLS[arm]) { console.error(`${RED}Unknown arm: ${arm}${RESET}`); process.exit(1); }
-    results[arm] = await runArm(arm, scored);
+    results[arm] = await runArm(arm, scored, catalogue, index);
   }
 
   printScores(results, scored);
   printPaths(results);
   printComparison(results, scored);
+  printSlots(results);
+  printActions(results);
   writeReport(results, scored, catalogue);
 }
 
@@ -191,11 +212,13 @@ function reprint(file) {
   printScores(results, queries);
   printPaths(results);
   printComparison(results, queries);
+  printSlots(results);
+  printActions(results);
 }
 
 /// Runs one arm over the whole set sequentially. Sequential on purpose: the point of the
 /// latency column is what a single user waits, not what the service does under load.
-async function runArm(arm, queries) {
+async function runArm(arm, queries, catalogue, index) {
   console.log(`\n${BOLD}${CYAN}arm: ${arm}${RESET} ${DIM}${queries.length} queries x ${PASSES} pass(es)${RESET}`);
   const rows = [];
 
@@ -220,6 +243,17 @@ async function runArm(arm, queries) {
         ndcg: error ? null : ndcgAtK(ids, q.relevant, K),
         hit: error ? null : hitAtK(ids, q.relevant, K),
       };
+      // Structured filter accuracy applies where a label reduces to facets, which is the spec half.
+      if (!error && meta.queryIntent !== undefined && scopeOf(q) === 'spec') {
+        row.slots = scoreSlots(q.truth, meta.queryIntent, catalogue);
+      }
+      // Actions are scored against the same labels as the cards; a hand-off search is run through
+      // Smart Search, which is where the concierge sends it.
+      if (!error && meta.actions) {
+        row.actionScores = await scoreActions(meta.actions, {
+          index, relevant: q.relevant, search: async text => (await ARM_IMPLS.smart(text)).ids,
+        });
+      }
       rows.push(row);
       process.stdout.write(`\r${DIM}  pass ${pass}  ${i + 1}/${queries.length}  ${q.id.padEnd(24).slice(0, 24)}${RESET}`);
       if (DELAY_MS) await sleep(DELAY_MS);
@@ -328,10 +362,14 @@ ${BOLD}Recall@${K} by category${RESET} ${DIM}(share of ceiling in brackets)${RES
 /// Which internal path served each query. This is the number behind any claim about
 /// keeping queries off the LLM: it is measured per request, not assumed from the code.
 function printPaths(results) {
-  // Whichever arm reports a path. smart is the one with tiers worth attributing; hybrid reports
-  // when one retriever contributed nothing, which is the failure worth seeing.
-  const rows = results.smart ?? results.hybrid ?? results.vector;
-  if (!rows) return;
+  // Smart Search and the concierge are the arms with stages worth attributing; without either,
+  // hybrid still reports when one retriever contributed nothing.
+  const arms = ['smart', 'concierge'].filter(arm => results[arm]);
+  if (!arms.length && (results.hybrid ?? results.vector)) arms.push(results.hybrid ? 'hybrid' : 'vector');
+  for (const arm of arms) printPathsFor(arm, results[arm]);
+}
+
+function printPathsFor(arm, rows) {
   const paths = groupBy(rows.filter(r => r.searchPath), r => r.searchPath);
   const total = Object.values(paths).reduce((a, r) => a + r.length, 0);
   if (!total) return;
@@ -341,7 +379,7 @@ function printPaths(results) {
   // no more accurate than the cheap SQL path is a candidate for deletion, and this is the
   // table that says so. Paths are chosen by the router, so these are observational groups
   // over different queries, not a controlled comparison - read them as a signal to dig into.
-  console.log(`\n${BOLD}Smart Search path distribution${RESET}`);
+  console.log(`\n${BOLD}Path distribution${RESET} ${DIM}${arm}${RESET}`);
   console.log(`  ${'path'.padEnd(34)}${'n'.padStart(4)}${'share'.padStart(7)}${'recall'.padStart(9)}${'p50 ms'.padStart(9)}${'p95 ms'.padStart(9)}`);
   for (const [path, group] of Object.entries(paths).sort((a, b) => b[1].length - a[1].length)) {
     const lat = group.map(r => r.latencyMs);
@@ -412,6 +450,37 @@ function printPair(results, queries, a, b) {
   }
 }
 
+/// How well each arm's parser read the constraints in the spec half, slot by slot.
+function printSlots(results) {
+  for (const [arm, rows] of Object.entries(results)) {
+    const scored = rows.map(r => r.slots).filter(Boolean);
+    if (!scored.length) continue;
+    const s = summariseSlots(scored);
+    console.log(`\n${BOLD}Structured filter accuracy${RESET} ${DIM}${arm}, ${s.queries} queries whose label implies a filter${RESET}`);
+    console.log(`  slot recall ${fmt(s.slotRecall)}   slot precision ${fmt(s.slotPrecision)}   F1 ${fmt(s.slotF1)}   read exactly ${pct(s.exactMatch)}`);
+    console.log(`  ${'slot'.padEnd(22)}${'matched'.padStart(9)}${'wrong'.padStart(7)}${'missed'.padStart(8)}`);
+    for (const [slot, c] of Object.entries(s.perSlot).sort(([a], [b]) => a.localeCompare(b))) {
+      console.log(`  ${slot.padEnd(22)}${String(c.matched).padStart(9)}${String(c.wrong).padStart(7)}${String(c.missed).padStart(8)}`);
+    }
+  }
+}
+
+/// Validity and relevance of the actions an arm attached to its replies.
+function printActions(results) {
+  for (const [arm, rows] of Object.entries(results)) {
+    const withScores = rows.filter(r => r.actionScores);
+    if (!withScores.length) continue;
+    const s = summariseActions(withScores);
+    console.log(`\n${BOLD}Action relevance${RESET} ${DIM}${arm}, ${s.replies} replies${RESET}`);
+    console.log(`  replies with an action ${s.repliesWithActions}/${s.replies}   ` +
+      `with a relevant action ${s.repliesWithRelevantAction}/${s.repliesWithActions}`);
+    console.log(`  ${'type'.padEnd(10)}${'n'.padStart(4)}${'valid'.padStart(8)}${'relevant'.padStart(10)}${'mean score'.padStart(12)}`);
+    for (const [type, t] of Object.entries(s.perType)) {
+      console.log(`  ${type.padEnd(10)}${String(t.count).padStart(4)}${pct(t.validRate).padStart(8)}${pct(t.relevantRate).padStart(10)}${fmt(t.meanScore).padStart(12)}`);
+    }
+  }
+}
+
 function writeReport(results, queries, catalogue) {
   const dir = join(HERE, 'results');
   mkdirSync(dir, { recursive: true });
@@ -431,6 +500,8 @@ function writeReport(results, queries, catalogue) {
       latencyP50: percentile(rows.map(r => r.latencyMs), 50),
       latencyP95: percentile(rows.map(r => r.latencyMs), 95),
       errors: rows.filter(r => r.error).length,
+      ...(rows.some(r => r.slots) ? { slots: summariseSlots(rows.map(r => r.slots).filter(Boolean)) } : {}),
+      ...(rows.some(r => r.actionScores) ? { actions: summariseActions(rows.filter(r => r.actionScores)) } : {}),
     }])),
     rows: results,
   }, null, 2));
@@ -459,6 +530,7 @@ function clearProgress() {
 }
 
 const fmt = v => (v == null ? '-' : v.toFixed(3));
+const pct = v => (v == null ? '-' : `${Math.round(v * 100)}%`);
 const money = v => (v == null ? '-' : `$${Math.round(v).toLocaleString('en-AU')}`);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
