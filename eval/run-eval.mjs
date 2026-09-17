@@ -63,9 +63,8 @@ const ARM_IMPLS = {
     return { ids: (body.watches ?? []).map(w => w.id), meta: {} };
   },
 
-  // The concierge reaches the same WatchFinderService, so scoring the cards it returns against
-  // the same labels isolates what its own routing and dispatch layer costs: any recall the
-  // concierge loses relative to `smart` is lost between the two, not in retrieval.
+  // The concierge keeps the model stages Smart Search dropped (classifier, LLM parse, rerank),
+  // so scoring its cards on the same labels shows what those stages buy over the model-free path.
   // One fresh session per query, because the golden set is single-turn and shared session
   // state would let one query's context leak into the next.
   concierge: async query => {
@@ -91,8 +90,8 @@ const ARM_IMPLS = {
     }
   },
 
-  // Deterministic catalogue path, then pgvector, then LLM rerank. searchPath tells us which
-  // of those actually ran, which is how the cost and latency story gets attributed.
+  // Smart Search as shipped: deterministic parse and SQL, then BM25F inside the parsed filters,
+  // with no model call anywhere. searchPath says which of the two answered.
   smart: async query => {
     const res = await fetch(`${BASE_URL}/api/watch/find`, {
       method: 'POST',

@@ -1,7 +1,8 @@
 # Smart Search evaluation harness
 
-Measures whether the Smart Search pipeline (deterministic SQL → pgvector → LLM rerank) actually
-retrieves better results than the keyword search it replaced, on a labelled set of queries.
+Measures retrieval quality on a labelled set of queries: Smart Search (a deterministic parser with a
+BM25F fallback), the chat concierge, and the individual retrieval designs they are built from
+(BM25F, vector, and their fusion), each against the same labels.
 
 Without this, every claim about search quality is an impression. With it, the claim is a number
 with a confidence interval attached, reproducible by anyone who clones the repo.
@@ -45,7 +46,7 @@ Each run writes a full per-query JSON record to `eval/results/`.
 | `keyword` | `GET /api/search` | The site's search bar: substring matching with a hand-built score. |
 | `vector` | `POST /api/watch/find` with `mode=vector` | The embedding index alone: no parser, no rerank, no cache. |
 | `hybrid` | `POST /api/watch/find` with `mode=hybrid` | BM25F and vector rankings fused by reciprocal rank in the backend. |
-| `smart` | `POST /api/watch/find` | The deterministic parser that serves facet queries. |
+| `smart` | `POST /api/watch/find` | Smart Search as shipped: deterministic parser, then BM25F inside the parsed filters, no model calls. |
 | `concierge` | `POST /api/chat/message` | The chat path, which owns the open-ended briefs. |
 
 `bm25` ranks with BM25F (`backend/Services/Bm25WatchIndex.cs`), an in-memory index over brand,

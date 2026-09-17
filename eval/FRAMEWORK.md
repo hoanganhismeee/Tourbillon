@@ -30,11 +30,12 @@ lộ ra khi đọc code hay dùng thử.
 | `keyword` | `GET /api/search` | Ô search của site — khớp chuỗi con với bảng điểm tự viết |
 | `vector` | `POST /api/watch/find` (`mode=vector`) | Chỉ riêng vector index: không parser, không rerank, không cache |
 | `hybrid` | `POST /api/watch/find` (`mode=hybrid`) | BM25F và vector, fuse bằng RRF trong backend |
-| `smart` | `POST /api/watch/find` | Deterministic parser, phục vụ câu hỏi dạng facet |
+| `smart` | `POST /api/watch/find` | Smart Search: deterministic parser, rồi BM25F trong bộ lọc cứng, không gọi model |
 | `concierge` | `POST /api/chat/message` | Chat, phụ trách câu hỏi mở |
 
-Chênh lệch giữa `smart` và `keyword` là giá trị AI mang lại. Chênh lệch giữa `concierge` và
-`smart` là chi phí riêng của tầng chat — vì cả hai gọi cùng một `WatchFinderService`.
+Chênh lệch giữa `smart` và `bm25` là giá trị của parser so với một baseline lexical chuẩn. Smart
+Search không gọi model; concierge thì có (classifier, LLM parse, rerank), nên chênh lệch giữa
+`concierge` và `smart` là thứ tầng model mua được — trên scope mà mỗi bên phụ trách.
 
 ### Scope
 
@@ -270,7 +271,7 @@ Cần `WatchFinderSettings:DisableLimitInDev=true`, không thì quota chặn sau
 | `bm25` | $0 | Index trong memory của backend |
 | `vector` | $0 | Embedding chạy in-process trong ai-service |
 | `hybrid` | $0 | BM25F + vector, fuse trong backend |
-| `smart` | ~$0.05 | Chỉ ~5–16% query chạm LLM |
+| `smart` | $0 | Không gọi model từ khi Smart Search tách khỏi LLM |
 | `concierge` | ~$0.30 | Mọi lượt đều gọi model để viết lời |
 | `spec-questions` | ~$0.12 | 24 lượt chat |
 
