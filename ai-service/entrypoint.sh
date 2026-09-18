@@ -27,9 +27,12 @@ else
   ollama pull nomic-embed-text
 fi
 
-# Create custom model with extended context from Modelfile
-echo "Creating ${CUSTOM_MODEL} from Modelfile (num_ctx 4096)..."
-ollama create "${CUSTOM_MODEL}" -f /app/Modelfile
+# Re-tag the base model with the context window the concierge needs. A num_ctx baked into the
+# model beats OLLAMA_CONTEXT_LENGTH, so the tag is rebuilt on every boot to keep the two aligned.
+NUM_CTX="${OLLAMA_CONTEXT_LENGTH:-8192}"
+echo "Creating ${CUSTOM_MODEL} from ${BASE_MODEL} (num_ctx ${NUM_CTX})..."
+printf 'FROM %s\nPARAMETER num_ctx %s\n' "${BASE_MODEL}" "${NUM_CTX}" > /tmp/Modelfile
+ollama create "${CUSTOM_MODEL}" -f /tmp/Modelfile
 
 echo "Starting Flask..."
 python app.py &

@@ -104,6 +104,9 @@ services:
       LOCAL_EMBED_MODEL: ${LOCAL_EMBED_MODEL:-sentence-transformers/all-mpnet-base-v2}
       OLLAMA_FLASH_ATTENTION: 1
       OLLAMA_KEEP_ALIVE: -1
+      # A concierge chat call carries 5-6k tokens of catalogue context; Ollama's default 4096
+      # window would silently drop the start of it. 8k of KV cache is ~0.5 GB for a 7B model.
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-8192}
       # Was raised from 1 when generation and nomic-embed-text both ran here and a single search
       # alternated between them, evicting and reloading each time. Embeddings have since moved
       # in-process, so ollama only serves generation and this headroom is spare — entrypoint.sh
