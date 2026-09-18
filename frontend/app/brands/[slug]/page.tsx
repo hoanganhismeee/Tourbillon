@@ -4,7 +4,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { markScrollRestore } from '@/lib/navigationDirection';
@@ -17,6 +16,7 @@ import { getSafeReturnTo, withReturnTo } from '@/lib/returnNavigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import ScrollFade from '../../scrollMotion/ScrollFade';
+import CollapsibleProse from '../../components/CollapsibleProse';
 import { WatchCard } from '../../components/cards/WatchCard';
 
 // Clean text-only row for a collection - no image needed.
@@ -61,7 +61,6 @@ const BrandPage = () => {
 
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [logoError, setLogoError] = useState(false);
-  const [descExpanded, setDescExpanded] = useState(false);
 
   const handleBackClick = () => {
     if (returnTo) {
@@ -214,44 +213,7 @@ const BrandPage = () => {
               </p>
             )}
 
-            {bodyParagraphs.length > 0 && (
-              <>
-                {/* Collapsible body — fade is scoped inside so it never overlaps the button */}
-                <div className="relative">
-                  <motion.div
-                    initial={{ height: '7rem' }}
-                    animate={{ height: descExpanded ? 'auto' : '7rem' }}
-                    transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                    className="overflow-hidden"
-                  >
-                    {bodyParagraphs.map((paragraph, index) => (
-                      <p key={index} className="text-sm text-white/55 font-light leading-7 tracking-wide mb-5">
-                        {paragraph}
-                      </p>
-                    ))}
-                  </motion.div>
-
-                  {/* Fade gradient — contained within the text box only */}
-                  {!descExpanded && (
-                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#1a120d]/70 to-transparent pointer-events-none" />
-                  )}
-                </div>
-
-                {/* Button sits below the text box, never covered by the fade */}
-                <button
-                  onClick={() => setDescExpanded(v => !v)}
-                  className="mt-4 flex items-center gap-1.5 text-xs tracking-widest uppercase text-[#bfa68a] hover:text-[#f0e6d2] transition-colors duration-300 font-light"
-                >
-                  {descExpanded ? 'Read less' : 'Read more'}
-                  <svg
-                    className={`w-3 h-3 transition-transform duration-300 ${descExpanded ? 'rotate-180' : ''}`}
-                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-              </>
-            )}
+            <CollapsibleProse paragraphs={bodyParagraphs} />
           </div>
 
         </header>

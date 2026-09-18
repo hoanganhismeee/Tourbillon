@@ -2,10 +2,9 @@
 // Mirrors the brand page layout: left-aligned, lede sentence pulled out, new tilt WatchCard.
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { fetchCollectionBySlug, fetchWatchesByCollectionSlug, fetchBrandById, Brand } from '@/lib/api';
 import { trackEvent } from '@/lib/behaviorTracker';
@@ -14,6 +13,7 @@ import { useNavigation } from '@/contexts/NavigationContext';
 import { markScrollRestore } from '@/lib/navigationDirection';
 import { getSafeReturnTo, withReturnTo } from '@/lib/returnNavigation';
 import ScrollFade from '../../scrollMotion/ScrollFade';
+import CollapsibleProse from '../../components/CollapsibleProse';
 import { WatchCard } from '../../components/cards/WatchCard';
 
 const CollectionPage = () => {
@@ -23,8 +23,6 @@ const CollectionPage = () => {
   const searchParams = useSearchParams();
   const { navigationState } = useNavigation();
   const returnTo = getSafeReturnTo(searchParams.get('returnTo'));
-
-  const [descExpanded, setDescExpanded] = useState(false);
 
   const { data: collection, isLoading: collectionLoading, error } = useQuery({
     queryKey: ['collection', slug],
@@ -171,34 +169,7 @@ const CollectionPage = () => {
                 </p>
               )}
 
-              {bodyParagraphs.length > 0 && (
-                <>
-                  <div className="relative">
-                    <motion.div
-                      initial={{ height: '7rem' }}
-                      animate={{ height: descExpanded ? 'auto' : '7rem' }}
-                      transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                      className="overflow-hidden"
-                    >
-                      {bodyParagraphs.map((p, i) => (
-                        <p key={i} className="text-sm text-white/55 font-light leading-7 tracking-wide mb-5">{p}</p>
-                      ))}
-                    </motion.div>
-                    {!descExpanded && (
-                      <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#1a120d]/70 to-transparent pointer-events-none" />
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setDescExpanded(v => !v)}
-                    className="mt-4 flex items-center gap-1.5 text-xs tracking-widest uppercase text-[#bfa68a] hover:text-[#f0e6d2] transition-colors duration-300 font-light"
-                  >
-                    {descExpanded ? 'Read less' : 'Read more'}
-                    <svg className={`w-3 h-3 transition-transform duration-300 ${descExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                </>
-              )}
+              <CollapsibleProse paragraphs={bodyParagraphs} />
             </div>
           )}
         </header>
