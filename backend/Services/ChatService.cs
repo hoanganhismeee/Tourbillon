@@ -9,6 +9,7 @@ using backend.Database;
 using backend.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using backend.Infrastructure;
 
 namespace backend.Services;
 
@@ -1160,7 +1161,7 @@ public class ChatService
                 webQuery,
                 mode,
             };
-            var resp = await httpClient.PostAsJsonAsync("/chat", payload, cancellationToken);
+            var resp = await StageTimings.TimeAsync("chat", () => httpClient.PostAsJsonAsync("/chat", payload, cancellationToken));
             chatSw.Stop();
 
             if (!resp.IsSuccessStatusCode)
@@ -4142,7 +4143,7 @@ public class ChatService
         try
         {
             var httpClient = _httpClientFactory.CreateClient("ai-service");
-            var resp = await httpClient.PostAsJsonAsync("/route", new { query });
+            var resp = await StageTimings.TimeAsync("route", () => httpClient.PostAsJsonAsync("/route", new { query }));
             if (resp.IsSuccessStatusCode)
             {
                 var result = await resp.Content.ReadFromJsonAsync<RouteResult>(_jsonOptions);

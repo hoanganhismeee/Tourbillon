@@ -3,6 +3,7 @@
 // Classifier failure is non-fatal — ChatService falls back to regex routing on "unclear".
 using System.Net.Http.Json;
 using System.Text.Json;
+using backend.Infrastructure;
 
 namespace backend.Services;
 
@@ -53,7 +54,7 @@ public sealed class ChatIntentClassifier : IIntentClassifier
                 entityMentions = new { brands = entityBrands, collections = entityCollections },
             };
 
-            var resp = await httpClient.PostAsJsonAsync("/classify", payload);
+            var resp = await StageTimings.TimeAsync("classify", () => httpClient.PostAsJsonAsync("/classify", payload));
             if (!resp.IsSuccessStatusCode)
                 return new IntentClassification("unclear", 0.0);
 

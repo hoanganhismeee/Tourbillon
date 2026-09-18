@@ -13,6 +13,7 @@ using backend.Models;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
+using backend.Infrastructure;
 
 namespace backend.Services;
 
@@ -429,7 +430,7 @@ public class WatchFinderService : IWatchFinderService
         }
 
         var normalizedQuery = QueryNormalizer.ExpandCompoundTerms(query);
-        var deterministicIntent = await ParseQueryIntentAsync(normalizedQuery);
+        var deterministicIntent = await StageTimings.TimeAsync("rules", () => ParseQueryIntentAsync(normalizedQuery));
         ApplyBrandExclusions(deterministicIntent, excludedBrandIds);
         if (deterministicIntent == null && !HasWatchDomainSignal(normalizedQuery)
             && await IsOffTopicAsync(query))
@@ -439,15 +440,16 @@ public class WatchFinderService : IWatchFinderService
             return EmptyResult(searchPath: "non_watch");
         }
 
-        var directResult = await _deterministicSearch.TryDirectSqlSearchAsync(normalizedQuery, deterministicIntent, "direct_sql_deterministic");
+        var directResult = await StageTimings.TimeAsync("sql",
+            () => _deterministicSearch.TryDirectSqlSearchAsync(normalizedQuery, deterministicIntent, "direct_sql_deterministic"));
         if (directResult != null)
             return directResult;
         if (deterministicIntent != null && ShouldUseDeterministicCataloguePath(normalizedQuery, deterministicIntent))
         {
-            var deterministicFallbackResult = await _deterministicSearch.TryDeterministicCatalogueFallbackAsync(
+            var deterministicFallbackResult = await StageTimings.TimeAsync("sql", () => _deterministicSearch.TryDeterministicCatalogueFallbackAsync(
                 normalizedQuery,
                 deterministicIntent,
-                "direct_sql_deterministic_fallback");
+                "direct_sql_deterministic_fallback"));
             if (deterministicFallbackResult != null)
                 return deterministicFallbackResult;
 
@@ -484,7 +486,7 @@ public class WatchFinderService : IWatchFinderService
             || (queryIntent?.CollectionsDerivedFromStyle != true && queryIntent?.CollectionIds?.Count > 0);
         if (queryEmbedding != null && !hasHardFilters)
         {
-            var cached = await _queryCache.LookupAsync(queryEmbedding);
+            var cached = await StageTimings.TimeAsync("cache", () => _queryCache.LookupAsync(queryEmbedding));
             if (cached != null)
             {
                 _logger.LogInformation("WatchFinder cache hit query={QueryPreview}",
@@ -512,7 +514,8 @@ public class WatchFinderService : IWatchFinderService
             queryIntent = new QueryIntent();
         ApplyBrandExclusions(queryIntent, excludedBrandIds);
 
-        var mergedDirectResult = await _deterministicSearch.TryDirectSqlSearchAsync(normalizedQuery, queryIntent, "direct_sql_merged");
+        var mergedDirectResult = await StageTimings.TimeAsync("sql",
+            () => _deterministicSearch.TryDirectSqlSearchAsync(normalizedQuery, queryIntent, "direct_sql_merged"));
         if (mergedDirectResult != null)
             return mergedDirectResult;
 
@@ -526,7 +529,7 @@ public class WatchFinderService : IWatchFinderService
 
         if (queryEmbedding != null)
         {
-            (candidates, bestDistance) = await VectorSearchAsync(queryEmbedding, queryIntent);
+            (candidates, bestDistance) = await StageTimings.TimeAsync("vector", () => VectorSearchAsync(queryEmbedding, queryIntent));
 
             // One structural widening pass: if a hard vector filter empties the pool,
             // retry once without the relaxable price cap before surfacing a refusal.
@@ -636,7 +639,7 @@ public class WatchFinderService : IWatchFinderService
         if (queryEmbedding != null && _fuseLexicalCandidates
             && !widenedSearchKinds.Contains("price", StringComparer.OrdinalIgnoreCase))
         {
-            (candidates, lexicalFused) = await FuseLexicalCandidatesAsync(normalizedQuery, queryIntent, candidates);
+            (candidates, lexicalFused) = await StageTimings.TimeAsync("bm25", () => FuseLexicalCandidatesAsync(normalizedQuery, queryIntent, candidates));
         }
 
         // The path names every stage that produced the pool. The marker sits before "+widened:",
@@ -719,7 +722,7 @@ public class WatchFinderService : IWatchFinderService
                     };
                 });
 
-            var rerankResp = await httpClient.PostAsJsonAsync("/watch-finder/rerank", new { query, watches = payload });
+            var rerankResp = await StageTimings.TimeAsync("rerank", () => httpClient.PostAsJsonAsync("/watch-finder/rerank", new { query, watches = payload }));
             if (rerankResp.IsSuccessStatusCode)
             {
                 _logger.LogInformation(
@@ -2542,7 +2545,7 @@ public class WatchFinderService : IWatchFinderService
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            var resp = await httpClient.PostAsJsonAsync("/embed", new { texts = new[] { query } });
+            var resp = await StageTimings.TimeAsync("embed", () => httpClient.PostAsJsonAsync("/embed", new { texts = new[] { query } }));
             sw.Stop();
             if (!resp.IsSuccessStatusCode)
             {
@@ -2573,7 +2576,7 @@ public class WatchFinderService : IWatchFinderService
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            var parseResp = await httpClient.PostAsJsonAsync("/watch-finder/parse", new { query });
+            var parseResp = await StageTimings.TimeAsync("parse", () => httpClient.PostAsJsonAsync("/watch-finder/parse", new { query }));
             _logger.LogInformation("WatchFinder parse {ElapsedMs}ms status={Status}",
                 sw.ElapsedMilliseconds, (int)parseResp.StatusCode);
             if (!parseResp.IsSuccessStatusCode) return null;

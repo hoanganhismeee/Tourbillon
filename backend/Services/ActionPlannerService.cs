@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using backend.Infrastructure;
 
 namespace backend.Services;
 
@@ -63,7 +64,8 @@ public sealed class ActionPlannerService : IActionPlanner
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(PlannerTimeout);
 
-            using var response = await client.PostAsJsonAsync("/plan-actions", payload, _jsonOptions, timeoutCts.Token);
+            using var response = await StageTimings.TimeAsync("planner",
+                () => client.PostAsJsonAsync("/plan-actions", payload, _jsonOptions, timeoutCts.Token));
             if (!response.IsSuccessStatusCode)
             {
                 LogOutcome("error_status", 0, input, $"http {(int)response.StatusCode}");

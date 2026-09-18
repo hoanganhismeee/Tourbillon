@@ -1,5 +1,6 @@
 // Chat concierge controller — handles message routing and session management.
 // No [Authorize] required — anonymous users can chat (rate limited by IP).
+using backend.Infrastructure;
 using backend.Models;
 using backend.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -12,10 +13,12 @@ namespace backend.Controllers;
 public class ChatController : ControllerBase
 {
     private readonly ChatService _chatService;
+    private readonly ILogger<ChatController> _logger;
 
-    public ChatController(ChatService chatService)
+    public ChatController(ChatService chatService, ILogger<ChatController> logger)
     {
         _chatService = chatService;
+        _logger = logger;
     }
 
     // POST /api/chat/message
@@ -31,6 +34,9 @@ public class ChatController : ControllerBase
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
         var isAdmin = User.Identity?.IsAuthenticated == true && User.IsInRole("Admin");
 
+        // Every model, embedding and SQL stage below records into this, and the totals go back in
+        // the Server-Timing header, where the eval harness and the browser's network panel read them.
+        var timings = StageTimings.Begin();
         ChatApiResponse result;
         try
         {
@@ -49,6 +55,10 @@ public class ChatController : ControllerBase
             // Client disconnected before a response was produced — quota was not charged.
             return StatusCode(499);
         }
+
+        var serverTiming = timings.ToServerTimingHeader();
+        Response.Headers["Server-Timing"] = serverTiming;
+        _logger.LogInformation("Chat timing path={RoutingPath} {ServerTiming}", result.RoutingPath, serverTiming);
 
         if (result.RateLimited)
             return StatusCode(429, result);
