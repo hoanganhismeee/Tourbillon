@@ -1,39 +1,122 @@
 # Tourbillon Architecture
 
-Current system architecture as of March 2026. This document exists to provide context for AI assistants and contributors without needing to explore the full codebase.
+Current system architecture as of September 2026. This document exists to provide context for AI assistants and contributors without needing to explore the full codebase.
 
 ## System Overview
 
 ```
-                         +------------------+
-                         |    Frontend      |
-                         |   Next.js 15     |
-                         |   :3000          |
-                         +--------+---------+
-                                  | HTTP (proxy routes + direct)
-                         +--------v---------+
-                         |    Backend       |
-                         |   .NET 8 API    |
-                         |   :5248         |
-                         +--------+---------+
-                                  |
-                    +-------------+-------------+
-                    v             v             v
-             +------------+ +----------+ +------------+
-             | PostgreSQL | |ai-service| | Image CDN  |
-             | (pgvector) | | (Flask)  | | Cloudinary |
-             |            | |          | | or CF/S3   |
-             +------------+ +----------+ +------------+
-                                  |
-                            +-----v------+
-                            | Ollama /   |
-                            | Claude API |
-                            +------------+
++----------------------------------------------------------------------------------+
+| Client: browser                                                                  |
+|   runtime       React 19 client components                                       |
+|   state         TanStack Query cache persisted to localStorage, Zustand stores   |
++-----------------------------------------+----------------------------------------+
+                                          |
+                                          |  HTTPS
+                                          v
++----------------------------------------------------------------------------------+
+| Frontend: Next.js 15 App Router, on Vercel                                       |
+|   rendering     React Server Components; static assets on the Vercel CDN         |
+|   interface     Tailwind CSS, shadcn, Framer Motion, GSAP, Lenis                 |
+|   API access    typed client; route handlers proxy /api/backend/* to the API     |
++-----------------------------------------+----------------------------------------+
+                                          |
+                                          |  HTTPS, REST + JSON, session cookie
+                                          v
++----------------------------------------------------------------------------------+
+| Backend: ASP.NET Core Web API, .NET 8, on Railway                                |
+|   identity      ASP.NET Identity, Google OAuth, role-based authorisation         |
+|   data          EF Core + Npgsql, pgvector; BM25F index held in memory           |
+|   jobs          Hangfire workers, queued in Redis                                |
+|   operations    Serilog, health checks, Swagger                                  |
++-------+----------------+----------------+----------------+----------------+------+
+        |                |                |                |                |
+    SQL, TLS      Redis protocol       S3 API            SMTP          HTTP + JSON
+     EF Core         over TLS          AWS SDK          MailKit      private network
+        |                |                |                |                |
+        v                v                v                v                v
++--------------+ +--------------+ +--------------+ +--------------+ +--------------+
+| Neon         | | Upstash      | | Amazon S3    | | SMTP relay   | | AI service   |
+| PostgreSQL   | | Redis        | | + CloudFront | |              | | Python,      |
+| + pgvector   | |              | |              | |              | | Flask        |
+|              | |              | |              | |              | |              |
+| relational   | | sessions,    | | media store; | | outbound     | | prompts,     |
+| data and     | | counters,    | | the browser  | | email        | | model calls, |
+| 768-dim      | | caches,      | | loads images | |              | | embeddings   |
+| vectors      | | job queue    | | from the CDN | |              | | (all-mpnet)  |
++--------------+ +--------------+ +--------------+ +--------------+ +-------+------+
+                                                                            |
+                                                       HTTPS, Messages API  |
+                                                                            v
+                                                                    +--------------+
+                                                                    | Anthropic    |
+                                                                    | Claude Haiku |
+                                                                    | 4.5          |
+                                                                    +--------------+
+
+ Local: Docker Compose runs the backend, the AI service, PostgreSQL and Redis,
+ with Ollama (qwen2.5) on the GPU in place of Anthropic.
+ Delivery: GitHub Actions runs the backend tests and a frontend type-check on
+ every push; Railway and Vercel deploy from main.
 ```
 
-Notes:
-- `ai-service/` is a Python Flask service that owns all LLM calls (intent classification and parsing, embedding, chat, taste extraction). The .NET backend sends and receives structured data only — no prompt strings in C#.
-- Selenium/scraping components are **temporary** — used only during initial product data collection. Not part of the production architecture.
+### Components
+
+| Tier | Technology | Runs on | Owns |
+|---|---|---|---|
+| Client | React 19, TanStack Query (persisted to localStorage), Zustand | Browser | UI state, cached server data, the anonymous browsing-event buffer |
+| Frontend | Next.js 15 App Router, Tailwind CSS, shadcn, Framer Motion, GSAP, Lenis | Vercel | Rendering, routing, and the `/api/backend/*` proxy to the API |
+| Backend | ASP.NET Core Web API (.NET 8), EF Core + Npgsql, ASP.NET Identity, Hangfire, Serilog | Railway | Data, accounts, authorisation, background jobs, and every decision about what a visitor sees |
+| AI service | Python, Flask, Anthropic SDK, sentence-transformers (all-mpnet-base-v2) | Railway, private network only | Prompts, model calls and embeddings. Returns words or structured data; never decides which cards or actions are shown |
+| Database | PostgreSQL + pgvector | Neon (ap-southeast-2) | Catalogue, accounts, favourites, browsing events, 768-dim watch embeddings, the semantic query cache |
+| Cache and queue | Redis | Upstash (ap-southeast-2) | Chat sessions, rate-limit counters, sign-in codes, the chat reply cache, Hangfire job storage |
+| Media | Amazon S3 + CloudFront; Cloudinary behind the same `IStorageService` | AWS | Watch, brand and collection images, and video |
+| Email | SMTP through MailKit | Mail provider | Sign-in codes, password flows, booking and inquiry emails |
+| Model | Claude Haiku 4.5; Ollama with qwen2.5 locally | Anthropic | Intent classification, brief parsing, reply wording, action suggestions, editorial, taste profiles |
+
+### Connections
+
+| From → to | Protocol | What crosses it |
+|---|---|---|
+| Browser → Vercel | HTTPS | Pages, React Server Component payloads, and API calls to `/api/backend/*` |
+| Browser → CloudFront | HTTPS | Images and video. The API returns storage IDs and the frontend builds the CDN URL, so media never passes through the API |
+| Vercel → API | HTTPS, REST + JSON | Proxied API calls carrying the HttpOnly session cookie (`BACKEND_INTERNAL_URL`) |
+| API → Neon | PostgreSQL protocol over TLS (Npgsql) | EF Core queries and pgvector similarity search. The pool is tuned so Neon's compute can suspend when idle |
+| API → Upstash | Redis protocol over TLS | Sessions, counters, caches, Hangfire queues |
+| API → AI service | HTTP + JSON over Railway's private network (`ai.railway.internal:5000`) | Structured requests and replies. No prompt text crosses this boundary |
+| AI service → Anthropic | HTTPS, Messages API | The only place the Anthropic key is used |
+| API → S3 | S3 API (AWS SDK) | Uploads from the admin area |
+| API → SMTP | SMTP (MailKit), sent from Hangfire jobs | Transactional email, retried by the queue rather than inside a request |
+| Browser ↔ Google → API | OAuth 2.0 | Sign-in with Google |
+
+### One request end to end
+
+A concierge message shows every tier:
+
+1. The browser posts to `/api/backend/chat/message`; the Next.js route handler on Vercel forwards it to the API.
+2. The API checks the rate limit and loads the session (Redis), resolves named brands and collections (PostgreSQL), and asks the AI service to classify the message, starting the LLM reading of the brief at the same time.
+3. Retrieval runs in the API: SQL over the catalogue, pgvector similarity search, and the in-memory BM25F index, fused by reciprocal rank fusion. The API builds the watch cards and actions.
+4. The API asks the AI service for the reply wording and for suggested actions in parallel, validates the suggestions, and stores the session.
+5. The reply returns with a `Server-Timing` header naming each stage's time; the browser loads the card images from CloudFront.
+
+### Local and production
+
+| | Production | Local (`make up`) |
+|---|---|---|
+| Frontend | Vercel | `npm run dev` on :3000 |
+| Backend | Railway | Docker, :5248 |
+| AI service | Railway, private network | Docker, :5000, with Ollama inside the container on the GPU (`docker-compose.nvidia.yml`) |
+| Model | Claude Haiku 4.5 | qwen2.5 7B through Ollama, or Anthropic when `.env` sets `LLM_BASE_URL` |
+| Database | Neon | `pgvector/pgvector:pg17` container, :5432 |
+| Redis | Upstash | `redis:7-alpine` container, :6379 |
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the backend tests and a frontend type-check on every push and pull request to `main`; Railway and Vercel deploy from `main`.
+
+### Security boundaries
+
+- The Anthropic key exists only in the AI service, and the AI service has no public domain.
+- Sessions live in HttpOnly cookies. Admin endpoints require the Admin role, and the Hangfire dashboard sits behind its own authorisation filter.
+- Chat and search quotas are counted in Redis per user or IP, so a restart of the API does not reset them.
+- `ai-service/` owns all prompt text; the .NET backend sends and receives structured data only.
 
 ---
 
