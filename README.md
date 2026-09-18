@@ -60,21 +60,26 @@ The parser reads the constraints a query states with a slot F1 of 0.81; what it 
 misses rather than misreads. Removing the LLM stages from this path moved no quality metric
 significantly and took p95 from 2.8 s to 29 ms.
 
-**Concierge, 50 open-ended briefs** (Claude Haiku 4.5)
+**Concierge, 50 open-ended briefs** (the same pipeline on two models)
 
-| Metric | Concierge | BM25 alone |
-|---|---|---|
-| MRR | **0.50** | 0.32 |
-| Precision@5 | 0.27 | 0.21 |
-| nDCG@10 | 0.23 | 0.17 |
-| Recall@10, share of ceiling | 18% | 12% |
-| Hit rate@10 | 74% | 66% |
-| Replies with a relevant action | 60% | - |
-| Latency, p95 | 12.8 s | 5 ms |
+| Metric | Claude Haiku 4.5 | Qwen 2.5 7B, local | BM25 alone |
+|---|---|---|---|
+| MRR | **0.50** | 0.36 | 0.32 |
+| Precision@5 | 0.27 | 0.19 | 0.21 |
+| nDCG@10 | 0.23 | 0.17 | 0.17 |
+| Recall@10, share of ceiling | 18% | 13% | 12% |
+| Hit rate@10 | 74% | 54% | 66% |
+| Replies with a relevant action | 60% | 48% | - |
+| Latency, p95 | 12.8 s | - | 5 ms |
 
-On the 50 facet queries the concierge is level with Smart Search on every metric, so it can take
-over search requests as well. The latency row was measured before a bug that re-ran nearly half
-of all chat calls was fixed; it will be re-measured.
+On the 50 facet queries either model is level with Smart Search on every metric, so the
+concierge can take over search requests as well. Swapping Haiku for a 7B model run locally
+(Ollama, RTX 3070 laptop) keeps the facet results but loses the open-ended edge: precision@5,
+nDCG@10 and hit rate all fall significantly against Haiku, and against BM25 nothing significant
+is left. Its latency is not reported because the laptop GPU throttled to a sixth of its clock
+during the run; on facet queries 17 of 50 requests timed out for the same reason, and the
+comparison there rests on the 33 that completed. Haiku's latency was measured before a bug that
+re-ran nearly half of all chat calls was fixed; it will be re-measured.
 
 **Choosing the retriever** (each retriever run on its own)
 

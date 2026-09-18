@@ -185,7 +185,9 @@ const method = [
 ];
 
 type Mark = "win" | "noise";
-type ResultRow = { label: string; values: string[]; emphasis?: number[]; mark?: Mark };
+// `mark` sits on the table's markColumn; `marks` sets one per column when several systems are
+// each tested against the baseline.
+type ResultRow = { label: string; values: string[]; emphasis?: number[]; mark?: Mark; marks?: (Mark | undefined)[] };
 
 const smartSearchRows: ResultRow[] = [
   { label: "nDCG@10", values: ["0.73", "0.57", "0.44"], emphasis: [0], mark: "win" },
@@ -196,14 +198,17 @@ const smartSearchRows: ResultRow[] = [
   { label: "Latency, p95", values: ["29 ms", "7 ms", "159 ms"], emphasis: [0] },
 ];
 
+// The same pipeline on two models, each tested against BM25 on the same briefs. The local
+// model's latency is left out: the laptop GPU throttled during its run, so the figure would
+// describe the cooling, not the model.
 const conciergeRows: ResultRow[] = [
-  { label: "MRR", values: ["0.50", "0.32"], emphasis: [0], mark: "win" },
-  { label: "Precision@5", values: ["0.27", "0.21"], emphasis: [0], mark: "noise" },
-  { label: "nDCG@10", values: ["0.23", "0.17"], emphasis: [0], mark: "noise" },
-  { label: "Recall@10, share of ceiling", values: ["18%", "12%"], emphasis: [0], mark: "noise" },
-  { label: "Hit rate@10", values: ["74%", "66%"], emphasis: [0], mark: "noise" },
-  { label: "Latency, p95", values: ["12.8 s", "5 ms"], emphasis: [0] },
-  { label: "Replies with a relevant action", values: ["60%", "—"], emphasis: [0] },
+  { label: "MRR", values: ["0.50", "0.36", "0.32"], emphasis: [0], marks: ["win", "noise"] },
+  { label: "Precision@5", values: ["0.27", "0.19", "0.21"], emphasis: [0], marks: ["noise", "noise"] },
+  { label: "nDCG@10", values: ["0.23", "0.17", "0.17"], emphasis: [0], marks: ["noise", "noise"] },
+  { label: "Recall@10, share of ceiling", values: ["18%", "13%", "12%"], emphasis: [0], marks: ["noise", "noise"] },
+  { label: "Hit rate@10", values: ["74%", "54%", "66%"], emphasis: [0], marks: ["noise", "noise"] },
+  { label: "Latency, p95", values: ["12.8 s", "—", "5 ms"], emphasis: [0] },
+  { label: "Replies with a relevant action", values: ["60%", "48%", "—"], emphasis: [0] },
 ];
 
 // The strongest value in each column is emphasised; this table explains a choice, not a winner.
@@ -225,6 +230,10 @@ const findings = [
   {
     term: "The LLM reranker is still on trial.",
     text: "Switching it off saved 1.9 s per reply with no significant change in quality, so it stays only until a larger query set settles it.",
+  },
+  {
+    term: "A local 7B model is not a drop-in for Haiku.",
+    text: "Qwen 2.5 7B matches it on facet queries, where SQL does the work, but on open-ended briefs precision@5 fell from 0.27 to 0.19 and hit rate from 74% to 54%, both significant, and its drafts failed the catalogue check often enough to be rewritten nearly half the time. It exercises the pipeline for free; it does not score it.",
   },
   {
     term: "The benchmark caught bugs review had missed.",
@@ -337,6 +346,7 @@ function ResultTable({ columns, rows, markColumn }: { columns: string[]; rows: R
               </th>
               {row.values.map((value, i) => {
                 const strong = row.emphasis?.includes(i);
+                const mark = row.marks ? row.marks[i] : markColumn === i ? row.mark : undefined;
                 return (
                   <td
                     key={`${row.label}-${i}`}
@@ -345,7 +355,7 @@ function ResultTable({ columns, rows, markColumn }: { columns: string[]; rows: R
                     }`}
                   >
                     {value}
-                    {markColumn === i && <SignificanceMark mark={row.mark} />}
+                    {mark && <SignificanceMark mark={mark} />}
                   </td>
                 );
               })}
@@ -634,10 +644,12 @@ export default function TourbillonPortfolioPage() {
             results={
               <Plate caption="Fig. 05 — Concierge results" note="50 open-ended briefs">
                 <div className="px-5 py-5">
-                  <ResultTable columns={["Concierge", "BM25"]} rows={conciergeRows} markColumn={0} />
+                  <ResultTable columns={["Haiku 4.5", "Qwen 7B, local", "BM25"]} rows={conciergeRows} />
                   <p className="mt-4 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.9rem] leading-[1.6] text-[var(--atl-soft)]">
-                    On the 50 facet queries the concierge is level with Smart Search: no metric
-                    differs significantly, so it can take over search requests as well.
+                    On the 50 facet queries either model is level with Smart Search, so the
+                    concierge can take over search requests as well. Only Haiku beats BM25
+                    on open-ended briefs: the 7B model, run on a laptop, lands within noise of
+                    it. Its latency is not shown because the GPU throttled during the run.
                   </p>
                 </div>
               </Plate>
