@@ -24,6 +24,7 @@ from routes.chat import (  # noqa: E402
     _collect_grounded_entities,
     _cleanup_markdown_artifacts,
     _filter_internal_links,
+    _response_matches_language,
     _strip_action_lines,
     _truncate_chat_response,
 )
@@ -84,6 +85,25 @@ class ChatRouteResponseSanitizerTests(unittest.TestCase):
         self.assertEqual(["patek-philippe-aquanaut-5167a-001"], grounded["groundedWatchSlugs"])
         self.assertEqual(["Patek Philippe"], grounded["groundedBrandNames"])
         self.assertEqual(["Aquanaut"], grounded["groundedCollectionNames"])
+
+
+class ChatRouteLanguageCheckTests(unittest.TestCase):
+    """The English check decides whether the reply is regenerated, so a false negative costs
+    a second full LLM call."""
+
+    def test_typographic_punctuation_and_accented_names_are_still_english(self):
+        for text in (
+            "For a wedding, a slim dress watch works best — the Calatrava is a classic choice.",
+            "It’s a classic dress watch.",
+            "The A. Lange & Söhne Saxonia is a quiet, elegant pick.",
+        ):
+            self.assertTrue(_response_matches_language(text, "english"), text)
+
+    def test_vietnamese_reply_is_not_english(self):
+        self.assertFalse(_response_matches_language("Đồng hồ này rất đẹp.", "english"))
+
+    def test_french_reply_is_not_english(self):
+        self.assertFalse(_response_matches_language("Cette montre est une belle pièce pour le mariage.", "english"))
 
 
 if __name__ == "__main__":

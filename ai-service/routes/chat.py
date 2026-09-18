@@ -134,7 +134,10 @@ def _response_matches_language(text: str, expected_language: str | None) -> bool
     ))
 
     if expected_language == "english":
-        if re.search(r"[^\x00-\x7F]", text):
+        # Punctuation such as an em dash or a curly quote, and names such as Söhne, are still
+        # English. Rejecting every non-ASCII character here re-ran the whole chat call on
+        # nearly half of all replies.
+        if has_viet_tone_marks:
             return False
         english_score = _language_score(text, "english")
         competing_score = max(_language_score(text, "french"), _language_score(text, "vietnamese"))
