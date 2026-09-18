@@ -303,6 +303,18 @@ node eval/run-eval.mjs --arms=concierge    # chỉ chat
 node eval/run-eval.mjs --scope=spec --arms=bm25,keyword,vector,hybrid,smart          # nhóm facet
 node eval/run-eval.mjs --scope=semantic --arms=bm25,keyword,vector,hybrid,concierge   # nhóm câu hỏi mở
 node eval/run-eval.mjs --from=eval/results/eval-<stamp>.json   # in lại một lần chạy, không gọi API
+node eval/compare-runs.mjs --a=<run.json> --b=<run.json> --arm=concierge   # cùng một arm, hai lần chạy
+```
+
+### Chạy concierge trên model local (không tốn credit)
+
+Cùng bộ query, cùng harness, chỉ đổi model: comment ba dòng `LLM_*` trong `.env` để ai-service
+quay về mặc định của compose (Ollama `qwen2.5:7b`), rồi khởi động lại **bằng `make up`** — chạy
+`docker compose up -d ai-service` không có `docker-compose.nvidia.yml` thì container mất GPU và
+Ollama chạy CPU. Xóa cache trước khi chạy để không lẫn kết quả của model trước. So hai lần chạy
+bằng `compare-runs.mjs`; cột latency là của máy local, không so được với số production.
+
+```bash
 
 node eval/spec-questions.mjs --out=before   # đo trước khi sửa
 node eval/spec-questions.mjs --out=after    # đo sau

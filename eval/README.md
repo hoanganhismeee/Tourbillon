@@ -17,6 +17,7 @@ node eval/run-eval.mjs                     # full run, both arms
 node eval/run-eval.mjs --scope=spec --arms=bm25,keyword,vector,hybrid,smart         # facet queries
 node eval/run-eval.mjs --scope=semantic --arms=bm25,keyword,vector,hybrid,concierge  # open-ended briefs
 node eval/run-eval.mjs --from=eval/results/eval-<stamp>.json   # re-print a saved run, no API calls
+node eval/compare-runs.mjs --a=<run.json> --b=<run.json> --arm=concierge   # same arm, two runs: paired deltas, latency, per-category
 ```
 
 Set `WatchFinderSettings:DisableLimitInDev=true` first, otherwise the daily quota rejects the run
