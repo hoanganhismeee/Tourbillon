@@ -84,6 +84,63 @@ public class ChatServiceTests
         watchFinder.VerifyNoOtherCalls();
     }
 
+    // The finder matches a prefetched parse and a shared classification to the exact query it is
+    // later given, so both hints must carry the same string the discovery path searches with.
+    private static (Mock<IWatchFinderService> Finder, Mock<IConciergeSearchHints> Hints) CreateHintedFinder()
+    {
+        var finder = new Mock<IWatchFinderService>(MockBehavior.Loose);
+        finder.Setup(f => f.FindWatchesAsync(It.IsAny<string>())).ReturnsAsync(new WatchFinderResult());
+        return (finder, finder.As<IConciergeSearchHints>());
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_Discovery_PrefetchesParseAndSharesVerdictForTheSearchedQuery()
+    {
+        using var context = CreateContext();
+        var (finder, hints) = CreateHintedFinder();
+        string? searched = null, prefetched = null, sharedFor = null;
+        IntentClassification? shared = null;
+        finder.Setup(f => f.FindWatchesAsync(It.IsAny<string>()))
+            .Callback<string>(q => searched = q)
+            .ReturnsAsync(new WatchFinderResult());
+        hints.Setup(h => h.PrefetchIntent(It.IsAny<string>())).Callback<string>(q => prefetched = q);
+        hints.Setup(h => h.ShareClassification(It.IsAny<string>(), It.IsAny<IntentClassification>()))
+            .Callback<string, IntentClassification>((q, c) => { sharedFor = q; shared = c; });
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"ok\"}", Encoding.UTF8, "application/json"),
+        });
+        var service = CreateService(context, finder, handler, classifier: new FakeClassifier("discovery"));
+
+        await service.HandleMessageAsync("session-1", "something elegant for a dinner party", null, "127.0.0.1");
+
+        Assert.NotNull(searched);
+        Assert.Equal(searched, prefetched);
+        Assert.Equal(searched, sharedFor);
+        Assert.Equal("discovery", shared!.Intent);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_PrefetchSwitchedOff_StillSharesTheVerdict()
+    {
+        using var context = CreateContext();
+        var (finder, hints) = CreateHintedFinder();
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"ok\"}", Encoding.UTF8, "application/json"),
+        });
+        var config = new ConfigurationBuilder()
+            .AddConfiguration(CreateConfig())
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ChatSettings:PrefetchParse"] = "false" })
+            .Build();
+        var service = CreateService(context, finder, handler, config: config, classifier: new FakeClassifier("discovery"));
+
+        await service.HandleMessageAsync("session-1", "something elegant for a dinner party", null, "127.0.0.1");
+
+        hints.Verify(h => h.PrefetchIntent(It.IsAny<string>()), Times.Never);
+        hints.Verify(h => h.ShareClassification(It.IsAny<string>(), It.IsAny<IntentClassification>()), Times.Once);
+    }
+
     [Fact]
     public async Task HandleMessageAsync_RefusesAbuse_WithoutCallingSearchOrAi()
     {

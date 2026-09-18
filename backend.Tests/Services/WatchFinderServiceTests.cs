@@ -676,6 +676,126 @@ public class WatchFinderServiceTests
         Assert.Equal("non_watch", result.SearchPath);
     }
 
+    // The concierge classifies a message and then, on a discovery turn, hands the same message to the
+    // finder. These pin that the finder reuses that verdict and only for that exact message.
+    [Fact]
+    public async Task FindWatchesAsync_SharedClassification_IsReusedInsteadOfClassifyingAgain()
+    {
+        using var context = CreateContext();
+        var calls = 0;
+        var service = CreateServiceWithClassifier(context, new FakeClassifier(_ =>
+        {
+            calls++;
+            return new IntentClassification("non_watch", 0.95);
+        }));
+        service.ShareClassification("something my father would like", new IntentClassification("discovery", 0.9));
+
+        var result = await service.FindWatchesAsync("something my father would like");
+
+        Assert.NotEqual("non_watch", result.SearchPath);
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public async Task FindWatchesAsync_SharedNonWatchVerdict_StillRefuses()
+    {
+        using var context = CreateContext();
+        var service = CreateServiceWithClassifier(context, classifier: null);
+        service.ShareClassification("how do I cook pasta", new IntentClassification("non_watch", 0.95));
+
+        var result = await service.FindWatchesAsync("how do I cook pasta");
+
+        Assert.Equal("non_watch", result.SearchPath);
+    }
+
+    [Fact]
+    public async Task FindWatchesAsync_ClassificationOfAnotherMessage_IsNotReused()
+    {
+        using var context = CreateContext();
+        var calls = 0;
+        var service = CreateServiceWithClassifier(context, new FakeClassifier(_ =>
+        {
+            calls++;
+            return new IntentClassification("discovery", 1.0);
+        }));
+        service.ShareClassification("how do I cook pasta", new IntentClassification("non_watch", 0.95));
+
+        var result = await service.FindWatchesAsync("something my father would like");
+
+        Assert.NotEqual("non_watch", result.SearchPath);
+        Assert.Equal(1, calls);
+    }
+
+    // Counts /watch-finder/parse calls; every other ai-service call fails, which leaves embeddings off
+    // so the finder reaches the LLM parse without a pgvector database behind it.
+    private sealed class ParseCountingHandler : HttpMessageHandler
+    {
+        private int _parseCalls;
+        public int ParseCalls => Volatile.Read(ref _parseCalls);
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.AbsolutePath == "/watch-finder/parse")
+            {
+                Interlocked.Increment(ref _parseCalls);
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = System.Net.Http.Json.JsonContent.Create(new { intent = new { } }),
+                });
+            }
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
+        }
+    }
+
+    private static WatchFinderService CreateServiceForParse(TourbillonContext context, ParseCountingHandler handler)
+    {
+        var httpFactory = new Mock<IHttpClientFactory>();
+        httpFactory.Setup(f => f.CreateClient("ai-service"))
+            .Returns(() => new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("http://ai-service:5000") });
+        // Nothing answers before the parse; the merged SQL pass right after it ends the search.
+        var deterministic = new Mock<IDeterministicWatchSearchService>(MockBehavior.Loose);
+        deterministic
+            .Setup(s => s.TryDirectSqlSearchAsync(It.IsAny<string>(), It.IsAny<QueryIntent?>(), "direct_sql_merged"))
+            .ReturnsAsync(new WatchFinderResult { SearchPath = "direct_sql_merged" });
+
+        return new WatchFinderService(
+            httpFactory.Object,
+            deterministic.Object,
+            context,
+            new WatchFilterMapper(),
+            new QueryCacheService(context, NullLogger<QueryCacheService>.Instance),
+            NullLogger<WatchFinderService>.Instance,
+            TestStorage);
+    }
+
+    [Fact]
+    public async Task FindWatchesAsync_PrefetchedParse_IsUsedInsteadOfASecondCall()
+    {
+        using var context = CreateContext();
+        var handler = new ParseCountingHandler();
+        var service = CreateServiceForParse(context, handler);
+        const string query = "an elegant dress watch for a dinner party";
+
+        service.PrefetchIntent(query);
+        var result = await service.FindWatchesAsync(query);
+
+        Assert.Equal("direct_sql_merged", result.SearchPath);
+        Assert.Equal(1, handler.ParseCalls);
+    }
+
+    [Fact]
+    public async Task FindWatchesAsync_ParsePrefetchedForAnotherQuery_IsNotUsed()
+    {
+        using var context = CreateContext();
+        var handler = new ParseCountingHandler();
+        var service = CreateServiceForParse(context, handler);
+
+        service.PrefetchIntent("a rugged watch for hiking");
+        await service.FindWatchesAsync("an elegant dress watch for a dinner party");
+
+        Assert.Equal(2, handler.ParseCalls);
+    }
+
     [Fact]
     public void BuildFilterStateForDiagnostics_MapsMultiBrandAndCollectionIds()
     {

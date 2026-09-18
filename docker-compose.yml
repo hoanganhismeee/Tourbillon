@@ -66,6 +66,10 @@ services:
       ChatSettings__DisableLimitInDev: ${CHAT_DISABLE_LIMIT:-true}
       # Off locally: each warm-up is 7 paid concierge turns and there is no visitor to serve.
       ChatSettings__WarmStarters: ${CHAT_WARM_STARTERS:-false}
+      # Starts the finder's LLM parse beside the intent classifier instead of after it. On by default in
+      # the app; off here because Ollama serves one request at a time (OLLAMA_NUM_PARALLEL=1), so the
+      # two calls would queue rather than overlap. Set true when .env points LLM_BASE_URL at Anthropic.
+      ChatSettings__PrefetchParse: ${CHAT_PREFETCH_PARSE:-false}
       Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
       Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
       AWS__AccessKeyId: ${AWS_ACCESS_KEY_ID:-}

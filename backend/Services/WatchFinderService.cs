@@ -141,7 +141,7 @@ public class WatchFinderResult
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
-public class WatchFinderService : IWatchFinderService
+public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IDeterministicWatchSearchService _deterministicSearch;
@@ -154,6 +154,12 @@ public class WatchFinderService : IWatchFinderService
     private readonly IAiUsageQuotaService? _quota;
     private readonly IIntentClassifier? _classifier;
     private readonly ILexicalWatchSearch? _lexical;
+
+    // Model work the concierge started or finished before calling FindWatchesAsync. Each is keyed by
+    // the exact query it was for, so a finder call on a rewritten query (a revision, a follow-up)
+    // never picks up an answer to a different question.
+    private (string Query, Task<ParsedIntent?> Parse)? _prefetchedParse;
+    private (string Query, IntentClassification Verdict)? _sharedClassification;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -198,6 +204,31 @@ public class WatchFinderService : IWatchFinderService
         _classifier = classifier;
         _lexical = lexical;
         _fuseLexicalCandidates = _config.GetValue<bool?>("WatchFinderSettings:FuseLexicalCandidates") ?? true;
+    }
+
+    public void PrefetchIntent(string query)
+    {
+        var normalizedQuery = QueryNormalizer.ExpandCompoundTerms(query);
+        // A reference number never reaches the LLM parse, so there is nothing to start.
+        if (IsLikelyReferenceQuery(normalizedQuery)) return;
+
+        // Only the HTTP call runs ahead. Mapping the parsed names to IDs reads the DbContext, which
+        // the concierge is using meanwhile and which allows one operation at a time, so that part
+        // still happens inside FindWatchesAsync.
+        var httpClient = _httpClientFactory.CreateClient("ai-service");
+        _prefetchedParse = (normalizedQuery, ParseIntentAsync(httpClient, normalizedQuery));
+    }
+
+    public void ShareClassification(string query, IntentClassification classification) =>
+        _sharedClassification = (query, classification);
+
+    private Task<ParsedIntent?>? TakePrefetchedParse(string normalizedQuery)
+    {
+        if (_prefetchedParse is not { } prefetched
+            || !string.Equals(prefetched.Query, normalizedQuery, StringComparison.Ordinal))
+            return null;
+        _prefetchedParse = null;
+        return prefetched.Parse;
     }
 
     /// Strips excluded brand IDs from inclusion lists and stores them for SQL NOT IN filtering.
@@ -1272,7 +1303,10 @@ public class WatchFinderService : IWatchFinderService
         ParsedIntent? parsed = null;
         try
         {
-            parsed = await ParseIntentAsync(httpClient, query);
+            // A parse started beside the concierge's classifier is usually finished by now. The wait
+            // is what this request actually pays for the parse, recorded apart from the call itself.
+            var pending = TakePrefetchedParse(query) ?? ParseIntentAsync(httpClient, query);
+            parsed = await StageTimings.TimeAsync("parse_wait", () => pending);
         }
         catch (Exception ex)
         {
@@ -1885,9 +1919,14 @@ public class WatchFinderService : IWatchFinderService
     /// semantic-first-with-regex-fallback rule the rest of the routing layer follows.
     private async Task<bool> IsOffTopicAsync(string query)
     {
-        if (_classifier == null) return true;
+        // The concierge already classified this exact message, with more context than this call
+        // would pass; its verdict is reused rather than asking the same classifier again.
+        var shared = _sharedClassification is { } hint && string.Equals(hint.Query, query, StringComparison.Ordinal)
+            ? hint.Verdict
+            : null;
+        if (shared == null && _classifier == null) return true;
 
-        var classification = await _classifier.ClassifyAsync(query, [], [], "none", 0, []);
+        var classification = shared ?? await _classifier!.ClassifyAsync(query, [], [], "none", 0, []);
 
         // ClassifyAsync reports an unreachable or failed ai-service as unclear at zero confidence,
         // which is the one case where there is no verdict to defer to.

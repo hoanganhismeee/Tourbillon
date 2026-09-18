@@ -19,6 +19,19 @@ public interface IWatchFinderService
     Task<WatchFinderResult> FindWatchesAsync(string query, IReadOnlyList<int> excludedBrandIds);
 }
 
+// Lets the concierge overlap the finder's model work with its own. Only WatchFinderService implements
+// it, so a test double of IWatchFinderService simply never receives these hints.
+public interface IConciergeSearchHints
+{
+    // Starts the LLM parse of a message before the concierge classifies it, so the two model calls
+    // run side by side instead of back to back.
+    void PrefetchIntent(string query);
+
+    // Hands over the concierge's own classification of that message, so the finder's off-topic check
+    // reuses the verdict instead of asking the same classifier the same question a second time.
+    void ShareClassification(string query, IntentClassification classification);
+}
+
 // Used when serializing conversation history to ai-service.
 public class ChatHistoryEntry
 {
@@ -920,6 +933,13 @@ public class ChatService
             return r;
         }
 
+        // The finder's LLM parse does not depend on the intent, so it starts now and runs beside the
+        // classifier; a discovery or advice turn then finds it finished instead of paying for both in
+        // sequence. A turn that never reaches the finder leaves one small parse call unused.
+        var searchHints = _watchFinderService as IConciergeSearchHints;
+        if (_config.GetValue("ChatSettings:PrefetchParse", true))
+            searchHints?.PrefetchIntent(canonicalMessage);
+
         // AI intent classifier — single LLM call determines routing for all fuzzy cases.
         // Returns "unclear" on failure, which falls through to existing regex routing.
         var classification = await _classifier.ClassifyAsync(
@@ -929,6 +949,7 @@ public class ChatService
             sessionState?.FollowUpMode ?? "",
             lastWatchCards.Count,
             sessionState?.BrandIds ?? []);
+        searchHints?.ShareClassification(canonicalMessage, classification);
 
         // Cache the classification so downstream follow-up routing can reuse it.
         _lastClassification = classification;
