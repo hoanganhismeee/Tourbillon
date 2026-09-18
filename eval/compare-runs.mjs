@@ -2,12 +2,14 @@
 // model, or before and after a change. Nothing here calls the API.
 //
 //   node eval/compare-runs.mjs --a=eval/results/<haiku>.json --b=eval/results/<qwen>.json --arm=concierge
+//   node eval/compare-runs.mjs --a=<run>.json --arm-a=bm25 --b=<other run>.json --arm-b=concierge
 //
 // Prints the paired deltas with their bootstrap interval, the latency of each run, and the same
 // deltas split by query category so a change that helps one kind of query and hurts another
 // does not average out to "no difference".
 import { readFileSync } from 'node:fs';
 import { mean, pairedBootstrap, percentile, significance } from './metrics.mjs';
+import { summariseStages } from './timing.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).map(a => {
   const [k, v] = a.replace(/^--/, '').split('=');
@@ -17,10 +19,13 @@ if (!args.a || !args.b) {
   console.error('usage: node eval/compare-runs.mjs --a=<run.json> --b=<run.json> [--arm=concierge]');
   process.exit(1);
 }
-const arm = args.arm ?? 'concierge';
+// One arm name for both runs, or a different arm on each side: a deterministic baseline from one run
+// against the concierge from another is still paired by query.
+const armA = args['arm-a'] ?? args.arm ?? 'concierge';
+const armB = args['arm-b'] ?? args.arm ?? 'concierge';
 const METRICS = ['recall', 'precision', 'mrr', 'ndcg', 'hit'];
 
-const load = path => {
+const load = (path, arm) => {
   const run = JSON.parse(readFileSync(path, 'utf8'));
   const rows = run.rows?.[arm];
   if (!rows) {
@@ -33,8 +38,8 @@ const load = path => {
   return { run, byId };
 };
 
-const A = load(args.a);
-const B = load(args.b);
+const A = load(args.a, armA);
+const B = load(args.b, armB);
 if (A.run.scope !== B.run.scope) console.warn(`scope differs: ${A.run.scope} vs ${B.run.scope}`);
 const ids = [...A.byId.keys()].filter(id => B.byId.has(id));
 
@@ -62,7 +67,7 @@ function report(label, subset) {
   console.log(`latency    p50 ${Math.round(la.p50)}ms -> ${Math.round(lb.p50)}ms   p95 ${Math.round(la.p95)}ms -> ${Math.round(lb.p95)}ms`);
 }
 
-console.log(`A = ${args.a}\nB = ${args.b}\narm = ${arm}, scope = ${A.run.scope}, k = ${A.run.k}`);
+console.log(`A = ${args.a} [${armA}]\nB = ${args.b} [${armB}]\nscope = ${A.run.scope}, k = ${A.run.k}`);
 report('All queries', ids);
 
 // Per-category split: the category comes from the labelled query set and is stored on each row.
@@ -75,4 +80,18 @@ for (const category of categories) {
   const stat = pairedBootstrap(subset.map(id => A.byId.get(id).ndcg), subset.map(id => B.byId.get(id).ndcg));
   const verdict = stat && subset.length >= 5 ? significance(stat.ci) : '';
   console.log(`${category.padEnd(18)}${String(subset.length).padStart(3)}   ${fmt(a)} -> ${fmt(b)}   ${signed(b - a)}   ${verdict}`);
+}
+
+// Stage timing, when both runs carry the Server-Timing breakdown: where the time moved.
+const stagesA = summariseStages(ids.map(id => A.byId.get(id)));
+const stagesB = summariseStages(ids.map(id => B.byId.get(id)));
+if (stagesA.requests && stagesB.requests) {
+  console.log('\nStage timing, p50 ms  (on = replies that used the stage)');
+  const names = [...new Set([...stagesA.stages, ...stagesB.stages].map(s => s.name))];
+  for (const name of names) {
+    const a = stagesA.stages.find(s => s.name === name);
+    const b = stagesB.stages.find(s => s.name === name);
+    const cell = s => (s ? `${String(Math.round(s.p50)).padStart(6)} on ${String(s.ran).padStart(2)}` : '     -      ');
+    console.log(`${name.padEnd(12)}${cell(a)}  ->  ${cell(b)}`);
+  }
 }

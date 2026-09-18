@@ -24,6 +24,7 @@ import { loadCatalogue, summariseFacets } from './catalogue.mjs';
 import { HANDWRITTEN, buildGenerated, validateQueries, scopeOf } from './queries.mjs';
 import { buildCatalogueIndex, scoreActions, summariseActions } from './actions.mjs';
 import { scoreSlots, summariseSlots } from './slots.mjs';
+import { parseServerTiming, summariseStages } from './timing.mjs';
 import {
   recallAtK, precisionAtK, reciprocalRank, ndcgAtK, hitAtK,
   mean, percentile, bootstrapCI, pairedBootstrap, recallCeiling, significance,
@@ -84,6 +85,7 @@ const ARM_IMPLS = {
       return {
         ids: (body.watchCards ?? []).map(c => c.id),
         meta: {
+          stages: parseServerTiming(res.headers.get('server-timing')),
           searchPath: body.finderPath ?? body.routingPath ?? 'concierge',
           routingPath: body.routingPath ?? null,
           actions: (body.actions ?? []).map(a => ({
@@ -194,6 +196,7 @@ async function main() {
 
   printScores(results, scored);
   printPaths(results);
+  printStages(results);
   printComparison(results, scored);
   printSlots(results);
   printActions(results);
@@ -211,6 +214,7 @@ function reprint(file) {
   console.log(`${DIM}run at ${saved.runAt}   scope ${saved.scope ?? 'all'}   arms ${Object.keys(results).join(', ')}${RESET}`);
   printScores(results, queries);
   printPaths(results);
+  printStages(results);
   printComparison(results, queries);
   printSlots(results);
   printActions(results);
@@ -367,6 +371,21 @@ function printPaths(results) {
   const arms = ['smart', 'concierge'].filter(arm => results[arm]);
   if (!arms.length && (results.hybrid ?? results.vector)) arms.push(results.hybrid ? 'hybrid' : 'vector');
   for (const arm of arms) printPathsFor(arm, results[arm]);
+}
+
+/// Where the concierge's time goes, per stage, from the Server-Timing header on each reply.
+function printStages(results) {
+  const rows = results.concierge;
+  if (!rows) return;
+  const { requests, stages } = summariseStages(rows);
+  if (!requests) return;
+  console.log(`
+${BOLD}Stage timing${RESET} ${DIM}concierge, ${requests} replies; chat and planner run in parallel${RESET}`);
+  console.log(`  ${'stage'.padEnd(12)}${'ran on'.padStart(9)}${'calls'.padStart(7)}${'p50 ms'.padStart(9)}${'p95 ms'.padStart(9)}`);
+  for (const s of stages) {
+    console.log(`  ${s.name.padEnd(12)}${`${s.ran}/${requests}`.padStart(9)}${s.callsPerRequest.toFixed(1).padStart(7)}` +
+      `${Math.round(s.p50).toString().padStart(9)}${Math.round(s.p95).toString().padStart(9)}`);
+  }
 }
 
 function printPathsFor(arm, rows) {
