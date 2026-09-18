@@ -39,6 +39,10 @@ for (const [name, get] of Object.entries(metrics)) {
   const stat = pairedBootstrap(a, b);
   console.log(`${name.padEnd(12)} A ${mean(a).toFixed(3)}  B ${mean(b).toFixed(3)}  ${significance(stat?.ci)}`);
 }
+// The table shows recall as a share of the ceiling over the whole set (mean recall over mean
+// ceiling), the harness's convention; the significance above tests the per-query share.
+const shareOfSet = byId => mean(ids.map(id => byId.get(id).recall)) / mean(ids.map(id => byId.get(id).ceiling));
+console.log(`recall share shown  A ${(100 * shareOfSet(A.byId)).toFixed(1)}%  B ${(100 * shareOfSet(B.byId)).toFixed(1)}%`);
 const latency = ids.map(id => B.byId.get(id).latencyMs);
 console.log(`latency B    p50 ${Math.round(percentile(latency, 50))} ms  p95 ${Math.round(percentile(latency, 95))} ms`);
 const actions = B.run.summary?.[args['arm-b'] ?? 'concierge']?.actions;
