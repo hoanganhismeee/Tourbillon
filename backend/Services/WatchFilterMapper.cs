@@ -11,7 +11,7 @@ public class WatchFilterMapper
 {
     // Apply all active intent filters to the watch list.
     // Each predicate is only active when the corresponding intent field is non-null/non-empty.
-    // Fallback: if ≤ 3 watches survive, return the full list — let the LLM reranker handle it.
+    // Fallback: if ≤ 3 watches survive, return the full list rather than a near-empty one.
     public IEnumerable<Watch> Apply(IEnumerable<Watch> watches, ParsedIntent intent)
     {
         var filtered = watches.Where(w =>
@@ -31,7 +31,7 @@ public class WatchFilterMapper
     }
 
     // Style filter: checks if the collection's style array contains the query style.
-    // Untagged collections (empty array) are never excluded — fall through to LLM reranker.
+    // Untagged collections (empty array) are never excluded — left for the ranking to judge.
     private static bool MatchesStyle(string[]? collectionStyles, string? queryStyle)
     {
         if (queryStyle == null) return true;

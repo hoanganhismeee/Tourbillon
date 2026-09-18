@@ -2485,8 +2485,8 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
     // Parse intent from AI service — runs concurrently with DB load
     private async Task<ParsedIntent?> ParseIntentAsync(HttpClient httpClient, string query)
     {
-        // Timed at Information alongside the rerank call: these are the two LLM round trips on
-        // the semantic path, and without both being visible a slow search cannot be attributed.
+        // Timed at Information: this is the LLM round trip on the semantic retrieval path, and
+        // without it being visible a slow search cannot be attributed.
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {

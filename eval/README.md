@@ -117,7 +117,7 @@ stay in the catalogue but can never satisfy a budget constraint, because their p
 | **MRR** | How far down was the first good result? Rewards getting one right answer to the top. |
 | **nDCG@10** | Recall weighted by rank — separates "relevant but buried" from "relevant and first". |
 | **Hit rate@10** | Did the user see anything useful at all? The most legible number for non-engineers. |
-| **p50 / p95 latency** | What a single user waits. The mean hides the LLM rerank tail; p95 is the number worth quoting. |
+| **p50 / p95 latency** | What a single user waits. The mean hides the tail of slow model calls; p95 is the number worth quoting. |
 
 Three further measurements sit beside the retrieval table:
 
@@ -125,12 +125,22 @@ Three further measurements sit beside the retrieval table:
 |---|---|---|
 | **Structured filter accuracy** | `smart` | Did the parser read the constraints the brief states? Slot recall (constraints read), slot precision (parsed constraints that were right) and the share of queries read exactly, on the spec half only. It separates a parse error from a ranking error. |
 | **Action relevance** | `concierge` | Are the compare, navigate and search actions on a reply valid and useful? A comparison is relevant when every compared watch is in the answer set, a destination when at least half its watches are, a hand-off search when two of its first five results are. |
-| **Candidate recall** (`--k=50`) | `bm25`, `vector`, `hybrid` | Does a retriever's pool of 50 contain the answers? This is the job a retriever does for a reranker, and it can rank designs differently from recall@10, which is the job it does when its order is shown directly. |
+| **Candidate recall** (`--k=50`) | `bm25`, `vector`, `hybrid` | Does a retriever's pool of 50 contain the answers? This is the job a retriever does for a reranker (the concierge had one until it was removed; it now shows the fused order, so recall@10 is its metric), and it can rank designs differently from recall@10, which is the job it does when its order is shown directly. |
 
 Structured filter accuracy is a component metric, not a headline: a perfect parse can still rank
 badly, and labels carry judgement no parser can hold (a strap, a date window), which is not scored.
 
-Recall and precision trade off against each other, which is why both are reported. A pipeline that
+Recall and precision trade off against each other, which is why both are reported.
+
+**Stage timing.** Every concierge reply carries a `Server-Timing` header (`backend/Infrastructure/StageTimings.cs`)
+with the wall time of each stage: `rules`, `sql`, `classify`, `route`, `embed`, `cache`, `parse`,
+`parse_wait`, `vector`, `bm25`, `chat`, `planner`, `total`. A stage that ran twice reports its summed
+time and the call count, which is how a repeated model call shows up. `parse` is the call itself and
+`parse_wait` is what the reply waited for it; when the parse was started beside the classifier the
+second is smaller. `chat` and `planner` run in parallel, so the rows do not add up to `total`. The
+harness prints the table for the `concierge` arm, and `compare-runs.mjs` prints it before and after.
+Clear the caches before a timing run, including the ai-service process, which keeps parse results in
+memory until it restarts. A pipeline that
 returns the entire catalogue has perfect recall and useless precision.
 
 **Why the confidence interval matters.** With 50 queries per scope a point estimate is noisy. The harness

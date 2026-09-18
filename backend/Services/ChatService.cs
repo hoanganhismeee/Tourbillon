@@ -1803,7 +1803,7 @@ public class ChatService
                     // No SQL results (brand with 0 watches) → fall through to full pipeline
                 }
 
-                // Complex query or brand returned empty → full WatchFinder (vector + optional LLM rerank).
+                // Complex query or brand returned empty → full WatchFinder (LLM parse, vector + BM25F fused by RRF).
                 var searchResult = excludedBrandIds.Count > 0
                     ? await _watchFinderService.FindWatchesAsync(canonicalMessage, excludedBrandIds)
                     : await _watchFinderService.FindWatchesAsync(canonicalMessage);

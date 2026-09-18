@@ -34,7 +34,7 @@ lộ ra khi đọc code hay dùng thử.
 | `concierge` | `POST /api/chat/message` | Chat, phụ trách câu hỏi mở |
 
 Chênh lệch giữa `smart` và `bm25` là giá trị của parser so với một baseline lexical chuẩn. Smart
-Search không gọi model; concierge thì có (classifier, LLM parse, rerank), nên chênh lệch giữa
+Search không gọi model; concierge thì có (classifier, LLM parse), nên chênh lệch giữa
 `concierge` và `smart` là thứ tầng model mua được — trên scope mà mỗi bên phụ trách.
 
 ### Scope
@@ -215,10 +215,27 @@ Ngưỡng là quy ước, nên harness in cả điểm trung bình liên tục b
 ### Candidate recall (`--k=50`)
 
 Cùng một retriever có thể làm hai việc khác nhau. Khi **thứ tự của nó được hiển thị trực tiếp**
-(Smart Search), chỉ số đúng là recall@10 và MRR. Khi nó **sinh ứng viên cho reranker**
-(concierge), chỉ số đúng là recall@50: nhóm ứng viên có chứa đáp án không, còn thứ tự để
-reranker lo. Hybrid từng thua BM25 ở MRR@10 nhưng lại tốt nhất ở recall@50 — cùng thành phần,
-khác việc, khác kết luận.
+(Smart Search), chỉ số đúng là recall@10 và MRR. Khi nó **sinh ứng viên cho reranker**,
+chỉ số đúng là recall@50: nhóm ứng viên có chứa đáp án không, còn thứ tự để reranker lo. Hybrid
+từng thua BM25 ở MRR@10 nhưng lại tốt nhất ở recall@50 — cùng thành phần, khác việc, khác kết luận.
+
+Concierge từng có LLM rerank và đã bỏ: trên 50 brief mở, tắt nó không làm chỉ số nào đổi đáng kể
+mà tiết kiệm 1.9 s mỗi câu trả lời. Giờ concierge hiển thị thẳng thứ tự sau RRF, nên chỉ số của nó
+cũng là recall@10 và MRR. Cái giá: có rerank, concierge thắng BM25 về MRR (0.50 so với 0.32, có ý
+nghĩa thống kê); không rerank thì 0.44 so với 0.32, khoảng tin cậy chạm 0. Hai kết luận không mâu
+thuẫn: "không đáng kể" nghĩa là không phân biệt được với nhiễu ở 50 câu, không phải bằng 0.
+
+### Stage timing
+
+Mỗi câu trả lời của concierge có header `Server-Timing` ghi thời gian từng bước: `rules`, `sql`,
+`classify`, `route`, `embed`, `cache`, `parse`, `parse_wait`, `vector`, `bm25`, `chat`, `planner`,
+`total`. Bước nào chạy hai lần thì cộng dồn và ghi số lần gọi — lệnh gọi model bị lặp lộ ra ở đây.
+`parse` là thời gian của chính lệnh gọi, `parse_wait` là thời gian câu trả lời phải chờ nó; khi
+parse được chạy song song với classifier thì cái sau nhỏ hơn. `chat` và `planner` chạy song song
+nên các dòng không cộng lại bằng `total`.
+
+Trước khi đo phải xoá cache, kể cả cache trong process của ai-service: nó giữ kết quả parse trong
+bộ nhớ đến khi restart, và một lần đo trên cache nóng sẽ báo parse gần như bằng 0.
 
 ---
 
@@ -322,7 +339,6 @@ node eval/spec-questions.mjs --compare=before,after
 
 node --test eval/metrics.test.mjs eval/grading.test.mjs eval/queries.test.mjs eval/slots.test.mjs eval/actions.test.mjs
 node eval/run-eval.mjs --scope=semantic --arms=vector,bm25,hybrid --k=50   # candidate recall
-SKIP_LLM_DISTANCE=1.0 docker compose up -d backend          # ablation: tắt rerank
 FUSE_LEXICAL_CANDIDATES=false docker compose up -d backend  # ablation: concierge chỉ dùng vector
 cd backend.Tests && dotnet test --filter "FullyQualifiedName~Bm25|FullyQualifiedName~ReciprocalRank"  # BM25, RRF
 ```

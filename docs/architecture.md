@@ -32,7 +32,7 @@ Current system architecture as of March 2026. This document exists to provide co
 ```
 
 Notes:
-- `ai-service/` is a Python Flask service that owns all LLM calls (intent parsing, reranking, embedding, chat, taste extraction). The .NET backend sends and receives structured data only — no prompt strings in C#.
+- `ai-service/` is a Python Flask service that owns all LLM calls (intent classification and parsing, embedding, chat, taste extraction). The .NET backend sends and receives structured data only — no prompt strings in C#.
 - Selenium/scraping components are **temporary** — used only during initial product data collection. Not part of the production architecture.
 
 ---
@@ -64,7 +64,7 @@ Entry point: `backend/Program.cs`
 ### Services (28)
 
 **AI & Retrieval:**
-- `WatchFinderService` — Two entry points. `SearchCatalogueAsync` is Smart Search and never calls a model: deterministic parse and SQL, then BM25F inside the parsed hard filters, and no results for a query with no watch signal (no classifier gate, LLM parse, rerank or semantic cache). `FindWatchesAsync` is the concierge's retrieval and keeps the full pipeline described next. Orchestrates concierge retrieval routing. Deterministic intent parsing runs first; non-watch queries return empty early; high-confidence catalogue queries go through direct SQL / deterministic fallback before vector retrieval; semantic or weakly structured queries continue to embedding + rerank. When a hard price cap empties the vector pool, the service retries once without that cap, marks the search path as widened, and leaves hard refusal for genuine post-widening misses only. Returns `QueryIntent` to the frontend for filter-bar pre-population, including style-derived collection suggestions that are UI-only and not hard SQL collection filters.
+- `WatchFinderService` — Two entry points. `SearchCatalogueAsync` is Smart Search and never calls a model: deterministic parse and SQL, then BM25F inside the parsed hard filters, and no results for a query with no watch signal (no classifier gate, LLM parse, rerank or semantic cache). `FindWatchesAsync` is the concierge's retrieval and keeps the full pipeline described next. Orchestrates concierge retrieval routing. Deterministic intent parsing runs first; non-watch queries return empty early; high-confidence catalogue queries go through direct SQL / deterministic fallback before vector retrieval; semantic or weakly structured queries continue to the LLM parse and then vector search fused with BM25F by reciprocal rank fusion, whose order is the answer (the LLM rerank that used to follow was removed: on the 50 open-ended benchmark briefs it moved no metric significantly and cost 1.9 s per reply). The LLM parse is started beside the concierge's intent classifier (`IConciergeSearchHints.PrefetchIntent`, switched by `ChatSettings:PrefetchParse`), and the finder reuses the concierge's classification instead of classifying the same message again. When a hard price cap empties the vector pool, the service retries once without that cap, marks the search path as widened, and leaves hard refusal for genuine post-widening misses only. Returns `QueryIntent` to the frontend for filter-bar pre-population, including style-derived collection suggestions that are UI-only and not hard SQL collection filters.
 - `Bm25WatchIndex` / `LexicalWatchSearchService` — In-memory BM25F index over brand (with aliases), collection (with styles), reference, description and spec values. Singleton, rebuilt on a ten-minute lifetime; a few hundred watches need no search engine or Postgres extension.
 - `HybridWatchRetrievalService` / `ReciprocalRankFusion` — Retrieval modes on `POST /api/watch/find`: `mode=bm25`, `mode=vector` and `mode=hybrid` (BM25F and cosine rankings fused by reciprocal rank, k = 60). Each runs one retrieval design with no parser, LLM or cache, so the eval harness can compare them; an unknown mode returns 400. BM25F is the Smart Search fallback; vector and hybrid are not on a default path, because neither beat BM25F in the benchmark.
 - `DeterministicWatchSearchService` — Catalogue-first Smart Search path for exact references, reference fragments, explicit brand / collection queries, and structured spec queries (price, diameter, material, movement, WR). Includes relaxed near-match fallback so over-tight spec combinations prefer close catalogue matches over empty results.
@@ -274,7 +274,6 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 | Endpoint | Purpose |
 |---|---|
 | `POST /watch-finder/parse` | NL query -> structured intent JSON (LLM call) |
-| `POST /watch-finder/rerank` | Candidate pool -> scores-only array (LLM call) |
 | `POST /watch-finder/explain` | Single-watch on-demand explanation (cached) |
 | `POST /embed` | Batch text -> float[768] embeddings via nomic-embed-text (no LLM) |
 | `POST /route` | Semantic query router — classifies a discovery query as `simple_brand` (pure SQL sufficient) or `descriptor_query` (full WatchFinder needed). Uses cosine similarity against pre-embedded example utterances (`core/route_layer.py`). Falls back to `descriptor_query` on any error. No LLM — embedding only. |
@@ -300,7 +299,7 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 | Query type | Detection | Search path | Token cost |
 |---|---|---|---|
 | Simple brand/collection reference | `IsSimpleBrandQueryAsync` → `POST /route` (cosine similarity); regex fallback | `GetCatalogueSampleAsync` (pure SQL, price DESC) | Zero |
-| Complex / descriptor query | Semantic route returns `descriptor_query`; or regex detects descriptor after entity strip | `WatchFinderService.FindWatchesAsync` (vector + LLM rerank) | Normal |
+| Complex / descriptor query | Semantic route returns `descriptor_query`; or regex detects descriptor after entity strip | `WatchFinderService.FindWatchesAsync` (LLM parse, vector + BM25F fused by RRF) | Normal |
 
 **Detection — two-tier:**
 1. `IsSimpleBrandQueryAsync` calls `POST /route` on ai-service, which pre-embeds example utterances (`core/route_layer.py`) and classifies by cosine similarity (threshold 0.45). Returns `simple_brand` or `descriptor_query`.
@@ -316,7 +315,7 @@ LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
 
 **Models loaded at startup:** `qwen2.5:7b` (LLM) + `nomic-embed-text` (embeddings). Both run in the same Ollama container.
 
-**Prompts:** `RERANK_SYSTEM_PROMPT`, `PARSE_SYSTEM_PROMPT`, `TASTE_SYSTEM_PROMPT`, `CHAT_SYSTEM_PROMPT` — all defined in `ai-service/prompts/`. Chat prompt written for Haiku (prose instructions, 200-word cap, inline watch cards). Safety-net truncation in `routes/chat.py` enforces the cap for any model that overshoots.
+**Prompts:** `PARSE_SYSTEM_PROMPT`, `TASTE_SYSTEM_PROMPT`, `CHAT_SYSTEM_PROMPT` — all defined in `ai-service/prompts/`. Chat prompt written for Haiku (prose instructions, 200-word cap, inline watch cards). Safety-net truncation in `routes/chat.py` enforces the cap for any model that overshoots.
 
 ### AI Service Warm-up Strategy
 
@@ -360,10 +359,8 @@ User query
        |
      [Layer 1] cosine similarity vs WatchEmbeddings -> top candidates
        |
-     Tier routing:
-       Tier 2 (distance < 0.20) -> return by vector relevance (no LLM)
-       Tier 3 (distance 0.20-0.55) -> LLM rerank top 15
-       Tier 4 (distance > 0.55) -> return empty
+     fuse with BM25F by reciprocal rank fusion -> fused order is the answer (no LLM)
+       distance > 0.55 -> filtered out in the DB query
        |
      [Background] store result in QueryCaches
 ```
@@ -518,7 +515,7 @@ Frontend runs locally (`npm run dev`) — intentionally excluded from Docker for
 | Deterministic category taxonomy | `InferCategory()` is permanent structured metadata. LLM interprets on top — never owns ground truth. |
 | Defensive parsing in Python | AI service strips preamble, validates JSON, retries on failure. Never trust raw LLM output. |
 | Blacklist bad patterns, not whitelist good ones | For open-ended text, enumerate what you want to block (finite descriptor domain). Whitelisting acceptable phrasings fails on every new synonym ("enlighten" vs "tell"). |
-| SQL before LLM when entity is resolved | Once entity resolution gives a brand/collection ID, a SQL query is always cheaper and faster than vector + rerank. Reserve LLM search for queries with descriptors the SQL layer cannot interpret. |
+| SQL before LLM when entity is resolved | Once entity resolution gives a brand/collection ID, a SQL query is always cheaper and faster than the LLM parse and vector search. Reserve LLM search for queries with descriptors the SQL layer cannot interpret. |
 | Explicit fallbacks over null cascades | When a dispatcher cannot fulfill an intent, return a user-facing message. Silent null returns cascade to unrelated handlers and produce confusing output. |
 | Classifier is the semantic router — trust it | Regex pre-checks should guard only what classifiers cannot: latency-critical structural patterns (rate limit, abuse, cursor parsing) and exact token-level commands. Everything semantic — greetings, off-topic, follow-ups — belongs in the classifier. Duplicate semantic logic in regex is always a lagging copy. |
 

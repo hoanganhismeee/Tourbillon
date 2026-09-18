@@ -191,7 +191,7 @@ bằng chứng** là trong chủ đề.
 
 ### 2. Có entity rồi thì dùng SQL
 
-Biết `brandId` rồi thì `GetCatalogueSampleAsync` là đủ. Để dành vector + rerank cho câu mà bộ
+Biết `brandId` rồi thì `GetCatalogueSampleAsync` là đủ. Để dành LLM parse và vector search cho câu mà bộ
 lọc DB không diễn đạt nổi.
 
 ### 3. `return null` phải kèm lời giải thích

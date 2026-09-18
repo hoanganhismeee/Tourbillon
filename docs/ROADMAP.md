@@ -674,6 +674,22 @@ Discovery now also widens one over-constrained vector search path before refusin
 - `backend/Services/ChatService.cs`, `IActionPlanner.cs`, `ActionPlannerService.cs`, `ActionPlannerFake.cs` — planner seam, backend merge/validation, and deterministic fallback
 - `backend.Tests/Services/ChatServiceTests.cs` — planner fallback coverage and alternate-compare suggestion checks
 
+### Retrieval Benchmark + Model-Free Smart Search (COMPLETE, SEPTEMBER 2026)
+
+- **Benchmark** (`eval/`): 100 labelled queries, 50 facet queries owned by Smart Search and 50
+  open-ended briefs owned by the concierge. Labels are predicates written before any result was
+  seen. Recall@10 against its ceiling, precision@5, MRR, nDCG@10, hit rate, p50/p95 latency, paired
+  bootstrap intervals, structured filter accuracy (slot F1) and concierge action relevance.
+- **BM25F** in-memory index over brand, collection, reference, description and specs; **RRF** fusion
+  of BM25F and vector rankings.
+- **Smart Search is model-free**: deterministic parse and SQL, then BM25F inside the parsed filters.
+  p95 fell from 2.8 s to 29 ms with no significant quality change.
+- **Concierge latency**: LLM rerank removed (no significant quality change, 1.9 s per reply saved);
+  the LLM parse runs beside the classifier; the finder reuses the concierge's classification instead
+  of classifying twice; every reply reports per-stage `Server-Timing`.
+- Language check no longer regenerates English replies that contain an em dash or a curly quote
+  (46% of chat calls were being re-run); planner token usage is logged; starter warm-up is off locally.
+
 ### Slug-Based URLs + Cloudinary Public ID Sync (IN PROGRESS)
 
 Replaces sequential database IDs in URLs (`/watches/42`) with human-readable slugs (`/watches/patek-philippe-nautilus-5811-1g-blue-dial`). Hides DB structure, improves SEO, matches industry standard (Chrono24, Hodinkee).
