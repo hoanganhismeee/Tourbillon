@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Shell scripts run inside Linux containers; a CRLF checkout breaks the shebang
+# ("exec ./entrypoint.sh: no such file or directory"), so they stay LF on every OS.
+*.sh text eol=lf
