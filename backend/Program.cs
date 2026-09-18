@@ -461,11 +461,20 @@ RecurringJob.AddOrUpdate<BrowsingEventRetentionJob>(
 
 // Keep the concierge starter answers pre-cached so the suggestions return instantly. Refreshes
 // every 6 hours (well inside the 12h cache TTL); also fired once on boot to warm a cold cache.
-RecurringJob.AddOrUpdate<ChatService>(
-    "chat-warm-starters",
-    service => service.WarmStartersAsync(),
-    "0 */6 * * *");
-BackgroundJob.Enqueue<ChatService>(service => service.WarmStartersAsync());
+// Each warm-up is 7 full concierge turns against the paid model, so local dev turns it off:
+// there is no visitor to warm the cache for, and every container restart would pay for it.
+if (app.Configuration.GetValue<bool>("ChatSettings:WarmStarters", true))
+{
+    RecurringJob.AddOrUpdate<ChatService>(
+        "chat-warm-starters",
+        service => service.WarmStartersAsync(),
+        "0 */6 * * *");
+    BackgroundJob.Enqueue<ChatService>(service => service.WarmStartersAsync());
+}
+else
+{
+    RecurringJob.RemoveIfExists("chat-warm-starters");
+}
 
     app.Run();
 }

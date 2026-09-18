@@ -66,6 +66,8 @@ services:
       # Set to false to give the concierge's reranker the vector pool alone, for an ablation run.
       WatchFinderSettings__FuseLexicalCandidates: ${FUSE_LEXICAL_CANDIDATES:-true}
       ChatSettings__DisableLimitInDev: ${CHAT_DISABLE_LIMIT:-true}
+      # Off locally: each warm-up is 7 paid concierge turns and there is no visitor to serve.
+      ChatSettings__WarmStarters: ${CHAT_WARM_STARTERS:-false}
       Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
       Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
       AWS__AccessKeyId: ${AWS_ACCESS_KEY_ID:-}
