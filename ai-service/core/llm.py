@@ -166,12 +166,20 @@ def call_llm_with_tools(
     [{"name": str, "arguments": dict}, ...]"""
     if getattr(runtime, "use_anthropic", False) is True:
         _rate_limit(runtime)
+        t0 = time.perf_counter()
         response = runtime.anthropic_client.messages.create(
             model=runtime.llm_model,
             system=system,
             messages=[{"role": "user", "content": user_content}],
             tools=_convert_tools_to_anthropic(tools),
             max_tokens=max_tokens,
+        )
+        # Logged like the other calls so a cost audit of the logs covers the planner too.
+        ms = (time.perf_counter() - t0) * 1000
+        u = getattr(response, "usage", None)
+        _log(
+            f"[LLM tools] {ms:.0f}ms | in={getattr(u,'input_tokens','?')} "
+            f"out={getattr(u,'output_tokens','?')}"
         )
         result = []
         for block in response.content:
