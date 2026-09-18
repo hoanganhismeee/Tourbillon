@@ -3,7 +3,7 @@
 # cosine similarity against pre-embedded example utterances (see core/route_layer.py).
 #
 # simple_brand  → pure SQL catalogue sample is sufficient (no WatchFinder LLM cost).
-# descriptor_query → full WatchFinder vector + LLM rerank pipeline is required.
+# descriptor_query → the full WatchFinder retrieval (LLM parse, vector search fused with BM25F) is required.
 #
 # The C# backend calls this endpoint before deciding whether to run the full
 # WatchFinder pipeline, and falls back to its own regex check on any HTTP error.

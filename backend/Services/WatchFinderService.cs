@@ -1,7 +1,7 @@
 // Orchestrates the AI Watch Finder pipeline:
-// Phase 3B: embed query → vector similarity search → LLM rerank
+// Concierge retrieval: deterministic parse and SQL first, then LLM parse, then vector search fused with BM25F by RRF.
 // Hybrid filtering: ParseQueryIntentAsync extracts brand/collection/price as hard SQL pre-filters.
-// Fallback (embed unavailable): LLM parse → SQL filter → LLM rerank
+// Fallback (embed unavailable): LLM parse → SQL filter, ordered by the direct-path score when a brand is named.
 
 using Hangfire;
 using System.Net.Http.Json;
@@ -137,8 +137,6 @@ public class WatchFinderResult
     /// Structured intent extracted from query text — brand/collection/price hard constraints.
     public QueryIntent? QueryIntent { get; set; }
     public string? SearchPath { get; set; }
-    /// "ranked" when LLM rerank succeeded; "fallback" when results are unranked due to AI failure.
-    public string RerankSource { get; set; } = "ranked";
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -162,25 +160,15 @@ public class WatchFinderService : IWatchFinderService
         PropertyNameCaseInsensitive = true
     };
 
-    // Tiered routing thresholds (cosine distance: 0 = identical, 1 = orthogonal)
-    // Cosine distance below which the vector match is decisive enough to skip the LLM rerank.
-    // Configurable because it is the single lever between rerank cost and rerank benefit:
-    // raising it toward 1.0 turns the rerank off entirely, which is how the two can be measured
-    // apart — the eval cannot otherwise tell a weak retriever from a weak reranker.
-    private const float DefaultSkipLlmDistance = 0.20f;
-    private readonly float _skipLlmDistance;
     // Whether the concierge's candidate pool fuses BM25F with vector search. On by default; the
-    // switch exists so an evaluation run can measure the reranker on the vector pool alone.
+    // switch exists so an evaluation run can measure the vector pool alone.
     private readonly bool _fuseLexicalCandidates;
     // Size of the fused pool, matching the vector pool it replaces.
     private const int FusionDepth = 50;
     private const float MaxDistance      = 0.55f; // Tier 4: filter no-matches in DB
     private const float MinRelevance     = 0.35f; // reject results when best match is worse than this
 
-    // Rerank sizing — smaller set = fewer LLM output tokens = faster inference
-    private const int RerankLimit        = 15;    // max candidates sent to LLM (was 40)
     internal const int TopMatchLimit     = 15;    // max results in Watches (was 20)
-    private const int MinScoreThreshold  = 60;    // min LLM score to appear in top matches
     // Accessible-luxury ceiling for vague affordability terms with no explicit number (~catalogue
     // p25). Keeps "affordable / entry-level" queries on priced entry-tier pieces.
     internal const decimal AffordableCeiling = 15_000m;
@@ -209,8 +197,6 @@ public class WatchFinderService : IWatchFinderService
         _quota = quotaService;
         _classifier = classifier;
         _lexical = lexical;
-        _skipLlmDistance = _config.GetValue<float?>("WatchFinderSettings:SkipLlmDistance")
-            ?? DefaultSkipLlmDistance;
         _fuseLexicalCandidates = _config.GetValue<bool?>("WatchFinderSettings:FuseLexicalCandidates") ?? true;
     }
 
@@ -503,7 +489,7 @@ public class WatchFinderService : IWatchFinderService
             }
         }
 
-        // Past this point Smart Search needs model interpretation or reranking, so the
+        // Past this point Smart Search needs model interpretation, so the
         // user-facing Smart Search quota is charged once before the first paid LLM call.
         await EnsureQuotaChargedAsync();
 
@@ -583,7 +569,7 @@ public class WatchFinderService : IWatchFinderService
 
             // Brand fallback: if vector search returned nothing but a specific brand was requested,
             // the query embedding likely diverged from watch descriptions (e.g. unusual phrasing).
-            // Load watches for that brand directly so the user sees something to rerank.
+            // Load watches for that brand directly so the user sees something to rank.
             if (candidates.Count == 0 && queryIntent != null
                 && (queryIntent.BrandId != null || queryIntent.BrandIds.Count > 0))
             {
@@ -601,7 +587,6 @@ public class WatchFinderService : IWatchFinderService
                     .OrderByDescending(w => w.Id)
                     .Take(TopMatchLimit * 2)
                     .ToListAsync();
-                bestDistance = 0.5f; // treat as Tier 3 so LLM rerank orders by relevance
                 _logger.LogInformation(
                     "WatchFinder brand fallback — vector miss, loaded {Count} watches for brandIds=[{Ids}]",
                     candidates.Count, string.Join(",", brandFilter));
@@ -632,7 +617,7 @@ public class WatchFinderService : IWatchFinderService
 
         // Vector search alone is the weakest pool on facet-like wording: recall@50 was 0.41 against
         // 0.62 for BM25F on the spec benchmark, while vector found more on open-ended briefs, and
-        // their fusion was best or tied on both. The reranker therefore chooses from the fused
+        // their fusion was best or tied on both. The concierge therefore answers from the fused
         // pool. A price-widened pool keeps its cheapest-first order, which the widening notice
         // describes, so it is left alone.
         var lexicalFused = false;
@@ -646,8 +631,10 @@ public class WatchFinderService : IWatchFinderService
         // which callers split on to read the widening kinds.
         string Stage(string basePath) => lexicalFused ? $"{basePath}+bm25" : basePath;
 
-        // Base result: top TopMatchLimit by vector/filter order, rest as OtherCandidates.
-        // Returned as-is for Tier 2 (strong vector match) and as LLM-fail fallback.
+        // The fused order is the answer: the first TopMatchLimit are shown and the rest become
+        // OtherCandidates. An LLM rerank of the top 15 used to run here whenever the best vector match
+        // was weak. On the 50 open-ended briefs, switching it off moved no metric significantly and
+        // saved 1.9 s per reply, so it was removed.
         var result = new WatchFinderResult
         {
             Watches = candidates.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList(),
@@ -659,8 +646,7 @@ public class WatchFinderService : IWatchFinderService
             // path telemetry describe a stage that never ran — the one signal that would have
             // shown embeddings were off in production reported the opposite.
             SearchPath = AppendWidenedSearchPath(
-                queryEmbedding == null ? "sql_fallback_no_embedding"
-                    : Stage(bestDistance < _skipLlmDistance ? "vector" : "vector_llm_candidate"),
+                queryEmbedding == null ? "sql_fallback_no_embedding" : Stage("vector"),
                 widenedSearchKinds)
         };
 
@@ -673,7 +659,13 @@ public class WatchFinderService : IWatchFinderService
             return result;
         }
 
-        if (bestDistance >= _skipLlmDistance && (HasBrandIntent(queryIntent) || HasCollectionIntent(queryIntent)))
+        _logger.LogInformation(
+            "WatchFinder candidates={CandidateCount} bestDistance={BestDistance:F3} path={SearchPath}",
+            candidates.Count, bestDistance, result.SearchPath);
+
+        // Without embeddings the pool is a brand round-robin with no order of its own, so a named
+        // brand or collection ranks it by the same SQL score the direct path uses.
+        if (queryEmbedding == null && (HasBrandIntent(queryIntent) || HasCollectionIntent(queryIntent)))
         {
             var structuredOrdered = candidates
                 .Select(w => new { Watch = w, Score = DirectSqlScore(normalizedQuery, w, queryIntent, false) })
@@ -685,115 +677,9 @@ public class WatchFinderService : IWatchFinderService
 
             result.Watches = structuredOrdered.Take(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList();
             result.OtherCandidates = structuredOrdered.Skip(TopMatchLimit).Select(w => WatchDto.FromWatch(w, _storage)).ToList();
-            result.SearchPath = AppendWidenedSearchPath(
-                queryEmbedding == null ? "sql_fallback_structured" : Stage("vector_structured_skip_rerank"),
-                widenedSearchKinds);
+            result.SearchPath = AppendWidenedSearchPath("sql_fallback_structured", widenedSearchKinds);
             return result;
         }
-
-        // Tier routing: Tier 2 = strong vector match (skip rerank), Tier 3 = LLM rerank
-        var tier = bestDistance < _skipLlmDistance ? 2 : 3;
-        _logger.LogInformation(
-            "WatchFinder Tier{Tier} bestDistance={BestDistance:F3} candidates={CandidateCount}",
-            tier, bestDistance, candidates.Count);
-
-        // Tier 3: LLM rerank — skipped when vector match is already decisive (Tier 2)
-        if (bestDistance >= _skipLlmDistance)
-        {
-            await EnsureQuotaChargedAsync();
-            var rerankCandidates   = candidates.Take(RerankLimit).ToList();
-            var unscoredCandidates = candidates.Skip(RerankLimit).ToList();
-
-            var rerankSw = System.Diagnostics.Stopwatch.StartNew();
-            try
-            {
-                var payload = rerankCandidates.Select(w =>
-                {
-                    var specs = DeserialiseSpecs(w.Specs);
-                    return new
-                    {
-                        id = w.Id,
-                        name = w.Name,
-                        brand = w.Brand?.Name ?? "",
-                        collection = w.Collection?.Name ?? "",
-                        description = w.Description ?? "",
-                        price = (double)w.CurrentPrice,
-                        specs_summary = BuildSpecsSummary(specs)
-                    };
-                });
-
-            var rerankResp = await StageTimings.TimeAsync("rerank", () => httpClient.PostAsJsonAsync("/watch-finder/rerank", new { query, watches = payload }));
-            if (rerankResp.IsSuccessStatusCode)
-            {
-                _logger.LogInformation(
-                    "WatchFinder rerank {ElapsedMs}ms candidates={CandidateCount}",
-                    rerankSw.ElapsedMilliseconds, rerankCandidates.Count);
-                var json = await rerankResp.Content.ReadFromJsonAsync<JsonElement>();
-                if (json.TryGetProperty("ranked", out var rankedEl))
-                {
-                    var ranked   = JsonSerializer.Deserialize<List<RankedWatch>>(rankedEl.GetRawText(), _jsonOptions) ?? [];
-                    var scoreMap = ranked.ToDictionary(r => r.WatchId);
-
-                    var scoredAndOrdered = rerankCandidates
-                        .Where(w => scoreMap.ContainsKey(w.Id))
-                        .Select(w => new
-                        {
-                            Watch = w,
-                            CompositeScore = scoreMap[w.Id].Score
-                                + RelaxedDeterministicScore(w, queryIntent, [])
-                                + IntentPricePreferenceScore(w, queryIntent)
-                        })
-                        .OrderBy(x => PriceOnRequestRank(x.Watch, queryIntent))
-                        .ThenByDescending(x => x.CompositeScore)
-                        .ThenBy(x => PriceDistanceFromIntent(x.Watch, queryIntent))
-                        .Select(x => x.Watch)
-                        .ToList();
-
-                    var topMatches = scoredAndOrdered
-                        .Where(w => scoreMap[w.Id].Score >= MinScoreThreshold)
-                        .Take(TopMatchLimit)
-                        .ToList();
-
-                    if (topMatches.Count() < 3)
-                        topMatches = scoredAndOrdered.Take(Math.Min(TopMatchLimit, scoredAndOrdered.Count())).ToList();
-
-                    var topMatchIds = new HashSet<int>(topMatches.Select(w => w.Id));
-
-                    result.Watches = topMatches.Select(w => WatchDto.FromWatch(w, _storage)).ToList();
-
-                    // Non-top reranked candidates (lower-scored first), then the vector-tail that was never reranked
-                    result.OtherCandidates = rerankCandidates
-                        .Where(w => !topMatchIds.Contains(w.Id))
-                        .OrderByDescending(w => scoreMap.ContainsKey(w.Id) ? scoreMap[w.Id].Score : -1)
-                        .Concat(unscoredCandidates)
-                        .Select(w => WatchDto.FromWatch(w, _storage))
-                        .ToList();
-
-                    result.MatchDetails = topMatches.ToDictionary(
-                        w => w.Id,
-                        w => new WatchMatchDetail
-                        {
-                            Score = scoreMap[w.Id].Score
-                        });
-                    // Same rule as the candidate label above: rerank can run over SQL-loaded
-                    // candidates when embeddings are unavailable, and the path must not claim
-                    // a vector stage that did not happen.
-                    result.SearchPath = AppendWidenedSearchPath(
-                        queryEmbedding == null ? "sql_fallback_llm_rerank" : Stage("vector_llm_rerank"),
-                        widenedSearchKinds);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            rerankSw.Stop();
-            _logger.LogWarning(ex,
-                "WatchFinder rerank threw after {ElapsedMs}ms — returning unranked results",
-                rerankSw.ElapsedMilliseconds);
-            result.RerankSource = "fallback";
-        }
-
-        } // end Tier 3 rerank
 
         // Enqueue embedding generation for all returned watches as a durable Hangfire job.
         var idsToEmbed = result.Watches
@@ -1260,17 +1146,6 @@ public class WatchFinderService : IWatchFinderService
     internal static int PriceOnRequestRank(Watch watch, QueryIntent? intent) =>
         (intent?.MinPrice != null || intent?.MaxPrice != null) && watch.CurrentPrice <= 0 ? 1 : 0;
 
-    private static decimal PriceDistanceFromIntent(Watch watch, QueryIntent? intent)
-    {
-        if (watch.CurrentPrice <= 0)
-            return decimal.MaxValue;
-
-        var targetPrice = TargetPriceFromIntent(intent);
-        return targetPrice == null
-            ? watch.CurrentPrice
-            : Math.Abs(watch.CurrentPrice - targetPrice.Value);
-    }
-
     // A price "target" only exists when the user gave a bounded range or an "around $X"
     // phrasing (both MinPrice and MaxPrice set → midpoint). A lone MaxPrice ("under $X") is a
     // budget ceiling, not a target: every in-budget watch is equally acceptable, so return null
@@ -1321,7 +1196,7 @@ public class WatchFinderService : IWatchFinderService
 
         // Style filter: resolve style → tagged collection IDs → SQL IN.
         // Hard filter only when collection tags exist for that style — graceful degradation
-        // if no collections are tagged (filter silently skips, vector + rerank handle style).
+        // if no collections are tagged (filter silently skips, vector search and BM25F handle style).
         // Untagged collections are not excluded — they surface as candidates naturally.
         List<int> styleCollectionIds = [];
         if (ShouldApplyStyleSqlFilter(intent))
@@ -2606,33 +2481,10 @@ public class WatchFinderService : IWatchFinderService
         return result;
     }
 
-    private static string BuildSpecsSummary(WatchSpecs? specs)
-    {
-        if (specs == null) return "";
-        var parts = new List<string>();
-        if (!string.IsNullOrEmpty(specs.Case?.Material))   parts.Add(specs.Case.Material);
-        if (!string.IsNullOrEmpty(specs.Case?.Diameter))   parts.Add(specs.Case.Diameter);
-        if (!string.IsNullOrEmpty(specs.Case?.Thickness))  parts.Add($"{specs.Case.Thickness} thick");
-        if (!string.IsNullOrEmpty(specs.Movement?.Type))   parts.Add(specs.Movement.Type);
-        if (!string.IsNullOrEmpty(specs.Dial?.Color))      parts.Add($"{specs.Dial.Color} dial");
-        if (!string.IsNullOrEmpty(specs.Strap?.Material))  parts.Add(specs.Strap.Material);
-        return string.Join(", ", parts);
-    }
-
     private static WatchSpecs? DeserialiseSpecs(string? specsJson)
     {
         if (string.IsNullOrWhiteSpace(specsJson)) return null;
         try { return JsonSerializer.Deserialize<WatchSpecs>(specsJson); }
         catch { return null; }
-    }
-
-    // Maps the ai-service rerank response shape (scores only — no explanation)
-    private class RankedWatch
-    {
-        [JsonPropertyName("watch_id")]
-        public int WatchId { get; set; }
-
-        [JsonPropertyName("score")]
-        public int Score { get; set; }
     }
 }

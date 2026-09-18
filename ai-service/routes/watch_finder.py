@@ -4,12 +4,7 @@ from flask import jsonify, request
 
 from core.llm import call_llm, normalise, parse_llm_json
 from core.runtime import Runtime
-from prompts.watch_finder import (
-    PARSE_STRICT_PROMPT,
-    PARSE_SYSTEM_PROMPT,
-    RERANK_STRICT_PROMPT,
-    RERANK_SYSTEM_PROMPT,
-)
+from prompts.watch_finder import PARSE_STRICT_PROMPT, PARSE_SYSTEM_PROMPT
 
 
 def register_routes(app, runtime: Runtime) -> None:
@@ -40,53 +35,4 @@ def register_routes(app, runtime: Runtime) -> None:
 
         result = {"intent": intent, "cached": False}
         runtime.cache[cache_key] = {"intent": intent}
-        return jsonify(result)
-
-    @app.route("/watch-finder/rerank", methods=["POST"])
-    def watch_finder_rerank():
-        """Score a candidate pool by relevance."""
-        if not runtime.model_ready:
-            return jsonify({"error": "Model warming up, please retry in a moment"}), 503
-
-        body = request.get_json(silent=True) or {}
-        query = (body.get("query") or "").strip()
-        watches = body.get("watches") or []
-
-        if not query:
-            return jsonify({"error": "query is required"}), 400
-        if not watches:
-            return jsonify({"ranked": [], "cached": False})
-
-        ids_key = ":".join(sorted(str(watch.get("id", "")) for watch in watches))
-        cache_key = f"rerank:{normalise(query)}:{ids_key}"
-        if cache_key in runtime.cache:
-            return jsonify({**runtime.cache[cache_key], "cached": True})
-
-        watch_lines = []
-        for watch in watches:
-            price_str = f"${watch['price']:,}" if watch.get("price") else "Price on request"
-            specs = (watch.get("specs_summary") or "")[:80]
-            collection = watch.get("collection", "")
-            brand_collection = (
-                f"{watch.get('brand', '')} {collection}".strip() if collection else watch.get("brand", "")
-            )
-            watch_lines.append(
-                f"ID {watch['id']} | {brand_collection} | {watch.get('name', '')} | "
-                f"{price_str} | {specs} | {watch.get('description', '')}"
-            )
-        watches_text = "\n".join(watch_lines)
-        user_content = f'Query: "{query}"\n\nWatches:\n{watches_text}'
-
-        try:
-            raw = call_llm(runtime, RERANK_SYSTEM_PROMPT, user_content, max_tokens=600)
-            ranked = parse_llm_json(raw)
-        except (ValueError, json.JSONDecodeError):
-            try:
-                raw = call_llm(runtime, RERANK_STRICT_PROMPT, user_content, max_tokens=600)
-                ranked = parse_llm_json(raw)
-            except (ValueError, json.JSONDecodeError) as exc:
-                return jsonify({"error": f"Failed to parse LLM response: {str(exc)}"}), 502
-
-        result = {"ranked": ranked, "cached": False}
-        runtime.cache[cache_key] = {"ranked": ranked}
         return jsonify(result)

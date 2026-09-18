@@ -1,6 +1,6 @@
 # Semantic route layer for chat concierge discovery queries.
 # Classifies a query as "simple_brand" (pure SQL is sufficient) or
-# "descriptor_query" (full WatchFinder vector + LLM rerank is needed).
+# "descriptor_query" (the full WatchFinder retrieval is needed).
 # Uses cosine similarity against pre-embedded example utterances — same
 # concept as semantic-router (Aurelio AI) but implemented inline to avoid
 # an extra dependency and Docker-build fragility.
