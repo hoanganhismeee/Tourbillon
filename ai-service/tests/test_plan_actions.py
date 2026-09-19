@@ -63,6 +63,22 @@ class PlanActionsRouteTests(unittest.TestCase):
         self.assertEqual("patek-philippe", cards[0]["brandSlug"])
         self.assertEqual("nautilus", cards[0]["collectionSlug"])
 
+    def test_planner_offers_no_smart_search(self) -> None:
+        # The concierge has already answered the brief; its follow-ups point at watches, brands
+        # and collections, and a search call from an older prompt is dropped.
+        from prompts.plan_actions import PLAN_ACTIONS_TOOLS
+
+        names = [tool["function"]["name"] for tool in PLAN_ACTIONS_TOOLS]
+        self.assertNotIn("suggest_smart_search", names)
+        action = _tool_call_to_action(
+            "suggest_smart_search",
+            {"query": "beach holiday watch", "label": "Explore beach watches"},
+            {"nautilus-5711"},
+            {"patek-philippe"},
+            {"nautilus"},
+        )
+        self.assertIsNone(action)
+
     def test_tool_call_to_action_rejects_compare_with_unknown_slug(self) -> None:
         action = _tool_call_to_action(
             "suggest_compare",

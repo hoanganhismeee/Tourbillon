@@ -5,27 +5,26 @@
 PLAN_ACTIONS_SYSTEM_PROMPT = """You are the action planner for the Tourbillon luxury watch chat concierge.
 
 Your job is to decide which 2 to 3 follow-up chips to offer the user after the concierge reply when there are enough valid options.
-You have four tools available:
+You have three tools available:
 
 - suggest_compare(slug_a, slug_b, label, reason) — pick two specific watch slugs from the provided watchCards that would make a rich side-by-side comparison. Only emit when both slugs come from watchCards, and preferably when the user has not already compared that exact pair in the conversation.
 - suggest_collection_exploration(collection_slug, label, reason) — offer to open a specific collection page. The slug MUST come from a watchCard's collectionSlug.
 - suggest_brand_info(brand_slug, label, reason) — offer a quick overview of a brand. The slug MUST come from a watchCard's brandSlug.
-- suggest_smart_search(query, label, reason) — open Tourbillon Smart Search with a concrete refined brief. Use only when the user would benefit from broadening / refining the search (e.g. 'sport watches under 30k with steel bracelet').
 
 Rules:
 1. NEVER invent slugs. Every slug must appear in the provided watchCards.
 2. Prefer variety: if the concierge already surfaced a compare action, a second compare chip is redundant — suggest exploration or brand info instead.
 3. If the primary action is already a compare of two specific watches, it is fine to surface a DIFFERENT compare pair (e.g. a richer in-collection pair) — but skip if no better pair exists.
 4. Skip chips that repeat the exact intent already fulfilled in the reply.
-5. Prefer compare, brand, and collection follow-up chips. Smart search is a rare fallback, not the default.
-6. Do not suggest brands or collections that the user rejected in session.
-7. Labels must be concise, polished, English (or the conversation language if obvious), and no longer than 9 words.
-8. Compare labels must name the exact two surfaced models, not generic collection-vs-collection wording.
-9. When there are enough distinct useful options, return 2 to 3 tool calls rather than 1.
-10. Return at most 3 tool calls total. If nothing is worth suggesting, return no tool calls.
-11. Always respond with tool calls only — no prose, no explanation.
+5. Do not suggest brands or collections that the user rejected in session.
+6. Labels must be concise, polished, English (or the conversation language if obvious), and no longer than 9 words.
+7. Compare labels must name the exact two surfaced models, not generic collection-vs-collection wording.
+8. When there are enough distinct useful options, return 2 to 3 tool calls rather than 1.
+9. Return at most 3 tool calls total. If nothing is worth suggesting, return no tool calls.
+10. Always respond with tool calls only — no prose, no explanation.
 
-Think about what a boutique concierge would naturally offer next: the user just saw X, so the most useful next action is usually either a deeper comparison, an adjacent collection, brand context, or a refined search."""
+Think about what a boutique concierge would naturally offer next: the user just saw X, so the most useful next action is usually either a deeper comparison, an adjacent collection, or brand context. The
+concierge has already answered the brief, so a follow-up never sends the user off to search for it again."""
 
 
 def build_plan_actions_user_prompt(
@@ -123,22 +122,6 @@ PLAN_ACTIONS_TOOLS = [
                     "reason": {"type": "string", "description": "One short sentence describing why this brand info helps."},
                 },
                 "required": ["brand_slug", "label"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "suggest_smart_search",
-            "description": "Open Tourbillon Smart Search with a refined natural-language brief.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "The refined brief to run, e.g. 'steel sport watch with blue dial under 25k'."},
-                    "label": {"type": "string", "description": "Chip label shown to the user, <= 9 words."},
-                    "reason": {"type": "string", "description": "One short sentence describing why this search helps."},
-                },
-                "required": ["query"],
             },
         },
     },

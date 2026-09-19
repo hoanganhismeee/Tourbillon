@@ -93,17 +93,7 @@ def _tool_call_to_action(
             "reason": reason,
         }
 
-    if name == "suggest_smart_search":
-        query = (args.get("query") or "").strip()
-        if not query:
-            return None
-        return {
-            "type": "search",
-            "label": label or "Open Smart Search",
-            "query": query,
-            "reason": reason,
-        }
-
+    # Any other tool name, including the Smart Search tool the planner no longer has, is dropped.
     return None
 
 
@@ -118,8 +108,6 @@ def _dedup_actions(actions: list[dict]) -> list[dict]:
             key = ("compare", slugs)
         elif action["type"] == "navigate":
             key = ("navigate", (action.get("href") or "").lower())
-        elif action["type"] == "search":
-            key = ("search", (action.get("query") or "").lower())
         else:
             key = (action["type"], action.get("label", ""))
         if key in seen:
