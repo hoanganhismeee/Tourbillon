@@ -98,6 +98,24 @@ public class ChatServiceTests
         Assert.Equal(expected, ChatService.LooksLikeFrenchText(message));
     }
 
+    // French shares à â é è ê ô ù with Vietnamese; only letters Vietnamese alone uses may choose it,
+    // and unaccented French is still recognised by its function words.
+    [Theory]
+    [InlineData("une vraie montre de plongée robuste", "french")]
+    [InlineData("un brunch décontracté le week-end", "french")]
+    [InlineData("quelque chose de discret pour le bureau", "french")]
+    [InlineData("một chiếc đồng hồ lặn thật sự bền", "vietnamese")]
+    [InlineData("đi ăn brunch cuối tuần", "vietnamese")]
+    [InlineData("a proper strong diver", "english")]
+    [InlineData("something from AP", "english")]
+    public void ResponseLanguage_SeparatesFrenchFromVietnamese(string message, string expected)
+    {
+        var detected = ChatService.LooksLikeVietnameseText(message) ? "vietnamese"
+            : ChatService.LooksLikeFrenchText(message) ? "french"
+            : "english";
+        Assert.Equal(expected, detected);
+    }
+
     // The finder matches a prefetched parse and a shared classification to the exact query it is
     // later given, so both hints must carry the same string the discovery path searches with.
     private static (Mock<IWatchFinderService> Finder, Mock<IConciergeSearchHints> Hints) CreateHintedFinder()

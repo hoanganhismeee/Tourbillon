@@ -4974,16 +4974,19 @@ public class ChatService
         return null;
     }
 
-    private static bool LooksLikeVietnameseText(string query) =>
-        Regex.IsMatch(query, @"[ăâêôơưđáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]", RegexOptions.IgnoreCase)
+    // Letters only Vietnamese uses. French shares à â é è ê ô ù, and matching those first had the model
+    // answer "une vraie montre de plongée" in Vietnamese.
+    internal static bool LooksLikeVietnameseText(string query) =>
+        Regex.IsMatch(query, @"[ăơưđáảãạấầẩẫậắằẳẵặẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúủũụứừửữựýỳỷỹỵ]", RegexOptions.IgnoreCase)
         || Regex.IsMatch(query, @"\b(?:xin chao|xin chào|dong ho|đồng hồ|lich su|lịch sử|thuong hieu|thương hiệu|bo suu tap|bộ sưu tập)\b", RegexOptions.IgnoreCase);
 
     // French cues for choosing the reply language, limited to words that are French alone. "collection",
     // "heritage" and "maison" are everyday English in watch talk, and matching them had the model answer
-    // "Tell me about the Reverso collection" in French.
+    // "Tell me about the Reverso collection" in French. Common function words catch French typed without
+    // accents ("quelque chose de discret pour le bureau"), which otherwise fell through to English.
     internal static bool LooksLikeFrenchText(string query) =>
         Regex.IsMatch(query, @"[àâçéèêëîïôûùüÿœæ]", RegexOptions.IgnoreCase)
-        || Regex.IsMatch(query, @"\b(?:bonjour|montres?|histoire|parlez[- ]moi|raconte[- ]moi|suisse)\b", RegexOptions.IgnoreCase);
+        || Regex.IsMatch(query, @"\b(?:bonjour|montres?|histoire|parlez[- ]moi|raconte[- ]moi|suisse|quelque|quelles?|quels?|chose|pour|avec|une|je|vous|votre|mon|mes|porter|cadran|poignets?)\b", RegexOptions.IgnoreCase);
 
     /// Returns brand IDs that appear near a negation word in the message (within 12 preceding words).
     private static List<int> DetectBrandRejections(string message, EntityMentions mentions)
