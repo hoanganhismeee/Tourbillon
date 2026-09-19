@@ -8,7 +8,7 @@ from flask import jsonify, request
 
 from core.llm import call_llm_chat
 from core.runtime import Runtime
-from prompts.chat import ADVISOR_GUIDANCE, CHAT_SYSTEM_PROMPT
+from prompts.chat import ADVISOR_GUIDANCE, CHAT_SYSTEM_PROMPT, REPLY_LENGTHS
 
 LANGUAGE_HINTS = {
     "en": "english",
@@ -38,6 +38,15 @@ LANGUAGE_KEYWORDS = {
     "french": {"bonjour", "montre", "maison", "histoire", "collection", "avec", "pour", "suisse"},
     "vietnamese": {"dong", "ho", "lich", "su", "thuong", "hieu", "bo", "suu", "tap", "voi"},
 }
+
+
+def _reply_length(value: str | None) -> dict:
+    """The length rule for a reply kind; anything unknown or missing gets the short rule."""
+    return REPLY_LENGTHS.get((value or "").strip().lower(), REPLY_LENGTHS["short"])
+
+
+def _system_prompt(length: dict) -> str:
+    return f"{CHAT_SYSTEM_PROMPT}\n\nLength\n- {length['instruction']}"
 
 
 def _strip_action_lines(raw: str) -> str:
@@ -322,11 +331,12 @@ def register_routes(app, runtime: Runtime) -> None:
         allow_web_enrichment = bool(data.get("allowWebEnrichment"))
         web_query = (data.get("webQuery") or "").strip()
         mode = (data.get("mode") or "").strip().lower()
+        length = _reply_length(data.get("replyLength"))
 
         if not query:
             return jsonify({"error": "query is required"}), 400
 
-        messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+        messages = [{"role": "system", "content": _system_prompt(length)}]
 
         context_block = "\n\n".join(context)
         if context_block:
@@ -364,7 +374,7 @@ def register_routes(app, runtime: Runtime) -> None:
         messages.append({"role": "user", "content": query})
 
         try:
-            raw = call_llm_chat(runtime, messages, max_tokens=200, temperature=0.3).strip()
+            raw = call_llm_chat(runtime, messages, max_tokens=length["max_tokens"], temperature=0.3).strip()
             text_only = _strip_action_lines(raw)
 
             if response_language and not _response_matches_language(text_only, response_language):
@@ -378,10 +388,10 @@ def register_routes(app, runtime: Runtime) -> None:
                         ),
                     },
                 ]
-                raw = call_llm_chat(runtime, retry_messages, max_tokens=200, temperature=0.1).strip()
+                raw = call_llm_chat(runtime, retry_messages, max_tokens=length["max_tokens"], temperature=0.1).strip()
                 text_only = _strip_action_lines(raw)
 
-            trimmed = _cleanup_markdown_artifacts(_truncate_chat_response(text_only))
+            trimmed = _cleanup_markdown_artifacts(_truncate_chat_response(text_only, length["max_words"]))
             linked = _inject_entity_links(trimmed, context)
             safe_text = _cleanup_markdown_artifacts(_filter_internal_links(linked, context))
             grounded = _collect_grounded_entities(safe_text, context)

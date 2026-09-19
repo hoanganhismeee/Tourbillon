@@ -482,6 +482,8 @@ public class ChatServiceTests
         Assert.Equal(1, handler.CallCount);
         Assert.Contains("Vacheron Constantin", handler.RequestBodies[0]);
         Assert.DoesNotContain("enableWebSearch", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
+        // A brand overview explains, so it gets the long reply budget.
+        Assert.Contains("\"replyLength\":\"explain\"", handler.RequestBodies[0]);
         Assert.Contains("/brands/vacheron-constantin", result.Message);
         watchFinder.VerifyNoOtherCalls();
     }
@@ -552,6 +554,8 @@ public class ChatServiceTests
         await service.HandleMessageAsync("session-1", "Recommend me an art-focused watch", null, "127.0.0.1");
 
         var payload = JsonDocument.Parse(handler.RequestBodies[0]).RootElement;
+        // A recommendation lets the cards carry the detail, so the wording gets the short budget.
+        Assert.Equal("short", payload.GetProperty("replyLength").GetString());
         var contextText = string.Join("\n", payload.GetProperty("context").EnumerateArray().Select(item => item.GetString()));
 
         Assert.Contains("Watch \"Grand Seiko Sport Collection SBGE255 Spring Drive GMT\"", contextText, StringComparison.Ordinal);

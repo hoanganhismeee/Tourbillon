@@ -239,6 +239,10 @@ public class ChatService
         // "advisor" routes the AI wording layer into advice-led mode (lead with personal-fit
         // guidance, then a tight curated set). Null keeps the default concierge wording.
         public string? AiMode { get; set; }
+        // How long the AI wording may run. "explain" is for brand and collection overviews and
+        // histories; everything else (recommendations, advice, comparisons) is "short", because the
+        // watch cards already carry the detail. The AI service turns this into a length rule.
+        public string ReplyLength { get; set; } = "short";
         // Populated by each routing branch for structured tracing.
         public string RoutingPath { get; set; } = "unknown";
         // Populated when WatchFinderService is called; mirrors WatchFinderResult.SearchPath.
@@ -1117,6 +1121,7 @@ public class ChatService
             allowWebEnrichment,
             webQuery,
             resolution.AiMode,
+            resolution.ReplyLength,
             cancellationToken);
 
         var validation = await ValidateAiDraftAsync(aiDraft, resolution);
@@ -1139,6 +1144,7 @@ public class ChatService
             allowWebEnrichment,
             webQuery,
             resolution.AiMode,
+            resolution.ReplyLength,
             cancellationToken);
 
         var correctedValidation = await ValidateAiDraftAsync(correctedDraft, resolution);
@@ -1163,6 +1169,7 @@ public class ChatService
         bool allowWebEnrichment = false,
         string? webQuery = null,
         string? mode = null,
+        string replyLength = "short",
         CancellationToken cancellationToken = default)
     {
         try
@@ -1184,6 +1191,7 @@ public class ChatService
                 allowWebEnrichment,
                 webQuery,
                 mode,
+                replyLength,
             };
             var resp = await StageTimings.TimeAsync("chat", () => httpClient.PostAsJsonAsync("/chat", payload, cancellationToken));
             chatSw.Stop();
@@ -2920,6 +2928,7 @@ public class ChatService
             Query = query,
             Context = context,
             WatchCards = dedupedCards,
+            ReplyLength = "explain",
             SuppressCompareSuggestion = allowWebEnrichment,
             SuggestedCompareSlugs = suggestedCompareSlugs,
             SessionState = new ChatSessionState
