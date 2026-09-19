@@ -2,6 +2,7 @@ from collections import Counter
 
 from flask import jsonify
 
+from core import spend
 from core.runtime import Runtime
 
 
@@ -12,6 +13,11 @@ def register_routes(app, runtime: Runtime) -> None:
         if not runtime.model_ready:
             return jsonify({"ready": False, "message": "Model warming up"}), 503
         return jsonify({"ready": True})
+
+    @app.route("/usage")
+    def usage():
+        """Paid-model spend since this process started, priced from each response's token usage."""
+        return jsonify(spend.snapshot())
 
     @app.route("/health")
     def health():

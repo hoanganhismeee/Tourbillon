@@ -3,6 +3,7 @@ import re
 import sys
 import time
 
+from core import spend
 from core.runtime import Runtime
 
 
@@ -69,6 +70,7 @@ def call_llm(
     """Single LLM call — returns raw text content."""
     if getattr(runtime, "use_anthropic", False) is True:
         _rate_limit(runtime)
+        spend.check(runtime.llm_model)
         system_payload = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
         t0 = time.perf_counter()
         response = runtime.anthropic_client.messages.create(
@@ -79,6 +81,7 @@ def call_llm(
         )
         ms = (time.perf_counter() - t0) * 1000
         u = getattr(response, "usage", None)
+        spend.charge(runtime.llm_model, u)
         cache_read = getattr(u, "cache_read_input_tokens", 0) or 0
         cache_hit = " CACHE_HIT" if cache_read > 0 else ""
         _log(
@@ -112,6 +115,7 @@ def call_llm_chat(
     for Ollama it stays in the messages list as-is."""
     if getattr(runtime, "use_anthropic", False) is True:
         _rate_limit(runtime)
+        spend.check(runtime.llm_model)
         system = ""
         chat_messages = []
         for msg in messages:
@@ -129,6 +133,7 @@ def call_llm_chat(
         )
         ms = (time.perf_counter() - t0) * 1000
         u = getattr(response, "usage", None)
+        spend.charge(runtime.llm_model, u)
         cache_read = getattr(u, "cache_read_input_tokens", 0) or 0
         # Writes are logged too: a prefix below the model's minimum caches nothing and reports
         # zero for both, which is indistinguishable from "written but never read" unless the
@@ -166,6 +171,7 @@ def call_llm_with_tools(
     [{"name": str, "arguments": dict}, ...]"""
     if getattr(runtime, "use_anthropic", False) is True:
         _rate_limit(runtime)
+        spend.check(runtime.llm_model)
         t0 = time.perf_counter()
         response = runtime.anthropic_client.messages.create(
             model=runtime.llm_model,
@@ -177,6 +183,7 @@ def call_llm_with_tools(
         # Logged like the other calls so a cost audit of the logs covers the planner too.
         ms = (time.perf_counter() - t0) * 1000
         u = getattr(response, "usage", None)
+        spend.charge(runtime.llm_model, u)
         _log(
             f"[LLM tools] {ms:.0f}ms | in={getattr(u,'input_tokens','?')} "
             f"out={getattr(u,'output_tokens','?')}"

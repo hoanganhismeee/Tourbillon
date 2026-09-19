@@ -99,6 +99,9 @@ services:
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
       BASE_LLM_MODEL: ${BASE_LLM_MODEL:-qwen2.5:7b}
       LLM_API_KEY: ${LLM_API_KEY:-ollama}
+      # Hard cap in USD on paid model calls since the process started; unset means no cap.
+      # GET /usage reports the running total, priced from each response's token usage.
+      LLM_BUDGET_USD: ${LLM_BUDGET_USD:-}
       # Embeddings run inside the ai-service process, the same as production — a dev setup on
       # a different embedding model would measure a pipeline production never runs. Set
       # EMBED_BASE_URL to point at a hosted embeddings service instead.
