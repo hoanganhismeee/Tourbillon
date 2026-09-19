@@ -41,7 +41,9 @@ const load = (path, arm) => {
 const A = load(args.a, armA);
 const B = load(args.b, armB);
 if (A.run.scope !== B.run.scope) console.warn(`scope differs: ${A.run.scope} vs ${B.run.scope}`);
-const ids = [...A.byId.keys()].filter(id => B.byId.has(id));
+const ids = [...A.byId.keys()].filter(id => B.byId.has(id))
+  // --exclude drops named queries from both sides, e.g. rows a spend cap cut short.
+  .filter(id => !String(args.exclude ?? '').split(',').includes(id));
 
 const fmt = n => (n === null || n === undefined ? '   -  ' : n.toFixed(3).padStart(6));
 const signed = n => (n >= 0 ? '+' : '') + n.toFixed(3);

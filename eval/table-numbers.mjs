@@ -20,7 +20,9 @@ const load = (path, arm) => {
 
 const A = load(args.a, args['arm-a'] ?? 'bm25');
 const B = load(args.b, args['arm-b'] ?? 'concierge');
-const ids = [...B.byId.keys()].filter(id => A.byId.has(id));
+const ids = [...B.byId.keys()].filter(id => A.byId.has(id))
+  // --exclude drops named queries from both sides, e.g. rows a spend cap cut short.
+  .filter(id => !String(args.exclude ?? '').split(',').includes(id));
 
 // Recall is read against its ceiling: a list of ten cannot hold more than ten of 76 answers.
 const shareOfCeiling = r => (r.ceiling ? r.recall / r.ceiling : 0);
