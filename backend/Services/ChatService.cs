@@ -4978,9 +4978,12 @@ public class ChatService
         Regex.IsMatch(query, @"[ăâêôơưđáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]", RegexOptions.IgnoreCase)
         || Regex.IsMatch(query, @"\b(?:xin chao|xin chào|dong ho|đồng hồ|lich su|lịch sử|thuong hieu|thương hiệu|bo suu tap|bộ sưu tập)\b", RegexOptions.IgnoreCase);
 
-    private static bool LooksLikeFrenchText(string query) =>
+    // French cues for choosing the reply language, limited to words that are French alone. "collection",
+    // "heritage" and "maison" are everyday English in watch talk, and matching them had the model answer
+    // "Tell me about the Reverso collection" in French.
+    internal static bool LooksLikeFrenchText(string query) =>
         Regex.IsMatch(query, @"[àâçéèêëîïôûùüÿœæ]", RegexOptions.IgnoreCase)
-        || Regex.IsMatch(query, @"\b(?:bonjour|montre|histoire|heritage|maison|collection|parlez[- ]moi|raconte[- ]moi|suisse)\b", RegexOptions.IgnoreCase);
+        || Regex.IsMatch(query, @"\b(?:bonjour|montres?|histoire|parlez[- ]moi|raconte[- ]moi|suisse)\b", RegexOptions.IgnoreCase);
 
     /// Returns brand IDs that appear near a negation word in the message (within 12 preceding words).
     private static List<int> DetectBrandRejections(string message, EntityMentions mentions)

@@ -84,6 +84,20 @@ public class ChatServiceTests
         watchFinder.VerifyNoOtherCalls();
     }
 
+    // The reply language follows the message. English watch vocabulary that looks French must not
+    // flip it: a "collection" or "heritage" question in English gets an English answer.
+    [Theory]
+    [InlineData("Tell me about the Reverso collection", false)]
+    [InlineData("the heritage of Vacheron Constantin", false)]
+    [InlineData("a Geneva maison with a long history", false)]
+    [InlineData("Parlez-moi de la collection Reverso", true)]
+    [InlineData("quelle est l'histoire de Vacheron", true)]
+    [InlineData("une montre élégante pour un dîner", true)]
+    public void LooksLikeFrenchText_OnlyFrenchWordsCount(string message, bool expected)
+    {
+        Assert.Equal(expected, ChatService.LooksLikeFrenchText(message));
+    }
+
     // The finder matches a prefetched parse and a shared classification to the exact query it is
     // later given, so both hints must carry the same string the discovery path searches with.
     private static (Mock<IWatchFinderService> Finder, Mock<IConciergeSearchHints> Hints) CreateHintedFinder()
