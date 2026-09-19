@@ -825,7 +825,10 @@ public class ChatService
     public async Task InvalidateAndRewarmStartersAsync()
     {
         await _redis.IncrementAsync(ResponseCacheVersionKey);
-        await WarmStartersAsync();
+        // Same switch as the scheduled warm-up: with it off (local dev), a catalogue edit still
+        // orphans stale answers but does not spend seven paid concierge turns re-warming them.
+        if (_config.GetValue("ChatSettings:WarmStarters", true))
+            await WarmStartersAsync();
     }
 
     private static bool CanBypassChatQuotaBeforeRouting(string message)
