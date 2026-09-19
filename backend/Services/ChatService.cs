@@ -496,7 +496,10 @@ public class ChatService
         // A turn is cacheable only when nothing personal or contextual shapes the answer: a fresh
         // first message, no behavioural personalization, and no carried-over session scope. Such a
         // turn is a pure function of (query, language, catalogue) — safe to share across users.
-        var langKey = preferredLanguage ?? "auto";
+        // The reply's language keys the cache, not the raw browser tag: "en-US" and "en-AU" get the same
+        // English answer, and the starter warm-up, which sends no tag, has to land on the key a real click
+        // reads. Keyed by the raw tag, no visitor ever hit a warmed starter.
+        var langKey = ResolveResponseLanguage(message, preferredLanguage);
         var responseCacheable = sessionHistory.Count == 0
             && string.IsNullOrWhiteSpace(behaviorSummary)
             && (sessionState == null
@@ -776,7 +779,10 @@ public class ChatService
                 SessionState = sessionState,
             };
             var cacheKey = await BuildResponseCacheKeyAsync(message, langKey);
-            await _redis.SetStringAsync(cacheKey, JsonSerializer.Serialize(stored, _jsonOptions), ResponseCacheTtl);
+            // A starter answer stays until the catalogue changes, which moves the key's version on; any
+            // other turn expires, so one-off questions do not pile up.
+            var expiry = IsStarterPrompt(message) ? (TimeSpan?)null : ResponseCacheTtl;
+            await _redis.SetStringAsync(cacheKey, JsonSerializer.Serialize(stored, _jsonOptions), expiry);
         }
         catch (Exception ex)
         {
@@ -787,8 +793,14 @@ public class ChatService
     private async Task<string> BuildResponseCacheKeyAsync(string query, string langKey)
     {
         var version = await _redis.GetCounterAsync(ResponseCacheVersionKey) ?? 0;
-        return $"chat:resp:{version}:{langKey}:{NormalizeCacheQuery(query)}";
+        return ResponseCacheKey(version, langKey, query);
     }
+
+    internal static string ResponseCacheKey(long version, string langKey, string query) =>
+        $"chat:resp:{version}:{langKey}:{NormalizeCacheQuery(query)}";
+
+    internal static bool IsStarterPrompt(string message) =>
+        StarterPrompts.Any(prompt => NormalizeCacheQuery(prompt) == NormalizeCacheQuery(message));
 
     private static string NormalizeCacheQuery(string query)
     {
@@ -798,13 +810,20 @@ public class ChatService
         return normalized.Trim();
     }
 
-    // Pre-computes and caches the starter prompts, bypassing the lookup so every run refreshes the
-    // stored answer. Runs as a background job on startup, on a schedule, and after a catalogue
-    // change. isAdmin bypasses the quota; a throwaway session keeps it out of any real conversation.
+    // Computes and caches any starter answer that is missing. A cached starter is left alone: it has no
+    // expiry, and only a catalogue change (a new key version) makes it missing again. Runs on startup and
+    // after a catalogue change. isAdmin bypasses the quota; a throwaway session keeps it out of any real
+    // conversation.
     public async Task WarmStartersAsync()
     {
+        var warmed = 0;
         foreach (var prompt in StarterPrompts)
         {
+            var cacheKey = await BuildResponseCacheKeyAsync(prompt, ResolveResponseLanguage(prompt, null));
+            if (await _redis.GetStringAsync(cacheKey) != null)
+                continue;
+
+            warmed++;
             var warmSession = $"__warm__:{Guid.NewGuid():N}";
             try
             {
@@ -821,7 +840,7 @@ public class ChatService
                 await ClearSessionAsync(warmSession);
             }
         }
-        _logger.LogInformation("Chat starter cache warmed prompts={Count}", StarterPrompts.Length);
+        _logger.LogInformation("Chat starter cache warmed {Warmed} of {Count} prompts", warmed, StarterPrompts.Length);
     }
 
     // Bumps the cache version (orphaning every existing entry) then re-warms the starters. Enqueued
@@ -4941,7 +4960,7 @@ public class ChatService
         return Regex.Replace(input, pattern, " ", RegexOptions.IgnoreCase);
     }
 
-    private static string ResolveResponseLanguage(string query, string? preferredLanguage)
+    internal static string ResolveResponseLanguage(string query, string? preferredLanguage)
     {
         if (LooksLikeVietnameseText(query))
             return "vietnamese";

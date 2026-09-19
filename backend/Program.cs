@@ -459,22 +459,13 @@ RecurringJob.AddOrUpdate<BrowsingEventRetentionJob>(
     job => job.RunAsync(),
     "0 3 * * *");
 
-// Keep the concierge starter answers pre-cached so the suggestions return instantly. Refreshes
-// every 6 hours (well inside the 12h cache TTL); also fired once on boot to warm a cold cache.
-// Each warm-up is 7 full concierge turns against the paid model, so local dev turns it off:
-// there is no visitor to warm the cache for, and every container restart would pay for it.
+// Starter answers are computed once and kept until the catalogue changes, so nothing runs on a
+// schedule: startup fills in any that are missing and a catalogue edit re-warms them. The six-hourly job
+// that used to regenerate all seven is removed from Hangfire's storage wherever it was registered.
+// Local dev leaves ChatSettings:WarmStarters off, so a restart there never pays for starters.
+RecurringJob.RemoveIfExists("chat-warm-starters");
 if (app.Configuration.GetValue<bool>("ChatSettings:WarmStarters", true))
-{
-    RecurringJob.AddOrUpdate<ChatService>(
-        "chat-warm-starters",
-        service => service.WarmStartersAsync(),
-        "0 */6 * * *");
     BackgroundJob.Enqueue<ChatService>(service => service.WarmStartersAsync());
-}
-else
-{
-    RecurringJob.RemoveIfExists("chat-warm-starters");
-}
 
     app.Run();
 }

@@ -116,6 +116,54 @@ public class ChatServiceTests
         Assert.Equal(expected, detected);
     }
 
+    // The reply cache is keyed by the reply's language, so a warmed starter (sent with no browser tag)
+    // is the entry a real click with "en-US" or "en-AU" reads.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("en-US")]
+    [InlineData("en-AU")]
+    public void ResponseCacheKey_IsTheSameForEveryEnglishBrowser(string? browserLanguage)
+    {
+        const string starter = "Something elegant for a formal dinner";
+        var warmed = ChatService.ResponseCacheKey(0, ChatService.ResolveResponseLanguage(starter, null), starter);
+        var clicked = ChatService.ResponseCacheKey(0, ChatService.ResolveResponseLanguage(starter, browserLanguage), starter);
+
+        Assert.Equal(warmed, clicked);
+    }
+
+    [Theory]
+    [InlineData("Something elegant for a formal dinner", true)]
+    [InlineData("  something elegant for a formal dinner! ", true)]
+    [InlineData("Something elegant", false)]
+    public void IsStarterPrompt_MatchesTheNormalisedText(string message, bool expected)
+    {
+        Assert.Equal(expected, ChatService.IsStarterPrompt(message));
+    }
+
+    // A cached starter has no expiry, so the warm-up must leave it alone rather than pay to rebuild it.
+    [Fact]
+    public async Task WarmStartersAsync_LeavesCachedStartersAlone()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"ok\"}", Encoding.UTF8, "application/json"),
+        });
+        var redis = new FakeRedis();
+        foreach (var prompt in ChatService.StarterPrompts)
+        {
+            var key = ChatService.ResponseCacheKey(0, ChatService.ResolveResponseLanguage(prompt, null), prompt);
+            await redis.SetStringAsync(key, "{}");
+        }
+        var service = CreateService(context, watchFinder, handler, redis: redis);
+
+        await service.WarmStartersAsync();
+
+        Assert.Equal(0, handler.CallCount);
+        watchFinder.VerifyNoOtherCalls();
+    }
+
     // The finder matches a prefetched parse and a shared classification to the exact query it is
     // later given, so both hints must carry the same string the discovery path searches with.
     private static (Mock<IWatchFinderService> Finder, Mock<IConciergeSearchHints> Hints) CreateHintedFinder()
