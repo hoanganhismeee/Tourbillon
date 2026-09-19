@@ -4408,7 +4408,7 @@ public class ChatService
                     else
                     {
                         var coll = watchCards.First(c => string.Equals(c.CollectionSlug, parts[1], StringComparison.OrdinalIgnoreCase));
-                        label = $"Explore the {FormatCollectionChipName(coll.CollectionName)} collection";
+                        label = $"Explore the {FormatCollectionChipName(coll.CollectionName, coll.BrandName)} collection";
                     }
                 }
                 return new ChatAction { Type = "navigate", Label = label, Href = "/" + string.Join('/', parts) };
@@ -5364,7 +5364,7 @@ public class ChatService
                     suggestions.Add(new ChatAction
                     {
                         Type = "navigate",
-                        Label = $"Explore the {FormatCollectionChipName(firstWithCollection.CollectionName)} collection",
+                        Label = $"Explore the {FormatCollectionChipName(firstWithCollection.CollectionName, firstWithCollection.BrandName)} collection",
                         Href = $"/collections/{firstWithCollection.CollectionSlug}"
                     });
                 }
@@ -5383,15 +5383,24 @@ public class ChatService
     private static string BuildCompareChipLabel(ChatWatchCard first, ChatWatchCard second) =>
         $"Compare {CardShortLabel(first)} and {CardShortLabel(second)}";
 
-    // Returns the collection name with any leading generic word stripped for use in chip labels.
-    // e.g. "Collection Convexe" → "Convexe", "Aquanaut" → "Aquanaut"
-    private static string FormatCollectionChipName(string? collectionName)
+    // Returns the collection name with any leading generic word stripped for use in chip labels, and a
+    // trailing "Collection" dropped because every label adds its own.
+    // e.g. "Collection Convexe" → "Convexe", "Elegance Collection" → "Elegance", "Aquanaut" → "Aquanaut"
+    internal static string FormatCollectionChipName(string? collectionName, string? brandName = null)
     {
         if (string.IsNullOrWhiteSpace(collectionName)) return "this collection";
-        var words = collectionName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (words.Length > 1 && _genericCollectionWords.Contains(words[0]))
-            return string.Join(" ", words.Skip(1));
-        return collectionName;
+        // The trailing word goes first: "Sport Collection" read the other way round would lose "Sport" as
+        // generic and leave "Collection".
+        var words = collectionName.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (words.Count > 1 && string.Equals(words[^1], "Collection", StringComparison.OrdinalIgnoreCase))
+            words.RemoveAt(words.Count - 1);
+        if (words.Count > 1 && _genericCollectionWords.Contains(words[0]))
+            words.RemoveAt(0);
+        // Greubel Forsey names one collection just "Collection"; its chip reads as the brand's.
+        if (words.Count == 1 && string.Equals(words[0], "Collection", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(brandName))
+            return brandName;
+        return string.Join(" ", words);
     }
 
     // Returns a short human-readable label for a chip (e.g. "Compare Aquanaut vs Overseas").

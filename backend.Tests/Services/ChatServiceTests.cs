@@ -3236,6 +3236,18 @@ public class ChatServiceTests
         Assert.Equal(expected, ChatService.ReadsAsSmartSearchQuery(message, namesBrandOrCollection: false));
     }
 
+    [Theory]
+    [InlineData("Elegance Collection", "Grand Seiko", "Elegance")]
+    [InlineData("Sport Collection", "Grand Seiko", "Sport")]
+    [InlineData("Collection Convexe", "Greubel Forsey", "Convexe")]
+    [InlineData("Collection", "Greubel Forsey", "Greubel Forsey")]
+    [InlineData("Aquanaut", "Patek Philippe", "Aquanaut")]
+    public void FormatCollectionChipName_NeverRepeatsCollection(string collection, string brand, string expected)
+    {
+        // Every label reads "Explore the {name} collection", so the name must not bring its own.
+        Assert.Equal(expected, ChatService.FormatCollectionChipName(collection, brand));
+    }
+
     [Fact]
     public void ReadsAsSmartSearchQuery_NamedBrandOrCollection_IsAFilter()
     {
