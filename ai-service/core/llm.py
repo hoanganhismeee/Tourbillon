@@ -143,7 +143,7 @@ def call_llm_chat(
         _log(
             f"[LLM chat] {ms:.0f}ms | in={getattr(u,'input_tokens','?')} "
             f"out={getattr(u,'output_tokens','?')} cache_read={cache_read} "
-            f"cache_write={cache_write}{cache_hit}"
+            f"cache_write={cache_write} stop={getattr(response, 'stop_reason', '?')}{cache_hit}"
         )
         return response.content[0].text if response.content else ""
 
@@ -155,7 +155,12 @@ def call_llm_chat(
         max_tokens=max_tokens,
     )
     ms = (time.perf_counter() - t0) * 1000
-    _log(f"[LLM chat] {ms:.0f}ms | ollama")
+    # "length" means the reply hit max_tokens and was cut, the signal a length rule is too loose.
+    u = getattr(response, "usage", None)
+    _log(
+        f"[LLM chat] {ms:.0f}ms | ollama out={getattr(u, 'completion_tokens', '?')} "
+        f"stop={response.choices[0].finish_reason}"
+    )
     return response.choices[0].message.content or ""
 
 
