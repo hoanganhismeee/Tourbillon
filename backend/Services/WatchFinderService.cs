@@ -116,6 +116,20 @@ public class QueryIntent
     /// When the user says "good water resistance" this contains all buckets except "Up to 30m".
     /// Client-side filter only. Labels must match frontend WATER_RESISTANCE_BUCKETS exactly.
     public List<string> WaterResistanceBuckets { get; set; } = [];
+
+    /// True when anything was read that Smart Search can filter on. A method, not a property, so it
+    /// stays out of the JSON the filter bar reads.
+    public bool HasAnyFilter() =>
+        BrandId != null || CollectionId != null
+        || BrandIds.Count > 0 || CollectionIds.Count > 0
+        || MaxPrice != null || MinPrice != null
+        || MinDiameterMm != null || MaxDiameterMm != null
+        || CaseMaterial != null || MovementType != null
+        || DialColour != null
+        || ExcludedMaterials.Count > 0 || ExcludedComplications.Count > 0
+        || WaterResistance != null || Style != null
+        || Complications.Count > 0 || PowerReserves.Count > 0
+        || WaterResistanceBuckets.Count > 0;
 }
 
 public record SmartSearchFilterState(
@@ -2138,19 +2152,7 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
         ApplyStyleCollectionsFromBrandScope(intent, collections);
 
         // Return null if nothing was extracted — no filters to apply
-        if (intent.BrandId == null && intent.CollectionId == null
-            && intent.BrandIds.Count == 0 && intent.CollectionIds.Count == 0
-            && intent.MaxPrice == null && intent.MinPrice == null
-            && intent.MinDiameterMm == null && intent.MaxDiameterMm == null
-            && intent.CaseMaterial == null && intent.MovementType == null
-            && intent.DialColour == null
-            && intent.ExcludedMaterials.Count == 0 && intent.ExcludedComplications.Count == 0
-            && intent.WaterResistance == null && intent.Style == null
-            && intent.Complications.Count == 0 && intent.PowerReserves.Count == 0
-            && intent.WaterResistanceBuckets.Count == 0)
-            return null;
-
-        return intent;
+        return intent.HasAnyFilter() ? intent : null;
     }
 
     /// Records a water-resistance floor in metres and ticks every filter bucket at or above it, so

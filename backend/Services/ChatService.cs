@@ -164,7 +164,7 @@ public class ChatService
     private const string UnsupportedQueryMessage = "Tourbillon is your concierge for luxury watches — brands, collections, comparisons, and catalogue picks by style, size, material, or budget. Pick one of the starters below, or tell me a brand, a budget, or an occasion and I'll take it from there.";
     private const string NoCloseMatchMessage = "Nothing in the current Tourbillon catalogue lines up with that brief. Try one of the starters below, or rework the request with a specific brand, collection, reference, size, material, or budget and I'll find the closest matches.";
     private const string ProcessingFallbackMessage = "Give me a second chance on that one — try a starter below, or rephrase with a brand, a model, a comparison, a style, or a budget and Tourbillon will surface the right catalogue matches.";
-    private const string AdviceNoMatchMessage = "Tell me a little more — your budget, your wrist size, and how dressy you want it to read — and Tourbillon can point you to the right pieces. You can also open Smart Search to explore the full catalogue.";
+    private const string AdviceNoMatchMessage = "Tell me a little more — your budget, your wrist size, and how dressy you want it to read — and Tourbillon can point you to the right pieces.";
     private const string DailyQuotaMessage = "You have reached your daily concierge quota of 5 messages. Please come back tomorrow.";
     private const string GreetingMessage = "Hello. Tourbillon can help compare watches, explain brands or collections, and narrow a brief into real catalogue options. Try something like \"compare the Aquanaut and the Overseas\", \"tell me about Vacheron Constantin\", or \"JLC Reverso under 50k\".";
 
@@ -1883,8 +1883,9 @@ public class ChatService
         if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
             return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
 
-        // No catalogue fit: still advise in prose and point to the broader tool rather than
-        // dead-ending with a bare "no matches" line.
+        // No catalogue fit: still advise in prose and ask for what would narrow it, rather than
+        // dead-ending with a bare "no matches" line. No Smart Search chip: handing the same brief to
+        // a filter search that found nothing opens an empty page.
         if (searchResult.Watches.Count == 0)
         {
             return new ChatResolution
@@ -1893,15 +1894,6 @@ public class ChatService
                 AiMode = "advisor",
                 Query = canonicalMessage,
                 Message = AdviceNoMatchMessage,
-                Actions =
-                [
-                    new ChatAction
-                    {
-                        Type = "search",
-                        Query = canonicalMessage,
-                        Label = "Open Smart Search"
-                    }
-                ],
                 RoutingPath = "advice_no_match"
             };
         }
@@ -3047,12 +3039,17 @@ public class ChatService
             };
         }
 
+        var offerSmartSearch = includeSearchAction
+            && !IsExplicitCompareQuery(query)
+            && aiMode != "advisor"
+            && ReadsAsSmartSearchQuery(query, mentions?.HasAny == true);
+
         var context = new List<string>
         {
-            includeSearchAction
+            offerSmartSearch
                 ? $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Search guidance request: answer like a sales concierge, highlight the strongest matches, give each surfaced watch one short fit reason tied to the brief, tell the user the Smart Search chip can broaden discovery, emit one Smart Search action with a concise catalogue-style query built from the resolved matches rather than the user's raw wording, and end with a short follow-up question about size, material, budget, occasion, or a specific model."
                 : $"Tourbillon resolved these catalogue matches for the user's request. Search path: {result.SearchPath ?? "unknown"}. Answer like a sales concierge, stay anchored to these exact catalogue matches, give each surfaced watch one short fit reason tied to the brief, do not emit a Smart Search action, and end with a short follow-up question about size, material, budget, occasion, or a specific model.",
-            includeSearchAction
+            offerSmartSearch
                 ? "Smart Search action guidance: rewrite discovery queries into compact catalogue terms. Prefer canonical brand and collection names from the supplied context. Good example: 'Jaeger-LeCoultre Reverso'. Bad example: 'yo, suggest me some reversos'."
                 : "Action guidance: no Smart Search action is needed for this reply."
         };
@@ -3111,7 +3108,7 @@ public class ChatService
             context.Add(BuildCollectionContext(collection));
         }
 
-        var actions = !includeSearchAction || IsExplicitCompareQuery(query)
+        var actions = !offerSmartSearch
             ? new List<ChatAction>()
             : new List<ChatAction>
             {
@@ -3128,7 +3125,7 @@ public class ChatService
             resolvedBrandNames,
             ordered,
             result.QueryIntent?.Style,
-            includeSearchAction);
+            offerSmartSearch);
         var discoveryCards = ordered.Select(ToChatWatchCard).Take(cardLimit).ToList();
         var suggestedCompareSlugs = discoveryCards
             .Take(2)
@@ -3157,7 +3154,7 @@ public class ChatService
         {
             UseAi = true,
             AiMode = aiMode,
-            Message = BuildGroundedDiscoveryMessage(ordered, includeSearchAction, requestedDirections),
+            Message = BuildGroundedDiscoveryMessage(ordered, offerSmartSearch, requestedDirections),
             Query = query,
             Context = context,
             WatchCards = discoveryCards,
@@ -4386,13 +4383,9 @@ public class ChatService
                 label = BuildCompareChipLabel(a, b);
                 return new ChatAction { Type = "compare", Label = label, Slugs = slugs };
             }
-            case "search":
-            {
-                var query = (planned.Query ?? "").Trim();
-                if (string.IsNullOrEmpty(query)) return null;
-                if (string.IsNullOrEmpty(label)) label = query;
-                return new ChatAction { Type = "search", Label = label, Query = query };
-            }
+            // A planned "search" falls through to the default and is dropped. The concierge has already
+            // answered the brief, so its follow-ups point at watches, brands and collections; whether a
+            // Smart Search chip belongs is decided by the message alone (ReadsAsSmartSearchQuery).
             case "navigate":
             {
                 var href = (planned.Href ?? "").Trim();
@@ -4810,6 +4803,18 @@ public class ChatService
         parts.AddRange(collectionNames.Where(collection => !parts.Contains(collection, StringComparer.OrdinalIgnoreCase)));
 
         return parts.Count > 0 ? string.Join(" ", parts) : fallbackQuery;
+    }
+
+    // Smart Search reads filters (brand, collection, price, size, material, movement, dial, style) and
+    // answers a brief such as "what should I wear to my wedding" with an empty page. Whoever asks that
+    // came to the concierge so as not to search, so the chip is offered only when Smart Search can read a
+    // filter from the message itself. Same rules Smart Search parses with, and no model.
+    internal static bool ReadsAsSmartSearchQuery(string message, bool namesBrandOrCollection)
+    {
+        if (namesBrandOrCollection) return true;
+        var intent = new QueryIntent();
+        WatchFinderService.ApplyRegexFilters(message, intent);
+        return intent.HasAnyFilter();
     }
 
     private static string BuildSmartSearchQuery(string originalQuery, List<Watch> ordered, EntityMentions? mentions = null)

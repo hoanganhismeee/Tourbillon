@@ -3195,7 +3195,7 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public async Task HandleMessageAsync_AdviceRequest_NoCatalogueFit_AdvisesAndOffersSmartSearch()
+    public async Task HandleMessageAsync_AdviceRequest_NoCatalogueFit_AdvisesWithoutSmartSearch()
     {
         using var context = CreateContext();
         var watchFinder = new Mock<IWatchFinderService>();
@@ -3218,8 +3218,114 @@ public class ChatServiceTests
         // No catalogue fit still routes through advisor wording (not a bare "no matches").
         Assert.Equal(1, handler.CallCount);
         Assert.Contains("\"mode\":\"advisor\"", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
-        // Card-less advice points the user to the broader catalogue tool.
+        // A filter search given the same brief finds nothing either, so no chip sends the user there.
         Assert.Empty(result.WatchCards);
-        Assert.Contains(result.Actions, a => a.Type == "search");
+        Assert.DoesNotContain(result.Actions, a => a.Type == "search");
+        Assert.DoesNotContain("Smart Search", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("what should I wear to my own wedding", false)]
+    [InlineData("something to wear on a beach holiday", false)]
+    [InlineData("I just want a reliable everyday watch with no fuss", false)]
+    [InlineData("a steel sports watch under 30k", true)]
+    [InlineData("a blue dial chronograph", true)]
+    [InlineData("something elegant under fifteen thousand", true)]
+    public void ReadsAsSmartSearchQuery_OnlyWhenSmartSearchCanReadAFilter(string message, bool expected)
+    {
+        Assert.Equal(expected, ChatService.ReadsAsSmartSearchQuery(message, namesBrandOrCollection: false));
+    }
+
+    [Fact]
+    public void ReadsAsSmartSearchQuery_NamedBrandOrCollection_IsAFilter()
+    {
+        Assert.True(ChatService.ReadsAsSmartSearchQuery("tell me something nice", namesBrandOrCollection: true));
+    }
+
+    // Two Frederique Constant watches the finder returns for any brief, and a chat reply naming both.
+    private static async Task<(Mock<IWatchFinderService> Finder, RecordingHandler Handler)> SeedSmartSearchChipCaseAsync(TourbillonContext context)
+    {
+        var brand = new Brand { Id = 1, Name = "Frederique Constant", Slug = "frederique-constant" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Classics", Slug = "frederique-constant-classics" };
+        var first = new Watch { Id = 100, BrandId = 1, Brand = brand, CollectionId = 10, Collection = collection, Name = "FC-303MC5B6", Slug = "frederique-constant-classics-fc-303mc5b6", Description = "Frederique Constant Classics", CurrentPrice = 3900m };
+        var second = new Watch { Id = 101, BrandId = 1, Brand = brand, CollectionId = 10, Collection = collection, Name = "FC-706S4S6", Slug = "frederique-constant-classics-fc-706s4s6", Description = "Frederique Constant Classics", CurrentPrice = 5200m };
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        context.Watches.AddRange(first, second);
+        await context.SaveChangesAsync();
+
+        var finder = new Mock<IWatchFinderService>();
+        finder.Setup(f => f.FindWatchesAsync(It.IsAny<string>()))
+            .ReturnsAsync(new WatchFinderResult { Watches = [ToDto(first), ToDto(second)], OtherCandidates = [], SearchPath = "vector+bm25" });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"The [Frederique Constant Classics FC-303MC5B6](/watches/frederique-constant-classics-fc-303mc5b6) and the [Frederique Constant Classics FC-706S4S6](/watches/frederique-constant-classics-fc-706s4s6) both fit.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+        return (finder, handler);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_OpenBrief_OffersNoSmartSearchChip()
+    {
+        using var context = CreateContext();
+        var (finder, handler) = await SeedSmartSearchChipCaseAsync(context);
+        var service = CreateService(context, finder, handler, classifier: new FakeClassifier(_ => new IntentClassification("discovery", 0.95)));
+
+        var result = await service.HandleMessageAsync("session-1", "something to wear on a beach holiday", null, "127.0.0.1");
+
+        Assert.Equal(2, result.WatchCards.Count);
+        Assert.DoesNotContain(result.Actions, a => a.Type == "search");
+        Assert.Contains(result.Actions, a => a.Type == "navigate");
+        // The wording is not told a Smart Search chip exists either.
+        Assert.DoesNotContain("Smart Search chip can broaden", handler.RequestBodies[0], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_FilterBrief_OffersSmartSearchChip()
+    {
+        using var context = CreateContext();
+        var (finder, handler) = await SeedSmartSearchChipCaseAsync(context);
+        var service = CreateService(context, finder, handler, classifier: new FakeClassifier(_ => new IntentClassification("discovery", 0.95)));
+
+        var result = await service.HandleMessageAsync("session-1", "a steel dress watch under 10k", null, "127.0.0.1");
+
+        Assert.Single(result.Actions.Where(a => a.Type == "search"));
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_AdviceWithFilters_OffersNoSmartSearchChip()
+    {
+        using var context = CreateContext();
+        var (finder, handler) = await SeedSmartSearchChipCaseAsync(context);
+        var service = CreateService(context, finder, handler, classifier: new FakeClassifier(_ => new IntentClassification("advice_request", 0.95)));
+
+        var result = await service.HandleMessageAsync("session-1", "should I get gold or steel for everyday wear", null, "127.0.0.1");
+
+        Assert.NotEmpty(result.WatchCards);
+        Assert.DoesNotContain(result.Actions, a => a.Type == "search");
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_PlannerSearchChip_IsDropped()
+    {
+        using var context = CreateContext();
+        var (finder, handler) = await SeedSmartSearchChipCaseAsync(context);
+        var planner = new Mock<IActionPlanner>(MockBehavior.Strict);
+        planner.Setup(p => p.PlanAsync(It.IsAny<PlanActionsInput>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new PlannedAction { Type = "search", Label = "Explore beach-ready watches", Query = "beach holiday watch" },
+                new PlannedAction { Type = "navigate", Label = "Explore the Classics", Href = "/collections/frederique-constant-classics" },
+            ]);
+        var service = CreateService(context, finder, handler,
+            classifier: new FakeClassifier(_ => new IntentClassification("discovery", 0.95)), planner: planner.Object);
+
+        var result = await service.HandleMessageAsync("session-1", "something to wear on a beach holiday", null, "127.0.0.1");
+
+        Assert.DoesNotContain(result.Actions, a => a.Type == "search");
+        Assert.Contains(result.Actions, a => a.Type == "navigate" && a.Href == "/collections/frederique-constant-classics");
     }
 }
