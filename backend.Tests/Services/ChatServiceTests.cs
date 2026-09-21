@@ -3236,6 +3236,71 @@ public class ChatServiceTests
         Assert.Equal(expected, ChatService.ReadsAsSmartSearchQuery(message, namesBrandOrCollection: false));
     }
 
+    [Fact]
+    public void InterleaveEntityCards_SharesTheSlotsBetweenEntities()
+    {
+        static ChatWatchCard Card(int id, string brand) => new() { Id = id, BrandName = brand, Slug = $"w{id}" };
+        List<List<ChatWatchCard>> byEntity =
+        [
+            [Card(1, "Vacheron Constantin"), Card(2, "Vacheron Constantin"), Card(3, "Vacheron Constantin"), Card(4, "Vacheron Constantin")],
+            [Card(5, "Jaeger-LeCoultre"), Card(6, "Jaeger-LeCoultre"), Card(7, "Jaeger-LeCoultre")],
+        ];
+
+        var taken = ChatService.InterleaveEntityCards(byEntity, 4);
+
+        Assert.Equal([1, 5, 2, 6], taken.Select(card => card.Id).ToList());
+    }
+
+    [Fact]
+    public void InterleaveEntityCards_OneEntity_KeepsItsOwnOrder()
+    {
+        static ChatWatchCard Card(int id) => new() { Id = id, Slug = $"w{id}" };
+        var taken = ChatService.InterleaveEntityCards([[Card(1), Card(2), Card(3), Card(4), Card(5)]], 4);
+
+        Assert.Equal([1, 2, 3, 4], taken.Select(card => card.Id).ToList());
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_HistoryOfTwoBrands_ShowsBothAndAcceptsBothNames()
+    {
+        using var context = CreateContext();
+        var vacheron = new Brand { Id = 2, Name = "Vacheron Constantin", Slug = "vacheron-constantin", Description = "Historic Geneva maison." };
+        var jaeger = new Brand { Id = 3, Name = "Jaeger-LeCoultre", Slug = "jaeger-lecoultre", Description = "Vallée de Joux manufacture." };
+        var patrimony = new Collection { Id = 20, BrandId = 2, Brand = vacheron, Name = "Patrimony", Slug = "vacheron-constantin-patrimony" };
+        var reverso = new Collection { Id = 30, BrandId = 3, Brand = jaeger, Name = "Reverso", Slug = "jaeger-lecoultre-reverso" };
+        var watches = new List<Watch>();
+        for (var i = 0; i < 4; i++)
+        {
+            watches.Add(new Watch { Id = 200 + i, BrandId = 2, Brand = vacheron, CollectionId = 20, Collection = patrimony, Name = $"VC-{i}", Slug = $"vacheron-constantin-patrimony-vc-{i}", Description = "Vacheron Constantin Patrimony", CurrentPrice = 90000m - i });
+            watches.Add(new Watch { Id = 300 + i, BrandId = 3, Brand = jaeger, CollectionId = 30, Collection = reverso, Name = $"JLC-{i}", Slug = $"jaeger-lecoultre-reverso-jlc-{i}", Description = "Jaeger-LeCoultre Reverso", CurrentPrice = 40000m - i });
+        }
+        context.Brands.AddRange(vacheron, jaeger);
+        context.Collections.AddRange(patrimony, reverso);
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>(MockBehavior.Strict);
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"[Vacheron Constantin](/brands/vacheron-constantin) has run without interruption since 1755, and its Patrimony is the purest of its dress lines. [Jaeger-LeCoultre](/brands/jaeger-lecoultre) built the Reverso in 1931 for polo players.\",\"actions\":[]}",
+                Encoding.UTF8,
+                "application/json")
+        });
+        var classifier = new FakeClassifier(_ => new IntentClassification("brand_history", 0.95));
+
+        var service = CreateService(context, watchFinder, handler, classifier: classifier);
+        var result = await service.HandleMessageAsync(
+            "session-1", "tell me the history of Vacheron Constantin and Jaeger-LeCoultre", null, "127.0.0.1");
+
+        // Both maisons get cards, and naming the second one does not fail the grounding check.
+        Assert.Contains(result.WatchCards, card => card.BrandName == "Vacheron Constantin");
+        Assert.Contains(result.WatchCards, card => card.BrandName == "Jaeger-LeCoultre");
+        Assert.Contains("Reverso", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("strongest catalogue matches", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, handler.CallCount);
+    }
+
     [Theory]
     [InlineData("Elegance Collection", "Grand Seiko", "Elegance")]
     [InlineData("Sport Collection", "Grand Seiko", "Sport")]

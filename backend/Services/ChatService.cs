@@ -233,6 +233,10 @@ public class ChatService
         public ChatSessionState? SessionState { get; set; }
         public bool SuppressCompareSuggestion { get; set; }
         public List<string> SuggestedCompareSlugs { get; set; } = [];
+        // Brands and collections whose context this reply supplies beyond the cards. The draft
+        // validator accepts them: a question about two brands has to be answerable in both names,
+        // even when only one of them has cards on screen.
+        public List<string> AllowedEntityNames { get; set; } = [];
         public string? ResponseLanguage { get; set; }
         public bool AllowWebEnrichment { get; set; }
         public string? WebQuery { get; set; }
@@ -2838,6 +2842,10 @@ public class ChatService
     {
         var context = new List<string>();
         var cards = new List<ChatWatchCard>();
+        // Cards kept per entity, so a two-brand or two-collection question shows both rather than
+        // four watches from whichever was resolved first.
+        var cardsByEntity = new List<List<ChatWatchCard>>();
+        var suppliedNames = new List<string>();
 
         if (mentions.Brands.Count > 0)
         {
@@ -2861,6 +2869,9 @@ public class ChatService
             if (fullCollection == null) continue;
 
             context.Add(BuildCollectionContext(fullCollection));
+            suppliedNames.Add(fullCollection.Name);
+            if (fullCollection.Brand?.Name is { Length: > 0 } collectionBrandName)
+                suppliedNames.Add(collectionBrandName);
 
             var sampleWatches = await _context.Watches
                 .Include(w => w.Brand)
@@ -2874,7 +2885,9 @@ public class ChatService
             foreach (var watch in sampleWatches)
                 context.Add(BuildWatchContext(watch));
 
-            cards.AddRange(sampleWatches.Select(ToChatWatchCard));
+            var collectionCards = sampleWatches.Select(ToChatWatchCard).ToList();
+            cards.AddRange(collectionCards);
+            cardsByEntity.Add(collectionCards);
         }
 
         foreach (var brand in mentions.Brands.Take(2))
@@ -2883,6 +2896,7 @@ public class ChatService
             if (fullBrand == null) continue;
 
             context.Add(BuildBrandContext(fullBrand));
+            suppliedNames.Add(fullBrand.Name);
 
             var brandCollections = await _context.Collections
                 .Where(c => c.BrandId == fullBrand.Id)
@@ -2892,7 +2906,10 @@ public class ChatService
                 .ToListAsync();
 
             foreach (var collection in brandCollections)
+            {
                 context.Add(BuildCollectionContext(collection));
+                suppliedNames.Add(collection.Name);
+            }
 
             var sampleWatches = await _context.Watches
                 .Include(w => w.Brand)
@@ -2906,7 +2923,9 @@ public class ChatService
             foreach (var watch in sampleWatches)
                 context.Add(BuildWatchContext(watch));
 
-            cards.AddRange(sampleWatches.Select(ToChatWatchCard));
+            var brandCards = sampleWatches.Select(ToChatWatchCard).ToList();
+            cards.AddRange(brandCards);
+            cardsByEntity.Add(brandCards);
         }
 
         if (noDirectMatch)
@@ -2920,11 +2939,7 @@ public class ChatService
                 "Action guidance: do not emit compare or Smart Search actions for this reply. Keep any next step focused on the linked brand or collection pages.");
         }
 
-        var dedupedCards = cards
-            .GroupBy(c => c.Id)
-            .Select(g => g.First())
-            .Take(4)
-            .ToList();
+        var dedupedCards = InterleaveEntityCards(cardsByEntity, 4);
         var suggestedCompareSlugs = allowWebEnrichment
             ? []
             : dedupedCards.Take(2)
@@ -2942,6 +2957,7 @@ public class ChatService
             ReplyLength = "explain",
             SuppressCompareSuggestion = allowWebEnrichment,
             SuggestedCompareSlugs = suggestedCompareSlugs,
+            AllowedEntityNames = suppliedNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             SessionState = new ChatSessionState
             {
                 BrandIds = mentions.Brands.Select(brand => brand.Id).Distinct().ToList(),
@@ -2953,6 +2969,28 @@ public class ChatService
             AllowWebEnrichment = allowWebEnrichment,
             WebQuery = allowWebEnrichment ? mentions.Brands.FirstOrDefault()?.Name : null,
         };
+    }
+
+    // Takes cards a round at a time from each entity's own list, so four slots shared by two brands
+    // come out two each instead of four from the first. Order inside an entity is preserved.
+    internal static List<ChatWatchCard> InterleaveEntityCards(List<List<ChatWatchCard>> cardsByEntity, int limit)
+    {
+        var taken = new List<ChatWatchCard>();
+        var seen = new HashSet<int>();
+        var depth = cardsByEntity.Count == 0 ? 0 : cardsByEntity.Max(group => group.Count);
+
+        for (var round = 0; round < depth && taken.Count < limit; round++)
+        {
+            foreach (var group in cardsByEntity)
+            {
+                if (round >= group.Count) continue;
+                if (!seen.Add(group[round].Id)) continue;
+                taken.Add(group[round]);
+                if (taken.Count == limit) break;
+            }
+        }
+
+        return taken;
     }
 
     private async Task<ChatResolution> BuildDiscoveryResolutionAsync(
@@ -3564,6 +3602,7 @@ public class ChatService
 
         var allowedNames = resolution.WatchCards
             .SelectMany(card => new[] { card.BrandName, card.CollectionName, card.Name })
+            .Concat(resolution.AllowedEntityNames)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => QueryNormalizer.NormalizeText(value!))
             .Where(value => value.Length >= 4)
