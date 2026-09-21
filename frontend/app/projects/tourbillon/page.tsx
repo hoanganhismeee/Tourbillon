@@ -209,6 +209,8 @@ const method = [
   "Every system is compared with BM25, the standard keyword ranking, on the same queries.",
   "Differences are tested with a paired bootstrap. Only a 95% interval that stays clear of zero counts as a result.",
   "Recall is read against its ceiling: when 76 watches fit a brief, a list of ten can hold at most 13% of them, however good the ranking.",
+  "The open-ended half scores lower in absolute terms by construction. Those briefs name no facet, so their answer sets are wide — a perfect ranker scores 0.34 recall on that set, not 1.00 — and the concierge answers with three to ten cards where a search page lists fifty.",
+  "Fifty queries per half separates large effects, not small ones, and the labels are one person's judgement. A table this size is evidence for a decision, not a benchmark result.",
 ];
 
 type Mark = "win" | "noise";
@@ -237,6 +239,15 @@ const conciergeRows: ResultRow[] = [
   { label: "Latency, p50", values: ["4.5 s", "—", "6 ms"], emphasis: [0] },
   { label: "Latency, p95", values: ["10.8 s", "—", "8 ms"], emphasis: [0] },
   { label: "Replies with a relevant action", values: ["48%", "38%", "—"], emphasis: [0] },
+];
+
+// Read under the concierge table. One line per thing a reader would otherwise have to work out.
+const conciergeNotes = [
+  "Without the reranker neither model clears BM25 on these briefs, and the 7B model, run on a laptop, falls below it on four of five measures.",
+  "A brief that names no facet has a wide answer set: a perfect ranker scores 0.34 recall here against 1.00 on a facet query, and a reply carries three to ten cards where a search page lists fifty.",
+  "Only recall clears the 95% interval against BM25.",
+  "The action row was 58% when every reply carried a Smart Search chip, and 21 of those chips opened a page with no results.",
+  "On the 50 facet queries either model is level with Smart Search, so the concierge can take over search requests as well.",
 ];
 
 // The strongest value in each column is emphasised; this table explains a choice, not a winner.
@@ -687,15 +698,14 @@ export default function TourbillonPortfolioPage() {
               <Plate caption="Fig. 05 — Concierge results" note="50 open-ended briefs">
                 <div className="px-5 py-5">
                   <ResultTable columns={["Haiku 4.5", "Qwen 7B, local", "BM25"]} rows={conciergeRows} />
-                  <p className="mt-4 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.9rem] leading-[1.6] text-[var(--atl-soft)]">
-                    Without the reranker neither model clears BM25 on open-ended briefs, and
-                    the 7B model, run on a laptop, falls below it on four of five measures. On
-                    the 50 facet queries either model is level with Smart Search, so the
-                    concierge can take over search requests as well. The local model&rsquo;s
-                    latency is not shown because the GPU throttled during its run. Measured
-                    21 September 2026; the action row was 58% when every reply carried a Smart
-                    Search chip, and 21 of those chips opened a page with no results.
-                  </p>
+                  <ul className="mt-4 space-y-2.5 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.9rem] leading-[1.6] text-[var(--atl-soft)]">
+                    {conciergeNotes.map((note) => (
+                      <li key={note} className="flex gap-2.5">
+                        <span aria-hidden className="mt-[0.72em] h-px w-2.5 shrink-0 bg-[var(--atl-oxblood)]" />
+                        <span>{note}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </Plate>
             }
