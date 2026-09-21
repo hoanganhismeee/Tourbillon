@@ -12,6 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import type { ChatWatchCard, ChatAction } from '@/lib/api';
 import { fetchWatchBySlug } from '@/lib/api';
 import { useCompare } from '@/stores/compareStore';
+import ThinkingIndicator from './ThinkingIndicator';
 
 // Kept identical to StarterPrompts in ChatService.cs — the backend pre-warms exactly this list,
 // so a prompt that differs by a character is a cache miss and answers slowly on first click.
@@ -903,20 +904,7 @@ export default function ChatPanel() {
             </div>
           ))}
 
-          {isLoading && (
-            <div className="flex justify-start">
-              <div
-                className="rounded-2xl rounded-bl-md px-4 py-3 text-sm"
-                style={{ background: 'rgba(255,255,255,0.05)' }}
-              >
-                <span className="flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#bfa68a]/60" style={{ animationDelay: '0ms' }} />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#bfa68a]/60" style={{ animationDelay: '150ms' }} />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#bfa68a]/60" style={{ animationDelay: '300ms' }} />
-                </span>
-              </div>
-            </div>
-          )}
+          {isLoading && <ThinkingIndicator />}
 
           <div ref={bottomRef} />
         </div>
