@@ -18,7 +18,7 @@ const mono = IBM_Plex_Mono({ variable: "--font-mono-studio", subsets: ["latin"],
 export const metadata: Metadata = {
   title: "Hoang Anh Chu — Portfolio",
   description:
-    "Hoang Anh Chu (Brandon) — full-stack software engineer with an AI focus. Selected work: Tourbillon, FuelUp, and StorefrontIQ.",
+    "Hoang Anh Chu (Brandon) — full-stack software engineer with an AI focus. Selected work: Tourbillon and FuelUp.",
 };
 
 // Subtle film-grain data URI, layered over the brown for a tactile, atmospheric texture.
@@ -50,11 +50,11 @@ const experience = [
   {
     company: "WaterTight Group",
     role: "Process Re-engineering Intern",
-    dates: "Jul 2026 — Present",
+    dates: "Jun 2026 — Present",
     location: "Milperra, NSW",
     points: [
-      "Analysed and produced Process Definition Documents for end-to-end workflows across multiple client contracts — workflow steps, business rules, exceptions, system interactions, and field-level data mappings.",
-      "Participated in regular workflow reviews with managers and a specialist automation consultancy to clarify implementation requirements.",
+      "Analysed and produced Process Definition Documents across multiple client contracts, capturing end-to-end workflows, business rules, exception scenarios, and system interactions.",
+      "Reviewed those documents with a Solution Architect, working through system constraints and turning process requirements into source-to-target data mappings, validation rules, and automation logic.",
     ],
   },
   {
@@ -65,7 +65,7 @@ const experience = [
     points: [
       "Architected a RAG backend in Python — document ingestion, chunking, Hugging Face embeddings, and vector retrieval from SurrealDB, containerised with Docker.",
       "Built a company-authenticated AI document assistant supporting file upload, document preview, slide generation, and citation-backed answers from uploaded files.",
-      "Worked in an Agile Scrum team across sprint planning, peer code reviews, and stakeholder demos.",
+      "Delivered features as pull requests reviewed by senior engineers, in an Agile Scrum team across sprint planning, peer reviews, and stakeholder demos.",
     ],
   },
   {
@@ -83,29 +83,31 @@ const experience = [
 const education = [
   {
     school: "University of Technology Sydney",
-    degree: "Bachelor of Computing Science (Honours), Software Engineering",
+    degree: "Bachelor of Computing Science (Honours)",
     dates: "Feb 2023 — Dec 2026 (Expected)",
     wam: "WAM 79.19",
   },
 ];
 
 const projects = [
-  {
-    name: "StorefrontIQ",
-    meta: "Jun 2026 — Current · Data analytics",
-    blurb:
-      "An open retail analytics demo. It cleans and reconciles mismatched Shopify, WooCommerce, and Square exports from sample shops into one trustworthy dataset, then surfaces trends, seasonality-aware anomalies, risk and restock signals, and a grounded AI digest — with the cleaned data exportable as CSV. A Python (FastAPI, Pydantic) pipeline with a Next.js 15 dashboard.",
-    tags: ["Python", "Next.js 15", "PostgreSQL", "Pydantic", "Claude"],
-    links: [
-      { label: "Read case study", href: "/projects/storefrontiq", external: false, newTab: false },
-      { label: "GitHub", href: "https://github.com/hoanganhismeee/StorefrontIQ", external: true, newTab: false },
-    ],
-  },
+  // StorefrontIQ is unfinished, so it stays off this page. Uncomment the entry to put it back; the
+  // case study route is still there, unlisted and not indexed.
+  // {
+  //   name: "StorefrontIQ",
+  //   meta: "Jun 2026 — Current · Data analytics",
+  //   blurb:
+  //     "An open retail analytics demo. It cleans and reconciles mismatched Shopify, WooCommerce, and Square exports from sample shops into one trustworthy dataset, then surfaces trends, seasonality-aware anomalies, risk and restock signals, and a grounded AI digest — with the cleaned data exportable as CSV. A Python (FastAPI, Pydantic) pipeline with a Next.js 15 dashboard.",
+  //   tags: ["Python", "Next.js 15", "PostgreSQL", "Pydantic", "Claude"],
+  //   links: [
+  //     { label: "Read case study", href: "/projects/storefrontiq", external: false, newTab: false },
+  //     { label: "GitHub", href: "https://github.com/hoanganhismeee/StorefrontIQ", external: true, newTab: false },
+  //   ],
+  // },
   {
     name: "Tourbillon",
     meta: "Oct 2025 — Apr 2026 · Full-stack web",
     blurb:
-      "A luxury watch e-commerce platform cataloguing 13 maisons across 51 collections. Plain-English search parses a query into SQL pre-filters, then reranks the shortlist by pgvector cosine similarity with a persistent semantic cache. A chat concierge that acts rather than answers — triggering catalogue search, rendering product cards, and building comparisons in-app — plus behavioural personalisation scored at browse time. A .NET 8 API, a Next.js 15 frontend, and a Python AI microservice.",
+      "A luxury watch e-commerce platform cataloguing 13 maisons across 51 collections. Smart Search reads a plain-English brief into SQL filters and BM25F ranking without calling a model at all, answering in under 30 ms. The concierge takes the open-ended half — BM25F fused with pgvector by reciprocal rank — and acts rather than answers: it renders product cards, builds comparisons in-app, and hands a filter search back to Smart Search. Both halves are measured against 100 labelled queries. A .NET 8 API, a Next.js 15 frontend, and a Python AI microservice.",
     tags: ["Next.js 15", ".NET 8", "PostgreSQL", "pgvector", "Redis", "Docker", "Claude"],
     links: [
       { label: "Visit live site", href: "/tourbillon", external: false, newTab: true },
@@ -117,7 +119,7 @@ const projects = [
     name: "FuelUp",
     meta: "Aug 2025 — Nov 2025 · Mobile app",
     blurb:
-      "A cross-platform fitness and nutrition companion combining workout planning, meal tracking, step monitoring, and progress insights. RESTful APIs cover workout management, calorie and macronutrient calculations, activity history, and progress data, with personalised plans built from user goals, dietary preferences, fitness levels, and weekly schedules. React Native (Expo) and TypeScript over a Node and PostgreSQL backend.",
+      "A cross-platform fitness and nutrition companion for iOS and Android, combining workout planning, meal and macronutrient tracking, step monitoring, and progress insights. Plans are built around fitness goals, weekly availability, and cultural food preferences, with adaptive recommendations and guided exercise and recipe content. React Native (Expo) and TypeScript over a Node and PostgreSQL backend.",
     tags: ["React Native (Expo)", "TypeScript", "Node.js", "PostgreSQL"],
     links: [
       { label: "Read case study", href: "/projects/fuelup", external: false, newTab: false },

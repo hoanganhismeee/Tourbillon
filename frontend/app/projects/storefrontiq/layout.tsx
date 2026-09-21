@@ -28,6 +28,8 @@ export const metadata: Metadata = {
   title: "Hoang Anh Chu — StorefrontIQ",
   description:
     "Portfolio case study: StorefrontIQ, an open multi-channel retail analytics platform built by Hoang Anh Chu (Brandon).",
+  // Unlisted while the project is unfinished: reachable by direct link, kept out of search results.
+  robots: { index: false, follow: false },
 };
 
 export default function StorefrontIQPortfolioLayout({
