@@ -4858,6 +4858,100 @@ public class ChatService
 
     private static string BuildSmartSearchQuery(string originalQuery, List<Watch> ordered, EntityMentions? mentions = null)
     {
+        if (ordered.Count == 0)
+            return CleanSmartSearchText(originalQuery);
+
+        return BuildSmartSearchQuery(
+            originalQuery,
+            mentions?.Brands.Where(brand => !string.IsNullOrWhiteSpace(brand.Name)).Select(brand => brand.Name).ToList() ?? [],
+            mentions?.Collections.Where(collection => !string.IsNullOrWhiteSpace(collection.Name)).Select(collection => collection.Name).ToList() ?? [],
+            ordered.Where(w => !string.IsNullOrWhiteSpace(w.Brand?.Name)).Select(w => w.Brand!.Name).ToList(),
+            ordered.Where(w => !string.IsNullOrWhiteSpace(w.Collection?.Name)).Select(w => w.Collection!.Name).ToList());
+    }
+
+    // The brief in the user's own words, with the ask stripped and the resolved brand and collection
+    // names lifted to the front in their catalogue spelling. Requested names are the ones the user
+    // wrote; resolved names are the ones the surfaced cards carry.
+    internal static string BuildSmartSearchQuery(
+        string originalQuery,
+        IReadOnlyList<string> requestedBrandNames,
+        IReadOnlyList<string> requestedCollectionNames,
+        IReadOnlyList<string> resolvedBrandNames,
+        IReadOnlyList<string> resolvedCollectionNames)
+    {
+        var cleaned = CleanSmartSearchText(originalQuery);
+        var styleHint = ExtractSmartSearchStyleHint(originalQuery);
+
+        var requestedBrands = requestedBrandNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var requestedCollections = requestedCollectionNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var distinctBrands = resolvedBrandNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var distinctCollections = resolvedCollectionNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        var descriptor = cleaned;
+
+        foreach (var brand in requestedBrands.Concat(distinctBrands).Distinct(StringComparer.OrdinalIgnoreCase))
+            descriptor = RemoveSearchTerm(descriptor, brand);
+
+        foreach (var collection in requestedCollections.Concat(distinctCollections).Distinct(StringComparer.OrdinalIgnoreCase))
+            descriptor = RemoveSearchTerm(descriptor, collection, allowPlural: true);
+
+        foreach (var alias in QueryNormalizer.BrandAliases.Where(alias =>
+            requestedBrands.Concat(distinctBrands).Contains(alias.Value, StringComparer.OrdinalIgnoreCase)))
+        {
+            descriptor = RemoveSearchTerm(descriptor, alias.Key, allowPlural: true);
+        }
+
+        // Only what a catalogue search cannot use: the ask itself, generic nouns, and the vocabulary of a
+        // history question. Ordinary words of the brief ("wear", "want", "and") stay, because the query
+        // shows in the Smart Search box and "a watch I can wear running and swimming" cut down to
+        // "watch I can running swimming" reads as though the concierge mangled the question.
+        descriptor = Regex.Replace(
+            descriptor,
+            @"\b(?:recommend|suggest|find|show|give|bring|help|discover|please|pls|some|any|maybe|few|couple|options?|pieces?|models?)\b",
+            " ",
+            RegexOptions.IgnoreCase);
+        descriptor = TidyDanglingConnectors(descriptor);
+
+        var terms = new List<string>();
+        if (requestedBrands.Count > 0)
+            terms.AddRange(requestedBrands);
+        else if (distinctBrands.Count == 1)
+            terms.Add(distinctBrands[0]);
+
+        if (requestedCollections.Count > 0)
+            terms.AddRange(requestedCollections);
+        else if (requestedBrands.Count <= 1 && distinctCollections.Count == 1)
+            terms.Add(distinctCollections[0]);
+
+        if (!string.IsNullOrWhiteSpace(styleHint)
+            && !terms.Contains(styleHint, StringComparer.OrdinalIgnoreCase)
+            && !descriptor.Contains(styleHint, StringComparison.OrdinalIgnoreCase))
+        {
+            terms.Add(styleHint);
+        }
+        if (!string.IsNullOrWhiteSpace(descriptor))
+            terms.Add(descriptor);
+
+        var fallback = string.Join(" ", terms.Where(t => !string.IsNullOrWhiteSpace(t)));
+        if (!string.IsNullOrWhiteSpace(fallback))
+            return Regex.Replace(fallback, @"\s+", " ").Trim();
+
+        return Regex.Replace(cleaned, @"\s+", " ").Trim();
+    }
+
+    // Removing "from Rolex" or "and Vacheron Constantin" leaves the connector behind; anything left
+    // dangling at either end, or collapsed onto another connector, goes with it.
+    private static string TidyDanglingConnectors(string text)
+    {
+        var tidy = Regex.Replace(text, @"\s+", " ").Trim();
+        tidy = Regex.Replace(tidy, @"\b(?:and|or)\s+(?:and|or)\b", "and", RegexOptions.IgnoreCase);
+        tidy = Regex.Replace(tidy, @"^(?:and|or|from|by|of|with|in|for)\b\s*", "", RegexOptions.IgnoreCase);
+        tidy = Regex.Replace(tidy, @"\s*\b(?:and|or|from|by|of|with|in|for)$", "", RegexOptions.IgnoreCase);
+        return tidy.Trim(' ', ',', '.', '?', '!');
+    }
+
+    private static string CleanSmartSearchText(string originalQuery)
+    {
         var cleaned = QueryNormalizer.ExpandCompoundTerms(originalQuery.Trim());
 
         if (string.IsNullOrWhiteSpace(cleaned))
@@ -4893,85 +4987,11 @@ public class ChatService
         cleaned = Regex.Replace(cleaned, @"\b(?:please|pls|some|any|maybe|few|couple)\b", " ", RegexOptions.IgnoreCase);
         cleaned = Regex.Replace(cleaned, @"\bfor me\b", " ", RegexOptions.IgnoreCase);
         cleaned = Regex.Replace(cleaned, @"\bsomething like\b", " ", RegexOptions.IgnoreCase);
-        cleaned = Regex.Replace(cleaned, @"\b(?:should i wear|would i wear|should i buy|would i buy|change the cursor to|set the cursor to|switch the cursor to)\b", " ", RegexOptions.IgnoreCase);
+        // "should i wear" is stripped above when it opens the brief; mid-sentence it is part of the
+        // question ("what should I wear to a black tie gala") and cutting it leaves nonsense.
+        cleaned = Regex.Replace(cleaned, @"\b(?:change the cursor to|set the cursor to|switch the cursor to)\b", " ", RegexOptions.IgnoreCase);
         cleaned = Regex.Replace(cleaned, @"\b(?:browse the web|search the web|web|internet|history|heritage|background|founder|founded|origins?)\b", " ", RegexOptions.IgnoreCase);
-        cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
-
-        if (ordered.Count == 0)
-            return cleaned;
-
-        var requestedBrands = mentions?.Brands
-            .Where(brand => !string.IsNullOrWhiteSpace(brand.Name))
-            .Select(brand => brand.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList() ?? [];
-
-        var requestedCollections = mentions?.Collections
-            .Where(collection => !string.IsNullOrWhiteSpace(collection.Name))
-            .Select(collection => collection.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList() ?? [];
-
-        var styleHint = ExtractSmartSearchStyleHint(originalQuery);
-
-        var distinctBrands = ordered
-            .Where(w => !string.IsNullOrWhiteSpace(w.Brand?.Name))
-            .Select(w => w.Brand!.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var distinctCollections = ordered
-            .Where(w => !string.IsNullOrWhiteSpace(w.Collection?.Name))
-            .Select(w => w.Collection!.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var descriptor = cleaned;
-
-        foreach (var brand in requestedBrands.Concat(distinctBrands).Distinct(StringComparer.OrdinalIgnoreCase))
-            descriptor = RemoveSearchTerm(descriptor, brand);
-
-        foreach (var collection in requestedCollections.Concat(distinctCollections).Distinct(StringComparer.OrdinalIgnoreCase))
-            descriptor = RemoveSearchTerm(descriptor, collection, allowPlural: true);
-
-        foreach (var alias in QueryNormalizer.BrandAliases.Where(alias =>
-            requestedBrands.Concat(distinctBrands).Contains(alias.Value, StringComparer.OrdinalIgnoreCase)))
-        {
-            descriptor = RemoveSearchTerm(descriptor, alias.Key, allowPlural: true);
-        }
-
-        descriptor = Regex.Replace(
-            descriptor,
-            @"\b(?:recommend|suggest|find|show|give|bring|help|discover|looking|look|want|need|please|pls|me|some|any|maybe|few|couple|options?|pieces?|models?|watches?|should|wear|buy|cursor|change|switch|set|jlc|ap|pp|vc|als|history|heritage|background|web|internet|founder|founded|origins?|from|and)\b",
-            " ",
-            RegexOptions.IgnoreCase);
-        descriptor = Regex.Replace(descriptor, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
-
-        var terms = new List<string>();
-        if (requestedBrands.Count > 0)
-            terms.AddRange(requestedBrands);
-        else if (distinctBrands.Count == 1)
-            terms.Add(distinctBrands[0]);
-
-        if (requestedCollections.Count > 0)
-            terms.AddRange(requestedCollections);
-        else if (requestedBrands.Count <= 1 && distinctCollections.Count == 1)
-            terms.Add(distinctCollections[0]);
-
-        if (!string.IsNullOrWhiteSpace(styleHint)
-            && !terms.Contains(styleHint, StringComparer.OrdinalIgnoreCase)
-            && !descriptor.Contains(styleHint, StringComparison.OrdinalIgnoreCase))
-        {
-            terms.Add(styleHint);
-        }
-        if (!string.IsNullOrWhiteSpace(descriptor))
-            terms.Add(descriptor);
-
-        var fallback = string.Join(" ", terms.Where(t => !string.IsNullOrWhiteSpace(t)));
-        if (!string.IsNullOrWhiteSpace(fallback))
-            return Regex.Replace(fallback, @"\s+", " ").Trim();
-
-        return Regex.Replace(cleaned, @"\s+", " ").Trim();
+        return Regex.Replace(cleaned, @"\s+", " ").Trim(' ', ',', '.', '?', '!');
     }
 
     private static string? ExtractSmartSearchStyleHint(string query)
@@ -5000,7 +5020,7 @@ public class ChatService
             return input;
 
         var suffix = allowPlural && !term.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? "s?" : "";
-        var pattern = $@"\b{Regex.Escape(term)}{suffix}\b";
+        var pattern = $@"(?:\b(?:from|by|of|at)\s+)?\b{Regex.Escape(term)}{suffix}\b";
         return Regex.Replace(input, pattern, " ", RegexOptions.IgnoreCase);
     }
 

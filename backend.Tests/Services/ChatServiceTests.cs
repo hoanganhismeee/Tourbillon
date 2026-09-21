@@ -3236,6 +3236,34 @@ public class ChatServiceTests
         Assert.Equal(expected, ChatService.ReadsAsSmartSearchQuery(message, namesBrandOrCollection: false));
     }
 
+    [Theory]
+    // The brief stays readable: the chip query is what the Smart Search box shows.
+    [InlineData("a watch I can wear running and swimming", "watch I can wear running and swimming")]
+    [InlineData("I just want a reliable everyday watch with no fuss", "I just want a reliable everyday watch with no fuss")]
+    [InlineData("what should I wear to a black tie gala", "what should I wear to a black tie gala")]
+    [InlineData("recommend me some watches with a blue dial", "watches with a blue dial")]
+    public void BuildSmartSearchQuery_KeepsTheWordsOfTheBrief(string message, string expected)
+    {
+        Assert.Equal(expected, ChatService.BuildSmartSearchQuery(message, [], [], [], []));
+    }
+
+    [Fact]
+    public void BuildSmartSearchQuery_LiftsAnAliasWithThePrepositionThatIntroducedIt()
+    {
+        // "from JLC" leaves together, so no preposition dangles where the brand used to be.
+        Assert.Equal(
+            "Jaeger-LeCoultre sport watches",
+            ChatService.BuildSmartSearchQuery("sport watches from JLC", ["Jaeger-LeCoultre"], [], [], []));
+    }
+
+    [Fact]
+    public void BuildSmartSearchQuery_KeepsTheRestOfTheBriefAroundALiftedBrand()
+    {
+        Assert.Equal(
+            "Omega blue dial watch under 10k",
+            ChatService.BuildSmartSearchQuery("a blue dial watch from Omega under 10k", ["Omega"], [], [], []));
+    }
+
     [Fact]
     public void InterleaveEntityCards_SharesTheSlotsBetweenEntities()
     {
