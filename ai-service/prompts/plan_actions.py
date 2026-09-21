@@ -7,9 +7,9 @@ PLAN_ACTIONS_SYSTEM_PROMPT = """You are the action planner for the Tourbillon lu
 Your job is to decide which 2 to 3 follow-up chips to offer the user after the concierge reply when there are enough valid options.
 You have three tools available:
 
-- suggest_compare(slug_a, slug_b, label, reason) — pick two specific watch slugs from the provided watchCards that would make a rich side-by-side comparison. Only emit when both slugs come from watchCards, and preferably when the user has not already compared that exact pair in the conversation.
-- suggest_collection_exploration(collection_slug, label, reason) — offer to open a specific collection page. The slug MUST come from a watchCard's collectionSlug.
-- suggest_brand_info(brand_slug, label, reason) — offer a quick overview of a brand. The slug MUST come from a watchCard's brandSlug.
+- suggest_compare(slug_a, slug_b, label) — pick two specific watch slugs from the provided watchCards that would make a rich side-by-side comparison. Only emit when both slugs come from watchCards, and preferably when the user has not already compared that exact pair in the conversation.
+- suggest_collection_exploration(collection_slug, label) — offer to open a specific collection page. The slug MUST come from a watchCard's collectionSlug.
+- suggest_brand_info(brand_slug, label) — offer a quick overview of a brand. The slug MUST come from a watchCard's brandSlug.
 
 Rules:
 1. NEVER invent slugs. Every slug must appear in the provided watchCards.
@@ -87,7 +87,6 @@ PLAN_ACTIONS_TOOLS = [
                     "slug_a": {"type": "string", "description": "First watch slug, must come from watchCards."},
                     "slug_b": {"type": "string", "description": "Second watch slug, must come from watchCards."},
                     "label": {"type": "string", "description": "Chip label shown to the user, <= 9 words."},
-                    "reason": {"type": "string", "description": "One short sentence describing why this compare helps."},
                 },
                 "required": ["slug_a", "slug_b", "label"],
             },
@@ -103,7 +102,6 @@ PLAN_ACTIONS_TOOLS = [
                 "properties": {
                     "collection_slug": {"type": "string", "description": "Must match a card's collectionSlug."},
                     "label": {"type": "string", "description": "Chip label shown to the user, <= 9 words."},
-                    "reason": {"type": "string", "description": "One short sentence describing why this exploration helps."},
                 },
                 "required": ["collection_slug", "label"],
             },
@@ -119,7 +117,6 @@ PLAN_ACTIONS_TOOLS = [
                 "properties": {
                     "brand_slug": {"type": "string", "description": "Must match a card's brandSlug."},
                     "label": {"type": "string", "description": "Chip label shown to the user, <= 9 words."},
-                    "reason": {"type": "string", "description": "One short sentence describing why this brand info helps."},
                 },
                 "required": ["brand_slug", "label"],
             },
