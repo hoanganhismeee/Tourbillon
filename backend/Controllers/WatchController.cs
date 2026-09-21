@@ -302,15 +302,15 @@ public class WatchController : ControllerBase
     }
 
     [HttpPost]
-    public IActionResult CreateWatch([FromBody] Watch watch) // Creates a new watch in the database.
+    public async Task<IActionResult> CreateWatch([FromBody] Watch watch) // Creates a new watch in the database.
     {
         _context.Watches.Add(watch);
-        _context.SaveChanges();
+        await _context.SaveChangesAsync();
         return CreatedAtAction(nameof(GetWatch), new { id = watch.Id }, watch);
     }
 
     [HttpPut("{id}")]
-    public IActionResult UpdateWatch(int id, [FromBody] Watch updatedWatch) // Updates an existing watch in the database.
+    public async Task<IActionResult> UpdateWatch(int id, [FromBody] Watch updatedWatch) // Updates an existing watch in the database.
     {
         var watch = _context.Watches.Find(id);
         if (watch == null)
@@ -325,12 +325,12 @@ public class WatchController : ControllerBase
         watch.BrandId = updatedWatch.BrandId;
         watch.CollectionId = updatedWatch.CollectionId;
 
-        _context.SaveChanges();
+        await _context.SaveChangesAsync();
         return NoContent();
     }
 
     [HttpDelete("{id}")]
-    public IActionResult DeleteWatch(int id) // Deletes a watch from the database.
+    public async Task<IActionResult> DeleteWatch(int id) // Deletes a watch from the database.
     {
         var watch = _context.Watches.Find(id);
         if (watch == null)
@@ -339,7 +339,7 @@ public class WatchController : ControllerBase
         }
 
         _context.Watches.Remove(watch);
-        _context.SaveChanges();
+        await _context.SaveChangesAsync();
         return NoContent();
     }
 

@@ -1,5 +1,6 @@
 // This file defines the database context for the application, which is responsible for managing the connection to the database and mapping the models to the database tables.
 using backend.Models;
+using backend.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +10,51 @@ namespace backend.Database;
 
 public class TourbillonContext : IdentityDbContext<User, IdentityRole<int>, int>
 {
+    // Redis, when the app wires it. Catalogue writes invalidate every cached concierge answer, and
+    // doing that here rather than at each endpoint means no write path can forget it: a price edited
+    // in the admin used to leave the cached answer quoting the old one until someone ran INCR by hand.
+    private readonly IRedisService? _redis;
+    private readonly ILogger<TourbillonContext>? _logger;
+
     public TourbillonContext(DbContextOptions<TourbillonContext> options) : base(options) { }
+
+    public TourbillonContext(
+        DbContextOptions<TourbillonContext> options,
+        IRedisService redis,
+        ILogger<TourbillonContext> logger) : base(options)
+    {
+        _redis = redis;
+        _logger = logger;
+    }
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        var catalogueChanged = _redis != null && HasCatalogueChanges();
+        var written = await base.SaveChangesAsync(cancellationToken);
+
+        if (catalogueChanged && written > 0)
+        {
+            try
+            {
+                // Bump only. Starter answers are recomputed by the warm-up job or by the first visitor
+                // who asks for one, so invalidating costs nothing by itself.
+                await _redis!.IncrementAsync(ChatCacheKeys.ResponseVersion);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Catalogue changed but the concierge reply cache was not invalidated");
+            }
+        }
+
+        return written;
+    }
+
+    /// True when this save adds, changes or removes a watch, brand or collection — the three things a
+    /// cached concierge answer talks about.
+    private bool HasCatalogueChanges() =>
+        ChangeTracker.Entries().Any(entry =>
+            entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted
+            && entry.Entity is Watch or Brand or Collection);
 
     public DbSet<Watch> Watches { get; set; }
     public DbSet<Brand> Brands { get; set; }

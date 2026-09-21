@@ -130,7 +130,7 @@ public class ChatService
     // Response cache: a context-free first-turn message resolves to the same cards + prose every
     // time, so we cache the whole turn and skip the classify → search → chat → plan LLM chain.
     // Version-keyed so a single counter bump invalidates every entry on a catalogue change.
-    private const string ResponseCacheVersionKey = "chat:resp:ver";
+    private const string ResponseCacheVersionKey = ChatCacheKeys.ResponseVersion;
     private static readonly TimeSpan ResponseCacheTtl = TimeSpan.FromHours(12);
 
     // Mirrors the frontend EXAMPLE_PROMPTS (ChatPanel.tsx). Pre-warmed so the suggestions a user is

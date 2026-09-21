@@ -6,6 +6,8 @@ using backend.Models;
 using backend.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace backend.Tests.Services;
 
@@ -13,6 +15,9 @@ namespace backend.Tests.Services;
 internal sealed class TestTourbillonContext : TourbillonContext
 {
     public TestTourbillonContext(DbContextOptions<TourbillonContext> options) : base(options) { }
+
+    public TestTourbillonContext(DbContextOptions<TourbillonContext> options, IRedisService redis, ILogger<TourbillonContext> logger)
+        : base(options, redis, logger) { }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -154,6 +159,15 @@ internal sealed class TestStorageService : IStorageService
 
 internal static class TestContextFactory
 {
+    /// A context wired to Redis, for the catalogue writes that retire cached concierge answers.
+    internal static TourbillonContext CreateWithRedis(IRedisService redis) =>
+        new TestTourbillonContext(
+            new DbContextOptionsBuilder<TourbillonContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options,
+            redis,
+            NullLogger<TourbillonContext>.Instance);
+
     internal static TourbillonContext Create() =>
         new TestTourbillonContext(
             new DbContextOptionsBuilder<TourbillonContext>()

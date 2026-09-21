@@ -42,15 +42,15 @@ public class BrandController : ControllerBase
     }
 
     [HttpPost]
-    public IActionResult CreateBrand([FromBody] Brand brand) // Creates a new brand in the database.
+    public async Task<IActionResult> CreateBrand([FromBody] Brand brand) // Creates a new brand in the database.
     {
         _context.Brands.Add(brand);
-        _context.SaveChanges();
+        await _context.SaveChangesAsync();
         return CreatedAtAction(nameof(GetBrand), new { id = brand.Id }, brand);
     }
 
     [HttpPut("{id}")]
-    public IActionResult UpdateBrand(int id, [FromBody] Brand updatedBrand) // Updates an existing brand in the database.
+    public async Task<IActionResult> UpdateBrand(int id, [FromBody] Brand updatedBrand) // Updates an existing brand in the database.
     {
         var brand = _context.Brands.Find(id);
         if (brand == null)
@@ -62,12 +62,12 @@ public class BrandController : ControllerBase
         brand.Description = updatedBrand.Description;
         brand.Image = updatedBrand.Image;
 
-        _context.SaveChanges();
+        await _context.SaveChangesAsync();
         return NoContent();
     }
 
     [HttpDelete("{id}")]
-    public IActionResult DeleteBrand(int id) // Deletes a brand from the database.
+    public async Task<IActionResult> DeleteBrand(int id) // Deletes a brand from the database.
     {
         var brand = _context.Brands.Find(id);
         if (brand == null)
@@ -76,7 +76,7 @@ public class BrandController : ControllerBase
         }
 
         _context.Brands.Remove(brand);
-        _context.SaveChanges();
+        await _context.SaveChangesAsync();
         return NoContent();
     }
 }

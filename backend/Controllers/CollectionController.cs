@@ -60,15 +60,15 @@ public class CollectionController : ControllerBase
     }
 
     [HttpPost]
-    public IActionResult CreateCollection([FromBody] Collection collection) // Creates a new collection in the database.
+    public async Task<IActionResult> CreateCollection([FromBody] Collection collection) // Creates a new collection in the database.
     {
         _context.Collections.Add(collection);
-        _context.SaveChanges();
+        await _context.SaveChangesAsync();
         return CreatedAtAction(nameof(GetCollection), new { id = collection.Id }, collection);
     }
 
     [HttpPut("{id}")]
-    public IActionResult UpdateCollection(int id, [FromBody] Collection updatedCollection) // Updates an existing collection in the database.
+    public async Task<IActionResult> UpdateCollection(int id, [FromBody] Collection updatedCollection) // Updates an existing collection in the database.
     {
         var collection = _context.Collections.Find(id);
         if (collection == null)
@@ -81,12 +81,12 @@ public class CollectionController : ControllerBase
         collection.Image = updatedCollection.Image;
         collection.BrandId = updatedCollection.BrandId;
 
-        _context.SaveChanges();
+        await _context.SaveChangesAsync();
         return NoContent();
     }
 
     [HttpDelete("{id}")]
-    public IActionResult DeleteCollection(int id) // Deletes a collection from the database.
+    public async Task<IActionResult> DeleteCollection(int id) // Deletes a collection from the database.
     {
         var collection = _context.Collections.Find(id);
         if (collection == null)
@@ -95,7 +95,7 @@ public class CollectionController : ControllerBase
         }
 
         _context.Collections.Remove(collection);
-        _context.SaveChanges();
+        await _context.SaveChangesAsync();
         return NoContent();
     }
 }
