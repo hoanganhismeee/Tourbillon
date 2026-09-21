@@ -119,12 +119,12 @@ class ChatRouteReplyLengthTests(unittest.TestCase):
     def test_everything_else_gets_the_short_rule(self):
         for value in (None, "", "short", "advice", "unknown"):
             rule = _reply_length(value)
-            self.assertEqual(rule["max_tokens"], 180, value)
+            self.assertEqual(rule["max_tokens"], 150, value)
             self.assertIn("at most 60 words", _system_prompt(rule))
 
     def test_the_cut_off_sits_above_the_target(self):
-        # 60 words is about 80 tokens before links and 180 words about 240; the cap leaves room to finish.
-        self.assertGreater(_reply_length("short")["max_tokens"], 60 * 1.3 * 1.5)
+        # The backend adds the links now, so 60 words is about 80 tokens and 180 words about 240.
+        self.assertGreater(_reply_length("short")["max_tokens"], 60 * 1.3)
         self.assertGreater(_reply_length("explain")["max_tokens"], 180 * 1.3)
 
 
