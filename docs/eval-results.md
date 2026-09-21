@@ -87,10 +87,12 @@ the first and not the second.
 
 ## Known gaps in these numbers
 
-- **The wording is still cut.** 38 of 58 Haiku replies stopped at the 180-token ceiling rather
-  than finishing. Replies that do finish run 105 to 175 tokens, so the ceiling is close but not
-  above the natural length. A reply naming two or three watches spends most of its budget on the
-  markdown links.
+- **The wording was still cut when this ran.** 38 of 58 Haiku replies stopped at the 180-token
+  ceiling rather than finishing, because a reply naming two or three watches spent most of its
+  budget on markdown links. Fixed after the run: the model now names watches in plain words and the
+  backend adds the links, which took a local reply from about 170 tokens to about 90 with nothing
+  truncated. The latency row above therefore describes the run, not the current code, and is due a
+  re-measure.
 - **One request took 134 s** during the run, an API stall rather than pipeline work. It is the
   maximum, not the p95, so the table is unaffected.
 - **Labels are one person's judgement**, and 50 queries per half detects large effects rather
