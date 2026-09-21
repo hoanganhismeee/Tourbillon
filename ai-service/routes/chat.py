@@ -68,6 +68,12 @@ def _truncate_chat_response(text: str, max_words: int = 200) -> str:
                 candidate = " ".join(sentences[:-1]).strip()
                 if candidate:
                     return candidate
+            # One long sentence cut mid-thought, which is how a semicolon list ends up when the model
+            # runs into its ceiling. Falling back to the last complete clause beats closing a fragment
+            # with a full stop ("...for a classier daily.").
+            clause = stripped.rsplit(";", 1)[0].strip() if ";" in stripped else ""
+            if clause and len(clause.split()) >= 8:
+                return clause.rstrip(",;:- ") + "."
             return stripped.rstrip(",;:- ") + "."
         return stripped
 

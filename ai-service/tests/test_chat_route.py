@@ -74,6 +74,23 @@ class ChatRouteResponseSanitizerTests(unittest.TestCase):
 
         self.assertEqual("Certainly! Let's compare the first two.", cleaned)
 
+    def test_truncate_chat_response_falls_back_to_the_last_clause(self) -> None:
+        # One long semicolon list cut at the token ceiling: closing the fragment with a full stop
+        # reads as a mistake, so the last complete clause is kept instead.
+        cleaned = _truncate_chat_response(
+            "Tourbillon has two standouts: the Classics FC-303MC5B6B offers accessible Swiss "
+            "refinement with a clean silver dial; the De Ville Tresor leans into slimmer proportions "
+            "and blue leather for a classier daily"
+        )
+
+        self.assertTrue(cleaned.endswith("clean silver dial."), cleaned)
+        self.assertNotIn("classier daily", cleaned)
+
+    def test_truncate_chat_response_keeps_a_short_fragment_when_there_is_no_clause(self) -> None:
+        cleaned = _truncate_chat_response("The Reverso is the obvious heirloom here and it")
+
+        self.assertEqual("The Reverso is the obvious heirloom here and it.", cleaned)
+
     def test_collect_grounded_entities_returns_only_catalogue_mentions_from_context(self) -> None:
         grounded = _collect_grounded_entities(
             "The Patek Philippe Aquanaut 5167A-001 is the cleaner everyday pick.",

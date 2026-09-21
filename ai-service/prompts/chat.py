@@ -80,7 +80,9 @@ ADVISOR_GUIDANCE = """Advisor mode for this reply:
 # it so a reply ends on its own instead of being cut, and max_words is the last-resort sentence trim.
 # Markdown links used to cost tokens the word count does not see — about 40 per link, on a URL the
 # reader never sees — and 38 of 58 Haiku replies ran into their ceiling because of them. The backend
-# adds the links now, so the budget below is prose alone.
+# adds the links now, so the budget below is prose alone. Haiku writes to whatever ceiling it is
+# given whatever the instruction says — asking for "two or three sentences" changed nothing — so
+# max_tokens is the real control and the trim in routes/chat.py is what ends the reply cleanly.
 REPLY_LENGTHS = {
     "short": {
         "instruction": "Reply in a single paragraph of at most 60 words.",
