@@ -4327,7 +4327,11 @@ public class ChatService
     /// reply never names it, which is the normal case for most of the shortlist.
     private static bool TryLinkFirstMention(ref string message, string phrase, string href)
     {
-        var pattern = new Regex($@"(?<![\w\-/])({Regex.Escape(phrase)})(?![\w\-])", RegexOptions.IgnoreCase);
+        // Emphasis may sit between the words: the model writes "**Omega De Ville** 435.13 Trésor", and
+        // matching the words only would link the brand, the collection and the reference as three chips
+        // in a row. The markers are dropped from the label, since a link is already styled.
+        var words = phrase.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(Regex.Escape);
+        var pattern = new Regex($@"(?<![\w\-/])({string.Join(@"[\s*_]+", words)})(?![\w\-])", RegexOptions.IgnoreCase);
         var existing = _markdownLinkPattern.Matches(message);
 
         foreach (Match match in pattern.Matches(message))
@@ -4335,9 +4339,11 @@ public class ChatService
             if (existing.Any(link => match.Index >= link.Index && match.Index < link.Index + link.Length))
                 continue;
 
+            var label = Regex.Replace(match.Value, @"[*_]+", " ");
+            label = Regex.Replace(label, @"\s+", " ").Trim();
             message = string.Concat(
                 message.AsSpan(0, match.Index),
-                $"[{match.Value}]({href})",
+                $"[{label}]({href})",
                 message.AsSpan(match.Index + match.Length));
             return true;
         }

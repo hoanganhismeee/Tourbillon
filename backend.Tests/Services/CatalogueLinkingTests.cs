@@ -81,6 +81,18 @@ public class CatalogueLinkingTests
     }
 
     [Fact]
+    public void AWatchWrittenInBoldIsOneLinkNotThree()
+    {
+        // The model bolds part of the name; matching word by word would link the brand, the collection
+        // and the reference separately and leave three chips in a row.
+        var linked = ChatService.LinkCatalogueNames(
+            "The **Omega Seamaster** 210.30.42.20.01.001 Diver 300M at $10,525 is the pick.", Cards(), []);
+
+        Assert.Contains("[Omega Seamaster 210.30.42.20.01.001 Diver 300M](/watches/omega-seamaster-210-30-42-20-01-001-diver-300m)", linked, StringComparison.Ordinal);
+        Assert.DoesNotContain("(/brands/omega)", linked, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AWatchTheCatalogueDidNotResolveStaysPlain()
     {
         var linked = ChatService.LinkCatalogueNames("The Rolex Submariner is the obvious one.", Cards(), []);
