@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 // (about a second), then retrieval, then the wording and the follow-up chips in parallel (about
 // three). The line is a report of where the turn is, not a spinner with words on it.
 const PHASES: { from: number; lines: string[] }[] = [
-  { from: 0, lines: ['reading your message', 'working out what you mean'] },
+  { from: 0, lines: ['reading your message', 'taking in the details'] },
   { from: 1400, lines: ['searching the catalogue', 'pulling the closest references'] },
   { from: 3000, lines: ['weighing the shortlist', 'comparing the picks'] },
   { from: 5000, lines: ['writing', 'choosing the words'] },
