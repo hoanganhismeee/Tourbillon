@@ -100,9 +100,12 @@ parsed beside the classifier rather than after it. Letting a reply finish rather
 at 140 tokens then put the median back to 4.5 s, a trade worth making. The wording (3.1 s) and the
 action planner (2.1 s) run in parallel and are what remains.
 
-Three in five replies still stop at their token ceiling instead of finishing, because a reply
-naming two or three watches spends most of its budget on markdown links. That is the next thing to
-fix, and it is recorded against the run that measured it.
+The model writes to whatever ceiling it is given: Haiku stopped at the token ceiling in 38 of 58
+replies, and asking it for "two or three sentences" instead of "at most 60 words" changed nothing.
+About 40 tokens of each reply went on a markdown URL the reader never sees, so the wording layer now
+names a watch in plain words and the backend attaches the link from the slug it already resolved. A
+re-measure on ten of the fifty briefs put the wording stage at 3.2 s against 3.1 s before, inside
+the API's own variance, so the latency figures above stand as measured.
 
 **Choosing the retriever** (each retriever run on its own)
 

@@ -85,14 +85,32 @@ The action figure is the honest cost of the chip rule: five of the removed hand-
 landed on results that satisfied the brief, while twenty-one opened an empty page. The metric sees
 the first and not the second.
 
-## Known gaps in these numbers
+## Re-measure after the links moved to the backend
 
-- **The wording was still cut when this ran.** 38 of 58 Haiku replies stopped at the 180-token
-  ceiling rather than finishing, because a reply naming two or three watches spent most of its
-  budget on markdown links. Fixed after the run: the model now names watches in plain words and the
-  backend adds the links, which took a local reply from about 170 tokens to about 90 with nothing
-  truncated. The latency row above therefore describes the run, not the current code, and is due a
-  re-measure.
+2026-09-22, Haiku 4.5, ten of the same fifty briefs, one per category, paired against their own rows
+in the run above. The change under test: the model names watches in plain words and the backend
+attaches the links, so none of the reply's tokens go on URLs.
+
+| | Before | After |
+|---|---|---|
+| Wording stage, median of the ten | 3,268 ms | 3,169 ms |
+| Total, median of the ten | 4,333 ms | 5,732 ms |
+| Output tokens per reply | ~170 | ~150 |
+| Replies stopped at the ceiling | 38 of 58 | 10 of 10 |
+| Replies that read as finished | 20 of 58 | 10 of 10 |
+
+The wording stage did not move: 3% on ten briefs is well inside the variance of the API itself,
+which swung one brief from 2.9 s to 5.4 s between the two runs. The total looks worse for the same
+reason and on the same ten briefs, so **the table above still stands and is not re-stated from ten
+samples**.
+
+What did change is what the tokens buy. Haiku writes to whatever ceiling it is given — asking for
+"two or three sentences" instead of "at most 60 words" changed nothing, all ten replies still
+stopped at the ceiling — so the ceiling is the control and the reply used to spend about 40 tokens
+per link on an address the reader never sees. Those tokens are now sentences, and a reply cut at
+the ceiling ends at its last complete clause rather than mid-thought.
+
+## Known gaps in these numbers
 - **One request took 134 s** during the run, an API stall rather than pipeline work. It is the
   maximum, not the p95, so the table is unaffected.
 - **Labels are one person's judgement**, and 50 queries per half detects large effects rather

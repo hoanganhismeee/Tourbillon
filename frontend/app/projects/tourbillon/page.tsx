@@ -268,6 +268,10 @@ const findings = [
     text: "Every reply now reports its stages in a Server-Timing header. It showed briefs with no watch vocabulary being classified twice, so the second call now reuses the first answer; with the reranker gone and the brief read beside the classifier, the median reply fell from 6.4 s to 3.9 s, with no significant change in quality. Letting a reply finish rather than cutting it mid-sentence put the median back to 4.5 s: the wording takes 3.1 s and the action planner 2.1 s, side by side.",
   },
   {
+    term: "The model writes to whatever ceiling it is given.",
+    text: "Haiku ignored every instruction about length and stopped at the token ceiling in 38 of 58 replies, spending about 40 tokens of each on a markdown URL the reader never sees. The reply now names a watch in plain words and the backend attaches the link from the slug it already resolved, so the budget buys sentences instead of addresses. The ceiling, not the wording, is the control.",
+  },
+  {
     term: "The benchmark caught bugs review had missed.",
     text: "A 500 on every site search, a dependency upgrade that made the classifier refuse one query in ten, and a significance check that reported clear regressions as noise.",
   },
