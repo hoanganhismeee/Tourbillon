@@ -3264,6 +3264,43 @@ public class ChatServiceTests
             ChatService.BuildSmartSearchQuery("a blue dial watch from Omega under 10k", ["Omega"], [], [], []));
     }
 
+    [Theory]
+    [InlineData("french", "Tourbillon est votre concierge")]
+    [InlineData("vietnamese", "Tourbillon là trợ lý")]
+    [InlineData("english", "Tourbillon is your concierge")]
+    [InlineData("klingon", "Tourbillon is your concierge")]
+    public void ChatMessages_FollowTheReplyLanguage_AndFallBackToEnglish(string language, string expectedStart)
+    {
+        Assert.StartsWith(expectedStart, ChatMessages.UnsupportedQuery(language), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ChatMessages_DailyQuota_CarriesTheLimitInEveryLanguage()
+    {
+        Assert.Contains("7", ChatMessages.DailyQuota("french", 7), StringComparison.Ordinal);
+        Assert.Contains("7", ChatMessages.DailyQuota("vietnamese", 7), StringComparison.Ordinal);
+        Assert.Contains("7", ChatMessages.DailyQuota("english", 7), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_FrenchBriefWithNoMatch_AnswersInFrench()
+    {
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>();
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+        var service = CreateService(context, watchFinder, handler,
+            classifier: new FakeClassifier(_ => new IntentClassification("non_watch", 0.95)));
+
+        var result = await service.HandleMessageAsync(
+            "session-1", "quel temps fera-t-il demain à Paris pour la journée", null, "127.0.0.1");
+
+        // Nothing matched the brief, and the line the backend writes itself comes back in French.
+        Assert.Equal(ChatMessages.NoCloseMatch("french"), result.Message);
+    }
+
     [Fact]
     public void InterleaveEntityCards_SharesTheSlotsBetweenEntities()
     {

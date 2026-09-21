@@ -161,12 +161,15 @@ public class ChatService
 
     // Lazy-loaded catalogue roster — built once and reused for the service lifetime.
     private string? _catalogueRoster;
-    private const string UnsupportedQueryMessage = "Tourbillon is your concierge for luxury watches — brands, collections, comparisons, and catalogue picks by style, size, material, or budget. Pick one of the starters below, or tell me a brand, a budget, or an occasion and I'll take it from there.";
-    private const string NoCloseMatchMessage = "Nothing in the current Tourbillon catalogue lines up with that brief. Try one of the starters below, or rework the request with a specific brand, collection, reference, size, material, or budget and I'll find the closest matches.";
-    private const string ProcessingFallbackMessage = "Give me a second chance on that one — try a starter below, or rephrase with a brand, a model, a comparison, a style, or a budget and Tourbillon will surface the right catalogue matches.";
-    private const string AdviceNoMatchMessage = "Tell me a little more — your budget, your wrist size, and how dressy you want it to read — and Tourbillon can point you to the right pieces.";
-    private const string DailyQuotaMessage = "You have reached your daily concierge quota of 5 messages. Please come back tomorrow.";
-    private const string GreetingMessage = "Hello. Tourbillon can help compare watches, explain brands or collections, and narrow a brief into real catalogue options. Try something like \"compare the Aquanaut and the Overseas\", \"tell me about Vacheron Constantin\", or \"JLC Reverso under 50k\".";
+    // The language this turn answers in, resolved once from the message and the browser hint. The
+    // fixed replies below read from it, so a French or Vietnamese visitor is not answered in English
+    // when the backend, rather than the model, writes the reply.
+    private string _replyLanguage = "english";
+    private string UnsupportedQueryMessage => ChatMessages.UnsupportedQuery(_replyLanguage);
+    private string NoCloseMatchMessage => ChatMessages.NoCloseMatch(_replyLanguage);
+    private string ProcessingFallbackMessage => ChatMessages.ProcessingFallback(_replyLanguage);
+    private string AdviceNoMatchMessage => ChatMessages.AdviceNoMatch(_replyLanguage);
+    private string GreetingMessage => ChatMessages.Greeting(_replyLanguage);
 
     // Single-word collection names that are too generic to be reliable entity matches.
     // e.g. Greubel Forsey has a collection literally named "Collection" which would match any query
@@ -471,6 +474,7 @@ public class ChatService
         bool bypassResponseCache = false,
         CancellationToken cancellationToken = default)
     {
+        _replyLanguage = ResolveResponseLanguage(message, preferredLanguage);
         var disableLimit = _config.GetValue<bool>("ChatSettings:DisableLimitInDev");
         var dailyLimit = _config.GetValue<int>("ChatSettings:DailyLimit", 5);
         var quotaSubject = userId ?? ipAddress ?? "anon";
@@ -487,7 +491,7 @@ public class ChatService
                 RateLimited = true,
                 DailyUsed = quotaStatus.DailyUsed,
                 DailyLimit = quotaStatus.DailyLimit,
-                Message = DailyQuotaMessage.Replace("5", quotaStatus.DailyLimit.ToString())
+                Message = ChatMessages.DailyQuota(_replyLanguage, quotaStatus.DailyLimit)
             };
         }
 
@@ -503,7 +507,7 @@ public class ChatService
         // The reply's language keys the cache, not the raw browser tag: "en-US" and "en-AU" get the same
         // English answer, and the starter warm-up, which sends no tag, has to land on the key a real click
         // reads. Keyed by the raw tag, no visitor ever hit a warmed starter.
-        var langKey = ResolveResponseLanguage(message, preferredLanguage);
+        var langKey = _replyLanguage;
         var responseCacheable = sessionHistory.Count == 0
             && string.IsNullOrWhiteSpace(behaviorSummary)
             && (sessionState == null
@@ -556,7 +560,7 @@ public class ChatService
                 RateLimited = true,
                 DailyUsed = quotaStatus.DailyUsed,
                 DailyLimit = quotaStatus.DailyLimit,
-                Message = DailyQuotaMessage.Replace("5", quotaStatus.DailyLimit.ToString())
+                Message = ChatMessages.DailyQuota(_replyLanguage, quotaStatus.DailyLimit)
             };
         }
         if (resolution.UseAi && !disableLimit && !isAdmin)
@@ -574,7 +578,7 @@ public class ChatService
                     RateLimited = true,
                     DailyUsed = quotaStatus.DailyUsed,
                     DailyLimit = quotaStatus.DailyLimit,
-                    Message = DailyQuotaMessage.Replace("5", quotaStatus.DailyLimit.ToString())
+                    Message = ChatMessages.DailyQuota(_replyLanguage, quotaStatus.DailyLimit)
                 };
             }
         }
@@ -699,7 +703,7 @@ public class ChatService
         return apiResponse;
     }
 
-    private static bool IsCannedMessage(string message) =>
+    private bool IsCannedMessage(string message) =>
         message == UnsupportedQueryMessage || message == NoCloseMatchMessage
         || message == ProcessingFallbackMessage || message == GreetingMessage;
 
@@ -744,7 +748,7 @@ public class ChatService
                     RateLimited = true,
                     DailyUsed = charge.DailyUsed,
                     DailyLimit = charge.DailyLimit,
-                    Message = DailyQuotaMessage.Replace("5", charge.DailyLimit.ToString()),
+                    Message = ChatMessages.DailyQuota(_replyLanguage, charge.DailyLimit),
                 };
             cached.Response.DailyUsed = charge.DailyUsed;
             cached.Response.DailyLimit = dailyLimit;
@@ -883,7 +887,7 @@ public class ChatService
         if (IsAbusiveQuery(repairedMessage))
             return new ChatResolution
             {
-                Message = "I am here to help with Tourbillon watches and horology only. If you want, ask about a watch, brand, comparison, or product search.",
+                Message = ChatMessages.WatchesOnly(_replyLanguage),
                 RoutingPath = "abusive"
             };
 
@@ -1346,7 +1350,7 @@ public class ChatService
         return context;
     }
 
-    private static string BuildDeterministicAiFallbackMessage(ChatResolution resolution)
+    private string BuildDeterministicAiFallbackMessage(ChatResolution resolution)
     {
         if (!string.IsNullOrWhiteSpace(resolution.Message) && !IsGenericAiFallbackMessage(resolution.Message))
             return resolution.Message;
@@ -1709,7 +1713,7 @@ public class ChatService
         // only (no cards) so the old set is not re-echoed.
         return new ChatResolution
         {
-            Message = "Those are all the current models from these collections in the Tourbillon catalogue. Let me know if you'd like to compare any two or explore a different brief.",
+            Message = ChatMessages.AllCurrentModels(_replyLanguage),
             WatchCards = [],
             Actions = [],
             RoutingPath = "compare_expand",
@@ -1765,7 +1769,7 @@ public class ChatService
                     return await BuildEntityInfoResolutionAsync(sessionState?.CanonicalQuery ?? message, storedMentions);
                 return new ChatResolution
                 {
-                    Message = "What are you looking for? I can suggest watches, brands, or collections.",
+                    Message = ChatMessages.WhatAreYouLookingFor(_replyLanguage),
                     RoutingPath = "affirmative_no_context"
                 };
             }
@@ -1961,7 +1965,7 @@ public class ChatService
         {
             return new ChatResolution
             {
-                Message = "Tourbillon could not find a stronger revised shortlist in the current catalogue yet. Try narrowing by material, occasion, price, or a specific brand.",
+                Message = ChatMessages.NoStrongerShortlist(_replyLanguage),
                 SessionState = BuildUpdatedRecommendationState(
                     sessionState,
                     [],
@@ -2129,7 +2133,7 @@ public class ChatService
         {
             return new ChatResolution
             {
-                Message = "I need one more specific watch, brand, or collection detail to continue from the previous results."
+                Message = ChatMessages.NeedOneMoreDetail(_replyLanguage)
             };
         }
 
@@ -3433,10 +3437,19 @@ public class ChatService
         return match.Success ? match.Value.Trim() : null;
     }
 
-    private static string BuildGroundedDiscoveryMessage(List<Watch> ordered, bool includeSearchAction, List<string>? requestedDirections = null)
+    private string BuildGroundedDiscoveryMessage(List<Watch> ordered, bool includeSearchAction, List<string>? requestedDirections = null)
     {
         if (ordered.Count == 0)
             return NoCloseMatchMessage;
+
+        // Outside English the sentence is a fixed one around the same links: the variants below read
+        // as English prose with English clause order, which no translation of the parts would fix.
+        if (_replyLanguage != "english")
+        {
+            var lead = $"[{BuildWatchTitle(ordered[0])}](/watches/{ordered[0].Slug})";
+            var follow = ordered.Count > 1 ? $"[{BuildWatchTitle(ordered[1])}](/watches/{ordered[1].Slug})" : null;
+            return ChatMessages.StrongestMatches(_replyLanguage, lead, follow);
+        }
 
         requestedDirections ??= [];
         if (requestedDirections.Count >= 2)
@@ -3540,7 +3553,7 @@ public class ChatService
         };
     }
 
-    private static bool ShouldKeepDeterministicResolutionMessage(string? aiMessage, ChatResolution resolution)
+    private bool ShouldKeepDeterministicResolutionMessage(string? aiMessage, ChatResolution resolution)
     {
         if (string.IsNullOrWhiteSpace(resolution.Message))
             return false;
@@ -3555,7 +3568,7 @@ public class ChatService
             || IsUngroundedCatalogueReply(aiMessage, resolution);
     }
 
-    private static bool IsGenericAiFallbackMessage(string message)
+    private bool IsGenericAiFallbackMessage(string message)
     {
         var normalized = Regex.Replace(message, @"\s+", " ").Trim();
         return normalized.Equals(NoCloseMatchMessage, StringComparison.OrdinalIgnoreCase)
@@ -5218,7 +5231,7 @@ public class ChatService
         return string.Join(" ", labels);
     }
 
-    private static string BuildCardContinuationFallbackMessage(
+    private string BuildCardContinuationFallbackMessage(
         List<Watch> watches,
         bool isCompareFollowUp,
         bool affirmative)
