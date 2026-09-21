@@ -84,33 +84,58 @@ const stackGroups = [
   },
 ];
 
-const systemDiagram = ` Browser
-    |
-    v
-+--------------------------------+
-| Vercel                         |
-| Next.js 15, /api/backend/*     |
-+---------------+----------------+
-                |
-                v
-+--------------------------------+          +--------------------------------+
-| Railway: .NET 8 API            |  HTTP    | Railway: Flask AI service      |
-| auth, catalogue, orchestration |--------->| intent, brief reading, rerank, |
-| deterministic query parser     |          | reply wording, action ideas    |
-| BM25F index (in memory)        |          | embeddings (all-mpnet, local)  |
-| Hangfire jobs                  |          +---------------+----------------+
-+----+-----------+-----------+---+                          |
-     |           |           |                              v
-     v           v           v                  +--------------------------------+
-+----------+ +----------+ +----------------+    | Claude Haiku 4.5               |
-| Neon     | | Upstash  | | S3 +           |    | (Ollama qwen2.5 in local dev)  |
-| Postgres | | Redis    | | CloudFront     |    +--------------------------------+
-| pgvector | | sessions | | images, video  |
-+----------+ | jobs     | +----------------+
-             +----------+
+const systemDiagram = `+----------------------------------------------------------------------------------+
+| Client: browser                                                                  |
+|   runtime       React 19 client components                                       |
+|   state         TanStack Query cache persisted to localStorage, Zustand stores   |
++-----------------------------------------+----------------------------------------+
+                                          |
+                                          |  HTTPS
+                                          v
++----------------------------------------------------------------------------------+
+| Frontend: Next.js 15 App Router, on Vercel                                       |
+|   rendering     React Server Components; static assets on the Vercel CDN         |
+|   interface     Tailwind CSS, shadcn, Framer Motion, GSAP, Lenis                 |
+|   API access    typed client; route handlers proxy /api/backend/* to the API     |
++-----------------------------------------+----------------------------------------+
+                                          |
+                                          |  HTTPS, REST + JSON, session cookie
+                                          v
++----------------------------------------------------------------------------------+
+| Backend: ASP.NET Core Web API, .NET 8, on Railway                                |
+|   identity      ASP.NET Identity, Google OAuth, role-based authorisation         |
+|   data          EF Core + Npgsql, pgvector; BM25F index held in memory           |
+|   jobs          Hangfire workers, queued in Redis                                |
+|   operations    Serilog, health checks, Swagger                                  |
++-------+----------------+----------------+----------------+----------------+------+
+        |                |                |                |                |
+    SQL, TLS      Redis protocol       S3 API            SMTP          HTTP + JSON
+     EF Core         over TLS          AWS SDK          MailKit      private network
+        |                |                |                |                |
+        v                v                v                v                v
++--------------+ +--------------+ +--------------+ +--------------+ +--------------+
+| Neon         | | Upstash      | | Amazon S3    | | SMTP relay   | | AI service   |
+| PostgreSQL   | | Redis        | | + CloudFront | |              | | Python,      |
+| + pgvector   | |              | |              | |              | | Flask        |
+|              | |              | |              | |              | |              |
+| relational   | | sessions,    | | media store; | | outbound     | | prompts,     |
+| data and     | | counters,    | | the browser  | | email        | | model calls, |
+| 768-dim      | | caches,      | | loads images | |              | | embeddings   |
+| vectors      | | job queue    | | from the CDN | |              | | (all-mpnet)  |
++--------------+ +--------------+ +--------------+ +--------------+ +-------+------+
+                                                                            |
+                                                       HTTPS, Messages API  |
+                                                                            v
+                                                                    +--------------+
+                                                                    | Anthropic    |
+                                                                    | Claude Haiku |
+                                                                    | 4.5          |
+                                                                    +--------------+
 
- Locally the same services run under Docker Compose.
- GitHub Actions runs the tests and deploys on every push to main.`;
+ Local: Docker Compose runs the backend, the AI service, PostgreSQL and Redis,
+ with Ollama (qwen2.5) on the GPU in place of Anthropic.
+ Delivery: GitHub Actions runs the backend tests and a frontend type-check on
+ every push; Railway and Vercel deploy from main.`;
 
 const smartSearchDiagram = ` "a proper strong diver under 20k"
         |
@@ -137,19 +162,21 @@ const conciergeDiagram = ` "what should I wear to my own wedding"
         |
         v
  +--------------------------------+
- | intent classifier (LLM)        |--> brand info, compare,
- +---------------+----------------+    follow-ups
+ | intent classifier (LLM), with  |--> brand info, compare,
+ | the LLM reading of the brief   |    follow-ups
+ | started beside it              |
+ +---------------+----------------+
                  |
                  | advice or discovery
                  v
  deterministic parser -> SQL ......... 30% end here
                  |
- LLM reads the brief -> SQL .......... 32% end here
+ LLM reading of the brief -> SQL ..... 32% end here
                  |
                  | still unresolved
                  v
      BM25F ---+
-              +---> RRF ---> LLM rerank . 36% end here
+              +---> RRF .............. 36% end here
     vector ---+
                  |
                  v
@@ -198,17 +225,18 @@ const smartSearchRows: ResultRow[] = [
   { label: "Latency, p95", values: ["29 ms", "7 ms", "159 ms"], emphasis: [0] },
 ];
 
-// The same pipeline on two models, each tested against BM25 on the same briefs. The local
-// model's latency is left out: the laptop GPU throttled during its run, so the figure would
-// describe the cooling, not the model.
+// The same pipeline on two models, each tested against BM25 on the same briefs, measured 21 Sep
+// 2026. The local model's latency is left out: the laptop GPU throttled during its run, so the
+// figure would describe the cooling, not the model.
 const conciergeRows: ResultRow[] = [
-  { label: "MRR", values: ["0.50", "0.36", "0.32"], emphasis: [0], marks: ["win", "noise"] },
-  { label: "Precision@5", values: ["0.27", "0.19", "0.21"], emphasis: [0], marks: ["noise", "noise"] },
-  { label: "nDCG@10", values: ["0.23", "0.17", "0.17"], emphasis: [0], marks: ["noise", "noise"] },
-  { label: "Recall@10, share of ceiling", values: ["18%", "13%", "12%"], emphasis: [0], marks: ["noise", "noise"] },
-  { label: "Hit rate@10", values: ["74%", "54%", "66%"], emphasis: [0], marks: ["noise", "noise"] },
-  { label: "Latency, p95", values: ["12.8 s", "—", "5 ms"], emphasis: [0] },
-  { label: "Replies with a relevant action", values: ["60%", "48%", "—"], emphasis: [0] },
+  { label: "MRR", values: ["0.46", "0.30", "0.32"], emphasis: [0], marks: ["noise", "noise"] },
+  { label: "Precision@5", values: ["0.28", "0.16", "0.21"], emphasis: [0], marks: ["noise", "noise"] },
+  { label: "nDCG@10", values: ["0.24", "0.14", "0.17"], emphasis: [0], marks: ["noise", "noise"] },
+  { label: "Recall@10, share of ceiling", values: ["21%", "14%", "12%"], emphasis: [0], marks: ["noise", "noise"] },
+  { label: "Hit rate@10", values: ["72%", "48%", "66%"], emphasis: [0], marks: ["noise", "noise"] },
+  { label: "Latency, p50", values: ["4.5 s", "—", "6 ms"], emphasis: [0] },
+  { label: "Latency, p95", values: ["10.8 s", "—", "8 ms"], emphasis: [0] },
+  { label: "Replies with a relevant action", values: ["48%", "38%", "—"], emphasis: [0] },
 ];
 
 // The strongest value in each column is emphasised; this table explains a choice, not a winner.
@@ -225,15 +253,19 @@ const findings = [
   },
   {
     term: "Vector search lives only in the concierge.",
-    text: "Shown directly, it ranked facet queries worse than BM25F. As half of a fused candidate pool, it gives the reranker more right answers than either retriever alone.",
+    text: "Shown directly, it ranked facet queries worse than BM25F. Fused with BM25F it finds more right answers than either retriever alone, which is why the concierge answers from the fused list.",
   },
   {
-    term: "The LLM reranker is still on trial.",
-    text: "Switching it off saved 1.9 s per reply with no significant change in quality, so it stays only until a larger query set settles it.",
+    term: "The LLM reranker was removed.",
+    text: "Switching it off saved 1.9 s per reply and moved no metric significantly. It also took the concierge's one clear win over BM25 with it: MRR was 0.50 against 0.32 with the reranker and is 0.46 without, a gap 50 briefs cannot separate from noise.",
   },
   {
     term: "A local 7B model is not a drop-in for Haiku.",
-    text: "Qwen 2.5 7B matches it on facet queries, where SQL does the work, but on open-ended briefs precision@5 fell from 0.27 to 0.19 and hit rate from 74% to 54%, both significant, and its drafts failed the catalogue check often enough to be rewritten nearly half the time. It exercises the pipeline for free; it does not score it.",
+    text: "Qwen 2.5 7B matches it on facet queries, where SQL does the work. On open-ended briefs precision@5 fell from 0.28 to 0.16, MRR from 0.46 to 0.30 and hit rate from 72% to 48%, and half its first drafts failed the backend's grounding check. It exercises the pipeline for free; it does not score it.",
+  },
+  {
+    term: "Timing each stage cut the wait from 6.4 s to 3.9 s.",
+    text: "Every reply now reports its stages in a Server-Timing header. It showed briefs with no watch vocabulary being classified twice, so the second call now reuses the first answer; with the reranker gone and the brief read beside the classifier, the median reply fell from 6.4 s to 3.9 s, with no significant change in quality. Letting a reply finish rather than cutting it mid-sentence put the median back to 4.5 s: the wording takes 3.1 s and the action planner 2.1 s, side by side.",
   },
   {
     term: "The benchmark caught bugs review had missed.",
@@ -591,14 +623,15 @@ export default function TourbillonPortfolioPage() {
             </p>
             <p>
               Hangfire runs slow work such as emails and embeddings on Redis, Serilog and health
-              checks keep the running system observable, and GitHub Actions runs the tests and
-              deploys on every push. Smart Search and the concierge share one catalogue but take
-              different routes through it.
+              checks keep the running system observable, and GitHub Actions runs the backend
+              tests and a frontend type-check on every push while Railway and Vercel deploy from
+              main. Smart Search and the concierge, drawn below, are two features on this system:
+              they share one catalogue but take different routes through it.
             </p>
           </div>
-          <Plate caption="Fig. 01 — System" note="Production">
+          <Plate caption="Fig. 01 — System design" note="Production">
             <div className="overflow-x-auto px-5 py-6">
-              <pre className="atl-mono min-w-[600px] text-[12px] leading-relaxed text-[var(--atl-soft)]">
+              <pre className="atl-mono min-w-[640px] text-[12px] leading-relaxed text-[var(--atl-soft)]">
                 {systemDiagram}
               </pre>
             </div>
@@ -631,7 +664,7 @@ export default function TourbillonPortfolioPage() {
 
           <Subsystem
             name="Concierge"
-            summary="A chat assistant for briefs that name no filter: an occasion, a gift, a way of life. A model reads the brief only when the cheaper stages cannot, candidates come from keyword and semantic search fused together, and the backend decides every card and action shown."
+            summary="A chat assistant for briefs that name no filter: an occasion, a gift, a way of life. A model's reading of the brief is used only when the cheaper stages cannot answer, candidates come from keyword and semantic search fused together, and the backend decides every card and action shown."
             flow={
               <Plate caption="Fig. 04 — Concierge flow" note="Claude Haiku 4.5">
                 <div className="overflow-x-auto px-5 py-6">
@@ -639,6 +672,11 @@ export default function TourbillonPortfolioPage() {
                     {conciergeDiagram}
                   </pre>
                 </div>
+                <p className="mx-5 mb-5 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.9rem] leading-[1.6] text-[var(--atl-soft)]">
+                  An LLM rerank of the fused list used to follow RRF. Switching it off moved no
+                  metric significantly on the 50 open-ended briefs and saved 1.9 s per reply, so
+                  it was removed to make replies faster.
+                </p>
               </Plate>
             }
             results={
@@ -646,10 +684,13 @@ export default function TourbillonPortfolioPage() {
                 <div className="px-5 py-5">
                   <ResultTable columns={["Haiku 4.5", "Qwen 7B, local", "BM25"]} rows={conciergeRows} />
                   <p className="mt-4 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.9rem] leading-[1.6] text-[var(--atl-soft)]">
-                    On the 50 facet queries either model is level with Smart Search, so the
-                    concierge can take over search requests as well. Only Haiku beats BM25
-                    on open-ended briefs: the 7B model, run on a laptop, lands within noise of
-                    it. Its latency is not shown because the GPU throttled during the run.
+                    Without the reranker neither model clears BM25 on open-ended briefs, and
+                    the 7B model, run on a laptop, falls below it on four of five measures. On
+                    the 50 facet queries either model is level with Smart Search, so the
+                    concierge can take over search requests as well. The local model&rsquo;s
+                    latency is not shown because the GPU throttled during its run. Measured
+                    21 September 2026; the action row was 58% when every reply carried a Smart
+                    Search chip, and 21 of those chips opened a page with no results.
                   </p>
                 </div>
               </Plate>
@@ -706,16 +747,16 @@ export default function TourbillonPortfolioPage() {
                 <ResultTable
                   columns={[
                     "Results shown directly: nDCG@10, facet",
-                    "Candidates for the reranker: recall@50, facet",
+                    "Candidate pool: recall@50, facet",
                     "Recall@50, open-ended",
                   ]}
                   rows={retrieverRows}
                 />
                 <p className="mt-4 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.9rem] leading-[1.6] text-[var(--atl-soft)]">
-                  The same retriever does two different jobs. Smart Search shows its ranking
-                  directly, so it uses BM25F alone. The concierge hands a pool of 50 to a
-                  reranker, so it fuses both: the fused pool holds the most right answers on
-                  both kinds of query.
+                  Smart Search shows its ranking directly, so it uses BM25F alone. The
+                  concierge fuses both, because the fused pool holds the most right answers on
+                  both kinds of query; with the reranker gone, it now shows that fused order
+                  directly.
                 </p>
               </div>
             </Plate>

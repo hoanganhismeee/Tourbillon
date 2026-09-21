@@ -12,9 +12,9 @@ are built differently on purpose:
   BM25F. It never calls a model, answers in under 30 ms, and keeps working when the AI service
   is down.
 - **The concierge** is a chat assistant for briefs that name no filter: an occasion, a gift, a
-  way of life. A model reads the brief only when the cheaper stages cannot, candidates come
-  from BM25F and vector search fused by reciprocal rank fusion, and the backend decides every
-  card and action shown. The model writes the wording and nothing else.
+  way of life. A model's reading of the brief is used only when the cheaper stages cannot answer,
+  candidates come from BM25F and vector search fused by reciprocal rank fusion, and the backend
+  decides every card and action shown. The model writes the wording and nothing else.
 
 Both are measured on the same labelled benchmark (below), and every number on the portfolio
 page comes from it.
@@ -64,22 +64,45 @@ significantly and took p95 from 2.8 s to 29 ms.
 
 | Metric | Claude Haiku 4.5 | Qwen 2.5 7B, local | BM25 alone |
 |---|---|---|---|
-| MRR | **0.50** | 0.36 | 0.32 |
-| Precision@5 | 0.27 | 0.19 | 0.21 |
-| nDCG@10 | 0.23 | 0.17 | 0.17 |
-| Recall@10, share of ceiling | 18% | 13% | 12% |
-| Hit rate@10 | 74% | 54% | 66% |
-| Replies with a relevant action | 60% | 48% | - |
-| Latency, p95 | 12.8 s | - | 5 ms |
+| MRR | 0.46 | 0.30 | 0.32 |
+| Precision@5 | 0.28 | 0.16 | 0.21 |
+| nDCG@10 | 0.24 | 0.14 | 0.17 |
+| Recall@10, share of ceiling | 21% | 14% | 12% |
+| Hit rate@10 | 72% | 48% | 66% |
+| Replies with a relevant action | 48% | 38% | - |
+| Latency, p50 | 4.5 s | - | 6 ms |
+| Latency, p95 | 10.8 s | - | 8 ms |
 
-On the 50 facet queries either model is level with Smart Search on every metric, so the
-concierge can take over search requests as well. Swapping Haiku for a 7B model run locally
-(Ollama, RTX 3070 laptop) keeps the facet results but loses the open-ended edge: precision@5,
-nDCG@10 and hit rate all fall significantly against Haiku, and against BM25 nothing significant
-is left. Its latency is not reported because the laptop GPU throttled to a sixth of its clock
-during the run; on facet queries 17 of 50 requests timed out for the same reason, and the
-comparison there rests on the 33 that completed. Haiku's latency was measured before a bug that
-re-ran nearly half of all chat calls was fixed; it will be re-measured.
+These are the concierge as it now ships, without the LLM rerank that used to reorder its fused
+list. Each run, its date and the commit it measured are recorded in
+[docs/eval-results.md](docs/eval-results.md); the Haiku column is from 2026-09-21. With the
+rerank, Haiku beat BM25 on MRR, 0.50 against 0.32; without it the gap is 0.46 against 0.32, which
+50 briefs cannot separate from noise, while the rerank itself cost 1.9 s per reply and moved no
+metric significantly when switched off. On the 50 facet queries either model is level with Smart
+Search on every metric (the rerank ran on 3 of those 50), so the concierge can take over search
+requests as well.
+
+The action row fell from 58% when a Smart Search chip was attached to every reply. It is now
+offered only when Smart Search can read a filter from the message, because 21 of those 50 chips
+opened a page with no results, which the metric does not see and a visitor does.
+
+Swapping Haiku for Qwen 2.5 7B run locally (Ollama, RTX 3070 laptop) keeps the facet results but
+not the open-ended ones: precision@5, MRR, nDCG@10, recall and hit rate all fall against
+Haiku, most in the fit and persona briefs, and against BM25 it is lower on four of five metrics,
+though no difference clears the interval. Half its first drafts failed the backend's grounding
+check and were rewritten. Its latency is not reported because the laptop GPU throttled to a sixth
+of its clock; on facet queries 17 of 50 requests timed out for the same reason, and that
+comparison rests on the 33 that completed.
+
+Timing each stage took the median reply from 6.4 s to 3.9 s with no significant change in
+quality: the rerank is gone, a message is classified once instead of twice, and the brief is
+parsed beside the classifier rather than after it. Letting a reply finish rather than cutting it
+at 140 tokens then put the median back to 4.5 s, a trade worth making. The wording (3.1 s) and the
+action planner (2.1 s) run in parallel and are what remains.
+
+Three in five replies still stop at their token ceiling instead of finishing, because a reply
+naming two or three watches spends most of its budget on markdown links. That is the next thing to
+fix, and it is recorded against the run that measured it.
 
 **Choosing the retriever** (each retriever run on its own)
 
@@ -89,15 +112,73 @@ re-ran nearly half of all chat calls was fixed; it will be re-measured.
 | Vector search (cosine, all-mpnet-base-v2) | 0.27 | 0.41 | 0.21 |
 | BM25F + vector, fused by RRF | 0.52 | **0.62** | **0.24** |
 
-The same retriever does two jobs. Smart Search shows its ranking directly, so it uses BM25F
-alone. The concierge hands a pool of 50 to a reranker, so it fuses both: the fused pool holds
-the most right answers on both kinds of query. Switching the LLM reranker off saved 1.9 s per
-reply with no significant change in quality.
+Smart Search shows its ranking directly, so it uses BM25F alone. The concierge fuses both,
+because the fused pool holds the most right answers on both kinds of query; with the reranker
+gone, it shows that fused order directly.
 
 The harness, query set, metric definitions and how to read the tables are in
 [eval/README.md](eval/README.md) (English) and [eval/FRAMEWORK.md](eval/FRAMEWORK.md)
 (Vietnamese). Labels are one person's judgement, and 50 queries per half detects large effects
 rather than small ones.
+
+## System design
+
+```
++----------------------------------------------------------------------------------+
+| Client: browser                                                                  |
+|   runtime       React 19 client components                                       |
+|   state         TanStack Query cache persisted to localStorage, Zustand stores   |
++-----------------------------------------+----------------------------------------+
+                                          |
+                                          |  HTTPS
+                                          v
++----------------------------------------------------------------------------------+
+| Frontend: Next.js 15 App Router, on Vercel                                       |
+|   rendering     React Server Components; static assets on the Vercel CDN         |
+|   interface     Tailwind CSS, shadcn, Framer Motion, GSAP, Lenis                 |
+|   API access    typed client; route handlers proxy /api/backend/* to the API     |
++-----------------------------------------+----------------------------------------+
+                                          |
+                                          |  HTTPS, REST + JSON, session cookie
+                                          v
++----------------------------------------------------------------------------------+
+| Backend: ASP.NET Core Web API, .NET 8, on Railway                                |
+|   identity      ASP.NET Identity, Google OAuth, role-based authorisation         |
+|   data          EF Core + Npgsql, pgvector; BM25F index held in memory           |
+|   jobs          Hangfire workers, queued in Redis                                |
+|   operations    Serilog, health checks, Swagger                                  |
++-------+----------------+----------------+----------------+----------------+------+
+        |                |                |                |                |
+    SQL, TLS      Redis protocol       S3 API            SMTP          HTTP + JSON
+     EF Core         over TLS          AWS SDK          MailKit      private network
+        |                |                |                |                |
+        v                v                v                v                v
++--------------+ +--------------+ +--------------+ +--------------+ +--------------+
+| Neon         | | Upstash      | | Amazon S3    | | SMTP relay   | | AI service   |
+| PostgreSQL   | | Redis        | | + CloudFront | |              | | Python,      |
+| + pgvector   | |              | |              | |              | | Flask        |
+|              | |              | |              | |              | |              |
+| relational   | | sessions,    | | media store; | | outbound     | | prompts,     |
+| data and     | | counters,    | | the browser  | | email        | | model calls, |
+| 768-dim      | | caches,      | | loads images | |              | | embeddings   |
+| vectors      | | job queue    | | from the CDN | |              | | (all-mpnet)  |
++--------------+ +--------------+ +--------------+ +--------------+ +-------+------+
+                                                                            |
+                                                       HTTPS, Messages API  |
+                                                                            v
+                                                                    +--------------+
+                                                                    | Anthropic    |
+                                                                    | Claude Haiku |
+                                                                    | 4.5          |
+                                                                    +--------------+
+
+ Local: Docker Compose runs the backend, the AI service, PostgreSQL and Redis,
+ with Ollama (qwen2.5) on the GPU in place of Anthropic.
+ Delivery: GitHub Actions runs the backend tests and a frontend type-check on
+ every push; Railway and Vercel deploy from main.
+```
+
+`docs/architecture.md` describes each tier, every connection and one request end to end.
 
 ## Tech stack
 

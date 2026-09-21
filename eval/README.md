@@ -7,6 +7,9 @@ BM25F fallback), the chat concierge, and the individual retrieval designs they a
 Without this, every claim about search quality is an impression. With it, the claim is a number
 with a confidence interval attached, reproducible by anyone who clones the repo.
 
+The numbers these runs produced, with the date and the commit each was measured at, are in
+[docs/eval-results.md](../docs/eval-results.md).
+
 ## Running
 
 ```bash
