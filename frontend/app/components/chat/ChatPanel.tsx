@@ -113,7 +113,7 @@ function renderInlineMarkdown(
             className={
               isChipLink
                 ? 'inline-flex items-center rounded-full border border-[#bfa68a]/35 text-[#bfa68a] text-[11px] px-2.5 py-0.5 mx-0.5 hover:border-[#bfa68a]/70 hover:text-[#ecddc8] hover:bg-[#bfa68a]/10 transition-colors'
-                : 'text-[#bfa68a] underline underline-offset-2 hover:text-[#ecddc8] transition-colors'
+                : 'font-semibold text-[#bfa68a] underline decoration-[#bfa68a]/50 underline-offset-[3px] hover:text-[#ecddc8] hover:decoration-[#ecddc8] transition-colors'
             }
             style={isChipLink ? { verticalAlign: 'middle' } : undefined}
           >
@@ -127,7 +127,7 @@ function renderInlineMarkdown(
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[#bfa68a] underline underline-offset-2 hover:text-[#ecddc8] transition-colors"
+            className="font-semibold text-[#bfa68a] underline decoration-[#bfa68a]/50 underline-offset-[3px] hover:text-[#ecddc8] hover:decoration-[#ecddc8] transition-colors"
           >
             {label}
           </a>
