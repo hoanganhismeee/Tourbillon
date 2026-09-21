@@ -629,7 +629,7 @@ public class ChatService
             aiMessage = keepDeterministic && !string.IsNullOrWhiteSpace(resolution.Message)
                 ? resolution.Message
                 : aiResult;
-            aiMessage = UnwrapNestedMarkdownLinks(aiMessage);
+            aiMessage = UnwrapNestedMarkdownLinks(LinkCatalogueNames(aiMessage, resolution.WatchCards, resolution.Context));
             if (watchCards.Count == 0)
                 watchCards = await ExtractWatchCardsAsync(aiMessage, actions);
         }
@@ -4211,6 +4211,140 @@ public class ChatService
     // Safety net for nested markdown links that survive the prompt rule. Standard markdown
     // renderers break on link-inside-link syntax, so we collapse them before saving history
     // or returning to the client. Loops because one pass may reveal further nesting.
+    private static readonly Regex _markdownLinkPattern = new(@"\[[^\]]*\]\([^)]*\)", RegexOptions.Compiled);
+
+    // How many links one reply may carry, so a short answer does not read as a list of links.
+    private const int MaxWatchLinks = 3;
+    private const int MaxEntityLinks = 2;
+
+    /// The wording layer names watches, brands and collections in plain words and the links are added
+    /// here, from the slugs the backend already resolved. A markdown link costs the model around 40
+    /// tokens on a URL the reader never sees, which is what pushed replies into their token ceiling.
+    /// Only the first mention of each destination is linked, and never inside an existing link.
+    internal static string LinkCatalogueNames(string message, List<ChatWatchCard> cards, List<string> context)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return message;
+
+        var linked = message;
+        var watches = 0;
+        var entities = 0;
+
+        foreach (var (phrases, href, isWatch) in BuildCatalogueLinkTargets(cards, context))
+        {
+            if (isWatch ? watches >= MaxWatchLinks : entities >= MaxEntityLinks) continue;
+            // The model may still have written this link itself; one destination is linked once.
+            if (linked.Contains($"]({href})", StringComparison.OrdinalIgnoreCase)) continue;
+
+            foreach (var phrase in phrases)
+            {
+                if (!TryLinkFirstMention(ref linked, phrase, href)) continue;
+                if (isWatch) watches++; else entities++;
+                break;
+            }
+        }
+
+        return linked;
+    }
+
+    /// Link destinations for this reply, longest phrase first so "Omega Seamaster Diver 300M" is
+    /// matched before "Omega". Watches come from the cards and from the context entries, because a
+    /// reply can name a watch the backend did not surface as a card.
+    private static List<(List<string> Phrases, string Href, bool IsWatch)> BuildCatalogueLinkTargets(
+        List<ChatWatchCard> cards,
+        List<string> context)
+    {
+        var targets = new List<(List<string> Phrases, string Href, bool IsWatch)>();
+        var seenHrefs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddTarget(IEnumerable<string?> phrases, string href, bool isWatch)
+        {
+            if (string.IsNullOrWhiteSpace(href) || !seenHrefs.Add(href)) return;
+            var usable = phrases
+                .Where(phrase => !string.IsNullOrWhiteSpace(phrase))
+                .Select(phrase => Regex.Replace(phrase!, @"\s+", " ").Trim())
+                .Where(phrase => phrase.Length >= 4)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(phrase => phrase.Length)
+                .ToList();
+            if (usable.Count > 0)
+                targets.Add((usable, href, isWatch));
+        }
+
+        foreach (var card in cards)
+        {
+            if (string.IsNullOrWhiteSpace(card.Slug)) continue;
+            AddTarget(WatchPhrases(card.BrandName, card.CollectionName, card.Name, BuildWatchCardTitle(card)), $"/watches/{card.Slug}", true);
+        }
+
+        // Context entries carry their own slugs: "Watch "…" (Slug: …)".
+        foreach (var item in context)
+        {
+            var watch = Regex.Match(item, "Watch \"([^\"]+)\" \\(Slug: ([\\w-]+)\\)");
+            if (watch.Success)
+                AddTarget([watch.Groups[1].Value], $"/watches/{watch.Groups[2].Value}", true);
+        }
+
+        foreach (var card in cards)
+        {
+            if (!string.IsNullOrWhiteSpace(card.CollectionSlug))
+                AddTarget([card.CollectionName], $"/collections/{card.CollectionSlug}", false);
+            if (!string.IsNullOrWhiteSpace(card.BrandSlug))
+                AddTarget([card.BrandName], $"/brands/{card.BrandSlug}", false);
+        }
+
+        foreach (var item in context)
+        {
+            var collection = Regex.Match(item, "Collection \"([^\"]+)\" \\(Slug: ([\\w-]+)\\)");
+            if (collection.Success)
+                AddTarget([collection.Groups[1].Value], $"/collections/{collection.Groups[2].Value}", false);
+
+            var brand = Regex.Match(item, "Brand \"([^\"]+)\" \\(Slug: ([\\w-]+)\\)");
+            if (brand.Success)
+                AddTarget([brand.Groups[1].Value], $"/brands/{brand.Groups[2].Value}", false);
+        }
+
+        return targets;
+    }
+
+    /// The ways a reply is likely to name one watch: the full title, and the same without the
+    /// reference number, which is how a person says it ("the Omega Seamaster Diver 300M").
+    private static IEnumerable<string?> WatchPhrases(string? brand, string? collection, string name, string cardTitle)
+    {
+        var tail = Regex.Replace(name, @"^\S*\d\S*\s+", "").Trim();
+        yield return cardTitle;
+        yield return $"{brand} {collection} {name}";
+        yield return $"{collection} {name}";
+        yield return $"{brand} {name}";
+        if (!string.IsNullOrWhiteSpace(tail) && !string.Equals(tail, name, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return $"{brand} {collection} {tail}";
+            yield return $"{collection} {tail}";
+        }
+        yield return name;
+    }
+
+    /// Wraps the first mention of a phrase that is not already inside a link. Returns false when the
+    /// reply never names it, which is the normal case for most of the shortlist.
+    private static bool TryLinkFirstMention(ref string message, string phrase, string href)
+    {
+        var pattern = new Regex($@"(?<![\w\-/])({Regex.Escape(phrase)})(?![\w\-])", RegexOptions.IgnoreCase);
+        var existing = _markdownLinkPattern.Matches(message);
+
+        foreach (Match match in pattern.Matches(message))
+        {
+            if (existing.Any(link => match.Index >= link.Index && match.Index < link.Index + link.Length))
+                continue;
+
+            message = string.Concat(
+                message.AsSpan(0, match.Index),
+                $"[{match.Value}]({href})",
+                message.AsSpan(match.Index + match.Length));
+            return true;
+        }
+
+        return false;
+    }
+
     private static string UnwrapNestedMarkdownLinks(string message)
     {
         if (string.IsNullOrWhiteSpace(message)) return message;
