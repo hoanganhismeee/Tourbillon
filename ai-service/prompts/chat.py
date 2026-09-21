@@ -81,11 +81,13 @@ ADVISOR_GUIDANCE = """Advisor mode for this reply:
 # and histories; every other reply (recommendation, advice, comparison) is "short", because the watch
 # cards already carry the detail. The instruction sets what the model aims for; max_tokens sits above
 # it so a reply ends on its own instead of being cut, and max_words is the last-resort sentence trim.
+# Markdown links cost tokens the word count does not see: aiming Haiku at 80 words under 140 tokens cut
+# 52 of 54 replies, so short replies aim at 60 words with room for their links.
 REPLY_LENGTHS = {
     "short": {
-        "instruction": "Reply in a single paragraph of at most 80 words.",
-        "max_tokens": 140,
-        "max_words": 95,
+        "instruction": "Reply in a single paragraph of at most 60 words.",
+        "max_tokens": 180,
+        "max_words": 80,
     },
     "explain": {
         "instruction": "Reply in at most two short paragraphs, 150 to 180 words in total.",
