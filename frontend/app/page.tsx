@@ -53,8 +53,8 @@ const experience = [
     dates: "Jun 2026 — Present",
     location: "Milperra, NSW",
     points: [
-      "Analysed and produced Process Definition Documents across multiple client contracts, capturing end-to-end workflows, business rules, exception scenarios, and system interactions.",
-      "Reviewed those documents with a Solution Architect, working through system constraints and turning process requirements into source-to-target data mappings, validation rules, and automation logic.",
+      "Analysed and produced Process Definition Documents (PDDs) across multiple client contracts, capturing end-to-end workflows, business rules, exception scenarios, and system interactions.",
+      "Participated in regular meetings with a Solution Architect to review PDDs, discuss system constraints and implementation considerations, and translate process requirements into source-to-target data mappings, validation rules, and automation logic.",
     ],
   },
   {
@@ -63,9 +63,9 @@ const experience = [
     dates: "Dec 2025 — May 2026",
     location: "Sydney CBD, NSW",
     points: [
-      "Architected a RAG backend in Python — document ingestion, chunking, Hugging Face embeddings, and vector retrieval from SurrealDB, containerised with Docker.",
-      "Built a company-authenticated AI document assistant supporting file upload, document preview, slide generation, and citation-backed answers from uploaded files.",
-      "Delivered features as pull requests reviewed by senior engineers, in an Agile Scrum team across sprint planning, peer reviews, and stakeholder demos.",
+      "Architected a RAG backend in Python, handling document ingestion, chunking, embedding generation with Hugging Face models, and vector retrieval from SurrealDB, containerised with Docker.",
+      "Built a company-authenticated AI document assistant for internal use, supporting file upload, document preview, slide generation, and citation-backed answers from uploaded files.",
+      "Worked within an Agile Scrum team, delivering features through regular pull requests reviewed by senior engineers while contributing to sprint planning, peer reviews, and stakeholder demos.",
     ],
   },
   {
@@ -74,8 +74,8 @@ const experience = [
     dates: "May 2025 — Aug 2025",
     location: "Botany, NSW",
     points: [
-      "Built a Python test-automation suite validating IIoT headset firmware across device configurations, cutting manual regression effort per release and improving defect traceability.",
-      "Translated reported hardware and firmware issues into repeatable test cases, working directly with mechanical engineers on the headset platform.",
+      "Designed and implemented a Python test automation suite validating IIoT headset firmware behaviour across multiple device configurations, reducing manual regression effort per release cycle and improving defect traceability.",
+      "Translated reported hardware and firmware issues into repeatable software test cases by working directly with mechanical engineers on the headset platform.",
     ],
   },
 ];
