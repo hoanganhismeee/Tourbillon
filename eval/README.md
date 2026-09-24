@@ -46,6 +46,7 @@ after 5 queries. Each scope holds 50 queries and runs sequentially per arm. The 
 | `--from` | none | Re-print the report from a saved JSON run instead of calling any arm |
 | `--rescore` | none | Re-score a saved run's stored ranked ids against the current labels, without calling any arm. Changing a label costs nothing after this |
 | `--set` | `dev` | `dev` for the 100 tuned-against queries, `test` for the 36 frozen briefs |
+| `--only` | all | Comma-separated query ids. A spot check on the briefs a fix targets, which is one minute against twenty for the whole set — never a score |
 
 Each run writes a full per-query JSON record to `eval/results/`.
 
