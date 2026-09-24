@@ -116,6 +116,11 @@ public class QueryIntent
     /// When the user says "good water resistance" this contains all buckets except "Up to 30m".
     /// Client-side filter only. Labels must match frontend WATER_RESISTANCE_BUCKETS exactly.
     public List<string> WaterResistanceBuckets { get; set; } = [];
+    /// The strap or bracelet the brief asked for, as a catalogue word: "bracelet", "leather",
+    /// "rubber", "textile". Enforced by StatedConstraintFilter against Specs.strap.material, which
+    /// is free text ("Stainless steel bracelet", "Alligator leather").
+    public string? StrapType { get; set; }
+    public List<string> ExcludedStrapTypes { get; set; } = [];
 
     /// True when anything was read that Smart Search can filter on. A method, not a property, so it
     /// stays out of the JSON the filter bar reads.
@@ -129,7 +134,8 @@ public class QueryIntent
         || ExcludedMaterials.Count > 0 || ExcludedComplications.Count > 0
         || WaterResistance != null || Style != null
         || Complications.Count > 0 || PowerReserves.Count > 0
-        || WaterResistanceBuckets.Count > 0;
+        || WaterResistanceBuckets.Count > 0
+        || StrapType != null || ExcludedStrapTypes.Count > 0;
 }
 
 public record SmartSearchFilterState(
@@ -355,10 +361,13 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
             query = query.Where(w => w.CollectionId == intent.CollectionId);
         if (HasStrictCollectionIntent(intent) && intent.CollectionIds.Count > 0)
             query = query.Where(w => w.CollectionId != null && intent.CollectionIds.Contains(w.CollectionId.Value));
+        // A stated budget needs a known price. Price on Request stays in the catalogue everywhere
+        // else, but it cannot satisfy "under five thousand": the benchmark caught nine cards out of
+        // ten breaking that brief, led by a tourbillon whose price is on request and six figures.
         if (intent.MaxPrice != null)
-            query = query.Where(w => w.CurrentPrice == 0 || w.CurrentPrice <= intent.MaxPrice);
+            query = query.Where(w => w.CurrentPrice > 0 && w.CurrentPrice <= intent.MaxPrice);
         if (intent.MinPrice != null)
-            query = query.Where(w => w.CurrentPrice == 0 || w.CurrentPrice >= intent.MinPrice);
+            query = query.Where(w => w.CurrentPrice > 0 && w.CurrentPrice >= intent.MinPrice);
 
         if (ShouldApplyStyleSqlFilter(intent))
         {
@@ -675,6 +684,16 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
         // The path names every stage that produced the pool. The marker sits before "+widened:",
         // which callers split on to read the widening kinds.
         string Stage(string basePath) => lexicalFused ? $"{basePath}+bm25" : basePath;
+
+        // Constraints that live in the Specs JSON — dial colour, diameter, water resistance,
+        // complications — reach the filter bar as hints but never filtered the results. The benchmark
+        // caught what that costs, so they are applied here, over the pool, and skipped when nothing
+        // would survive.
+        // This is the last retrieval path, so an empty result here is reported rather than declined.
+        candidates = StatedConstraintFilter.Apply(candidates, queryIntent, out var specFiltered, out var specEmptied);
+        if (specFiltered || specEmptied)
+            _logger.LogInformation(
+                "WatchFinder spec filter kept {Count} candidates emptied={Emptied}", candidates.Count, specEmptied);
 
         // The fused order is the answer: the first TopMatchLimit are shown and the rest become
         // OtherCandidates. An LLM rerank of the top 15 used to run here whenever the best vector match
@@ -1230,14 +1249,14 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
                 && e.Embedding != null && e.Embedding.CosineDistance(queryVector) < MaxDistance);
 
         // Hard SQL pre-filters from parsed intent — eliminate irrelevant candidates entirely.
-        // Price 0 = "Price on Request"; never exclude PoR watches from a price-filtered search.
+        // Price 0 is "Price on Request": kept everywhere except a stated budget, which it cannot satisfy.
         if (intent?.BrandId      != null) q = q.Where(e => e.Watch.BrandId      == intent.BrandId);
         if (intent?.BrandIds?.Count > 0)  q = q.Where(e => intent.BrandIds.Contains(e.Watch.BrandId));
         if (intent?.ExcludedBrandIds?.Count > 0) q = q.Where(e => !intent.ExcludedBrandIds.Contains(e.Watch.BrandId));
         if (HasStrictCollectionIntent(intent) && intent?.CollectionId != null) q = q.Where(e => e.Watch.CollectionId == intent.CollectionId);
         if (HasStrictCollectionIntent(intent) && intent?.CollectionIds?.Count > 0) q = q.Where(e => e.Watch.CollectionId != null && intent.CollectionIds.Contains(e.Watch.CollectionId.Value));
-        if (intent?.MaxPrice     != null) q = q.Where(e => e.Watch.CurrentPrice == 0 || e.Watch.CurrentPrice <= intent.MaxPrice);
-        if (intent?.MinPrice     != null) q = q.Where(e => e.Watch.CurrentPrice == 0 || e.Watch.CurrentPrice >= intent.MinPrice);
+        if (intent?.MaxPrice     != null) q = q.Where(e => e.Watch.CurrentPrice > 0 && e.Watch.CurrentPrice <= intent.MaxPrice);
+        if (intent?.MinPrice     != null) q = q.Where(e => e.Watch.CurrentPrice > 0 && e.Watch.CurrentPrice >= intent.MinPrice);
 
         // Style filter: resolve style → tagged collection IDs → SQL IN.
         // Hard filter only when collection tags exist for that style — graceful degradation
@@ -1529,6 +1548,17 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
         (@"date\s+windows?|dates?", "date"),
     ];
 
+    // What the strap is made of, as the catalogue spells it. A bracelet is the thing a brief asks
+    // for by name ("a bracelet, not a strap"), and leather is the thing it rules out by symptom
+    // ("I sweat through leather"), so both directions read the same vocabulary.
+    private static readonly (string Pattern, string Canonical)[] StrapVocabulary =
+    [
+        (@"(?:metal\s+|steel\s+|gold\s+|titanium\s+)?bracelets?", "bracelet"),
+        (@"leather(?:\s+straps?)?|alligator|calfskin|crocodile", "leather"),
+        (@"rubber|caoutchouc", "rubber"),
+        (@"nato|textile|fabric|canvas", "textile"),
+    ];
+
     /// Pulls "not X" / "except X" / "without X" out of the query into the exclusion lists and
     /// returns the query with those spans removed, so the positive matchers never see them.
     /// Only the span belonging to a recognised term is cut — the rest of the sentence stays,
@@ -1536,7 +1566,11 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
     /// style and the size.
     internal static string ExtractExclusions(string query, QueryIntent intent)
     {
-        const string lead = @"\b(?:not|no|without|except(?:\s+for)?|excluding|other\s+than|apart\s+from|anything\s+but)\b[\s,]*(?:a|an|the)?\s*";
+        // "I hate date windows" states an exclusion as plainly as "no date" does, and a benchmark
+        // brief written that way came back with three dated watches because only the plain form was read.
+        const string lead = @"\b(?:not|no|without|except(?:\s+for)?|excluding|other\s+than|apart\s+from|anything\s+but"
+                          + @"|hates?|dislikes?|don'?t\s+(?:want|like)|do\s+not\s+(?:want|like)|can'?t\s+stand"
+                          + @"|nothing\s+with|never\s+wear|sweats?\s+(?:through|in))\b[\s,]*(?:a|an|the)?\s*";
 
         foreach (var (pattern, material) in ExcludableMaterials)
         {
@@ -1551,6 +1585,14 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
             var match = Regex.Match(query, lead + $@"(?<term>{pattern})\b", RegexOptions.IgnoreCase);
             if (!match.Success) continue;
             if (!intent.ExcludedComplications.Contains(complication)) intent.ExcludedComplications.Add(complication);
+            query = query.Remove(match.Index, match.Length);
+        }
+
+        foreach (var (pattern, strap) in StrapVocabulary)
+        {
+            var match = Regex.Match(query, lead + $@"(?<term>{pattern})\b", RegexOptions.IgnoreCase);
+            if (!match.Success) continue;
+            if (!intent.ExcludedStrapTypes.Contains(strap)) intent.ExcludedStrapTypes.Add(strap);
             query = query.Remove(match.Index, match.Length);
         }
 
@@ -2279,7 +2321,8 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
             // exactly that figure. "under 40mm" pinned to 40.0 returns only the watches measuring
             // precisely 40mm and drops every smaller one the user asked for.
             var diamCeiling = Regex.Match(q,
-                @"(?:under|below|less\s+than|up\s+to|smaller\s+than|at\s+most)\s*(\d+(?:\.\d+)?)\s*mm"
+                @"(?:under|below|less\s+than|up\s+to|smaller\s+than|at\s+most|no\s+(?:more\s+than|bigger\s+than|larger\s+than)"
+                + @"|nothing\s+(?:over|above|bigger\s+than|larger\s+than))\s*(\d+(?:\.\d+)?)\s*mm"
                 + @"|(\d+(?:\.\d+)?)\s*mm\s*(?:or\s+(?:smaller|less|under)|and\s+(?:under|below))",
                 RegexOptions.IgnoreCase);
             var diamFloor = Regex.Match(q,
@@ -2287,9 +2330,20 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
                 + @"|(\d+(?:\.\d+)?)\s*mm\s*(?:or\s+(?:larger|bigger|more)|and\s+(?:above|over|up))",
                 RegexOptions.IgnoreCase);
 
+            // "over 40mm" is a floor when it is a wish and a ceiling when it is a complaint:
+            // "anything over 40mm looks silly on me" asks for 40mm and under. Reading the complaint is
+            // what stops the brief being answered with exactly what it rules out.
+            var sizeComplaint = diamFloor.Success && Regex.IsMatch(q,
+                @"\b(?:silly|ridiculous|too\s+(?:big|large|chunky)|looks?\s+(?:wrong|odd|huge)|hates?|dislikes?|don'?t\s+(?:like|want)|overwhelm\w*)\b",
+                RegexOptions.IgnoreCase);
+
             if (diamCeiling.Success)
             {
                 intent.MaxDiameterMm = ParseDiameterGroup(diamCeiling);
+            }
+            else if (sizeComplaint)
+            {
+                intent.MaxDiameterMm = ParseDiameterGroup(diamFloor);
             }
             else if (diamFloor.Success)
             {
@@ -2385,6 +2439,17 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
         else if (Regex.IsMatch(q, @"\b(?:swim|swims|swimming|snorkel(?:l?ing)?|surf|surfing)\b", RegexOptions.IgnoreCase))
         {
             SetWaterResistanceFloor(intent, 100);
+        }
+
+        // ── Strap matching ──────────────────────────────────────────────────────────
+        // Read after the exclusions, so "I sweat through leather" has already left the string and
+        // cannot be mistaken for a request for leather. First match wins, which is why the
+        // vocabulary lists the thing a brief names before the thing it complains about.
+        foreach (var (pattern, canonical) in StrapVocabulary)
+        {
+            if (intent.StrapType != null || intent.ExcludedStrapTypes.Contains(canonical)) continue;
+            if (Regex.IsMatch(q, $@"\b(?:{pattern})\b", RegexOptions.IgnoreCase))
+                intent.StrapType = canonical;
         }
 
         // ── Style matching ──────────────────────────────────────────────────────────

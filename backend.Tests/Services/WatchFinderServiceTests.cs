@@ -995,7 +995,7 @@ public class WatchFinderServiceTests
     }
 
     [Fact]
-    public async Task TryDirectSqlSearch_PriceConstraint_PinsPriceOnRequestToBottom()
+    public async Task TryDirectSqlSearch_PriceConstraint_ExcludesPriceOnRequest()
     {
         using var context = CreateContext();
         var brand = new Brand { Id = 1, Name = "Rolex", Slug = "rolex" };
@@ -1012,9 +1012,11 @@ public class WatchFinderServiceTests
             "sporty watches under 20k", new QueryIntent { Style = "sport", MaxPrice = 20_000m }, "test");
 
         Assert.NotNull(result);
-        // Price-on-Request cannot be judged against a budget, so it sits below every priced match.
-        Assert.Equal("por", result!.Watches.Last().Slug);
-        Assert.DoesNotContain("por", result.Watches.Take(result.Watches.Count - 1).Select(w => w.Slug));
+        // Price on Request cannot be judged against a budget. Ranking it last was not enough: the
+        // concierge's prestige sort promoted those same watches back to the top of the cards, so a
+        // stated budget now excludes them outright.
+        Assert.DoesNotContain("por", result!.Watches.Select(w => w.Slug));
+        Assert.Equal(["priced-low", "priced-high"], result.Watches.Select(w => w.Slug));
     }
 
     [Fact]

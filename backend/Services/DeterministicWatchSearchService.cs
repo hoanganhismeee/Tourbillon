@@ -56,10 +56,13 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
             strictQuery = strictQuery.Where(w => w.CollectionId == intent.CollectionId);
         if (WatchFinderService.HasStrictCollectionIntent(intent) && intent?.CollectionIds.Count > 0)
             strictQuery = strictQuery.Where(w => w.CollectionId != null && intent.CollectionIds.Contains(w.CollectionId.Value));
+        // A stated budget needs a known price. Price on Request stays in the catalogue everywhere
+        // else, but it cannot satisfy "under five thousand": the benchmark caught nine cards out of
+        // ten breaking that brief, led by a tourbillon whose price is on request and six figures.
         if (intent?.MaxPrice != null)
-            strictQuery = strictQuery.Where(w => w.CurrentPrice == 0 || w.CurrentPrice <= intent.MaxPrice);
+            strictQuery = strictQuery.Where(w => w.CurrentPrice > 0 && w.CurrentPrice <= intent.MaxPrice);
         if (intent?.MinPrice != null)
-            strictQuery = strictQuery.Where(w => w.CurrentPrice == 0 || w.CurrentPrice >= intent.MinPrice);
+            strictQuery = strictQuery.Where(w => w.CurrentPrice > 0 && w.CurrentPrice >= intent.MinPrice);
         if (intent?.Style != null && WatchFinderService.ShouldApplyStyleSqlFilter(intent))
         {
             styleCollectionIds = await WatchFinderService.ResolveStyleCollectionIdsAsync(_context, intent.Style);
@@ -81,9 +84,9 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
                 .AsQueryable();
 
             if (intent?.MaxPrice != null)
-                relaxedQuery = relaxedQuery.Where(w => w.CurrentPrice == 0 || w.CurrentPrice <= intent.MaxPrice);
+                relaxedQuery = relaxedQuery.Where(w => w.CurrentPrice > 0 && w.CurrentPrice <= intent.MaxPrice);
             if (intent?.MinPrice != null)
-                relaxedQuery = relaxedQuery.Where(w => w.CurrentPrice == 0 || w.CurrentPrice >= intent.MinPrice);
+                relaxedQuery = relaxedQuery.Where(w => w.CurrentPrice > 0 && w.CurrentPrice >= intent.MinPrice);
 
             if (!WatchFinderService.HasStrictCollectionIntent(intent) && intent?.BrandId != null)
                 relaxedQuery = relaxedQuery.Where(w => w.BrandId == intent.BrandId);
@@ -106,6 +109,12 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
             .GroupBy(w => w.Id)
             .Select(g => g.First())
             .ToList();
+        // Dial colour, diameter, water resistance and complications are inside the Specs JSON, so SQL
+        // above cannot filter on them even when the query stated one.
+        candidates = StatedConstraintFilter.Apply(candidates, intent, out _, out var specEmptiedDirect);
+        // The pool holds nothing the brief asked for, so this path declines and retrieval carries on,
+        // rather than answering a green-dial brief with a pool that has no green dial in it.
+        if (specEmptiedDirect) return null;
         if (candidates.Count == 0)
         {
             _logger.LogInformation(
@@ -213,9 +222,9 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
         if (WatchFinderService.HasStrictCollectionIntent(intent) && intent.CollectionIds.Count > 0)
             q = q.Where(w => w.CollectionId != null && intent.CollectionIds.Contains(w.CollectionId.Value));
         if (intent.MaxPrice != null)
-            q = q.Where(w => w.CurrentPrice == 0 || w.CurrentPrice <= intent.MaxPrice);
+            q = q.Where(w => w.CurrentPrice > 0 && w.CurrentPrice <= intent.MaxPrice);
         if (intent.MinPrice != null)
-            q = q.Where(w => w.CurrentPrice == 0 || w.CurrentPrice >= intent.MinPrice);
+            q = q.Where(w => w.CurrentPrice > 0 && w.CurrentPrice >= intent.MinPrice);
 
         var styleCollectionIds = new List<int>();
         if (intent.Style != null && WatchFinderService.ShouldApplyStyleSqlFilter(intent))
@@ -229,6 +238,8 @@ public class DeterministicWatchSearchService : IDeterministicWatchSearchService
             .OrderByDescending(w => w.Id)
             .Take(1000)
             .ToListAsync();
+        candidates = StatedConstraintFilter.Apply(candidates, intent, out _, out var specEmptiedFallback);
+        if (specEmptiedFallback) return null;
 
         if (candidates.Count == 0)
             return WatchFinderService.HasBrandIntent(intent) || WatchFinderService.HasCollectionIntent(intent)

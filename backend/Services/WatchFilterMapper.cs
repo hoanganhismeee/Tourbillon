@@ -73,10 +73,11 @@ public class WatchFilterMapper
         return parsed == null || parsed <= maxMm;
     }
 
-    // Price on Request (CurrentPrice == 0) always passes — never filter it out
+    // Price on Request passes when no budget was stated; it cannot satisfy one, because the price
+    // is unknown and, in this catalogue, always well above where a budget brief sits.
     private static bool MatchesPrice(Watch watch, decimal? minPrice, decimal? maxPrice)
     {
-        if (watch.CurrentPrice == 0) return true;
+        if (watch.CurrentPrice == 0) return minPrice == null && maxPrice == null;
         if (minPrice != null && watch.CurrentPrice < minPrice) return false;
         if (maxPrice != null && watch.CurrentPrice > maxPrice) return false;
         return true;

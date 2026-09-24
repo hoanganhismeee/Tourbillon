@@ -77,15 +77,17 @@ public class SmartSearchCatalogueTests
     }
 
     [Fact]
-    public async Task Hard_filters_apply_to_the_bm25_ranking_and_keep_price_on_request()
+    public async Task Hard_filters_apply_to_the_bm25_ranking_and_drop_price_on_request()
     {
         using var context = SeededContext();
         var service = CreateService(context, new FixedLexicalSearch(3, 1, 2));
 
         var result = await service.SearchCatalogueAsync("a watch with lovely finishing under 10k");
 
-        // 3 is over budget; 2 is Price on Request, which a budget never removes.
-        Assert.Equal(new[] { 1, 2 }, result.Watches.Select(w => w.Id));
+        // 3 is over budget. 2 is Price on Request: it used to pass every budget, which is how a
+        // benchmark brief asking for something under five thousand was answered with a tourbillon
+        // whose price is on request. An unknown price cannot satisfy a stated one.
+        Assert.Equal(new[] { 1 }, result.Watches.Select(w => w.Id));
         Assert.Equal(10_000m, result.QueryIntent?.MaxPrice);
     }
 
