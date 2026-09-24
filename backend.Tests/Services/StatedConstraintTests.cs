@@ -207,6 +207,47 @@ public class StatedConstraintTests
         Assert.Null(intent.MinDiameterMm);
     }
 
+    [Theory]
+    // "matters" is two edits from "Master", and GMT-Master II reduces to that one token once the
+    // short words are dropped, so an ordinary sentence resolved a collection nobody named and pinned
+    // the whole search to Rolex. A short word in the name has to appear in the query.
+    [InlineData("a green dial, nothing else matters")]
+    [InlineData("nothing else matters to me")]
+    public void AnOrdinaryWordDoesNotNameACollection(string query)
+    {
+        var gmt = new Collection { Id = 1, BrandId = 9, Name = "GMT-Master II" };
+
+        var matches = WatchFinderService.ResolveFuzzyCollections(query, [gmt], []);
+
+        Assert.Empty(matches);
+    }
+
+    [Fact]
+    public void AWordTheQueryRulesOutCannotNameACollection()
+    {
+        // "date" is a prefix of Datejust, so the complaint resolved the collection and pinned the
+        // search to it: "I hate date windows" came back with five Rolex Datejusts.
+        var datejust = new Collection { Id = 1, BrandId = 9, Name = "Datejust" };
+        var blocked = WatchFinderService.BuildBlockedCollectionTokens([], "I hate date windows");
+
+        Assert.Empty(WatchFinderService.ResolveFuzzyCollections("I hate date windows", [datejust], [], blocked));
+        // Asked for rather than ruled out, the same word still names it.
+        Assert.Equal([1], WatchFinderService
+            .ResolveFuzzyCollections("rolex datejust", [datejust], [], WatchFinderService.BuildBlockedCollectionTokens([], "rolex datejust"))
+            .Select(c => c.Id));
+    }
+
+    [Fact]
+    public void NamingTheCollectionStillResolvesIt()
+    {
+        var gmt = new Collection { Id = 1, BrandId = 9, Name = "GMT-Master II" };
+        var sea = new Collection { Id = 2, BrandId = 3, Name = "Seamaster" };
+
+        Assert.Equal([1], WatchFinderService.ResolveFuzzyCollections("rolex gmt master ii", [gmt, sea], []).Select(c => c.Id));
+        // A typo in a single-word name is still forgiven.
+        Assert.Equal([2], WatchFinderService.ResolveFuzzyCollections("omega seamastr", [gmt, sea], []).Select(c => c.Id));
+    }
+
     [Fact]
     public void AnIntentWithNoSpecConstraintIsLeftAlone()
     {

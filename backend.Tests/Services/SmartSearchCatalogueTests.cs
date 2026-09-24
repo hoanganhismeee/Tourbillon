@@ -92,6 +92,23 @@ public class SmartSearchCatalogueTests
     }
 
     [Fact]
+    public async Task A_stated_exclusion_drops_the_watches_that_break_it()
+    {
+        using var context = SeededContext();
+        // 1 has a date, 3 does not; both rank above the budget-less 2.
+        context.Watches.Single(w => w.Id == 1).Specs = "{\"movement\":{\"functions\":[\"Hours\",\"Instantaneous date\"]}}";
+        context.Watches.Single(w => w.Id == 3).Specs = "{\"movement\":{\"functions\":[\"Hours\",\"Minutes\"]}}";
+        context.SaveChanges();
+        var service = CreateService(context, new FixedLexicalSearch(1, 3));
+
+        var result = await service.SearchCatalogueAsync("I hate date windows");
+
+        // Complications live in the Specs JSON, so no SQL filter reaches them: before this, the
+        // benchmark brief was answered with five dated watches.
+        Assert.Equal(new[] { 3 }, result.Watches.Select(w => w.Id));
+    }
+
+    [Fact]
     public async Task No_lexical_match_is_an_empty_result_not_an_error()
     {
         using var context = SeededContext();

@@ -1,4 +1,4 @@
-// Orchestrates the AI Watch Finder pipeline:
+﻿// Orchestrates the AI Watch Finder pipeline:
 // Concierge retrieval: deterministic parse and SQL first, then LLM parse, then vector search fused with BM25F by RRF.
 // Hybrid filtering: ParseQueryIntentAsync extracts brand/collection/price as hard SQL pre-filters.
 // Fallback (embed unavailable): LLM parse → SQL filter, ordered by the direct-path score when a brand is named.
@@ -328,7 +328,12 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
         // IN has no order, so the BM25F ranking is restored from the hit list.
         var position = ids.Select((id, index) => (id, index)).ToDictionary(p => p.id, p => p.index);
         var ordered = candidates.OrderBy(w => position[w.Id]).ToList();
-        if (ordered.Count == 0)
+
+        // Dial colour, size and complications live in the Specs JSON, so the SQL filters above
+        // cannot see them. A search box has no prose to explain a relaxed brief, so when nothing
+        // in the ranking satisfies what was stated the honest answer is no results.
+        ordered = StatedConstraintFilter.Apply(ordered, intent, out _, out var specEmptied);
+        if (ordered.Count == 0 || specEmptied)
             return EmptyResult(intent, "bm25_filtered_empty");
 
         return new WatchFinderResult
@@ -343,7 +348,8 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
     }
 
     /// The constraints a result may never break: brand, brand exclusions, strict collection, price
-    /// and style collections. Price 0 is Price on Request and is never removed by a budget.
+    /// and style collections. Price on Request survives every filter here except a stated budget,
+    /// which an unknown price cannot satisfy.
     private async Task<IQueryable<Watch>> ApplyHardFiltersAsync(IQueryable<Watch> query, QueryIntent? intent)
     {
         if (intent == null)
@@ -689,11 +695,28 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
         // complications — reach the filter bar as hints but never filtered the results. The benchmark
         // caught what that costs, so they are applied here, over the pool, and skipped when nothing
         // would survive.
-        // This is the last retrieval path, so an empty result here is reported rather than declined.
+        // This is the last retrieval path, so it cannot decline. When the pool satisfies none of what
+        // the brief stated, the catalogue is asked directly instead: "a green dial" reached here with
+        // a pool of GMT-Masters, whose green is on the bezel, while the green dials sat unranked.
         candidates = StatedConstraintFilter.Apply(candidates, queryIntent, out var specFiltered, out var specEmptied);
+        var specRescued = false;
+        if (specEmptied && StatedConstraintFilter.HasSpecConstraints(queryIntent))
+        {
+            var hardFiltered = await ApplyHardFiltersAsync(
+                _context.Watches.Include(w => w.Brand).Include(w => w.Collection).AsNoTracking(),
+                queryIntent);
+            var catalogueWide = await hardFiltered.ToListAsync();
+            var satisfying = StatedConstraintFilter.Apply(catalogueWide, queryIntent, out _, out var stillEmpty);
+            if (!stillEmpty && satisfying.Count > 0)
+            {
+                candidates = satisfying.Take(TopMatchLimit * 3).ToList();
+                specRescued = true;
+            }
+        }
         if (specFiltered || specEmptied)
             _logger.LogInformation(
-                "WatchFinder spec filter kept {Count} candidates emptied={Emptied}", candidates.Count, specEmptied);
+                "WatchFinder spec filter kept {Count} candidates emptied={Emptied} rescued={Rescued}",
+                candidates.Count, specEmptied, specRescued);
 
         // The fused order is the answer: the first TopMatchLimit are shown and the rest become
         // OtherCandidates. An LLM rerank of the top 15 used to run here whenever the best vector match
@@ -710,7 +733,7 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
             // path telemetry describe a stage that never ran — the one signal that would have
             // shown embeddings were off in production reported the opposite.
             SearchPath = AppendWidenedSearchPath(
-                queryEmbedding == null ? "sql_fallback_no_embedding" : Stage("vector"),
+                (queryEmbedding == null ? "sql_fallback_no_embedding" : Stage("vector")) + (specRescued ? "+spec" : ""),
                 widenedSearchKinds)
         };
 
@@ -1471,7 +1494,7 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
                 query,
                 collections,
                 matchedBrands.Select(b => b!.Id).ToHashSet(),
-                BuildBlockedCollectionTokens(matchedBrands.Select(b => b!))));
+                BuildBlockedCollectionTokens(matchedBrands.Select(b => b!), query)));
         ReconcileCollectionBrandScope(intent, collections);
 
         // ── Soft filters (frontend pre-population only) ───────────────────────────
@@ -1806,6 +1829,13 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
         var nameTokens = TokenizeQuery(collection.Name);
         if (nameTokens.Count == 0) return default;
 
+        // Coverage is judged against every word of the name, not only the ones long enough to match
+        // on. "GMT-Master II" reduces to the single token "master" once "gmt" and "ii" are dropped,
+        // so one typo-tolerant hit on the ordinary word "matters" read as naming the collection, and
+        // "a green dial, nothing else matters" was answered with five Rolex GMT-Masters. A short word
+        // counts as covered only when the query actually contains it.
+        var shortNameWords = TokenizeDirectQuery(collection.Name).Where(t => !nameTokens.Contains(t)).ToList();
+
         var score = 0;
         var matchedNameTokens = new HashSet<string>();
         foreach (var queryToken in tokens)
@@ -1821,7 +1851,8 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
             }
         }
 
-        return new CollectionMatch(score, matchedNameTokens.Count == nameTokens.Count);
+        var shortWordsPresent = shortNameWords.All(normalisedQuery.Contains);
+        return new CollectionMatch(score, matchedNameTokens.Count == nameTokens.Count && shortWordsPresent);
     }
 
     private static void ApplyCollectionMatches(QueryIntent intent, IEnumerable<Collection> matches)
@@ -1894,11 +1925,29 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
         ReconcileCollectionBrandScope(intent, collections);
     }
 
-    internal static HashSet<string> BuildBlockedCollectionTokens(IEnumerable<Brand> brands) =>
-        brands
+    /// Tokens that must not be read as naming a collection: the brand words already stated, plus
+    /// any word the query rules out. "I hate date windows" resolved Datejust on the prefix match
+    /// and pinned the entire search to it, so the complaint about dates was answered with five of
+    /// them. A word inside a negation is the one thing the shopper is certain not to be naming.
+    internal static HashSet<string> BuildBlockedCollectionTokens(IEnumerable<Brand> brands, string? query = null)
+    {
+        var blocked = brands
             .SelectMany(brand => TokenizeQuery(brand.Name))
             .Where(token => token.Length >= 4)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(query)) return blocked;
+
+        // The negated spans are whatever ExtractExclusions cuts out, so the difference between the
+        // query and the stripped query is exactly the vocabulary the shopper ruled out.
+        var expanded = QueryNormalizer.ExpandCompoundTerms(query);
+        var stripped = ExtractExclusions(expanded, new QueryIntent());
+        var surviving = TokenizeDirectQuery(stripped).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var token in TokenizeDirectQuery(expanded).Where(t => !surviving.Contains(t)))
+            blocked.Add(token);
+
+        return blocked;
+    }
 
     /// True when the query spells the collection's name out. The compacted comparison ignores
     /// spacing and punctuation so "royaloak" finds Royal Oak, and that reach is exactly why the
@@ -2184,7 +2233,7 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
         if (exactCollections.Count == 0 && matchedBrandIds.Count > 0)
             exactCollections = NamedIn(collections);
 
-        var blockedCollectionTokens = BuildBlockedCollectionTokens(matchedBrands);
+        var blockedCollectionTokens = BuildBlockedCollectionTokens(matchedBrands, query);
 
         ApplyCollectionMatches(intent, exactCollections);
         ApplyCollectionMatches(intent, ResolveFuzzyCollections(query, collections, matchedBrandIds, blockedCollectionTokens));
