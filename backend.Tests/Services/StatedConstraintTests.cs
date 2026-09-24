@@ -1,4 +1,4 @@
-// What a query states has to survive into the results.
+﻿// What a query states has to survive into the results.
 //
 // Both rules here were written after a benchmark run found them broken. A stated budget admitted
 // Price on Request, so "under five thousand" answered with a tourbillon whose price is on request;
@@ -121,6 +121,23 @@ public class StatedConstraintTests
         var kept = StatedConstraintFilter.Apply(candidates, intent, out var applied, out _);
         Assert.True(applied);
         Assert.Equal([1], kept.Select(w => w.Id));
+    }
+
+    [Fact]
+    public void BothParsePathsReadTheStrapTheSameWay()
+    {
+        // The concierge's LLM parse copies what the model returned and runs none of the regex
+        // readers, so the same brief came back with leather straps there and bracelets in Smart
+        // Search. Both paths now call the one reader.
+        var shared = new QueryIntent();
+        WatchFinderService.ReadStrapConstraints("a bracelet, not a strap, I sweat through leather", shared);
+
+        var deterministic = new QueryIntent();
+        WatchFinderService.ApplyRegexFilters("a bracelet, not a strap, I sweat through leather", deterministic);
+
+        Assert.Equal("bracelet", shared.StrapType);
+        Assert.Equal(shared.StrapType, deterministic.StrapType);
+        Assert.Equal(shared.ExcludedStrapTypes, deterministic.ExcludedStrapTypes);
     }
 
     [Fact]

@@ -1517,6 +1517,9 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
             else if (Regex.IsMatch(qLow, @"\b(?:art\s*piece|haute\s*horlogerie|collector\s*(?:watch|piece)|artistic\s*watch)\b")) intent.Style = "art";
         }
         intent.CaseMaterial  = NormaliseMaterial((parsed.Material ?? []).FirstOrDefault());
+        // The model returns a strap field but not what the brief ruled out, and this path never ran
+        // the deterministic readers, so the strap is read from the query here as well.
+        ReadStrapConstraints(query, intent);
         intent.MinDiameterMm = parsed.MinDiameterMm;
         intent.MaxDiameterMm = parsed.MaxDiameterMm;
         intent.Complications = NormaliseComplications(parsed.Complications ?? []);
@@ -1583,6 +1586,43 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
         (@"nato|textile|fabric|canvas", "textile"),
     ];
 
+    // How a brief introduces something it rules out. Shared, because the strap reader runs on both
+    // parse paths and has to recognise the same phrasings the material and complication readers do.
+    internal const string ExclusionLead =
+        @"\b(?:not|no|without|except(?:\s+for)?|excluding|other\s+than|apart\s+from|anything\s+but"
+        + @"|hates?|dislikes?|don'?t\s+(?:want|like)|do\s+not\s+(?:want|like)|can'?t\s+stand"
+        + @"|nothing\s+with|never\s+wear|sweats?\s+(?:through|in))\b[\s,]*(?:a|an|the)?\s*";
+
+    /// What the brief says about the strap, read the same way on both parse paths. The deterministic
+    /// parser reads every field itself; the LLM parse only copies what the model returned, so
+    /// without this the concierge answered "a bracelet, not a strap, I sweat through leather" with
+    /// four leather straps while Smart Search answered the same words correctly.
+    ///
+    /// Exclusions are cut from the working string before the positive match runs, because the word
+    /// being complained about is the word the brief would otherwise be asking for.
+    internal static void ReadStrapConstraints(string query, QueryIntent intent)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return;
+
+        var working = QueryNormalizer.ExpandCompoundTerms(query);
+        foreach (var (pattern, strap) in StrapVocabulary)
+        {
+            var match = Regex.Match(working, ExclusionLead + $@"(?<term>{pattern})\b", RegexOptions.IgnoreCase);
+            if (!match.Success) continue;
+            if (!intent.ExcludedStrapTypes.Contains(strap)) intent.ExcludedStrapTypes.Add(strap);
+            working = working.Remove(match.Index, match.Length);
+        }
+
+        // First match wins, which is why the vocabulary lists the thing a brief names before the
+        // thing it complains about.
+        foreach (var (pattern, canonical) in StrapVocabulary)
+        {
+            if (intent.StrapType != null || intent.ExcludedStrapTypes.Contains(canonical)) continue;
+            if (Regex.IsMatch(working, $@"\b(?:{pattern})\b", RegexOptions.IgnoreCase))
+                intent.StrapType = canonical;
+        }
+    }
+
     /// Pulls "not X" / "except X" / "without X" out of the query into the exclusion lists and
     /// returns the query with those spans removed, so the positive matchers never see them.
     /// Only the span belonging to a recognised term is cut — the rest of the sentence stays,
@@ -1592,9 +1632,7 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
     {
         // "I hate date windows" states an exclusion as plainly as "no date" does, and a benchmark
         // brief written that way came back with three dated watches because only the plain form was read.
-        const string lead = @"\b(?:not|no|without|except(?:\s+for)?|excluding|other\s+than|apart\s+from|anything\s+but"
-                          + @"|hates?|dislikes?|don'?t\s+(?:want|like)|do\s+not\s+(?:want|like)|can'?t\s+stand"
-                          + @"|nothing\s+with|never\s+wear|sweats?\s+(?:through|in))\b[\s,]*(?:a|an|the)?\s*";
+        const string lead = ExclusionLead;
 
         foreach (var (pattern, material) in ExcludableMaterials)
         {
@@ -2491,16 +2529,7 @@ public class WatchFinderService : IWatchFinderService, IConciergeSearchHints
             SetWaterResistanceFloor(intent, 100);
         }
 
-        // ── Strap matching ──────────────────────────────────────────────────────────
-        // Read after the exclusions, so "I sweat through leather" has already left the string and
-        // cannot be mistaken for a request for leather. First match wins, which is why the
-        // vocabulary lists the thing a brief names before the thing it complains about.
-        foreach (var (pattern, canonical) in StrapVocabulary)
-        {
-            if (intent.StrapType != null || intent.ExcludedStrapTypes.Contains(canonical)) continue;
-            if (Regex.IsMatch(q, $@"\b(?:{pattern})\b", RegexOptions.IgnoreCase))
-                intent.StrapType = canonical;
-        }
+        ReadStrapConstraints(query, intent);
 
         // ── Style matching ──────────────────────────────────────────────────────────
         if (Regex.IsMatch(q, @"\b(?:sport|sports|sporty|sport\s*watch)\b", RegexOptions.IgnoreCase))
