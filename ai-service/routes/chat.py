@@ -115,6 +115,12 @@ def _cleanup_markdown_artifacts(text: str) -> str:
     if cleaned.count("*") % 2 == 1:
         cleaned = cleaned.replace("*", "")
 
+    # A list the ceiling cut leaves its next number behind: "...vibrant sophistication. 3." reads
+    # as a promise the reply never keeps, and the marker ends in a full stop so the sentence-level
+    # truncation sees nothing wrong with it. Only stripped where a sentence just ended, so
+    # "Consider the Datejust 36." keeps its size.
+    cleaned = re.sub(r"(?:(?<=[.!?])\s+|(?<=\n))(?:\d{1,2}[.)]|[-*•])\s*$", "", cleaned).strip()
+
     cleaned = cleaned.rstrip(",;:- ")
     if cleaned and cleaned[-1] not in ".!?":
         cleaned += "."

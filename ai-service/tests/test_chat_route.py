@@ -49,6 +49,18 @@ class ChatRouteResponseSanitizerTests(unittest.TestCase):
 
         self.assertEqual("Try [Sport Collection](/collections/sport-collection) instead of Imaginary Atelier", filtered)
 
+    def test_cleanup_markdown_artifacts_drops_a_list_marker_the_ceiling_left_behind(self) -> None:
+        # The reply promised three picks and the ceiling cut it after two, leaving "3." behind.
+        cleaned = _cleanup_markdown_artifacts(
+            "Two standouts: 1. **A** with a dark dial. 2. **B** in blue. 3.")
+
+        self.assertEqual("Two standouts: 1. **A** with a dark dial. 2. **B** in blue.", cleaned)
+
+    def test_cleanup_markdown_artifacts_keeps_a_number_that_ends_a_sentence(self) -> None:
+        # A size or a model name is not a list marker, however much it looks like one.
+        for text in ("Consider the Datejust 36.", "The case is 36 mm."):
+            self.assertEqual(text, _cleanup_markdown_artifacts(text))
+
     def test_cleanup_markdown_artifacts_degrades_truncated_links_to_plain_text(self) -> None:
         cleaned = _cleanup_markdown_artifacts("Compare [Overseas](/collections/vacheron-constantin-overseas")
 
