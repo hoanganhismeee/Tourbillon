@@ -28,6 +28,7 @@ import { parseServerTiming, summariseStages } from './timing.mjs';
 import {
   recallAtK, precisionAtK, reciprocalRank, ndcgAtK, hitAtK,
   mean, percentile, bootstrapCI, pairedBootstrap, recallCeiling, significance,
+  gainAtK, ndcgAtKGraded, usefulHitAtK, violationRateAtK,
 } from './metrics.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -86,6 +87,10 @@ const ARM_IMPLS = {
         ids: (body.watchCards ?? []).map(c => c.id),
         meta: {
           stages: parseServerTiming(res.headers.get('server-timing')),
+          // The pool retrieval ranked before the card cut, when the backend is set to expose it.
+          // Without it the concierge can only be scored on what it showed, which hides whether a
+          // miss was retrieval failing to find the watch or the shortlist failing to pick it.
+          candidateIds: body.candidateWatchIds ?? null,
           searchPath: body.finderPath ?? body.routingPath ?? 'concierge',
           routingPath: body.routingPath ?? null,
           actions: (body.actions ?? []).map(a => ({
@@ -161,6 +166,7 @@ function rankedIds(body) {
 
 async function main() {
   if (args.from) return reprint(String(args.from));
+  if (args.rescore) return rescore(String(args.rescore));
   console.log(`${BOLD}Smart Search evaluation${RESET} ${DIM}${BASE_URL}${RESET}`);
   console.log(`${DIM}scope ${SCOPE}   arms ${ARMS.join(', ')}${RESET}\n`);
 
@@ -195,12 +201,90 @@ async function main() {
   }
 
   printScores(results, scored);
+  printRetrievalSplit(results);
   printPaths(results);
   printStages(results);
   printComparison(results, scored);
   printSlots(results);
   printActions(results);
   writeReport(results, scored, catalogue);
+}
+
+/// Retrieval and shortlist, scored apart. The pool answers "was it found at all", the first three
+/// cards answer "was it picked" — a low pool recall is fixed in the index, a good pool with a weak
+/// shortlist is fixed in selection, and the two were indistinguishable while only cards were scored.
+function scoreSplit(q, ids, candidateIds, error) {
+  if (error || !q.grades || !Array.isArray(candidateIds) || candidateIds.length === 0) return {};
+  return {
+    poolSize: candidateIds.length,
+    poolRecall: recallAtK(candidateIds, q.ideal, 50),
+    poolNdcg: ndcgAtKGraded(candidateIds, q.grades, 50),
+    shownGain: gainAtK(ids, q.grades, 3),
+    shownNdcg: ndcgAtKGraded(ids, q.grades, 3),
+  };
+}
+
+/// Scores a saved run against the labels as they stand now. Changing a label used to mean paying
+/// to run the model-backed arms again; with the ranked ids stored, the same run can answer the new
+/// question for free. Only the metrics move — the ids, the timings and the actions are the run's.
+async function rescore(file) {
+  const saved = JSON.parse(readFileSync(file, 'utf8'));
+  const catalogue = await loadCatalogue(BASE_URL);
+  const validated = validateQueries(catalogue, [...HANDWRITTEN, ...buildGenerated(catalogue)], { maxShare: MAX_SHARE });
+  const byId = new Map(validated.map(q => [q.id, q]));
+
+  const results = {};
+  const skipped = new Set();
+  for (const [arm, rows] of Object.entries(saved.rows)) {
+    results[arm] = rows.map(row => {
+      const q = byId.get(row.queryId);
+      if (!q || !Array.isArray(row.rankedIds)) { skipped.add(row.queryId); return row; }
+      return { ...row, relevantCount: q.relevantCount, ...scoreIds(q, row.rankedIds, row.error) };
+    });
+  }
+
+  const first = Object.values(results)[0] ?? [];
+  const queries = first.map(row => byId.get(row.queryId)).filter(Boolean);
+  console.log(`${BOLD}Smart Search evaluation${RESET} ${DIM}rescoring ${file} against the current labels${RESET}`);
+  console.log(`${DIM}run at ${saved.runAt}   scope ${saved.scope ?? 'all'}   arms ${Object.keys(results).join(', ')}${RESET}`);
+  if (skipped.size > 0) {
+    console.log(`${YELLOW}  ${skipped.size} rows kept as saved${RESET} ${DIM}no stored ids or no label under that id: ${[...skipped].slice(0, 6).join(', ')}${RESET}`);
+    console.log(`${DIM}  runs recorded before ranked ids were stored cannot be rescored.${RESET}`);
+  }
+  printScores(results, queries);
+  printComparison(results, queries);
+  printActions(results);
+}
+
+/// Every metric for one result list. A graded label (the open-ended half) is scored on grades:
+/// recall against the ideal set the ceiling is read from, gain in place of precision, a hit only
+/// when something at grade 2 or better made the cut, and violations of a stated constraint counted
+/// on their own. A binary label (the facet half) is scored exactly as before.
+function scoreIds(q, ids, error = null) {
+  if (error) {
+    return { ceiling: recallCeiling(q.relevantCount, K), recall: null, precision: null,
+             mrr: null, ndcg: null, hit: null, violation: null };
+  }
+  if (!q.grades) {
+    return {
+      ceiling: recallCeiling(q.relevantCount, K),
+      recall: recallAtK(ids, q.relevant, K),
+      precision: precisionAtK(ids, q.relevant, PRECISION_K),
+      mrr: reciprocalRank(ids, q.relevant, K),
+      ndcg: ndcgAtK(ids, q.relevant, K),
+      hit: hitAtK(ids, q.relevant, K),
+      violation: null,
+    };
+  }
+  return {
+    ceiling: recallCeiling(q.ideal.size, K),
+    recall: recallAtK(ids, q.ideal, K),
+    precision: gainAtK(ids, q.grades, PRECISION_K),
+    mrr: reciprocalRank(ids, q.relevant, K),
+    ndcg: ndcgAtKGraded(ids, q.grades, K),
+    hit: usefulHitAtK(ids, q.grades, K),
+    violation: violationRateAtK(ids, q.violating, K),
+  };
 }
 
 /// Re-prints the report from a saved run, so a fix to the reporting never means paying for the
@@ -240,12 +324,11 @@ async function runArm(arm, queries, catalogue, index) {
       const row = {
         pass, queryId: q.id, category: q.category, query: q.query,
         relevantCount: q.relevantCount, returned: ids.length, latencyMs, error, ...meta,
-        ceiling: recallCeiling(q.relevantCount, K),
-        recall: error ? null : recallAtK(ids, q.relevant, K),
-        precision: error ? null : precisionAtK(ids, q.relevant, PRECISION_K),
-        mrr: error ? null : reciprocalRank(ids, q.relevant, K),
-        ndcg: error ? null : ndcgAtK(ids, q.relevant, K),
-        hit: error ? null : hitAtK(ids, q.relevant, K),
+        // The ids are kept so a later change to the labels can be scored against this run instead
+        // of paying to run the model-backed arms again.
+        rankedIds: ids.slice(0, 50),
+        ...scoreIds(q, ids, error),
+        ...scoreSplit(q, ids, meta.candidateIds, error),
       };
       // Structured filter accuracy applies where a label reduces to facets, which is the spec half.
       if (!error && meta.queryIntent !== undefined && scopeOf(q) === 'spec') {
@@ -297,14 +380,21 @@ function printLabelReport(validated, catalogue) {
   console.log(`${BOLD}Golden set${RESET} ${DIM}${catalogue.records.length} watches in catalogue${RESET}`);
   console.log(`  usable      ${GREEN}${ok.length}${RESET} / ${validated.length}`);
   console.log(`  median relevant per query  ${median(ok.map(q => q.relevantCount)) ?? '-'}`);
+  const graded = ok.filter(q => q.grades);
+  if (graded.length) {
+    const tier = grade => median(graded.map(q => [...q.grades.values()].filter(g => g === grade).length));
+    console.log(`  graded labels  ${graded.length}   ${DIM}median per query: grade 3 ${tier(3)}, grade 2 ${tier(2)}, grade 1 ${tier(1)}${RESET}`);
+  }
 
-  for (const status of ['invalid_key', 'empty', 'too_broad', 'thin']) {
+  for (const status of ['invalid_key', 'must_empty', 'empty', 'too_broad', 'thin', 'tier_dead']) {
     const rows = byStatus[status] ?? [];
     if (!rows.length) continue;
     const why = { invalid_key: 'truth uses a key the matcher ignores — label wider than written',
+                  must_empty: 'no watch satisfies the stated constraint — every answer counts as a violation',
                   empty: 'no catalogue match — label wrong or data missing',
                   too_broad: `matches >${(MAX_SHARE * 100).toFixed(0)}% of catalogue — not discriminative`,
-                  thin: 'fewer than 2 matches — recall is unstable' }[status];
+                  thin: 'fewer than 2 matches — recall is unstable',
+                  tier_dead: 'a grade tier matches no watch at all — a spelling or a facet that is not there' }[status];
     console.log(`  ${YELLOW}${status.padEnd(11)}${RESET}${rows.length}  ${DIM}${why}${RESET}`);
     for (const q of rows.slice(0, 6)) {
       console.log(`      ${DIM}${q.id.padEnd(22)} ${String(q.relevantCount).padStart(4)}  "${q.query.slice(0, 46)}"${RESET}`);
@@ -316,7 +406,10 @@ function printLabelReport(validated, catalogue) {
 
 function printScores(results, queries) {
   console.log(`\n${BOLD}Retrieval quality${RESET} ${DIM}n=${queries.length}, k=${K}, precision@${PRECISION_K}${RESET}`);
-  console.log(`  ${'arm'.padEnd(10)}${'recall'.padStart(16)}${'prec'.padStart(8)}${'MRR'.padStart(8)}${'nDCG'.padStart(8)}${'hit'.padStart(8)}${'p50 ms'.padStart(9)}${'p95 ms'.padStart(9)}`);
+  // "prec" is precision@k on the facet half and mean grade on the graded half; "viol" is the share
+  // of the top k that breaks a constraint the brief stated, and it is printed separately because an
+  // average grade can look respectable while a third of the list is over budget.
+  console.log(`  ${'arm'.padEnd(10)}${'recall'.padStart(16)}${'prec'.padStart(8)}${'MRR'.padStart(8)}${'nDCG'.padStart(8)}${'hit'.padStart(8)}${'viol'.padStart(8)}${'p50 ms'.padStart(9)}${'p95 ms'.padStart(9)}`);
   for (const [arm, rows] of Object.entries(results)) {
     const recall = mean(rows.map(r => r.recall));
     const ci = bootstrapCI(rows.map(r => r.recall));
@@ -329,6 +422,7 @@ function printScores(results, queries) {
       `${fmt(mean(rows.map(r => r.mrr))).padStart(8)}` +
       `${fmt(mean(rows.map(r => r.ndcg))).padStart(8)}` +
       `${fmt(mean(rows.map(r => r.hit))).padStart(8)}` +
+      `${fmt(mean(rows.map(r => r.violation))).padStart(8)}` +
       `${Math.round(percentile(lat, 50)).toString().padStart(9)}` +
       `${Math.round(percentile(lat, 95)).toString().padStart(9)}`);
   }
@@ -365,6 +459,26 @@ ${BOLD}Recall@${K} by category${RESET} ${DIM}(share of ceiling in brackets)${RES
 
 /// Which internal path served each query. This is the number behind any claim about
 /// keeping queries off the LLM: it is measured per request, not assumed from the code.
+/// Only printed for an arm that exposed its pool, which today is the concierge with
+/// ChatSettings:ExposeCandidates on.
+function printRetrievalSplit(results) {
+  const arms = Object.entries(results).filter(([, rows]) => rows.some(r => r.poolSize != null));
+  if (arms.length === 0) return;
+
+  console.log(`
+${BOLD}Retrieval, then shortlist${RESET} ${DIM}the pool before the card cut, and the first three cards${RESET}`);
+  console.log(`  ${'arm'.padEnd(12)}${'pool'.padStart(7)}${'recall@50'.padStart(11)}${'nDCG@50'.padStart(9)}${'gain@3'.padStart(9)}${'nDCG@3'.padStart(9)}`);
+  for (const [arm, rows] of arms) {
+    const scored = rows.filter(r => r.poolSize != null);
+    console.log(`  ${arm.padEnd(12)}${Math.round(mean(scored.map(r => r.poolSize))).toString().padStart(7)}` +
+      `${fmt(mean(scored.map(r => r.poolRecall))).padStart(11)}` +
+      `${fmt(mean(scored.map(r => r.poolNdcg))).padStart(9)}` +
+      `${fmt(mean(scored.map(r => r.shownGain))).padStart(9)}` +
+      `${fmt(mean(scored.map(r => r.shownNdcg))).padStart(9)}`);
+  }
+  console.log(`  ${DIM}a weak pool is a retrieval problem; a good pool with a weak shortlist is a selection problem${RESET}`);
+}
+
 function printPaths(results) {
   // Smart Search and the concierge are the arms with stages worth attributing; without either,
   // hybrid still reports when one retriever contributed nothing.

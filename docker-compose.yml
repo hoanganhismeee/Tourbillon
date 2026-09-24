@@ -70,6 +70,9 @@ services:
       # the app; off here because Ollama serves one request at a time (OLLAMA_NUM_PARALLEL=1), so the
       # two calls would queue rather than overlap. Set true when .env points LLM_BASE_URL at Anthropic.
       ChatSettings__PrefetchParse: ${CHAT_PREFETCH_PARSE:-false}
+      # Evaluation hook: the retrieval pool behind the cards, so the eval can score what was
+      # found apart from what was shown. Local only; production leaves it unset.
+      ChatSettings__ExposeCandidates: ${CHAT_EXPOSE_CANDIDATES:-true}
       Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
       Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
       AWS__AccessKeyId: ${AWS_ACCESS_KEY_ID:-}

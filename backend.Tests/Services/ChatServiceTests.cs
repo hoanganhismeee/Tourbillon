@@ -17,8 +17,8 @@ public class ChatServiceTests
 {
     private static TourbillonContext CreateContext() => TestContextFactory.Create();
 
-    private static IConfiguration CreateConfig(bool disableLimit = true, int dailyLimit = 5) =>
-        TestContextFactory.ChatConfig(disableLimit, dailyLimit);
+    private static IConfiguration CreateConfig(bool disableLimit = true, int dailyLimit = 5, bool exposeCandidates = false) =>
+        TestContextFactory.ChatConfig(disableLimit, dailyLimit, exposeCandidates);
 
     private static readonly IStorageService TestStorage = new TestStorageService();
 
@@ -3299,6 +3299,36 @@ public class ChatServiceTests
 
         // Nothing matched the brief, and the line the backend writes itself comes back in French.
         Assert.Equal(ChatMessages.NoCloseMatch("french"), result.Message);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_CandidatePoolIsHiddenUnlessTheFlagIsOn()
+    {
+        // The pool is an evaluation hook: it lets the eval score what retrieval found apart from
+        // what the reply showed. It is not part of what the frontend reads, so it stays off.
+        using var context = CreateContext();
+        var (finder, handler) = await SeedSmartSearchChipCaseAsync(context);
+        var service = CreateService(context, finder, handler,
+            classifier: new FakeClassifier(_ => new IntentClassification("discovery", 0.95)));
+
+        var result = await service.HandleMessageAsync("session-1", "something for the weekend", null, "127.0.0.1");
+
+        Assert.Null(result.CandidateWatchIds);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_CandidatePoolCarriesWhatRetrievalRanked()
+    {
+        using var context = CreateContext();
+        var (finder, handler) = await SeedSmartSearchChipCaseAsync(context);
+        var service = CreateService(context, finder, handler,
+            config: CreateConfig(exposeCandidates: true),
+            classifier: new FakeClassifier(_ => new IntentClassification("discovery", 0.95)));
+
+        var result = await service.HandleMessageAsync("session-1", "something for the weekend", null, "127.0.0.1");
+
+        Assert.NotNull(result.CandidateWatchIds);
+        Assert.Equal([100, 101], result.CandidateWatchIds);
     }
 
     [Fact]

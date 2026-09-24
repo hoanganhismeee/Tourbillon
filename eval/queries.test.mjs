@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { HANDWRITTEN, SCOPE_BY_CATEGORY, scopeOf, validateQueries } from './queries.mjs';
-import { TRUTH_KEYS, matchesTruth, unknownTruthKeys } from './catalogue.mjs';
+import { TRUTH_KEYS, matchesTruth, unknownTruthKeys, unknownLabelKeys, gradeFor } from './catalogue.mjs';
 
 /// A catalogue record with every field matchesTruth reads, so a test only states what it varies.
 function record(overrides = {}) {
@@ -35,16 +35,72 @@ test('scopes are only spec or semantic', () => {
   assert.equal(scopeOf({ category: 'not_registered' }), 'spec');
 });
 
-test('every handwritten truth uses only keys the matcher understands', () => {
+test('every handwritten label uses only keys the matcher understands', () => {
   const bad = HANDWRITTEN
-    .map(q => ({ id: q.id, keys: unknownTruthKeys(q.truth) }))
+    .map(q => ({ id: q.id, keys: q.rubric ? unknownLabelKeys(q) : unknownTruthKeys(q.truth) }))
     .filter(q => q.keys.length > 0);
   assert.deepEqual(bad, []);
 });
 
 test('every handwritten query states at least one constraint', () => {
-  const unconstrained = HANDWRITTEN.filter(q => Object.keys(q.truth ?? {}).length === 0).map(q => q.id);
+  // A graded label may state no hard constraint — most briefs do not — but it must say what a
+  // good answer looks like, or it scores everything zero.
+  const unconstrained = HANDWRITTEN
+    .filter(q => (q.rubric ? q.rubric.length === 0 : Object.keys(q.truth ?? {}).length === 0))
+    .map(q => q.id);
   assert.deepEqual(unconstrained, []);
+});
+
+test('the semantic half is graded and the facet half is not', () => {
+  const wrong = HANDWRITTEN.filter(q => (scopeOf(q) === 'semantic') !== Boolean(q.rubric)).map(q => q.id);
+  assert.deepEqual(wrong, []);
+});
+
+test('every grade tier explains itself', () => {
+  // The `why` is what a blind judge is shown, so a tier without one cannot be checked by anyone.
+  const silent = HANDWRITTEN.flatMap(q => (q.rubric ?? [])
+    .filter(tier => !tier.why || tier.why.length < 12)
+    .map(tier => `${q.id} grade ${tier.grade}`));
+  assert.deepEqual(silent, []);
+});
+
+test('grades run 1 to 3 and never repeat inside a label', () => {
+  const bad = HANDWRITTEN.filter(q => {
+    const grades = (q.rubric ?? []).map(t => t.grade);
+    return grades.some(g => ![1, 2, 3].includes(g)) || new Set(grades).size !== grades.length;
+  }).map(q => q.id);
+  assert.deepEqual(bad, []);
+});
+
+test('a stated constraint outranks every tier', () => {
+  // The point of the rewrite: an over-budget watch is a violation, however well it reads otherwise.
+  const label = {
+    must: { priceMax: 15000 },
+    rubric: [{ grade: 3, when: { styleAny: ['dress'] }, why: 'elegant' }],
+  };
+  assert.equal(gradeFor(record({ price: 9000, collectionStyles: ['dress'] }), label), 3);
+  assert.equal(gradeFor(record({ price: 40000, collectionStyles: ['dress'] }), label), 0);
+});
+
+test('a tier is taken at its highest grade, not its first match', () => {
+  const label = {
+    rubric: [
+      { grade: 1, when: { diameterMax: 44 }, why: 'wearable' },
+      { grade: 3, when: { diameterMax: 36 }, why: 'sized for the wrist stated' },
+    ],
+  };
+  assert.equal(gradeFor(record({ diameterMm: 35 }), label), 3);
+  assert.equal(gradeFor(record({ diameterMm: 42 }), label), 1);
+  assert.equal(gradeFor(record({ diameterMm: 46 }), label), 0);
+});
+
+test('a tier can be reached two ways', () => {
+  const label = {
+    rubric: [{ grade: 2, whenAny: [{ functionsAny: ['gmt'] }, { styleAny: ['sport'] }], why: 'travels well' }],
+  };
+  assert.equal(gradeFor(record({ functions: ['gmt'] }), label), 2);
+  assert.equal(gradeFor(record({ collectionStyles: ['sport'] }), label), 2);
+  assert.equal(gradeFor(record({}), label), 0);
 });
 
 test('the key list matches what matchesTruth actually reads', () => {

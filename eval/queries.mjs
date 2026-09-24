@@ -4,7 +4,10 @@
 // from the live catalogue, so the set scales with the data instead of going stale against it.
 
 import { mulberry32 } from './metrics.mjs';
-import { normaliseMaterial, relevantIds, unknownTruthKeys } from './catalogue.mjs';
+import {
+  normaliseMaterial, relevantIds, unknownTruthKeys,
+  gradesFor, relevantIdsForTier, unknownLabelKeys,
+} from './catalogue.mjs';
 
 // -- Handwritten set ----------------------------------------------------------
 // Two halves, one per subsystem. The spec half reduces to facets even when the wording hides it,
@@ -127,175 +130,486 @@ export const HANDWRITTEN = [
   // ===========================================================================
   // SEMANTIC SCOPE - concierge
   // ===========================================================================
+  //
+  // Graded labels. `must` holds only what the brief states — a budget, a named brand, an explicit
+  // exclusion — and breaking it is a violation, counted on its own line. `rubric` holds the reading
+  // of the brief: grade 3 is what a knowledgeable salesperson brings out first, 2 fits with a
+  // trade-off, 1 is defensible, anything else is 0. The `why` is the sentence the rubric is argued
+  // from, and it is what a blind judge is shown.
 
   // Occasion.
-  // "Dress" alone covers 62% of this catalogue, so it never discriminates on its own.
-  // Understated is the operative word: modest size, and not a precious metal that shouts.
   { id: 'h01', category: 'occasion', query: 'something understated I can wear to the office every day',
-    truth: { styleAny: ['dress'], diameterMax: 39, materialNone: ['rose gold', 'yellow gold', 'pink gold'] } },
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['dress'], diameterMax: 40, materialNone: ['gold', 'platin'] },
+        why: 'a dress watch that stays quiet: modest case, no precious metal on show' },
+      { grade: 2, when: { styleAny: ['dress'], diameterMax: 42 },
+        why: 'reads dress at a desk, but larger or more precious than ideal' },
+      { grade: 1, when: { diameterMax: 42 },
+        why: 'discreet enough to wear to work even if it is not a dress watch' },
+    ] },
+
   { id: 'h02', category: 'occasion', query: 'a dress watch with some complication, works with a suit',
-    truth: { styleAny: ['dress'], functionsAny: ['moon phase', 'perpetual calendar', 'chronograph'] } },
-  // A groom is photographed all day with the watch under a cuff: classic size, precious case, and
-  // leather because a wedding is formal dress. Without the strap the label matched 26% of the
-  // catalogue; the formal reading is the one the brief supports, not a loosening of it.
+    must: { styleAny: ['dress'] },
+    rubric: [
+      { grade: 3, when: { functionsAny: ['moon phase', 'perpetual calendar', 'annual calendar', 'chronograph'], diameterMax: 41 },
+        why: 'a real complication in a case that still fits under a cuff' },
+      { grade: 2, when: { functionsAny: ['moon', 'calendar', 'chronograph', 'power-reserve', 'second time zone', 'gmt'] },
+        why: 'has a complication, size or type less suited to a suit' },
+      { grade: 1, when: {}, why: 'a plain dress watch: right register, missing the complication asked for' },
+    ] },
+
   { id: 'h47', category: 'occasion', query: 'what should I wear to my own wedding',
-    truth: { styleAny: ['dress'], materialAny: ['gold', 'platin'], diameterMax: 40,
-             strapAny: ['leather', 'alligator', 'calf', 'crocodile'] } },
-  // Not flashy rules out precious metal altogether, which is what an interviewer notices first,
-  // and any showpiece complication. Excluding only warm gold matched 25.1% of the catalogue.
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['dress'], materialAny: ['gold', 'platin'], diameterMax: 40,
+                          strapAny: ['leather', 'alligator', 'calf', 'crocodile'] },
+        why: 'formal dress code, photographed all day: precious case, classic size, leather' },
+      { grade: 2, when: { styleAny: ['dress'], diameterMax: 41 },
+        why: 'a dress watch that suits the day without the formal metal or strap' },
+      { grade: 1, when: { styleAny: ['dress', 'art'] },
+        why: 'dressy enough to defend, even if it is not what a groom would choose' },
+    ] },
+
   { id: 'h48', category: 'occasion', query: "a watch for a job interview that won't look flashy",
-    truth: { styleAny: ['dress'], diameterMax: 40, materialNone: ['gold', 'platin'],
-             functionsNone: ['tourbillon'] } },
-  // Black tie is the most conservative dress code there is: small, precious, no stopwatch pushers.
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['dress'], diameterMax: 40, materialNone: ['gold', 'platin'],
+                          functionsNone: ['tourbillon', 'minute repeater'] },
+        why: 'nothing an interviewer would notice: steel-toned, modest, no showpiece complication' },
+      { grade: 2, when: { styleAny: ['dress'], materialNone: ['gold', 'platin'] },
+        why: 'quiet metal and register, larger or busier than ideal' },
+      { grade: 1, when: { styleAny: ['dress'] }, why: 'a dress watch, though it may read as expensive' },
+    ] },
+
   { id: 'h49', category: 'occasion', query: 'something for a black tie gala',
-    truth: { styleAny: ['dress'], materialAny: ['gold', 'platin'], diameterMax: 39, functionsNone: ['chronograph'] } },
-  // A beach means salt water and sunscreen, so the strap matters as much as the depth rating.
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['dress'], materialAny: ['gold', 'platin'], diameterMax: 39,
+                          functionsNone: ['chronograph'] },
+        why: 'the most formal dress code there is: precious, slim, no stopwatch pushers' },
+      { grade: 2, when: { styleAny: ['dress'] },
+        why: 'a dress watch, in a metal or size that is not the formal choice' },
+      { grade: 1, whenAny: [{ functionsNone: ['chronograph'], diameterMax: 42 },
+                            { materialAny: ['gold', 'platin'], functionsNone: ['chronograph'] }],
+        why: 'quiet enough to pass under a dinner jacket, or precious enough to carry the room' },
+    ] },
+
   { id: 'h50', category: 'occasion', query: 'something to wear on a beach holiday',
-    truth: { waterResistanceMin: 100, strapAny: ['rubber', 'bracelet', 'oyster', 'synthetic'] } },
-  // Monthly long-haul travel is the textbook case for a second time zone.
+    must: {},
+    rubric: [
+      { grade: 3, when: { waterResistanceMin: 100, strapAny: ['rubber', 'synthetic', 'bracelet', 'oyster'],
+                          materialAny: ['steel', 'titan', 'ceramic'] },
+        why: 'salt water and sunscreen: a hard case on a strap that can be rinsed' },
+      { grade: 2, when: { waterResistanceMin: 100 }, why: 'takes the water, strap or case less suited to it' },
+      { grade: 1, when: { waterResistanceMin: 50 }, why: 'survives a splash but not a swim' },
+    ] },
+
   { id: 'h51', category: 'occasion', query: 'I fly between Sydney and London every month',
-    truth: { functionsAny: ['second time zone', 'world time', 'dual time', 'gmt', 'home time'] } },
-  // Put together but relaxed: a steel or titanium sports watch at a size that is not a statement.
+    must: {},
+    rubric: [
+      { grade: 3, when: { functionsAny: ['second time zone', 'world time', 'dual time', 'gmt', 'home time'] },
+        why: 'monthly long-haul is the textbook case for reading a second time zone' },
+      { grade: 2, whenAny: [{ functionsAny: ['date', 'annual calendar'], movementAny: ['automatic'], waterResistanceMin: 50 },
+                            { styleAny: ['sport'], movementAny: ['automatic'] }],
+        why: 'a robust everyday automatic that travels well without the complication' },
+      { grade: 1, when: { movementAny: ['automatic'] }, why: 'wearable on the road, nothing about travel in it' },
+    ] },
+
   { id: 'h52', category: 'occasion', query: 'relaxed weekend brunch but still looking put together',
-    truth: { styleAny: ['sport'], materialAny: ['steel', 'titan'], diameterMax: 42 } },
-  // Signalling success in a boardroom: a precious dress case with a complication people notice.
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['sport'], materialAny: ['steel', 'titan'], diameterMax: 42 },
+        why: 'a steel sports watch at a size that is not a statement' },
+      { grade: 2, whenAny: [{ styleAny: ['sport'] }, { styleAny: ['dress'], diameterMax: 42 }],
+        why: 'either register works for brunch; this one leans one way or the other' },
+      { grade: 1, when: { diameterMax: 44 }, why: 'wearable off duty without looking wrong' },
+    ] },
+
   { id: 'h53', category: 'occasion', query: 'something for board meetings that says I have made it',
-    truth: { styleAny: ['dress'], materialAny: ['gold', 'platin'],
-             functionsAny: ['perpetual', 'moon', 'power-reserve', 'chronograph'] } },
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['dress'], materialAny: ['gold', 'platin'],
+                          functionsAny: ['perpetual', 'moon', 'power-reserve', 'chronograph'] },
+        why: 'precious case with a complication that the room reads as achievement' },
+      { grade: 2, whenAny: [{ styleAny: ['dress'], materialAny: ['gold', 'platin'] },
+                            { styleAny: ['dress'], functionsAny: ['perpetual', 'moon', 'tourbillon'] }],
+        why: 'says it through the metal or the movement, not both' },
+      { grade: 1, when: { styleAny: ['dress', 'art'] }, why: 'boardroom register without the signal' },
+    ] },
 
   // Persona and gifting.
-  // A first serious purchase sits at the entry of the catalogue and is mechanical, not quartz.
   { id: 'h03', category: 'persona', query: 'first serious watch for someone starting a collection',
-    truth: { priceMax: 20000, movementAny: ['automatic'] } },
-  // "Around" five thousand is read as a band either side, not as a ceiling.
+    must: {},
+    rubric: [
+      { grade: 3, when: { priceMax: 15000, movementAny: ['automatic'] },
+        why: 'entry of the catalogue and mechanical, which is what makes it the first serious one' },
+      { grade: 2, when: { priceMax: 25000, movementAny: ['automatic'] },
+        why: 'mechanical, priced above where most people start' },
+      { grade: 1, when: { priceMax: 35000 }, why: 'a defensible first purchase at a stretch' },
+    ] },
+
   { id: 'h54', category: 'persona', query: 'a graduation gift for my son, around five thousand',
-    truth: { priceMin: 2500, priceMax: 8000 } },
-  // A slim wrist sets the size; an anniversary sets the metal.
+    must: { priceMax: 10000 },
+    rubric: [
+      { grade: 3, when: { priceMin: 3900, priceMax: 6500 }, why: 'around five thousand, read as the band the catalogue actually offers' },
+      { grade: 2, when: { priceMin: 2500, priceMax: 8000 }, why: 'near the number without being it' },
+      { grade: 1, when: {}, why: 'inside the outer bound a gift budget stretches to' },
+    ] },
+
   { id: 'h55', category: 'persona', query: 'an anniversary present for my wife, she has a slim wrist',
-    truth: { diameterMax: 36, materialAny: ['gold', 'platin'] } },
-  // Classic, for that generation, means a warm gold dress watch on leather.
+    must: {},
+    rubric: [
+      { grade: 3, when: { diameterMax: 36, materialAny: ['gold', 'platin'] },
+        why: 'sized for a slim wrist, in a metal an anniversary asks for' },
+      { grade: 2, when: { diameterMax: 38 }, why: 'wears small enough, metal is not the occasion' },
+      { grade: 1, when: { diameterMax: 40 }, why: 'borderline on the wrist' },
+    ] },
+
   { id: 'h56', category: 'persona', query: 'a retirement gift for my dad, he likes classic things',
-    truth: { styleAny: ['dress'], materialAny: ['yellow gold', 'rose gold', 'pink gold'],
-             strapAny: ['leather', 'alligator', 'calf', 'crocodile'] } },
-  // A first promotion widens the budget without jumping to haute horlogerie.
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['dress'], materialAny: ['yellow gold', 'rose gold', 'pink gold'],
+                          strapAny: ['leather', 'alligator', 'calf', 'crocodile'] },
+        why: 'classic to that generation is warm gold on leather' },
+      { grade: 2, when: { styleAny: ['dress'], materialAny: ['gold', 'platin'] },
+        why: 'precious dress watch, strap or tone less traditional' },
+      { grade: 1, when: { styleAny: ['dress'] }, why: 'classic register in a plainer metal' },
+    ] },
+
   { id: 'h57', category: 'persona', query: 'something for a young professional who just got promoted',
-    truth: { priceMin: 5000, priceMax: 25000 } },
-  // Constant hand washing rules out leather and needs real water resistance, at a size that stays
-  // out of the way.
+    must: {},
+    rubric: [
+      { grade: 3, when: { priceMin: 5000, priceMax: 25000 }, why: 'a first promotion widens the budget without haute horlogerie' },
+      { grade: 2, when: { priceMin: 3000, priceMax: 40000 }, why: 'plausible for the occasion, above or below the band' },
+      { grade: 1, when: { priceMax: 60000 }, why: 'a stretch, but not absurd for the milestone' },
+    ] },
+
   { id: 'h59', category: 'persona', query: 'my husband is a surgeon and washes his hands all day',
-    truth: { waterResistanceMin: 100, strapAny: ['rubber', 'bracelet', 'oyster', 'synthetic'], diameterMax: 41 } },
-  // Low fuss: self-winding, water resistant enough to forget about, in a hard-wearing case.
+    must: {},
+    rubric: [
+      { grade: 3, when: { waterResistanceMin: 100, strapAny: ['rubber', 'synthetic', 'bracelet', 'oyster'], diameterMax: 41 },
+        why: 'constant water rules out leather; a modest case stays out of the way' },
+      { grade: 2, when: { waterResistanceMin: 100 }, why: 'handles the water, strap or size less suited' },
+      { grade: 1, when: { waterResistanceMin: 50 }, why: 'survives hand washing, not a habit of it' },
+    ] },
+
   { id: 'h60', category: 'persona', query: 'I just want a reliable everyday watch with no fuss',
-    truth: { movementAny: ['automatic'], waterResistanceMin: 100, materialAny: ['steel', 'titan'] } },
+    must: {},
+    rubric: [
+      { grade: 3, when: { movementAny: ['automatic'], waterResistanceMin: 100, materialAny: ['steel', 'titan'] },
+        why: 'self-winding, water resistant enough to forget about, in a hard-wearing case' },
+      { grade: 2, when: { movementAny: ['automatic'], waterResistanceMin: 50 }, why: 'low fuss, less robust' },
+      { grade: 1, when: { movementAny: ['automatic'] }, why: 'no winding to remember, nothing else about it is everyday' },
+    ] },
 
   // Aesthetic.
   { id: 'h07', category: 'aesthetic', query: 'a bold statement piece with real wrist presence',
-    truth: { diameterMin: 44 } },
-  // "Warm" excludes white gold and platinum, which read as cold despite being precious metals.
+    must: {},
+    rubric: [
+      { grade: 3, when: { diameterMin: 44 }, why: 'presence is size first' },
+      { grade: 2, when: { diameterMin: 42 }, why: 'large, short of a statement' },
+      { grade: 1, whenAny: [{ diameterMin: 40 }, { functionsAny: ['tourbillon', 'minute repeater'] }],
+        why: 'makes itself noticed through the movement rather than the case' },
+    ] },
+
   { id: 'h08', category: 'aesthetic', query: 'something warm looking on a leather strap, not cold steel',
-    truth: { materialAny: ['rose gold', 'pink gold', 'yellow gold'], strapAny: ['leather', 'alligator', 'calf'] } },
-  // Time-only means time only: a subsidiary seconds register or a power-reserve hand
-  // already breaks the brief, so they are excluded alongside the obvious complications.
+    must: { materialNone: ['steel'], strapAny: ['leather', 'alligator', 'calf', 'crocodile'] },
+    rubric: [
+      { grade: 3, when: { materialAny: ['rose gold', 'pink gold', 'yellow gold'] }, why: 'warm metal, as asked' },
+      { grade: 2, when: { materialAny: ['gold', 'platin', 'bronze'] }, why: 'precious but cooler in tone' },
+      { grade: 1, when: {}, why: 'on leather and not steel, which is what was ruled out' },
+    ] },
+
   { id: 'h15', category: 'aesthetic', query: 'a clean dress dial with nothing on it but the hands',
-    truth: { styleAny: ['dress'],
-             functionsNone: ['chronograph', 'moon', 'perpetual', 'calendar', 'date', 'seconds', 'power-reserve'] } },
+    must: { styleAny: ['dress'] },
+    rubric: [
+      { grade: 3, when: { functionsNone: ['chronograph', 'moon', 'perpetual', 'calendar', 'date', 'seconds', 'power-reserve'] },
+        why: 'time only: even a seconds register breaks the brief' },
+      { grade: 2, when: { functionsNone: ['chronograph', 'moon', 'perpetual', 'calendar', 'power-reserve'] },
+        why: 'close to bare, keeps a small seconds or a date' },
+      { grade: 1, when: {}, why: 'a dress dial, busier than asked' },
+    ] },
+
   { id: 'h18', category: 'aesthetic', query: 'silver or white dial, very traditional',
-    truth: { dialAny: ['silver', 'white'], styleAny: ['dress'], diameterMax: 40 } },
-  // Minimalist means few indications and a modest case.
+    must: { dialAny: ['silver', 'white'] },
+    rubric: [
+      { grade: 3, when: { styleAny: ['dress'], diameterMax: 40 }, why: 'the traditional reading: a classic dress case' },
+      { grade: 2, when: { styleAny: ['dress'] }, why: 'dress register, larger than traditional' },
+      { grade: 1, when: {}, why: 'right dial, wrong register' },
+    ] },
+
   { id: 'h61', category: 'aesthetic', query: 'minimalist and clean, nothing fussy on the dial',
-    truth: { diameterMax: 40,
-             functionsNone: ['chronograph', 'moon', 'perpetual', 'calendar', 'tourbillon', 'power-reserve', 'date'] } },
-  // Refined enough for dinner turns a sports watch precious.
+    must: {},
+    rubric: [
+      { grade: 3, when: { diameterMax: 40, functionsNone: ['chronograph', 'moon', 'perpetual', 'calendar', 'tourbillon', 'power-reserve', 'date'] },
+        why: 'few indications and a modest case' },
+      { grade: 2, when: { diameterMax: 42, functionsNone: ['chronograph', 'moon', 'perpetual', 'tourbillon'] },
+        why: 'uncluttered, keeps a date or a power reserve' },
+      { grade: 1, when: { functionsNone: ['chronograph', 'tourbillon', 'minute repeater'] }, why: 'not busy, not minimal either' },
+    ] },
+
   { id: 'h62', category: 'aesthetic', query: 'sporty but refined enough for a nice dinner',
-    truth: { styleAny: ['sport'], materialAny: ['gold', 'platin'] } },
-  // Stealth wealth is a precious metal that reads as steel from across the table.
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['sport'], materialAny: ['gold', 'platin'] }, why: 'a sports watch turned precious is the whole brief' },
+      { grade: 2, when: { styleAny: ['sport'], diameterMax: 42 }, why: 'sporty and restrained, in steel' },
+      { grade: 1, when: { styleAny: ['sport'] }, why: 'sporty, refinement not obvious' },
+    ] },
+
   { id: 'h63', category: 'aesthetic', query: 'stealth wealth, luxury only people in the know would spot',
-    truth: { styleAny: ['dress'], materialAny: ['white gold', 'platin'] } },
-  // Jewellery-like: an artistic piece in a precious case at a delicate size.
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['dress'], materialAny: ['white gold', 'platin'] },
+        why: 'precious metal that reads as steel across the table' },
+      { grade: 2, whenAny: [{ styleAny: ['dress'], materialAny: ['titan'] },
+                            { styleAny: ['sport'], materialAny: ['platin', 'white gold'] }],
+        why: 'quiet metal, register slightly off the brief' },
+      { grade: 1, when: { materialNone: ['yellow gold', 'rose gold', 'pink gold'] }, why: 'at least it does not shout' },
+    ] },
+
   { id: 'h64', category: 'aesthetic', query: 'something that looks like a piece of jewellery',
-    truth: { styleAny: ['art'], materialAny: ['gold', 'platin'], diameterMax: 38 } },
-  // Colourful excludes the blue, black, silver and white that make up most of the catalogue.
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['art'], materialAny: ['gold', 'platin'], diameterMax: 38 },
+        why: 'an artistic piece in a precious case at a delicate size' },
+      { grade: 2, whenAny: [{ styleAny: ['art'] }, { materialAny: ['gold', 'platin'], diameterMax: 36 }],
+        why: 'jewellery-like through the decoration or the size, not both' },
+      { grade: 1, when: { materialAny: ['gold', 'platin'] }, why: 'precious, but reads as a watch' },
+    ] },
+
   { id: 'h65', category: 'aesthetic', query: 'a watch with a really colourful dial',
-    truth: { dialAny: ['green', 'red', 'salmon', 'enamel', 'turquoise', 'purple', 'aventurine', 'meteorite'] } },
+    must: {},
+    rubric: [
+      { grade: 3, when: { dialAny: ['green', 'red', 'salmon', 'turquoise', 'purple', 'orange', 'burgundy', 'aventurine', 'meteorite', 'enamel'] },
+        why: 'a colour the catalogue rarely uses, which is what "really colourful" means here' },
+      { grade: 2, when: { dialAny: ['blue', 'brown', 'champagne', 'bronze', 'chocolate'] },
+        why: 'coloured rather than neutral, but common' },
+      { grade: 1, when: { dialAny: ['grey', 'gray', 'slate', 'anthracite', 'mother-of-pearl'] },
+        why: 'a tone rather than a colour' },
+    ] },
 
   // Lifestyle.
-  // Outdoors needs a hard case, a sports build and water resistance for rain and rivers.
   { id: 'h66', category: 'lifestyle', query: 'something tough for hiking and camping',
-    truth: { styleAny: ['sport', 'diver'], materialAny: ['titan', 'steel', 'ceramic'], waterResistanceMin: 100 } },
-  // Race starts run on a countdown, so a chronograph, and it gets wet.
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['sport', 'diver'], materialAny: ['titan', 'steel', 'ceramic'], waterResistanceMin: 100 },
+        why: 'a hard case, a sports build and enough water resistance for rain and rivers' },
+      { grade: 2, when: { styleAny: ['sport', 'diver'], waterResistanceMin: 50 }, why: 'built for outdoors, softer on one count' },
+      { grade: 1, when: { waterResistanceMin: 50 }, why: 'would survive the trip' },
+    ] },
+
   { id: 'h67', category: 'lifestyle', query: 'I race sailboats on weekends',
-    truth: { functionsAny: ['chronograph'], waterResistanceMin: 100 } },
-  // A golf swing punishes weight, so light case materials.
+    must: {},
+    rubric: [
+      { grade: 3, when: { functionsAny: ['chronograph'], waterResistanceMin: 100 },
+        why: 'race starts run on a countdown, and it gets wet' },
+      { grade: 2, whenAny: [{ functionsAny: ['chronograph'] }, { waterResistanceMin: 100, styleAny: ['sport', 'diver'] }],
+        why: 'times the start or takes the water, not both' },
+      { grade: 1, when: { waterResistanceMin: 50 }, why: 'survives spray, no use for the race' },
+    ] },
+
   { id: 'h68', category: 'lifestyle', query: 'something light I can play golf in',
-    truth: { materialAny: ['titan', 'ceramic', 'carbon'] } },
-  // Daily gym sessions mean sweat: a rubber or synthetic strap with some water resistance.
+    must: {},
+    rubric: [
+      { grade: 3, when: { materialAny: ['titan', 'ceramic', 'carbon'], diameterMax: 42 },
+        why: 'a golf swing punishes weight: a light case, not a large one' },
+      { grade: 2, whenAny: [{ materialAny: ['titan', 'ceramic', 'carbon'] }, { diameterMax: 40, materialAny: ['steel'] }],
+        why: 'light through the metal or through the size, not both' },
+      { grade: 1, when: { diameterMax: 42 }, why: 'wearable on a course' },
+    ] },
+
   { id: 'h69', category: 'lifestyle', query: 'I go to the gym every morning before work',
-    truth: { strapAny: ['rubber', 'synthetic'], waterResistanceMin: 50 } },
-  // Knocks are what ceramic and titanium sports cases are for.
+    must: {},
+    rubric: [
+      { grade: 3, when: { strapAny: ['rubber', 'synthetic'], waterResistanceMin: 50, styleAny: ['sport', 'diver'] },
+        why: 'sweat every morning: a strap that wipes clean on a sports build' },
+      { grade: 2, when: { waterResistanceMin: 50, styleAny: ['sport', 'diver'] }, why: 'sports build, strap less suited' },
+      { grade: 1, when: { waterResistanceMin: 50 }, why: 'would survive being worn, not chosen for it' },
+    ] },
+
   { id: 'h70', category: 'lifestyle', query: 'I work with my hands and knock my watch a lot',
-    truth: { materialAny: ['ceramic', 'titan'], styleAny: ['sport', 'diver'] } },
-  // Running and swimming need a sports strap and real water resistance.
+    must: {},
+    rubric: [
+      { grade: 3, when: { materialAny: ['ceramic', 'titan'], styleAny: ['sport', 'diver'] },
+        why: 'knocks are what ceramic and titanium sports cases are for' },
+      { grade: 2, when: { styleAny: ['sport', 'diver'], waterResistanceMin: 100 }, why: 'built to be used, in a softer metal' },
+      { grade: 1, when: { styleAny: ['sport', 'diver'] }, why: 'a sports watch, hardness unproven' },
+    ] },
+
   { id: 'h71', category: 'lifestyle', query: 'a watch I can wear running and swimming',
-    truth: { waterResistanceMin: 100, strapAny: ['rubber', 'synthetic'] } },
+    must: {},
+    rubric: [
+      { grade: 3, when: { waterResistanceMin: 100, strapAny: ['rubber', 'synthetic'] },
+        why: 'swims and runs: a sports strap and real water resistance' },
+      { grade: 2, when: { waterResistanceMin: 100 }, why: 'takes the water, strap is wrong for sweat' },
+      { grade: 1, when: { waterResistanceMin: 50 }, why: 'running yes, swimming no' },
+    ] },
 
   // Collector and horology.
-  // An heirloom is a precious case with a complication that keeps meaning something for decades.
   { id: 'h72', category: 'collector', query: 'an heirloom to pass down to my grandchildren',
-    truth: { materialAny: ['gold', 'platin'], functionsAny: ['perpetual calendar', 'moon'] } },
-  // Showpieces are defined by their complications. Most are Price on Request here, so a price
-  // floor would drop the very watches the brief means.
+    must: {},
+    rubric: [
+      { grade: 3, when: { materialAny: ['gold', 'platin'], functionsAny: ['perpetual calendar', 'moon', 'minute repeater', 'tourbillon'] },
+        why: 'a precious case with a complication that keeps meaning something for decades' },
+      { grade: 2, when: { materialAny: ['gold', 'platin'] }, why: 'precious and lasting, plainer movement' },
+      { grade: 1, when: { functionsAny: ['perpetual', 'tourbillon', 'minute repeater', 'moon'] }, why: 'worth keeping for the movement alone' },
+    ] },
+
   { id: 'h73', category: 'collector', query: 'a true haute horlogerie showpiece',
-    truth: { functionsAny: ['tourbillon', 'minute repeater', 'grande sonnerie', 'split-seconds', 'rattrapante'] } },
-  // The two independents in this catalogue, as opposed to the large maisons.
+    must: {},
+    rubric: [
+      { grade: 3, when: { functionsAny: ['tourbillon', 'minute repeater', 'grande sonnerie', 'split-seconds', 'rattrapante'] },
+        why: 'showpieces are defined by the complication' },
+      { grade: 2, whenAny: [{ functionsAny: ['perpetual calendar', 'equation', 'constant force', 'remontoir'] }, { styleAny: ['art'] }],
+        why: 'serious watchmaking, one step below the headline complications' },
+      { grade: 1, when: { materialAny: ['gold', 'platin'] }, why: 'a fine watch, not a showpiece' },
+    ] },
+
   { id: 'h74', category: 'collector', query: 'something from an independent watchmaker',
-    truth: { brandIn: ['F.P.Journe', 'Greubel Forsey'] } },
+    must: {},
+    rubric: [
+      { grade: 3, when: { brandIn: ['F.P.Journe', 'Greubel Forsey'] }, why: 'the independents in this catalogue' },
+    ] },
+
   { id: 'h75', category: 'collector', query: 'the best of German watchmaking',
-    truth: { brandIn: ['A. Lange & Söhne', 'Glashütte Original'] } },
+    must: {},
+    rubric: [
+      { grade: 3, when: { brand: 'A. Lange & Söhne' }, why: 'the German house that defines the answer' },
+      { grade: 2, when: { brand: 'Glashütte Original' }, why: 'German, from the same town, a tier below in reputation' },
+    ] },
+
   { id: 'h76', category: 'collector', query: 'Japanese craftsmanship',
-    truth: { brand: 'Grand Seiko' } },
-  // Artistic decoration shows on the dial: enamel, engraving, guilloche, openwork.
+    must: {},
+    rubric: [
+      { grade: 3, when: { brand: 'Grand Seiko' }, why: 'the only Japanese maison in the catalogue' },
+    ] },
+
   { id: 'h77', category: 'collector', query: 'a watch with hand-finished artistic decoration',
-    truth: { styleAny: ['art'], dialAny: ['enamel', 'engrav', 'guilloch', 'openwork', 'lacquer'] } },
-  // Value retention is concentrated in the steel sports icons of three houses.
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['art'], dialAny: ['enamel', 'engrav', 'guilloch', 'openwork', 'lacquer'] },
+        why: 'decoration done by hand, on the dial where it shows' },
+      { grade: 2, whenAny: [{ styleAny: ['art'] }, { dialAny: ['enamel', 'engrav', 'guilloch', 'openwork', 'lacquer', 'skeleton'] }],
+        why: 'artistic through the collection or the dial, not both' },
+      { grade: 1, when: { functionsAny: ['tourbillon', 'minute repeater'] }, why: 'finishing lives in the movement instead' },
+    ] },
+
   { id: 'h78', category: 'collector', query: 'something likely to hold its value',
-    truth: { brandIn: ['Patek Philippe', 'Rolex', 'Audemars Piguet'], styleAny: ['sport'], materialAny: ['steel'] } },
-  // The most complicated pieces pair a perpetual calendar with a second major complication.
+    must: {},
+    rubric: [
+      { grade: 3, when: { brandIn: ['Patek Philippe', 'Rolex', 'Audemars Piguet'], styleAny: ['sport'], materialAny: ['steel'] },
+        why: 'value retention is concentrated in the steel sports icons of three houses' },
+      { grade: 2, when: { brandIn: ['Patek Philippe', 'Rolex', 'Audemars Piguet'] }, why: 'the right houses, not the models that hold best' },
+      { grade: 1, when: { brandIn: ['Vacheron Constantin', 'A. Lange & Söhne', 'F.P.Journe', 'Omega'] },
+        why: 'a name that holds something, without the demand of the top three' },
+    ] },
+
   { id: 'h79', category: 'collector', query: 'the most complicated watch you have',
-    truth: { functionsAll: ['perpetual calendar'], functionsAny: ['chronograph', 'tourbillon', 'minute repeater'] } },
-  // An unusual display replaces the three hands: jumping, retrograde, digital or regulator.
+    must: {},
+    rubric: [
+      { grade: 3, when: { functionsAll: ['perpetual calendar'], functionsAny: ['chronograph', 'tourbillon', 'minute repeater'] },
+        why: 'two major complications in one movement is as far as this catalogue goes' },
+      { grade: 2, when: { functionsAny: ['perpetual calendar', 'minute repeater', 'tourbillon', 'split-seconds'] },
+        why: 'one major complication' },
+      { grade: 1, when: { functionsAny: ['chronograph', 'moon', 'annual calendar', 'gmt', 'world time'] },
+        why: 'complicated in the everyday sense' },
+    ] },
+
   { id: 'h58', category: 'collector', query: 'an unusual way of showing the time',
-    truth: { functionsAny: ['jumping', 'retrograde', 'digital', 'regulator'] } },
+    must: {},
+    rubric: [
+      { grade: 3, when: { functionsAny: ['jumping', 'retrograde', 'digital', 'regulator', 'wandering'] },
+        why: 'the display itself is the answer: the hands are replaced or made to jump' },
+      { grade: 2, whenAny: [{ styleAny: ['art'] }, { functionsAny: ['world time', 'equation', 'moon'] }],
+        why: 'reads differently from a three-hander without changing how time is shown' },
+      { grade: 1, when: { functionsAny: ['tourbillon', 'openwork'] }, why: 'unusual to look at, conventional to read' },
+    ] },
 
   // Fit and suitability.
-  // A 15cm wrist wears a case up to about 37mm without overhang.
   { id: 'h80', category: 'fit', query: 'my wrist is only about 15cm around',
-    truth: { diameterMax: 37 } },
-  // Large wrists need 43mm and up before a watch stops looking small.
-  { id: 'h81', category: 'fit', query: 'I have big wrists and most watches look tiny on me',
-    truth: { diameterMin: 43 } },
-  // Slipping under a cuff needs a dress case at modest size without chronograph pushers.
-  { id: 'h82', category: 'fit', query: 'it has to slip under a shirt cuff',
-    truth: { styleAny: ['dress'], diameterMax: 39, functionsNone: ['chronograph'] } },
-  // Scratch resistance is what ceramic cases are chosen for.
-  { id: 'h83', category: 'fit', query: 'something that will not scratch easily',
-    truth: { materialAny: ['ceramic'] } },
-  // Designed for a woman rather than scaled down: small, and dress or artistic.
-  { id: 'h84', category: 'fit', query: "a watch designed for a woman, not a shrunk-down men's watch",
-    truth: { diameterMax: 36, styleAny: ['art', 'dress'] } },
+    must: {},
+    rubric: [
+      { grade: 3, when: { diameterMax: 37 }, why: 'a 15 cm wrist carries about 37 mm without overhang' },
+      { grade: 2, when: { diameterMax: 39 }, why: 'wearable, filling the wrist' },
+      { grade: 1, when: { diameterMax: 41 }, why: 'oversized on that wrist but not absurd' },
+    ] },
 
-  // Budget with a vibe: the judgement is in the style, the number is stated.
+  { id: 'h81', category: 'fit', query: 'I have big wrists and most watches look tiny on me',
+    must: {},
+    rubric: [
+      { grade: 3, when: { diameterMin: 43 }, why: 'large wrists need 43 mm before a watch stops looking small' },
+      { grade: 2, when: { diameterMin: 41 }, why: 'holds its own without presence' },
+      { grade: 1, when: { diameterMin: 40 }, why: 'the smallest that would not disappear' },
+    ] },
+
+  { id: 'h82', category: 'fit', query: 'it has to slip under a shirt cuff',
+    must: {},
+    rubric: [
+      { grade: 3, when: { styleAny: ['dress'], diameterMax: 39, functionsNone: ['chronograph'] },
+        why: 'a slim dress case with nothing sticking out of the side' },
+      { grade: 2, when: { diameterMax: 40, functionsNone: ['chronograph'] }, why: 'small enough, not built for a cuff' },
+      { grade: 1, when: { diameterMax: 42 }, why: 'fits under a loose cuff' },
+    ] },
+
+  { id: 'h83', category: 'fit', query: 'something that will not scratch easily',
+    must: {},
+    rubric: [
+      { grade: 3, when: { materialAny: ['ceramic'] }, why: 'ceramic is what scratch resistance is chosen for' },
+      { grade: 2, when: { materialAny: ['titan', 'carbon', 'tantalum'] }, why: 'harder wearing than steel, softer than ceramic' },
+      { grade: 1, when: { materialAny: ['steel'] }, why: 'marks, but takes it' },
+    ] },
+
+  { id: 'h84', category: 'fit', query: "a watch designed for a woman, not a shrunk-down men's watch",
+    must: {},
+    rubric: [
+      { grade: 3, when: { diameterMax: 36, styleAny: ['art', 'dress'] },
+        why: 'designed small rather than scaled down, with decoration of its own' },
+      { grade: 2, when: { diameterMax: 38 }, why: 'sized for the brief, generic in design' },
+      { grade: 1, when: { diameterMax: 40 }, why: 'wearable, still a unisex case' },
+    ] },
+
+  // Budget with a vibe: the number is stated, so it is a constraint; the vibe is graded.
   { id: 'h87', category: 'budget_vibe', query: 'something elegant under fifteen thousand',
-    truth: { styleAny: ['dress'], priceMin: 1, priceMax: 15000 } },
+    must: { priceMax: 15000 },
+    rubric: [
+      { grade: 3, when: { styleAny: ['dress'], diameterMax: 40 }, why: 'elegant reads as a classic dress case' },
+      { grade: 2, when: { styleAny: ['dress'] }, why: 'dress register, larger than elegant' },
+      { grade: 1, when: { styleAny: ['dress', 'art'] }, why: 'not sporty, which is the least the brief asks' },
+    ] },
+
   { id: 'h88', category: 'budget_vibe', query: 'a luxurious sports watch around fifty grand',
-    truth: { styleAny: ['sport'], priceMin: 35000, priceMax: 70000 } },
+    must: { priceMin: 25000, priceMax: 80000 },
+    rubric: [
+      { grade: 3, when: { styleAny: ['sport'], priceMin: 40000, priceMax: 60000 }, why: 'a sports watch at the number, in the luxury tier' },
+      { grade: 2, when: { styleAny: ['sport'] }, why: 'the right kind of watch, off the number' },
+      { grade: 1, when: {}, why: 'inside the band, wrong register' },
+    ] },
+
   { id: 'h89', category: 'budget_vibe', query: 'my first step into haute horlogerie, under a hundred thousand',
-    truth: { styleAny: ['dress', 'art'], priceMin: 30000, priceMax: 100000 } },
-  // The cheapest proper diver is the bottom of the diver range, well below the catalogue median.
+    must: { priceMax: 100000 },
+    rubric: [
+      { grade: 3, when: { priceMin: 30000, functionsAny: ['perpetual', 'tourbillon', 'minute repeater', 'moon', 'split-seconds'] },
+        why: 'a real complication at the entry of haute horlogerie' },
+      { grade: 2, when: { priceMin: 20000 }, why: 'the tier, without the complication that defines it' },
+      { grade: 1, when: {}, why: 'inside the budget, below the tier' },
+    ] },
+
   { id: 'h90', category: 'budget_vibe', query: 'the cheapest proper dive watch you have',
-    truth: { styleAny: ['diver'], priceMin: 1, priceMax: 15000 } },
-  // "Not a sports watch" is stated as what remains: dress or artistic.
+    must: { waterResistanceMin: 100 },
+    rubric: [
+      { grade: 3, when: { styleAny: ['diver'], priceMax: 12000 }, why: 'a real diver at the bottom of the range' },
+      { grade: 2, when: { styleAny: ['diver'] }, why: 'a proper diver, not the cheapest' },
+      { grade: 1, when: { styleAny: ['sport'] }, why: 'takes the water without being built for diving' },
+    ] },
+
   { id: 'h91', category: 'budget_vibe', query: 'something special for about thirty thousand, not a sports watch',
-    truth: { styleAny: ['dress', 'art'], priceMin: 20000, priceMax: 40000 } },
+    must: { priceMin: 15000, priceMax: 50000, styleNone: ['sport', 'diver'] },
+    rubric: [
+      { grade: 3, when: { priceMin: 25000, priceMax: 35000, styleAny: ['dress', 'art'] }, why: 'at the number, and special rather than everyday' },
+      { grade: 2, when: { priceMin: 20000, priceMax: 40000 }, why: 'near the number, inside what was not ruled out' },
+      { grade: 1, when: {}, why: 'inside the band and not a sports watch' },
+    ] },
 ];
 
 // -- Generated set ------------------------------------------------------------
@@ -427,19 +741,53 @@ export function scopeOf(query) {
 /// Anything the harness cannot score fairly is reported and excluded rather than silently kept.
 export function validateQueries(catalogue, queries, { maxShare = 0.25 } = {}) {
   const total = catalogue.records.length;
-  return queries.map(q => {
-    const relevant = relevantIds(catalogue, q.truth);
-    const share = total === 0 ? 0 : relevant.size / total;
-    const badKeys = unknownTruthKeys(q.truth);
-    let status = 'ok';
-    // Checked first: an unknown key is silently unconstrained, so the label is wider than
-    // written and every other status computed from it would be measuring the typo.
-    if (badKeys.length > 0) status = 'invalid_key';
-    else if (relevant.size === 0) status = 'empty';
-    else if (share > maxShare) status = 'too_broad';
-    else if (relevant.size < 2 && q.category !== 'reference') status = 'thin';
-    return { ...q, relevant, relevantCount: relevant.size, share, status, badKeys };
-  });
+  return queries.map(q => (q.rubric ? validateGraded(catalogue, q, total, maxShare)
+                                    : validateBinary(catalogue, q, total, maxShare)));
+}
+
+/// Spec labels: one predicate, one relevant set, as before.
+function validateBinary(catalogue, q, total, maxShare) {
+  const relevant = relevantIds(catalogue, q.truth);
+  const share = total === 0 ? 0 : relevant.size / total;
+  const badKeys = unknownTruthKeys(q.truth);
+  let status = 'ok';
+  // Checked first: an unknown key is silently unconstrained, so the label is wider than
+  // written and every other status computed from it would be measuring the typo.
+  if (badKeys.length > 0) status = 'invalid_key';
+  else if (relevant.size === 0) status = 'empty';
+  else if (share > maxShare) status = 'too_broad';
+  else if (relevant.size < 2 && q.category !== 'reference') status = 'thin';
+  return { ...q, relevant, relevantCount: relevant.size, share, status, badKeys };
+}
+
+/// Graded labels: the health of the label is the health of its top tier, plus two checks the
+/// binary form never needed — a `must` nothing satisfies makes every answer a violation, and a
+/// tier that matches fewer watches than the tier above it means the grades are the wrong way round.
+function validateGraded(catalogue, q, total, maxShare) {
+  const { grades, violating } = gradesFor(catalogue, q);
+  const tierCounts = [...(q.rubric ?? [])]
+    .sort((a, b) => b.grade - a.grade)
+    .map(tier => ({ grade: tier.grade, count: relevantIdsForTier(catalogue, tier).size }));
+  const ideal = new Set([...grades.entries()].filter(([, g]) => g === 3).map(([id]) => id));
+  const useful = new Set([...grades.entries()].filter(([, g]) => g >= 2).map(([id]) => id));
+  const share = total === 0 ? 0 : ideal.size / total;
+  const badKeys = unknownLabelKeys(q);
+  const mustCount = total - violating.size;
+
+  let status = 'ok';
+  if (badKeys.length > 0) status = 'invalid_key';
+  else if (mustCount === 0) status = 'must_empty';
+  else if (ideal.size === 0) status = 'empty';
+  else if (share > maxShare) status = 'too_broad';
+  else if (ideal.size < 2) status = 'thin';
+  else if (tierCounts.some(tier => tier.count === 0)) status = 'tier_dead';
+
+  // `relevant` stays populated so everything that still thinks in sets — action scoring, the
+  // per-category recall table — keeps working; grade 2 is the "would actually consider it" line.
+  return {
+    ...q, relevant: useful, ideal, relevantCount: ideal.size, grades, violating, tierCounts,
+    mustCount, share, status, badKeys,
+  };
 }
 
 // -- Helpers ------------------------------------------------------------------

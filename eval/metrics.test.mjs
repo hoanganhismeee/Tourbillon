@@ -7,7 +7,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { recallAtK, precisionAtK, reciprocalRank, ndcgAtK, recallCeiling, percentile, significance } from './metrics.mjs';
+import {
+  recallAtK, precisionAtK, reciprocalRank, ndcgAtK, recallCeiling, percentile, significance,
+  gain, gainAtK, ndcgAtKGraded, usefulHitAtK, violationRateAtK,
+} from './metrics.mjs';
 
 const relevant = new Set([1, 2, 3]);
 
@@ -76,4 +79,43 @@ test('an interval that crosses zero is inconclusive', () => {
   assert.equal(significance({ lo: -0.05, hi: 0.1 }), 'not significant');
   assert.equal(significance({ lo: 0, hi: 0.1 }), 'not significant');
   assert.equal(significance(null), 'not significant');
+});
+
+// -- Graded metrics -----------------------------------------------------------
+// The open-ended half is judged 0-3. These hold the properties that make the grades worth having:
+// a near miss scores something, an ideal answer first scores more than an ideal answer fourth,
+// and a constraint the brief stated is counted rather than averaged into the mean.
+
+const grades = new Map([[1, 3], [2, 2], [3, 1]]);
+
+test('a near miss scores instead of counting as a failure', () => {
+  // Binary relevance scored this list 0; the grade-2 result is now worth something.
+  assert.ok(gainAtK([2, 9, 9], grades, 3) > 0);
+  assert.equal(gainAtK([9, 9, 9], grades, 3), 0);
+});
+
+test('nDCG rewards the best answer first', () => {
+  const best = ndcgAtKGraded([1, 2, 3], grades, 3);
+  const worst = ndcgAtKGraded([3, 2, 1], grades, 3);
+  assert.equal(best, 1);
+  assert.ok(worst < best);
+});
+
+test('nDCG normalises against the grades available, not a perfect list', () => {
+  // Only one grade-3 exists, so surfacing it first is full marks even though slots 2 and 3 are weaker.
+  assert.equal(ndcgAtKGraded([1, 2, 3], new Map([[1, 3], [2, 2], [3, 1]]), 3), 1);
+});
+
+test('a hit needs grade 2 or better', () => {
+  assert.equal(usefulHitAtK([3, 9, 9], grades, 3), 0);  // grade 1 is defensible, not useful
+  assert.equal(usefulHitAtK([2, 9, 9], grades, 3), 1);
+});
+
+test('violations are counted over what was shown, not over the catalogue', () => {
+  assert.equal(violationRateAtK([5, 6, 1], new Set([5, 6]), 3), 2 / 3);
+  assert.equal(violationRateAtK([], new Set([5]), 3), null);
+});
+
+test('gain is exponential so one excellent result beats two adequate ones', () => {
+  assert.ok(gain(3) > 2 * gain(2));
 });

@@ -48,6 +48,54 @@ export function hitAtK(ranked, relevant, k) {
   return ranked.slice(0, k).some(id => relevant.has(id)) ? 1 : 0;
 }
 
+// -- Graded metrics -----------------------------------------------------------
+//
+// The open-ended half is judged 0-3 rather than right/wrong, because those briefs have no single
+// right answer. These take a Map<id, grade> holding only the graded ids; anything absent is 0.
+
+/// Gain for a grade. Exponential, so grade 3 is worth more than two grade-2 results: the point of
+/// the open-ended half is what the concierge brings out first, not how much it can list.
+export function gain(grade) {
+  return grade > 0 ? 2 ** grade - 1 : 0;
+}
+
+/// nDCG@k over graded relevance, normalised against the best ordering the grades allow.
+export function ndcgAtKGraded(ranked, grades, k) {
+  if (grades.size === 0) return null;
+  let dcg = 0;
+  for (let i = 0; i < Math.min(ranked.length, k); i++) {
+    dcg += gain(grades.get(ranked[i]) ?? 0) / Math.log2(i + 2);
+  }
+  const ideal = [...grades.values()].sort((a, b) => b - a).slice(0, k);
+  let idcg = 0;
+  for (let i = 0; i < ideal.length; i++) idcg += gain(ideal[i]) / Math.log2(i + 2);
+  return idcg === 0 ? null : dcg / idcg;
+}
+
+/// Average grade over the k slots, as a share of a perfect 3. This is the graded reading of
+/// precision@k: the denominator is k, so three good results out of ten slots is not a perfect score.
+export function gainAtK(ranked, grades, k) {
+  if (grades.size === 0) return null;
+  let total = 0;
+  for (let i = 0; i < k; i++) total += grades.get(ranked[i]) ?? 0;
+  return total / (k * 3);
+}
+
+/// True when the top k holds something the user would actually consider — grade 2 or better.
+/// Grade 1 is defensible rather than useful, so it does not count as a hit.
+export function usefulHitAtK(ranked, grades, k, threshold = 2) {
+  if (grades.size === 0) return null;
+  return ranked.slice(0, k).some(id => (grades.get(id) ?? 0) >= threshold) ? 1 : 0;
+}
+
+/// Share of the top k that breaks a constraint the brief stated. Reported on its own line: an
+/// average grade can look respectable while a third of the list is over budget.
+export function violationRateAtK(ranked, violating, k) {
+  const shown = ranked.slice(0, k);
+  if (shown.length === 0) return null;
+  return shown.filter(id => violating.has(id)).length / shown.length;
+}
+
 /// The highest recall@k this query can reach: a result list holds k items, so a label matching
 /// more than k watches caps the score at k/|relevant| however good the ranking is.
 ///

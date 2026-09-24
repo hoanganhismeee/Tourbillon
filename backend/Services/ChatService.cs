@@ -94,6 +94,12 @@ public class ChatApiResponse
     /// cache, so no change to the concierge's routing can be measured.
     public string? RoutingPath { get; set; }
     public string? FinderPath { get; set; }
+
+    /// The retrieval pool behind the cards, in rank order, when ChatSettings:ExposeCandidates is on.
+    /// Scoring the concierge on the cards alone conflates two jobs — whether retrieval found the
+    /// right watch and whether the shortlist picked it — and those are fixed in different places.
+    /// Off in production: it is an evaluation hook, not part of the contract the frontend reads.
+    public List<int>? CandidateWatchIds { get; set; }
 }
 
 public class ChatService
@@ -236,6 +242,8 @@ public class ChatService
         public ChatSessionState? SessionState { get; set; }
         public bool SuppressCompareSuggestion { get; set; }
         public List<string> SuggestedCompareSlugs { get; set; } = [];
+        // Retrieval's own output before the card cut, for the evaluation hook above.
+        public List<int> CandidateWatchIds { get; set; } = [];
         // Brands and collections whose context this reply supplies beyond the cards. The draft
         // validator accepts them: a question about two brands has to be answerable in both names,
         // even when only one of them has cards on screen.
@@ -693,6 +701,10 @@ public class ChatService
             DailyLimit = disableLimit || isAdmin ? null : dailyLimit,
             RoutingPath = resolution.RoutingPath,
             FinderPath = resolution.SearchPath,
+            CandidateWatchIds = _config.GetValue<bool>("ChatSettings:ExposeCandidates")
+                && resolution.CandidateWatchIds.Count > 0
+                ? resolution.CandidateWatchIds
+                : null,
         };
 
         // Store a context-free turn for reuse. Skip degraded replies (AI fallback / canned error)
@@ -3008,6 +3020,11 @@ public class ChatService
         int cardLimit = DiscoveryCardLimit,
         string? aiMode = null)
     {
+        var candidateIds = result.Watches.Concat(result.OtherCandidates)
+            .Select(watch => watch.Id)
+            .Distinct()
+            .Take(50)
+            .ToList();
         var topIds = result.Watches.Take(DiscoveryCardLimit).Select(w => w.Id).Distinct().ToList();
         var ordered = await LoadWatchesByIdsAsync(topIds);
         var requestedDirections = DetectDiscoveryDirections(query);
@@ -3180,6 +3197,7 @@ public class ChatService
             return new ChatResolution
             {
                 AiMode = aiMode,
+                CandidateWatchIds = candidateIds,
                 Message = coverageMessage,
                 WatchCards = discoveryCards,
                 Actions = actions,
@@ -3196,6 +3214,7 @@ public class ChatService
         {
             UseAi = true,
             AiMode = aiMode,
+            CandidateWatchIds = candidateIds,
             Message = BuildGroundedDiscoveryMessage(ordered, offerSmartSearch, requestedDirections),
             Query = query,
             Context = context,

@@ -110,6 +110,39 @@ stopped at the ceiling — so the ceiling is the control and the reply used to s
 per link on an address the reader never sees. Those tokens are now sentences, and a reply cut at
 the ceiling ends at its last complete clause rather than mid-thought.
 
+## Labels v2: how the open-ended half is judged
+
+2026-09-24. The semantic labels were conjunctions of facets, most of them invented by the label
+author: "something for a black tie gala" demanded gold and 39 mm, neither stated by the brief, so a
+white-gold 40 mm dress watch scored as low as a dive watch. Each brief now states only what the user
+stated (`must`) and reads the rest as grades 3/2/1 with the sentence the tier is argued from.
+
+On the same 50 briefs, scored on the free arms, this moves the numbers a long way — not because
+retrieval improved, but because a near miss is no longer counted as a failure:
+
+| Metric | v1 labels (BM25) | v2 labels (BM25) |
+|---|---|---|
+| Precision@5 / mean grade | 0.21 | 0.44 |
+| MRR | 0.32 | 0.63 |
+| nDCG@10 | 0.17 | 0.30 |
+| Hit rate@10 | 66% | 86% |
+| Constraint violations in the top 10 | not measured | 13% |
+
+**v1 and v2 numbers cannot be compared.** Everything published before 2026-09-24 is v1.
+
+**The rubrics were checked blind.** `eval/judge-pool.mjs` pools candidates from BM25, the fused
+retriever and three random watches, hides which system found what, and asks Haiku to grade them
+against the rubric's own sentences. On 64 judgements across 12 briefs the first pass agreed exactly
+59% of the time and within one grade 92%, with five two-grade disagreements. Three were the rubric's
+fault and were moved: "light enough for golf" had matched a 43 mm ceramic chronograph, black tie
+scored a 43.5 mm white-gold piece as zero, and "around five thousand" had been read more tightly
+than the catalogue allows. After those fixes: **55% exact, 94% within one grade, one two-grade
+disagreement left** — a 300 m Polaris the judge called "not sports" for a brief that says "not a
+sports watch". That one is the rubric standing its ground, and it is why a stated constraint is a
+constraint rather than a preference.
+
+The judge costs $0.02 a pass and is a second opinion, never the source of truth.
+
 ## Known gaps in these numbers
 - **One request took 134 s** during the run, an API stall rather than pipeline work. It is the
   maximum, not the p95, so the table is unaffected.

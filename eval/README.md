@@ -20,6 +20,7 @@ node eval/run-eval.mjs                     # full run, both arms
 node eval/run-eval.mjs --scope=spec --arms=bm25,keyword,vector,hybrid,smart         # facet queries
 node eval/run-eval.mjs --scope=semantic --arms=bm25,keyword,vector,hybrid,concierge  # open-ended briefs
 node eval/run-eval.mjs --from=eval/results/eval-<stamp>.json   # re-print a saved run, no API calls
+node eval/run-eval.mjs --rescore=eval/results/<run>.json      # score a saved run against today's labels
 node eval/compare-runs.mjs --a=<run.json> --b=<run.json> --arm=concierge   # same arm, two runs: paired deltas, latency, per-category
 ```
 
@@ -39,6 +40,7 @@ after 5 queries. Each scope holds 50 queries and runs sequentially per arm. The 
 | `--limit` | all | Score only the first N queries (smoke runs) |
 | `--delay` | `0` | Milliseconds between requests |
 | `--from` | none | Re-print the report from a saved JSON run instead of calling any arm |
+| `--rescore` | none | Re-score a saved run's stored ranked ids against the current labels, without calling any arm. Changing a label costs nothing after this |
 
 Each run writes a full per-query JSON record to `eval/results/`.
 
@@ -81,6 +83,30 @@ with the definition instead of having to trust a hand-picked list.
 for the office" is decided from the brief alone. Labelling by eyeballing what the pipeline
 returned would score the pipeline against itself.
 
+**The open-ended half is graded, not binary.** Its first version labelled every brief as a
+conjunction of facets, most of them invented by the label author: "something for a black tie gala"
+demanded gold and 39 mm, neither of which the brief says, and a white-gold 40 mm dress watch scored
+as low as a dive watch. A graded label separates the two things that were conflated:
+
+```js
+{ id: 'h49', query: 'something for a black tie gala',
+  must: {},                                    // only what the brief states
+  rubric: [
+    { grade: 3, when: { styleAny: ['dress'], materialAny: ['gold', 'platin'], diameterMax: 39,
+                        functionsNone: ['chronograph'] },
+      why: 'the most formal dress code there is: precious, slim, no stopwatch pushers' },
+    { grade: 2, when: { styleAny: ['dress'] }, why: 'a dress watch, in a metal or size that is not the formal choice' },
+    { grade: 1, when: { functionsNone: ['chronograph'], diameterMax: 42 }, why: 'quiet enough to pass under a dinner jacket' },
+  ] }
+```
+
+- `must` holds what the user actually stated — a budget, a named brand, an explicit exclusion.
+  Breaking it is a **violation**, reported on its own line rather than averaged into a score.
+- `rubric` holds the reading of the brief: grade 3 is what a knowledgeable salesperson brings out
+  first, 2 fits with a trade-off, 1 is defensible, anything else is 0. A watch takes the highest
+  tier it satisfies, and a tier may be reached two ways through `whenAny`.
+- `why` is the sentence the tier is argued from, and it is what a blind judge is shown.
+
 The set is 100 queries, split evenly by the subsystem that owns them:
 
 | Scope | Owner | n | Categories |
@@ -102,11 +128,13 @@ Two sources feed the set:
   construction, seeded so the sample is identical on every run, and capped by `GENERATED_CAPS`
   so repetitive facet lookups do not crowd out the handwritten wording.
 
-`--validate` rejects four kinds of bad label before scoring: **invalid_key** (a truth key the
-matcher does not read, which would silently widen the label), **empty** (no catalogue match, so
-the label is wrong), **too_broad** (matches over `--max-share` of the catalogue, so any arm scores
-well and the metric discriminates nothing), and **thin** (under 2 matches, so recall jumps between
-0 and 0.5 on a single result).
+`--validate` rejects six kinds of bad label before scoring: **invalid_key** (a key the matcher does
+not read, which would silently widen the label), **must_empty** (no watch satisfies the stated
+constraint, so every answer counts as a violation), **empty** (nothing reaches grade 3, so the label
+is wrong), **too_broad** (grade 3 covers over `--max-share` of the catalogue, so any arm scores well
+and the metric discriminates nothing), **thin** (under 2 watches at grade 3, so recall jumps between
+0 and 0.5 on a single result), and **tier_dead** (a grade tier matches nothing at all, which is how
+a misspelt dial colour or a facet the catalogue does not carry hides).
 
 One data rule the harness enforces: **price 0 is "Price on Request", not free**. Those watches
 stay in the catalogue but can never satisfy a budget constraint, because their price is unknown.
@@ -117,7 +145,11 @@ stay in the catalogue but can never satisfy a budget constraint, because their p
 |---|---|
 | **Recall@10** | Of everything that should have matched, how much did the user see? |
 | **Precision@5** | Of the top 5, how much was actually relevant? Denominator is 5, not the result count, so returning 3 good results out of a possible 10 is not scored as perfect. |
-| **MRR** | How far down was the first good result? Rewards getting one right answer to the top. |
+| **MRR** | How far down was the first good result? Rewards getting one right answer to the top. On the graded half, "good" means grade 2 or better. |
+| **Mean grade** (`prec` column, graded half) | Average grade over the k slots as a share of a perfect 3, so a near miss scores instead of counting as a failure. |
+| **Violations** (`viol`) | Share of the top k that breaks a constraint the brief stated. Separate by design: an average grade can look respectable while a third of the list is over budget. |
+| **Pool recall@50 / nDCG@50** | What retrieval ranked before the card cut. Printed only for an arm that exposes its pool: the concierge, with `ChatSettings:ExposeCandidates` on. |
+| **gain@3 / nDCG@3** | What the reply actually showed. A weak pool is a retrieval problem; a good pool with a weak shortlist is a selection problem, and the two are fixed in different places. |
 | **nDCG@10** | Recall weighted by rank — separates "relevant but buried" from "relevant and first". |
 | **Hit rate@10** | Did the user see anything useful at all? The most legible number for non-engineers. |
 | **p50 / p95 latency** | What a single user waits. The mean hides the tail of slow model calls; p95 is the number worth quoting. |

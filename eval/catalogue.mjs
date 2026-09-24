@@ -77,7 +77,8 @@ function parseFirstNumber(value) {
 export const TRUTH_KEYS = new Set([
   'priceMin', 'priceMax', 'brand', 'brandIn', 'excludeBrand', 'collection',
   'diameterMin', 'diameterMax', 'waterResistanceMin', 'powerReserveMin',
-  'materialAny', 'materialNone', 'caseBackAny', 'movementAny', 'dialAny', 'strapAny', 'styleAny',
+  'materialAny', 'materialNone', 'caseBackAny', 'movementAny', 'dialAny', 'strapAny',
+  'styleAny', 'styleNone',
   'functionsAny', 'functionsAll', 'functionsNone', 'ids',
 ]);
 
@@ -111,6 +112,9 @@ export function matchesTruth(w, truth) {
   if (truth.dialAny != null && !truth.dialAny.some(c => w.dialColour.includes(c))) return false;
   if (truth.strapAny != null && !truth.strapAny.some(s => w.strapMaterial.includes(s))) return false;
   if (truth.styleAny != null && !truth.styleAny.some(s => w.collectionStyles.includes(s))) return false;
+  // "not a sports watch" is a constraint the user states; without this it had to be rewritten as a
+  // guess at what they do want, which is the inversion this label version exists to stop.
+  if (truth.styleNone != null && truth.styleNone.some(s => w.collectionStyles.includes(s))) return false;
 
   if (truth.functionsAny != null && !truth.functionsAny.some(f => w.functions.some(fn => fn.includes(f)))) return false;
   if (truth.functionsAll != null && !truth.functionsAll.every(f => w.functions.some(fn => fn.includes(f)))) return false;
@@ -137,6 +141,72 @@ export function compact(value) {
 /// Materialises the relevant id set for a query by scanning the whole catalogue.
 export function relevantIds(catalogue, truth) {
   return new Set(catalogue.records.filter(w => matchesTruth(w, truth)).map(w => w.id));
+}
+
+// -- Graded ground truth ------------------------------------------------------
+//
+// A brief that names no facet has no single right answer, and the first version of these labels
+// pretended otherwise: "something for a black tie gala" demanded gold and 39 mm, neither of which
+// the brief says, and scored a white-gold 40 mm dress watch exactly as low as a dive watch.
+//
+// A graded label separates the two things that were conflated. `must` holds what the brief
+// actually states — a budget, a named brand, an explicit exclusion — and breaking it is a
+// violation, reported on its own. `rubric` holds the taste reading, as tiers: grade 3 is what a
+// knowledgeable salesperson would bring out first, 2 fits with a trade-off, 1 is defensible.
+
+/// True when a stated constraint is broken. An empty `must` is never violated.
+export function violatesMust(watch, must) {
+  if (!must || Object.keys(must).length === 0) return false;
+  return !matchesTruth(watch, must);
+}
+
+/// Grade for one watch: 0 when it breaks a stated constraint or matches no tier, otherwise the
+/// grade of the highest tier it satisfies. Tiers are read highest first, so a wider tier-2 clause
+/// never pulls down a watch that also satisfies tier 3.
+export function gradeFor(watch, label) {
+  if (violatesMust(watch, label.must)) return 0;
+  for (const tier of [...(label.rubric ?? [])].sort((a, b) => b.grade - a.grade)) {
+    if (tierMatches(watch, tier)) return tier.grade;
+  }
+  return 0;
+}
+
+/// A tier holds either one clause set (`when`) or several alternatives (`whenAny`), because a brief
+/// can be answered two different ways at the same grade: a traveller is served by a GMT complication
+/// or by a robust everyday automatic, and forcing those into one conjunction would exclude both.
+function tierMatches(watch, tier) {
+  if (tier.when && matchesTruth(watch, tier.when)) return true;
+  return (tier.whenAny ?? []).some(clause => matchesTruth(watch, clause));
+}
+
+/// Grades for the whole catalogue, with the ids that break a stated constraint kept apart so a
+/// violation can be counted rather than averaged away.
+export function gradesFor(catalogue, label) {
+  const grades = new Map();
+  const violating = new Set();
+  for (const watch of catalogue.records) {
+    if (violatesMust(watch, label.must)) violating.add(watch.id);
+    const grade = gradeFor(watch, label);
+    if (grade > 0) grades.set(watch.id, grade);
+  }
+  return { grades, violating };
+}
+
+/// The ids one tier matches on its own, for the label-health check that grades widen as they fall.
+export function relevantIdsForTier(catalogue, tier) {
+  return new Set(catalogue.records.filter(w => tierMatches(w, tier)).map(w => w.id));
+}
+
+/// Every key a graded label reads, for the same typo check `unknownTruthKeys` runs on a flat truth.
+export function unknownLabelKeys(label) {
+  const keys = [
+    ...unknownTruthKeys(label.must ?? {}),
+    ...(label.rubric ?? []).flatMap(tier => [
+      ...unknownTruthKeys(tier.when ?? {}),
+      ...(tier.whenAny ?? []).flatMap(clause => unknownTruthKeys(clause)),
+    ]),
+  ];
+  return [...new Set(keys)];
 }
 
 // -- Facet inspection ---------------------------------------------------------

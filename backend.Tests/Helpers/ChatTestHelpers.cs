@@ -174,12 +174,13 @@ internal static class TestContextFactory
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
                 .Options);
 
-    internal static IConfiguration ChatConfig(bool disableLimit = true, int dailyLimit = 5) =>
+    internal static IConfiguration ChatConfig(bool disableLimit = true, int dailyLimit = 5, bool exposeCandidates = false) =>
         new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ChatSettings:DisableLimitInDev"] = disableLimit ? "true" : "false",
                 ["ChatSettings:DailyLimit"] = dailyLimit.ToString(),
+                ["ChatSettings:ExposeCandidates"] = exposeCandidates ? "true" : "false",
             })
             .Build();
 }
