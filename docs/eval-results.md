@@ -6,6 +6,36 @@ anchored. How the harness works — arms, labels, metrics, significance — is i
 [eval/README.md](../eval/README.md) (English) and [eval/FRAMEWORK.md](../eval/FRAMEWORK.md)
 (Vietnamese).
 
+## At a glance
+
+Two systems, two query sets, two different claims.
+
+| | Smart Search | Concierge |
+|---|---|---|
+| Answers | briefs that name a filter | briefs that name none |
+| Query set | 50 facet queries, **development set** | 36 briefs, **held out** |
+| Baseline | BM25 | BM25 |
+| nDCG@10 | **0.76** vs 0.57 | 0.36 vs 0.30 |
+| Precision@5 / mean grade | **0.72** vs 0.54 | 0.49 vs 0.42 |
+| Recall@10, share of ceiling | **77%** vs 61% | 29% vs 19% |
+| Results breaking a stated constraint | - | **0 of 191** vs 15% |
+| Latency, p95 | 28 ms | 8.5 s |
+| Model calls per query | none | 3 |
+
+**Smart Search beats the baseline on all four ranking metrics with 95% confidence.** The concierge
+beats it on none of them: every difference is inside the interval on 36 briefs, so the claim there is
+that it matches a keyword baseline at retrieval while doing what a keyword baseline cannot — read the
+brief, answer in prose, attach a next step that is useful 83% of the time — and that nothing it shows
+breaks what the shopper said.
+
+**Method.** Labels say what a right answer is ("a dress watch, 40 mm or smaller, in a precious
+metal") rather than listing watches, and were written from the query before any result was seen. The
+open-ended half is graded 0-3 rather than judged right or wrong, with what the shopper stated held
+separately as a hard constraint. Differences are tested with a paired bootstrap over 2,000 resamples;
+only an interval clear of zero counts. Recall is read against its ceiling, because ten cards cannot
+hold seventy right answers. The 50 facet queries were used to tune the parser; the 36 briefs never
+were, which is why they are the ones quoted for the concierge.
+
 ## What each table was measured on
 
 | Table | Query set | Run file | Measured |

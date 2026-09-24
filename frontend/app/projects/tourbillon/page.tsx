@@ -205,12 +205,27 @@ const querySet = [
 ];
 
 const method = [
-  "Each label states what a right answer is — “a dress watch, 40 mm or smaller, in a precious metal” — rather than listing watches, and was written from the query before any result was seen.",
-  "Every system is compared with BM25, the standard keyword ranking, on the same queries.",
-  "Differences are tested with a paired bootstrap. Only a 95% interval that stays clear of zero counts as a result.",
-  "Recall is read against its ceiling: when 76 watches fit a brief, a list of ten can hold at most 13% of them, however good the ranking.",
-  "The open-ended half scores lower in absolute terms by construction. Those briefs name no facet, so their answer sets are wide — a perfect ranker scores 0.34 recall on that set, not 1.00 — and the concierge answers with three to ten cards where a search page lists fifty.",
-  "Fifty queries per half separates large effects, not small ones, and the labels are one person's judgement. A table this size is evidence for a decision, not a benchmark result.",
+  "Each label says what a right answer is — “a dress watch, 40 mm or smaller, in a precious metal” — rather than listing watches, and was written from the query before any result was seen.",
+  "Open-ended briefs are graded 0 to 3, because “something for a black tie gala” has no single right answer. What the shopper stated is held separately as a hard constraint: breaking it scores zero.",
+  "Every system is measured against BM25, the standard keyword ranking, on the same queries. Differences are tested with a paired bootstrap, and only a 95% interval clear of zero counts.",
+  "Recall is read against its ceiling. When 76 watches fit a brief, a list of ten holds at most 13% of them however good the ranking, and open-ended briefs have the widest answer sets of all.",
+  "The 50 facet queries tuned the parser, so its scores say how well it fits them. The 36 open-ended briefs were written afterwards and never read while tuning; they are the ones quoted for the concierge.",
+];
+
+// The two claims, side by side. Everything else on this page is the evidence for these.
+const headline = [
+  {
+    system: "Smart Search",
+    set: "50 facet queries · development set",
+    claim: "Beats the keyword baseline on all four ranking metrics with 95% confidence, at 28 ms and no model call.",
+    figures: ["nDCG 0.76 vs 0.57", "precision@5 0.72 vs 0.54", "77% of achievable recall vs 61%"],
+  },
+  {
+    system: "Concierge",
+    set: "36 briefs · held out",
+    claim: "Matches the keyword baseline at retrieval — no difference clears the interval — and shows nothing that breaks what the shopper said.",
+    figures: ["0 of 191 cards break a stated constraint, against 15%", "83% of replies carry a useful next step", "mean grade 0.49 vs 0.42"],
+  },
 ];
 
 type Mark = "win" | "noise";
@@ -252,11 +267,11 @@ const conciergeSplitRows: ResultRow[] = [
 
 // Read under the concierge table. One line per thing a reader would otherwise have to work out.
 const conciergeNotes = [
-  "These 36 briefs were held out: written after the system was built, run to report a number, never read while tuning one. The 50 briefs the rest of this page cites decided the reranker, the prompt and the chip rules.",
-  "Nothing here clears the 95% interval, so the honest claim is that the concierge is at least the equal of a keyword baseline at retrieval while doing the part a keyword baseline cannot. The violation row is the exception: it counts results, and 0 of the 191 cards shown broke something the brief stated, where 30 of 198 did before these fixes.",
-  "Briefs are graded 0-3, not judged right or wrong: the label states only what the brief states, and reads the rest as tiers. A blind second pass by another model agreed within one grade 94% of the time.",
-  "A brief that names no facet has a wide answer set: a perfect ranker scores 0.39 recall here against 1.00 on a facet query, and a reply carries three to ten cards where a search page lists fifty.",
+  "Held out: written after the system was built, run to report a number, never read while tuning one.",
+  "No ranking difference clears the 95% interval on 36 briefs. The violation row is a count, not an average: 0 of the 191 cards shown, where 30 of 198 did before the fixes below.",
+  "Retrieval finds far more than the reply shows — 45% of the ideal answers reach the pool of 44, 11% reach the cards — so what is left is a selection problem.",
 ];
+
 
 // The strongest value in each column is emphasised; this table explains a choice, not a winner.
 const retrieverRows: ResultRow[] = [
@@ -718,7 +733,7 @@ export default function TourbillonPortfolioPage() {
                     The same run, before and after the card cut
                   </p>
                   <div className="mt-3">
-                    <ResultTable columns={["Pool of 46", "3 cards shown"]} rows={conciergeSplitRows} />
+                    <ResultTable columns={["Pool of 44", "Cards shown"]} rows={conciergeSplitRows} />
                   </div>
                   <ul className="mt-4 space-y-2.5 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.9rem] leading-[1.6] text-[var(--atl-soft)]">
                     {conciergeNotes.map((note) => (
@@ -732,6 +747,25 @@ export default function TourbillonPortfolioPage() {
               </Plate>
             }
           />
+
+          <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden border border-[var(--atl-rule)] bg-[var(--atl-rule)] sm:grid-cols-2">
+            {headline.map((item) => (
+              <div key={item.system} className="bg-[var(--atl-paper)] px-5 py-6">
+                <h3 className="atl-display text-[1.35rem] font-medium leading-snug text-[var(--atl-ink)]">
+                  {item.system}
+                </h3>
+                <p className="mt-1 text-[0.88rem] text-[var(--atl-oxblood)]">{item.set}</p>
+                <p className="mt-4 text-[0.94rem] leading-[1.7] text-[var(--atl-soft)]">{item.claim}</p>
+                <ul className="mt-4 space-y-1.5 border-t border-[var(--atl-rule-soft)] pt-4">
+                  {item.figures.map((figure) => (
+                    <li key={figure} className="atl-mono text-[0.84rem] leading-[1.6] text-[var(--atl-soft)]">
+                      {figure}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
 
           <p className="mt-6 flex flex-wrap gap-x-6 gap-y-1 text-[0.86rem] text-[var(--atl-faint)]">
             <span><span aria-hidden className="text-[var(--atl-oxblood)]">●</span> better than BM25 with 95% confidence</span>
@@ -748,8 +782,8 @@ export default function TourbillonPortfolioPage() {
             <div className="space-y-5 text-[1.02rem] leading-[1.8] text-[var(--atl-soft)] lg:col-span-5">
               <p>
                 Search quality is easy to claim and hard to show, so every figure above comes
-                from one benchmark: 100 labelled queries, split by the part of the product that
-                answers them.
+                from one benchmark: 136 labelled queries, split by the part of the product that
+                answers them and by whether they were ever used to tune it.
               </p>
               <ul className="space-y-4 border-t border-[var(--atl-rule)] pt-5">
                 {method.map((line) => (
