@@ -49,16 +49,17 @@ the rest are within noise.
 
 | Metric | Smart Search | BM25 alone | Old search bar |
 |---|---|---|---|
-| nDCG@10 | **0.73** | 0.57 | 0.44 |
-| Precision@5 | **0.69** | 0.54 | 0.39 |
-| Recall@10, share of ceiling | **76%** | 61% | 51% |
-| MRR | 0.79 | 0.70 | 0.55 |
-| Hit rate@10 | 84% | 84% | 78% |
-| Latency, p95 | 29 ms | 7 ms | 159 ms |
+| nDCG@10 | **0.76** | 0.57 | 0.44 |
+| Precision@5 | **0.72** | 0.54 | 0.39 |
+| Recall@10, share of ceiling | **77%** | 61% | 51% |
+| MRR | **0.83** | 0.70 | 0.55 |
+| Hit rate@10 | 86% | 84% | 78% |
+| Latency, p95 | 28 ms | 12 ms | 236 ms |
 
-The parser reads the constraints a query states with a slot F1 of 0.81; what it gets wrong, it
-misses rather than misreads. Removing the LLM stages from this path moved no quality metric
-significantly and took p95 from 2.8 s to 29 ms.
+All four ranking metrics beat the BM25 baseline with 95% confidence on a paired bootstrap. The
+parser reads the constraints a query states with a slot F1 of 0.81 and gets 60% of briefs exactly
+right; what it gets wrong, it misses rather than misreads. Removing the LLM stages from this path
+moved no quality metric significantly and took p95 from 2.8 s to 28 ms.
 
 **Concierge, 36 open-ended briefs, held out** (never used to tune anything)
 

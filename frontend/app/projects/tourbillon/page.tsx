@@ -219,12 +219,12 @@ type Mark = "win" | "noise";
 type ResultRow = { label: string; values: string[]; emphasis?: number[]; mark?: Mark; marks?: (Mark | undefined)[] };
 
 const smartSearchRows: ResultRow[] = [
-  { label: "nDCG@10", values: ["0.73", "0.57", "0.44"], emphasis: [0], mark: "win" },
-  { label: "Precision@5", values: ["0.69", "0.54", "0.39"], emphasis: [0], mark: "win" },
-  { label: "Recall@10, share of ceiling", values: ["76%", "61%", "51%"], emphasis: [0], mark: "win" },
-  { label: "MRR", values: ["0.79", "0.70", "0.55"], emphasis: [0], mark: "noise" },
-  { label: "Hit rate@10", values: ["84%", "84%", "78%"], emphasis: [0], mark: "noise" },
-  { label: "Latency, p95", values: ["29 ms", "7 ms", "159 ms"], emphasis: [0] },
+  { label: "nDCG@10", values: ["0.76", "0.57", "0.44"], emphasis: [0], mark: "win" },
+  { label: "Precision@5", values: ["0.72", "0.54", "0.39"], emphasis: [0], mark: "win" },
+  { label: "Recall@10, share of ceiling", values: ["77%", "61%", "51%"], emphasis: [0], mark: "win" },
+  { label: "MRR", values: ["0.83", "0.70", "0.55"], emphasis: [0], mark: "win" },
+  { label: "Hit rate@10", values: ["86%", "84%", "78%"], emphasis: [0], mark: "noise" },
+  { label: "Latency, p95", values: ["28 ms", "12 ms", "236 ms"], emphasis: [0] },
 ];
 
 // 36 held-out briefs, measured 24 Sep 2026 on Claude Haiku 4.5, after the defects the first

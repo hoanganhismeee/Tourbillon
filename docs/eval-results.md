@@ -24,19 +24,30 @@ file is the record that travels with the repository. Re-print one without spendi
 
 ## Smart Search, 50 facet queries
 
-Deterministic parser and BM25F, no model.
+Deterministic parser and BM25F, no model. Re-measured 2026-09-24 after the constraint work, which
+is the same parser the concierge now shares.
 
 | Metric | Smart Search | BM25 alone | Old search bar |
 |---|---|---|---|
-| nDCG@10 | **0.73** | 0.57 | 0.44 |
-| Precision@5 | **0.69** | 0.54 | 0.39 |
-| Recall@10, share of ceiling | **76%** | 61% | 51% |
-| MRR | 0.79 | 0.70 | 0.55 |
-| Hit rate@10 | 84% | 84% | 78% |
-| Latency, p95 | 29 ms | 7 ms | 159 ms |
+| nDCG@10 | **0.76** | 0.57 | 0.44 |
+| Precision@5 | **0.72** | 0.54 | 0.39 |
+| Recall@10, share of ceiling | **77%** | 61% | 51% |
+| MRR | **0.83** | 0.70 | 0.55 |
+| Hit rate@10 | 86% | 84% | 78% |
+| Latency, p95 | 28 ms | 12 ms | 236 ms |
 
-Bold is better than the BM25 baseline with 95% confidence on a paired bootstrap; the rest are
-within noise. Slot F1 of the parser is 0.81.
+Bold is better than the BM25 baseline with 95% confidence on a paired bootstrap. All four ranking
+metrics now clear it — recall +0.081 [0.033, 0.135], precision +0.184 [0.088, 0.288], MRR +0.130
+[0.022, 0.247], nDCG +0.189 [0.087, 0.295] — where MRR was inside noise before the constraint work.
+Slot F1 of the parser is 0.809, and 60% of briefs are read exactly.
+
+The four briefs where Smart Search still trails BM25 are the ones whose constraint the parser reads
+but the catalogue cannot answer precisely: "green dial sports watch on a bracelet", a second time
+zone, a week of power reserve, a steel watch with a date window.
+
+**This half is the development set.** These 50 queries decided the parser's vocabulary, so the
+number says how well it fits the briefs it was built against. The concierge numbers below come from
+the held-out set, and the two are not the same kind of claim.
 
 ## Concierge, 50 open-ended briefs
 
