@@ -21,6 +21,8 @@ node eval/run-eval.mjs --scope=spec --arms=bm25,keyword,vector,hybrid,smart     
 node eval/run-eval.mjs --scope=semantic --arms=bm25,keyword,vector,hybrid,concierge  # open-ended briefs
 node eval/run-eval.mjs --from=eval/results/eval-<stamp>.json   # re-print a saved run, no API calls
 node eval/run-eval.mjs --rescore=eval/results/<run>.json      # score a saved run against today's labels
+node eval/run-eval.mjs --set=test --arms=bm25,concierge       # the frozen set: report, never tune
+node eval/judge-pool.mjs --sample=12                          # blind second opinion on the rubrics (~$0.02)
 node eval/compare-runs.mjs --a=<run.json> --b=<run.json> --arm=concierge   # same arm, two runs: paired deltas, latency, per-category
 ```
 
@@ -41,6 +43,7 @@ after 5 queries. Each scope holds 50 queries and runs sequentially per arm. The 
 | `--delay` | `0` | Milliseconds between requests |
 | `--from` | none | Re-print the report from a saved JSON run instead of calling any arm |
 | `--rescore` | none | Re-score a saved run's stored ranked ids against the current labels, without calling any arm. Changing a label costs nothing after this |
+| `--set` | `dev` | `dev` for the 100 tuned-against queries, `test` for the 36 frozen briefs |
 
 Each run writes a full per-query JSON record to `eval/results/`.
 
@@ -107,7 +110,15 @@ as low as a dive watch. A graded label separates the two things that were confla
   tier it satisfies, and a tier may be reached two ways through `whenAny`.
 - `why` is the sentence the tier is argued from, and it is what a blind judge is shown.
 
-The set is 100 queries, split evenly by the subsystem that owns them:
+**There are two sets, and the difference is how they may be used.** The 100 queries in
+`queries.mjs` are the **development set**: every tuning decision — the reranker, the prompt, the
+BM25F weights, the chip rules — was made by reading their per-query results, so a score from them
+says how well the system fits those queries. `frozen-set.mjs` holds 36 briefs that are run to report
+a number and never to decide a change: no reading per-query results while tuning, no editing a label
+to move a score. Run it with `--set=test`. Published numbers should come from it; the dev set is for
+iteration.
+
+The development set is 100 queries, split evenly by the subsystem that owns them:
 
 | Scope | Owner | n | Categories |
 |---|---|---|---|

@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { HANDWRITTEN, SCOPE_BY_CATEGORY, scopeOf, validateQueries } from './queries.mjs';
+import { FROZEN } from './frozen-set.mjs';
 import { TRUTH_KEYS, matchesTruth, unknownTruthKeys, unknownLabelKeys, gradeFor } from './catalogue.mjs';
 
 /// A catalogue record with every field matchesTruth reads, so a test only states what it varies.
@@ -101,6 +102,29 @@ test('a tier can be reached two ways', () => {
   assert.equal(gradeFor(record({ functions: ['gmt'] }), label), 2);
   assert.equal(gradeFor(record({ collectionStyles: ['sport'] }), label), 2);
   assert.equal(gradeFor(record({}), label), 0);
+});
+
+// -- Frozen test set ----------------------------------------------------------
+// It is run to report rather than to tune, so nothing catches a mistake in it until the number is
+// already published. These checks are what stands in for that.
+
+test('the frozen set is graded, semantic, and does not collide with the dev set', () => {
+  const devIds = new Set(HANDWRITTEN.map(q => q.id));
+  assert.deepEqual(FROZEN.filter(q => devIds.has(q.id)).map(q => q.id), []);
+  assert.deepEqual(FROZEN.filter(q => !q.rubric).map(q => q.id), []);
+  assert.deepEqual(FROZEN.filter(q => scopeOf(q) !== 'semantic').map(q => q.id), []);
+  assert.equal(new Set(FROZEN.map(q => q.id)).size, FROZEN.length);
+});
+
+test('the frozen set covers every intent group evenly', () => {
+  const counts = {};
+  for (const q of FROZEN) counts[q.category] = (counts[q.category] ?? 0) + 1;
+  assert.deepEqual(counts, { occasion: 6, persona: 6, aesthetic: 6, lifestyle: 6, collector: 6, fit: 6 });
+});
+
+test('every frozen label uses only keys the matcher understands and explains each tier', () => {
+  assert.deepEqual(FROZEN.filter(q => unknownLabelKeys(q).length > 0).map(q => q.id), []);
+  assert.deepEqual(FROZEN.flatMap(q => q.rubric.filter(t => !t.why || t.why.length < 12).map(() => q.id)), []);
 });
 
 test('the key list matches what matchesTruth actually reads', () => {

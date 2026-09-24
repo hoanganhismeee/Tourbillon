@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadCatalogue, summariseFacets } from './catalogue.mjs';
 import { HANDWRITTEN, buildGenerated, validateQueries, scopeOf } from './queries.mjs';
+import { FROZEN } from './frozen-set.mjs';
 import { buildCatalogueIndex, scoreActions, summariseActions } from './actions.mjs';
 import { scoreSlots, summariseSlots } from './slots.mjs';
 import { parseServerTiming, summariseStages } from './timing.mjs';
@@ -51,6 +52,10 @@ const DELAY_MS = Number(args.delay ?? 0);
 // Largest share of the catalogue a label may match before it stops discriminating between
 // arms. Exposed as a flag because the right ceiling depends on how the catalogue is skewed.
 const MAX_SHARE = Number(args['max-share'] ?? 0.25);
+// Which set to run. `dev` is the 100 queries every tuning decision was made against, so a number
+// from it says how well the system fits them. `test` is the frozen set: run to report, never to
+// decide, which is the only way the reported number generalises.
+const SET = String(args.set ?? 'dev').trim();
 
 // -- Arms ---------------------------------------------------------------------
 // Each arm turns a query string into a ranked list of watch ids plus whatever diagnostics
@@ -178,7 +183,12 @@ async function main() {
 
   if (args.inspect) return printFacets(catalogue);
 
-  const all = [...HANDWRITTEN, ...buildGenerated(catalogue)];
+  if (!['dev', 'test'].includes(SET)) {
+    console.error(`${RED}Unknown set "${SET}". Valid sets: dev, test.${RESET}`);
+    process.exit(1);
+  }
+  const all = SET === 'test' ? FROZEN : [...HANDWRITTEN, ...buildGenerated(catalogue)];
+  if (SET === 'test') console.log(`${YELLOW}frozen test set${RESET} ${DIM}run to report, never to tune${RESET}`);
   const validated = validateQueries(catalogue, all, { maxShare: MAX_SHARE });
   const usable = validated.filter(q => q.status === 'ok');
   const inScope = SCOPE === 'all' ? usable : usable.filter(q => scopeOf(q) === SCOPE);
@@ -230,7 +240,8 @@ function scoreSplit(q, ids, candidateIds, error) {
 async function rescore(file) {
   const saved = JSON.parse(readFileSync(file, 'utf8'));
   const catalogue = await loadCatalogue(BASE_URL);
-  const validated = validateQueries(catalogue, [...HANDWRITTEN, ...buildGenerated(catalogue)], { maxShare: MAX_SHARE });
+  // Both sets, because a saved run may be from either and the ids do not overlap.
+  const validated = validateQueries(catalogue, [...HANDWRITTEN, ...buildGenerated(catalogue), ...FROZEN], { maxShare: MAX_SHARE });
   const byId = new Map(validated.map(q => [q.id, q]));
 
   const results = {};
