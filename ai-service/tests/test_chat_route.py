@@ -61,6 +61,14 @@ class ChatRouteResponseSanitizerTests(unittest.TestCase):
         for text in ("Consider the Datejust 36.", "The case is 36 mm."):
             self.assertEqual(text, _cleanup_markdown_artifacts(text))
 
+    def test_cleanup_markdown_artifacts_separates_sentences_the_model_ran_together(self) -> None:
+        cleaned = _cleanup_markdown_artifacts("Two picks.Both are steel.")
+        self.assertEqual("Two picks. Both are steel.", cleaned)
+
+        # A reference is full of full stops and none of them start a sentence.
+        reference = "The reference is 210.30.42.20.01.001 and the case is 42.5 mm."
+        self.assertEqual(reference, _cleanup_markdown_artifacts(reference))
+
     def test_cleanup_markdown_artifacts_degrades_truncated_links_to_plain_text(self) -> None:
         cleaned = _cleanup_markdown_artifacts("Compare [Overseas](/collections/vacheron-constantin-overseas")
 

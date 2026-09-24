@@ -121,6 +121,10 @@ def _cleanup_markdown_artifacts(text: str) -> str:
     # "Consider the Datejust 36." keeps its size.
     cleaned = re.sub(r"(?:(?<=[.!?])\s+|(?<=\n))(?:\d{1,2}[.)]|[-*•])\s*$", "", cleaned).strip()
 
+    # "...nhỏ hơn hay lớn hơn một chút?Budget có phải..." — two sentences run together when the model
+    # drops the space. Only before a capital, so a reference like 210.30.42.20.01.001 is untouched.
+    cleaned = re.sub(r"(?<=[.?!])(?=[A-ZÀ-ỹ])", " ", cleaned)
+
     cleaned = cleaned.rstrip(",;:- ")
     if cleaned and cleaned[-1] not in ".!?":
         cleaned += "."
