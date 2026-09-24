@@ -227,27 +227,34 @@ const smartSearchRows: ResultRow[] = [
   { label: "Latency, p95", values: ["29 ms", "7 ms", "159 ms"], emphasis: [0] },
 ];
 
-// The same pipeline on two models, each tested against BM25 on the same briefs, measured 21 Sep
-// 2026. The local model's latency is left out: the laptop GPU throttled during its run, so the
-// figure would describe the cooling, not the model.
+// 36 held-out briefs, measured 23 Sep 2026 on Claude Haiku 4.5. Open-ended briefs are graded 0-3
+// rather than judged right or wrong, so a near miss scores; no difference here clears the 95%
+// interval, which is the honest reading of a 36-query set.
 const conciergeRows: ResultRow[] = [
-  { label: "MRR", values: ["0.46", "0.30", "0.32"], emphasis: [0], marks: ["noise", "noise"] },
-  { label: "Precision@5", values: ["0.28", "0.16", "0.21"], emphasis: [0], marks: ["noise", "noise"] },
-  { label: "nDCG@10", values: ["0.24", "0.14", "0.17"], emphasis: [0], marks: ["noise", "noise"] },
-  { label: "Recall@10, share of ceiling", values: ["21%", "14%", "12%"], emphasis: [0], marks: ["noise", "noise"] },
-  { label: "Hit rate@10", values: ["72%", "48%", "66%"], emphasis: [0], marks: ["noise", "noise"] },
-  { label: "Latency, p50", values: ["4.5 s", "—", "6 ms"], emphasis: [0] },
-  { label: "Latency, p95", values: ["10.8 s", "—", "8 ms"], emphasis: [0] },
-  { label: "Replies with a relevant action", values: ["48%", "38%", "—"], emphasis: [0] },
+  { label: "Mean grade, top 5", values: ["0.42", "0.42"], emphasis: [0], marks: ["noise"] },
+  { label: "MRR", values: ["0.71", "0.68"], emphasis: [0], marks: ["noise"] },
+  { label: "nDCG@10", values: ["0.29", "0.30"], emphasis: [1], marks: ["noise"] },
+  { label: "Recall@10, share of ceiling", values: ["15%", "19%"], emphasis: [1], marks: ["noise"] },
+  { label: "Hit rate@10, grade 2 or better", values: ["83%", "86%"], emphasis: [1], marks: ["noise"] },
+  { label: "Top 10 breaking a stated constraint", values: ["13%", "15%"], emphasis: [0], marks: ["noise"] },
+  { label: "Replies with a relevant action", values: ["78%", "—"], emphasis: [0] },
+  { label: "Latency, p50", values: ["4.8 s", "11 ms"], emphasis: [1] },
+  { label: "Latency, p95", values: ["10.7 s", "18 ms"], emphasis: [1] },
+];
+
+// The same run, scored before and after the card cut. This is the table that says where the loss is.
+const conciergeSplitRows: ResultRow[] = [
+  { label: "Recall of the ideal answers", values: ["0.39", "0.06"], emphasis: [0] },
+  { label: "nDCG", values: ["0.49", "0.48"], emphasis: [0] },
+  { label: "Mean grade", values: ["—", "0.59"], emphasis: [1] },
 ];
 
 // Read under the concierge table. One line per thing a reader would otherwise have to work out.
 const conciergeNotes = [
-  "Without the reranker neither model clears BM25 on these briefs, and the 7B model, run on a laptop, falls below it on four of five measures.",
-  "A brief that names no facet has a wide answer set: a perfect ranker scores 0.34 recall here against 1.00 on a facet query, and a reply carries three to ten cards where a search page lists fifty.",
-  "Only recall clears the 95% interval against BM25.",
-  "The action row was 58% when every reply carried a Smart Search chip, and 21 of those chips opened a page with no results.",
-  "On the 50 facet queries either model is level with Smart Search, so the concierge can take over search requests as well.",
+  "These 36 briefs were held out: written after the system was built, run to report a number, never read while tuning one. The 50 briefs the rest of this page cites decided the reranker, the prompt and the chip rules.",
+  "Nothing here clears the 95% interval, so the honest claim is that the concierge matches a keyword baseline at retrieval while doing the part a keyword baseline cannot.",
+  "Briefs are graded 0-3, not judged right or wrong: the label states only what the brief states, and reads the rest as tiers. A blind second pass by another model agreed within one grade 94% of the time.",
+  "A brief that names no facet has a wide answer set: a perfect ranker scores 0.39 recall here against 1.00 on a facet query, and a reply carries three to ten cards where a search page lists fifty.",
 ];
 
 // The strongest value in each column is emphasised; this table explains a choice, not a winner.
@@ -268,11 +275,11 @@ const findings = [
   },
   {
     term: "The LLM reranker was removed.",
-    text: "Switching it off saved 1.9 s per reply and moved no metric significantly. It also took the concierge's one clear win over BM25 with it: MRR was 0.50 against 0.32 with the reranker and is 0.46 without, a gap 50 briefs cannot separate from noise.",
+    text: "Switching it off saved 1.9 s per reply and moved no metric significantly. It also took the concierge's one clear win over BM25 with it: on the development set MRR was 0.50 against 0.32 with the reranker and 0.46 without, a gap 50 briefs cannot separate from noise.",
   },
   {
     term: "A local 7B model is not a drop-in for Haiku.",
-    text: "Qwen 2.5 7B matches it on facet queries, where SQL does the work. On open-ended briefs precision@5 fell from 0.28 to 0.16, MRR from 0.46 to 0.30 and hit rate from 72% to 48%, and half its first drafts failed the backend's grounding check. It exercises the pipeline for free; it does not score it.",
+    text: "Qwen 2.5 7B matches it on facet queries, where SQL does the work. On the development set, under the earlier right-or-wrong labels, precision@5 fell from 0.28 to 0.16, MRR from 0.46 to 0.30 and hit rate from 72% to 48%, and half its first drafts failed the backend's grounding check. It exercises the pipeline for free; it does not score it.",
   },
   {
     term: "Timing each stage cut the wait from 6.4 s to 3.9 s.",
@@ -695,9 +702,15 @@ export default function TourbillonPortfolioPage() {
               </Plate>
             }
             results={
-              <Plate caption="Fig. 05 — Concierge results" note="50 open-ended briefs">
+              <Plate caption="Fig. 05 — Concierge results" note="36 held-out briefs">
                 <div className="px-5 py-5">
-                  <ResultTable columns={["Haiku 4.5", "Qwen 7B, local", "BM25"]} rows={conciergeRows} />
+                  <ResultTable columns={["Concierge", "BM25"]} rows={conciergeRows} />
+                  <p className="mt-6 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.82rem] uppercase tracking-[0.14em] text-[var(--atl-faint)]">
+                    The same run, before and after the card cut
+                  </p>
+                  <div className="mt-3">
+                    <ResultTable columns={["Pool of 46", "3 cards shown"]} rows={conciergeSplitRows} />
+                  </div>
                   <ul className="mt-4 space-y-2.5 border-t border-[var(--atl-rule-soft)] pt-4 text-[0.9rem] leading-[1.6] text-[var(--atl-soft)]">
                     {conciergeNotes.map((note) => (
                       <li key={note} className="flex gap-2.5">

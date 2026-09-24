@@ -110,6 +110,40 @@ stopped at the ceiling — so the ceiling is the control and the reply used to s
 per link on an address the reader never sees. Those tokens are now sentences, and a reply cut at
 the ceiling ends at its last complete clause rather than mid-thought.
 
+## Held-out test set, 36 open-ended briefs
+
+2026-09-23, Claude Haiku 4.5, `eval-2026-09-23T15-48-45-911Z.json`, $0.51. These 36 briefs
+(`eval/frozen-set.mjs`) were written after the system was built and have never been used to decide a
+change, which is what makes them worth quoting. Graded labels, so a near miss scores.
+
+| Metric | Concierge (Haiku 4.5) | BM25 alone |
+|---|---|---|
+| Mean grade over the top 5 | 0.42 | 0.42 |
+| MRR | 0.71 | 0.68 |
+| nDCG@10 | 0.29 | 0.30 |
+| Recall@10, share of ceiling | 15% | 19% |
+| Hit rate@10, grade 2 or better | 83% | 86% |
+| Top 10 breaking a stated constraint | 13% | 15% |
+| Replies with a relevant action | 78% | - |
+| Latency, p50 / p95 | 4.8 s / 10.7 s | 11 ms / 18 ms |
+
+**No difference between the two clears the 95% interval** — recall -0.015, mean grade +0.009,
+MRR +0.031, nDCG -0.012, every one of them inside noise on 36 briefs. On a set it was never tuned
+against, the concierge matches a keyword baseline at retrieval while doing the part the baseline
+cannot: reading the brief, answering in prose, and attaching a next step that works 78% of the time.
+
+**Where it loses is selection, not retrieval.** The same run, scored before and after the card cut:
+
+| | Pool of 46 candidates | The 3 cards shown |
+|---|---|---|
+| Recall of the ideal answers | 0.39 | 0.06 (at 10 cards) |
+| nDCG | 0.49 (@50) | 0.48 (@3) |
+| Mean grade | - | 0.59 (@3) |
+
+Retrieval puts 39% of the grade-3 watches inside 50 candidates; the ten that reach the reply hold 6%.
+That gap is a ranking and selection problem, and it is the next thing worth working on — which is
+the split this run exists to make visible.
+
 ## Labels v2: how the open-ended half is judged
 
 2026-09-24. The semantic labels were conjunctions of facets, most of them invented by the label
@@ -142,6 +176,23 @@ sports watch". That one is the rubric standing its ground, and it is why a state
 constraint rather than a preference.
 
 The judge costs $0.02 a pass and is a second opinion, never the source of truth.
+
+**Is the new ruler better than the old one?** Not something the scores can answer: v2 reads higher
+than v1 because the ruler changed, not because anything improved. What can be answered is which
+version agrees with a judgement made without either ruler in view. `eval/label-versions.mjs` pools
+the same candidates, asks for a 0-3 grade from the brief alone — no rubric, no predicate — and then
+scores both label versions against those verdicts:
+
+| Against a rubric-free judge, 64 watch/brief pairs | v1 (binary) | v2 (graded) |
+|---|---|---|
+| Exact agreement | 36% | 42% |
+| Within one grade | 58% | 86% |
+| Mean absolute error | 1.22 | 0.75 |
+| Labelled 0 where the judge said 2 or 3 | 23 | 6 |
+
+The last row is the one that matters: the old labels called a watch worthless 23 times out of 64
+where an outside reader would have taken it seriously. That is what "the labels are too strict" looks
+like when it is measured rather than argued.
 
 ## Known gaps in these numbers
 - **One request took 134 s** during the run, an API stall rather than pipeline work. It is the

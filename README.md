@@ -60,35 +60,39 @@ The parser reads the constraints a query states with a slot F1 of 0.81; what it 
 misses rather than misreads. Removing the LLM stages from this path moved no quality metric
 significantly and took p95 from 2.8 s to 29 ms.
 
-**Concierge, 50 open-ended briefs** (the same pipeline on two models)
+**Concierge, 36 open-ended briefs, held out** (never used to tune anything)
 
-| Metric | Claude Haiku 4.5 | Qwen 2.5 7B, local | BM25 alone |
-|---|---|---|---|
-| MRR | 0.46 | 0.30 | 0.32 |
-| Precision@5 | 0.28 | 0.16 | 0.21 |
-| nDCG@10 | 0.24 | 0.14 | 0.17 |
-| Recall@10, share of ceiling | 21% | 14% | 12% |
-| Hit rate@10 | 72% | 48% | 66% |
-| Replies with a relevant action | 48% | 38% | - |
-| Latency, p50 | 4.5 s | - | 6 ms |
-| Latency, p95 | 10.8 s | - | 8 ms |
+| Metric | Concierge (Haiku 4.5) | BM25 alone |
+|---|---|---|
+| Mean grade over the top 5 | 0.42 | 0.42 |
+| MRR | 0.71 | 0.68 |
+| nDCG@10 | 0.29 | 0.30 |
+| Recall@10, share of ceiling | 15% | 19% |
+| Hit rate@10, grade 2 or better | 83% | 86% |
+| Top 10 breaking a stated constraint | 13% | 15% |
+| Replies with a relevant action | 78% | - |
+| Latency, p50 / p95 | 4.8 s / 10.7 s | 11 ms / 18 ms |
 
-These are the concierge as it now ships, without the LLM rerank that used to reorder its fused
-list. Each run, its date and the commit it measured are recorded in
-[docs/eval-results.md](docs/eval-results.md); the Haiku column is from 2026-09-21. With the
-rerank, Haiku beat BM25 on MRR, 0.50 against 0.32; without it the gap is 0.46 against 0.32, which
-50 briefs cannot separate from noise, while the rerank itself cost 1.9 s per reply and moved no
-metric significantly when switched off. On the 50 facet queries either model is level with Smart
-Search on every metric (the rerank ran on 3 of those 50), so the concierge can take over search
-requests as well.
+The 100 queries above decided the reranker, the prompt and the chip rules, so a score from them is
+partly a score of the fit to them. These 36 briefs are a held-out set (`eval/frozen-set.mjs`): run
+to report a number, never to decide a change. Open-ended briefs are graded 0-3 rather than judged
+right or wrong, because "something for a black tie gala" has no single right answer — the labels
+state only what the brief states and read the rest as tiers, with the sentence each tier is argued
+from written beside it.
 
-The action row fell from 58% when a Smart Search chip was attached to every reply. It is now
-offered only when Smart Search can read a filter from the message, because 21 of those 50 chips
-opened a page with no results, which the metric does not see and a visitor does.
+No difference between the two columns clears the 95% interval: recall -0.015, mean grade +0.009,
+MRR +0.031, nDCG -0.012. On a set it was never tuned against, the concierge matches a keyword
+baseline at retrieval while doing the part the baseline cannot — reading the brief, answering in
+prose, and attaching a next step that is useful in 78% of replies.
+
+Scoring the pool separately from the cards says where the remaining loss is: retrieval puts 39% of
+the ideal answers inside 50 candidates, and the ten that reach the reply hold 6%. That is a
+selection problem, not a retrieval one.
 
 Swapping Haiku for Qwen 2.5 7B run locally (Ollama, RTX 3070 laptop) keeps the facet results but
-not the open-ended ones: precision@5, MRR, nDCG@10, recall and hit rate all fall against
-Haiku, most in the fit and persona briefs, and against BM25 it is lower on four of five metrics,
+not the open-ended ones. Measured on the development set under the older binary labels:
+precision@5, MRR, nDCG@10, recall and hit rate all fall against Haiku, most in the fit and
+persona briefs, and against BM25 it is lower on four of five metrics,
 though no difference clears the interval. Half its first drafts failed the backend's grounding
 check and were rewritten. Its latency is not reported because the laptop GPU throttled to a sixth
 of its clock; on facet queries 17 of 50 requests timed out for the same reason, and that
@@ -97,7 +101,8 @@ comparison rests on the 33 that completed.
 Timing each stage took the median reply from 6.4 s to 3.9 s with no significant change in
 quality: the rerank is gone, a message is classified once instead of twice, and the brief is
 parsed beside the classifier rather than after it. Letting a reply finish rather than cutting it
-at 140 tokens then put the median back to 4.5 s, a trade worth making. The wording (3.1 s) and the
+at 140 tokens then put the median back to 4.5 s, a trade worth making; the held-out run measured
+4.8 s. The wording (3.1 s) and the
 action planner (2.1 s) run in parallel and are what remains.
 
 The model writes to whatever ceiling it is given: Haiku stopped at the token ceiling in 38 of 58
