@@ -616,7 +616,7 @@ public class ChatService
 
             var responseLanguage = resolution.ResponseLanguage ?? ResolveResponseLanguage(message, preferredLanguage);
             var aiDraftTask = ComposeValidatedAiDraftAsync(
-                history,
+                HistoryForResolution(history, resolution),
                 resolution.Query,
                 resolution.Context,
                 resolution,
@@ -3680,6 +3680,17 @@ public class ChatService
         return !MentionsResolvedCatalogueEntity(message, resolution.WatchCards);
     }
 
+    /// The history the wording layer sees. A comparison is decided before the model is asked, and
+    /// the shortlist it came from is still in the transcript: asked to compare the second with the
+    /// last, the model wrote about one of the two and a third watch it had named a turn earlier.
+    /// The user's own turns stay, because the occasion they described is what makes a comparison
+    /// worth reading; the assistant's earlier lists do not.
+    private static List<ChatHistoryEntry> HistoryForResolution(
+        List<ChatHistoryEntry> history, ChatResolution resolution) =>
+        string.Equals(resolution.RoutingPath, "compare", StringComparison.Ordinal)
+            ? history.Where(entry => string.Equals(entry.Role, "user", StringComparison.OrdinalIgnoreCase)).ToList()
+            : history;
+
     private static bool MentionsResolvedCatalogueEntity(string message, List<ChatWatchCard> watchCards)
     {
         var normalizedMessage = QueryNormalizer.NormalizeText(message);
@@ -3984,9 +3995,16 @@ public class ChatService
         // Concrete compare (specific watch references resolved).
         var watchCards = watches.Select(ToChatWatchCard).ToList();
         var links = watches.Select(w => $"[{BuildWatchTitle(w)}](/watches/{w.Slug})");
+        // The pair is named in the instruction, not just supplied below it. The shortlist from the
+        // previous turn is still in the session history, and "compare the second with the last" came
+        // back comparing one of the two against a third watch the reader never asked about.
+        var comparedTitles = string.Join(" and ", watches.Select(BuildWatchTitle));
         var concreteContext = new List<string>
         {
-            "Tourbillon resolved a concrete comparison set. Compare guidance request: explain the main split in practical buying terms, stay concise, end with a complete sentence, and assume the compare view will open immediately with these exact watches preloaded."
+            $"Tourbillon resolved a concrete comparison set: {comparedTitles}. Compare exactly these"
+            + " two and name no other watch, even if earlier messages mention one. Explain the main"
+            + " split in practical buying terms, stay concise, end with a complete sentence, and"
+            + " assume the compare view will open immediately with these exact watches preloaded."
         };
         foreach (var watch in watches)
             concreteContext.Add(BuildWatchContext(watch));
