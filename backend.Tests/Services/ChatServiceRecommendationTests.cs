@@ -106,6 +106,72 @@ public class ChatServiceRecommendationTests
     }
 
     [Fact]
+    public async Task HandleMessageAsync_ComplaintOpensASession_SearchesInsteadOfAnsweringEmpty()
+    {
+        // "I hate date windows" classifies as a revision, but it is the first thing said: there is
+        // no shortlist to revise. The benchmark brief came back with no cards at all until a
+        // revision with nothing behind it was allowed to search on what the sentence states.
+        using var context = CreateContext();
+
+        var brand = new Brand { Id = 1, Name = "Grand Seiko", Slug = "grand-seiko" };
+        var collection = new Collection { Id = 10, BrandId = 1, Brand = brand, Name = "Elegance", Slug = "elegance" };
+        context.Brands.Add(brand);
+        context.Collections.Add(collection);
+        var watches = Enumerable.Range(1, 3)
+            .Select(i => new Watch
+            {
+                Id = i,
+                BrandId = 1,
+                Brand = brand,
+                CollectionId = 10,
+                Collection = collection,
+                Name = $"SBGW{i:000}",
+                Slug = $"grand-seiko-sbgw-{i:000}",
+                Description = "Time-only dress watch",
+                CurrentPrice = 5000m + i,
+            })
+            .ToList();
+        context.Watches.AddRange(watches);
+        await context.SaveChangesAsync();
+
+        var watchFinder = new Mock<IWatchFinderService>();
+        watchFinder.Setup(f => f.FindWatchesAsync("I hate date windows"))
+            .ReturnsAsync(new WatchFinderResult { Watches = watches.Select(ToDto).ToList(), SearchPath = "vector" });
+
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":\"Three clean-dialled picks.\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+        var classifier = new FakeClassifier(_ => new IntentClassification("revision_request", 0.9));
+
+        var service = CreateService(context, watchFinder, handler, classifier);
+        var result = await service.HandleMessageAsync("sess-complaint", "I hate date windows", null, "127.0.0.1");
+
+        Assert.Equal(3, result.WatchCards.Count);
+    }
+
+    [Fact]
+    public async Task HandleMessageAsync_RevisionWithNothingToReviseAndNothingStated_DoesNotSearch()
+    {
+        // The other half of the same rule: "something cheaper" as an opening line has nothing to be
+        // cheaper than, so it must not be turned into a search of its own.
+        using var context = CreateContext();
+        var watchFinder = new Mock<IWatchFinderService>();
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"message\":\"What are you looking for?\",\"actions\":[]}", Encoding.UTF8, "application/json")
+        });
+        var classifier = new FakeClassifier(_ => new IntentClassification("revision_request", 0.9));
+
+        var service = CreateService(context, watchFinder, handler, classifier);
+        var result = await service.HandleMessageAsync("sess-cheaper", "show me something cheaper", null, "127.0.0.1");
+
+        watchFinder.Verify(f => f.FindWatchesAsync(It.IsAny<string>()), Times.Never);
+        Assert.Empty(result.WatchCards);
+    }
+
+    [Fact]
     public async Task HandleMessageAsync_BroadRecommendation_ShowsUpToTenMatchedProductsByDefault()
     {
         using var context = CreateContext();

@@ -1798,8 +1798,20 @@ public class ChatService
             }
 
             case ChatIntent.RevisionRequest:
-                return await TryResolveRecommendationRevisionAsync(
+            {
+                var revision = await TryResolveRecommendationRevisionAsync(
                     message, canonicalMessage, lastWatchCards, sessionState, excludedBrandIds);
+                if (revision != null) return revision;
+
+                // A revision with nothing to revise is a first brief in a complaint's grammar.
+                // "I hate date windows" opens a session, reads as a correction, finds no shortlist
+                // to correct and used to answer with no cards at all. It is a search whenever the
+                // sentence states something searchable on its own.
+                if (lastWatchCards.Count == 0 && string.IsNullOrWhiteSpace(sessionState?.DiscoveryQuery)
+                    && StatesItsOwnBrief(canonicalMessage))
+                    return await BuildSearchDiscoveryResolutionAsync(canonicalMessage, mentions, excludedBrandIds);
+                return null;
+            }
 
             case ChatIntent.ContextualFollowUp:
                 if (lastWatchCards.Count == 0) return null;
@@ -1854,18 +1866,7 @@ public class ChatService
                 }
 
                 // Complex query or brand returned empty → full WatchFinder (LLM parse, vector + BM25F fused by RRF).
-                var searchResult = excludedBrandIds.Count > 0
-                    ? await _watchFinderService.FindWatchesAsync(canonicalMessage, excludedBrandIds)
-                    : await _watchFinderService.FindWatchesAsync(canonicalMessage);
-                searchResult ??= new WatchFinderResult();
-                if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
-                    return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
-                if (searchResult.Watches.Count == 0)
-                    return new ChatResolution { Message = NoCloseMatchMessage, RoutingPath = "discovery_empty" };
-                var r = await BuildDiscoveryResolutionAsync(
-                    canonicalMessage, searchResult, excludedBrandIds, mentions: mentions);
-                r.SearchPath = searchResult.SearchPath;
-                return r;
+                return await BuildSearchDiscoveryResolutionAsync(canonicalMessage, mentions, excludedBrandIds);
             }
 
             case ChatIntent.NonWatch:
@@ -1928,6 +1929,36 @@ public class ChatService
         resolution.SearchPath = searchResult.SearchPath;
         resolution.RoutingPath = "advice";
         return resolution;
+    }
+
+    /// The full retrieval path behind a brief: LLM parse, vector and BM25F fused by RRF. Shared by
+    /// discovery and by a revision that arrived with nothing to revise.
+    private async Task<ChatResolution> BuildSearchDiscoveryResolutionAsync(
+        string canonicalMessage, EntityMentions mentions, List<int> excludedBrandIds)
+    {
+        var searchResult = excludedBrandIds.Count > 0
+            ? await _watchFinderService.FindWatchesAsync(canonicalMessage, excludedBrandIds)
+            : await _watchFinderService.FindWatchesAsync(canonicalMessage);
+        searchResult ??= new WatchFinderResult();
+        if (string.Equals(searchResult.SearchPath, "non_watch", StringComparison.OrdinalIgnoreCase))
+            return new ChatResolution { Message = UnsupportedQueryMessage, RoutingPath = "non_watch" };
+        if (searchResult.Watches.Count == 0)
+            return new ChatResolution { Message = NoCloseMatchMessage, RoutingPath = "discovery_empty" };
+
+        var resolution = await BuildDiscoveryResolutionAsync(
+            canonicalMessage, searchResult, excludedBrandIds, mentions: mentions);
+        resolution.SearchPath = searchResult.SearchPath;
+        return resolution;
+    }
+
+    /// True when the sentence carries a constraint the catalogue can be searched on. "I hate date
+    /// windows" does; "something cheaper" does not, and without a shortlist behind it that one has
+    /// nothing to be cheaper than.
+    private static bool StatesItsOwnBrief(string message)
+    {
+        var parsed = new QueryIntent();
+        WatchFinderService.ApplyRegexFilters(message, parsed);
+        return parsed.HasAnyFilter();
     }
 
     private async Task<ChatResolution?> TryResolveRecommendationRevisionAsync(
