@@ -227,32 +227,33 @@ const smartSearchRows: ResultRow[] = [
   { label: "Latency, p95", values: ["29 ms", "7 ms", "159 ms"], emphasis: [0] },
 ];
 
-// 36 held-out briefs, measured 23 Sep 2026 on Claude Haiku 4.5. Open-ended briefs are graded 0-3
-// rather than judged right or wrong, so a near miss scores; no difference here clears the 95%
-// interval, which is the honest reading of a 36-query set.
+// 36 held-out briefs, measured 24 Sep 2026 on Claude Haiku 4.5, after the defects the first
+// held-out run found were fixed. Briefs are graded 0-3 rather than judged right or wrong, so a near
+// miss scores; no difference here clears the 95% interval, which is the honest reading of a
+// 36-query set. The violation row is a count, not an average: 0 of the 191 cards shown.
 const conciergeRows: ResultRow[] = [
-  { label: "Mean grade, top 5", values: ["0.42", "0.42"], emphasis: [0], marks: ["noise"] },
-  { label: "MRR", values: ["0.71", "0.68"], emphasis: [0], marks: ["noise"] },
-  { label: "nDCG@10", values: ["0.29", "0.30"], emphasis: [1], marks: ["noise"] },
-  { label: "Recall@10, share of ceiling", values: ["15%", "19%"], emphasis: [1], marks: ["noise"] },
-  { label: "Hit rate@10, grade 2 or better", values: ["83%", "86%"], emphasis: [1], marks: ["noise"] },
-  { label: "Top 10 breaking a stated constraint", values: ["13%", "15%"], emphasis: [0], marks: ["noise"] },
-  { label: "Replies with a relevant action", values: ["78%", "—"], emphasis: [0] },
-  { label: "Latency, p50", values: ["4.8 s", "11 ms"], emphasis: [1] },
-  { label: "Latency, p95", values: ["10.7 s", "18 ms"], emphasis: [1] },
+  { label: "Mean grade, top 5", values: ["0.49", "0.42"], emphasis: [0], marks: ["noise"] },
+  { label: "MRR", values: ["0.76", "0.68"], emphasis: [0], marks: ["noise"] },
+  { label: "nDCG@10", values: ["0.36", "0.30"], emphasis: [0], marks: ["noise"] },
+  { label: "Recall@10, share of ceiling", values: ["29%", "19%"], emphasis: [0], marks: ["noise"] },
+  { label: "Hit rate@10, grade 2 or better", values: ["86%", "86%"], emphasis: [0], marks: ["noise"] },
+  { label: "Top 10 breaking a stated constraint", values: ["0%", "15%"], emphasis: [0] },
+  { label: "Replies with a relevant action", values: ["83%", "—"], emphasis: [0] },
+  { label: "Latency, p50", values: ["5.2 s", "7 ms"], emphasis: [1] },
+  { label: "Latency, p95", values: ["8.5 s", "11 ms"], emphasis: [1] },
 ];
 
 // The same run, scored before and after the card cut. This is the table that says where the loss is.
 const conciergeSplitRows: ResultRow[] = [
-  { label: "Recall of the ideal answers", values: ["0.39", "0.06"], emphasis: [0] },
-  { label: "nDCG", values: ["0.49", "0.48"], emphasis: [0] },
-  { label: "Mean grade", values: ["—", "0.59"], emphasis: [1] },
+  { label: "Recall of the ideal answers", values: ["0.45", "0.11"], emphasis: [0] },
+  { label: "nDCG", values: ["0.55", "0.56"], emphasis: [1] },
+  { label: "Mean grade", values: ["—", "0.68"], emphasis: [1] },
 ];
 
 // Read under the concierge table. One line per thing a reader would otherwise have to work out.
 const conciergeNotes = [
   "These 36 briefs were held out: written after the system was built, run to report a number, never read while tuning one. The 50 briefs the rest of this page cites decided the reranker, the prompt and the chip rules.",
-  "Nothing here clears the 95% interval, so the honest claim is that the concierge matches a keyword baseline at retrieval while doing the part a keyword baseline cannot.",
+  "Nothing here clears the 95% interval, so the honest claim is that the concierge is at least the equal of a keyword baseline at retrieval while doing the part a keyword baseline cannot. The violation row is the exception: it counts results, and 0 of the 191 cards shown broke something the brief stated, where 30 of 198 did before these fixes.",
   "Briefs are graded 0-3, not judged right or wrong: the label states only what the brief states, and reads the rest as tiers. A blind second pass by another model agreed within one grade 94% of the time.",
   "A brief that names no facet has a wide answer set: a perfect ranker scores 0.39 recall here against 1.00 on a facet query, and a reply carries three to ten cards where a search page lists fifty.",
 ];
@@ -288,6 +289,14 @@ const findings = [
   {
     term: "The model writes to whatever ceiling it is given.",
     text: "Haiku ignored every instruction about length and stopped at the token ceiling in 38 of 58 replies, spending about 40 tokens of each on a markdown URL the reader never sees. The reply now names a watch in plain words and the backend attaches the link from the slug it already resolved, so the budget buys sentences instead of addresses. The ceiling, not the wording, is the control.",
+  },
+  {
+    term: "A held-out set found four bugs the tuned set could not.",
+    text: "36 briefs, written after the system was built and read once, on a system tuned against a different 100. They surfaced four defects at once: a budget filter that let Price on Request pass every ceiling, so a brief asking for something under five thousand was answered with a tourbillon whose price is on request; spec constraints that reached the filter bar but never the results; a complaint (“anything over 40mm looks silly”) read as a floor rather than a ceiling; and an ordinary word resolving a collection nobody named. After the fixes, no card in the re-run breaks a constraint the brief stated, where 30 of 198 did.",
+  },
+  {
+    term: "The prose is the weakest part, and it took a second model to see it.",
+    text: "Every other measurement here scores the cards. A stronger model then graded all 36 replies 0-3 against the brief and the cards beside them: mean 1.50 of 3, 17% graded 3, 19% graded 0. Six claim a spec the cards do not carry — the grounding check validates the names a draft uses, not the specs it asserts about them — two promise three picks and describe one, and three answer past the brief. The retrieval table cannot see any of it.",
   },
   {
     term: "The benchmark caught bugs review had missed.",

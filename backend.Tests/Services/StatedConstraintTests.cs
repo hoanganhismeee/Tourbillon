@@ -1,4 +1,4 @@
-﻿// What a query states has to survive into the results.
+// What a query states has to survive into the results.
 //
 // Both rules here were written after a benchmark run found them broken. A stated budget admitted
 // Price on Request, so "under five thousand" answered with a tourbillon whose price is on request;

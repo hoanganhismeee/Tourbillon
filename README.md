@@ -64,14 +64,14 @@ significantly and took p95 from 2.8 s to 29 ms.
 
 | Metric | Concierge (Haiku 4.5) | BM25 alone |
 |---|---|---|
-| Mean grade over the top 5 | 0.42 | 0.42 |
-| MRR | 0.71 | 0.68 |
-| nDCG@10 | 0.29 | 0.30 |
-| Recall@10, share of ceiling | 15% | 19% |
-| Hit rate@10, grade 2 or better | 83% | 86% |
-| Top 10 breaking a stated constraint | 13% | 15% |
-| Replies with a relevant action | 78% | - |
-| Latency, p50 / p95 | 4.8 s / 10.7 s | 11 ms / 18 ms |
+| Mean grade over the top 5 | 0.49 | 0.42 |
+| MRR | 0.76 | 0.68 |
+| nDCG@10 | 0.36 | 0.30 |
+| Recall@10, share of ceiling | 29% | 19% |
+| Hit rate@10, grade 2 or better | 86% | 86% |
+| Top 10 breaking a stated constraint | 0% | 15% |
+| Replies with a relevant action | 83% | - |
+| Latency, p50 / p95 | 5.2 s / 8.5 s | 7 ms / 11 ms |
 
 The 100 queries above decided the reranker, the prompt and the chip rules, so a score from them is
 partly a score of the fit to them. These 36 briefs are a held-out set (`eval/frozen-set.mjs`): run
@@ -80,14 +80,29 @@ right or wrong, because "something for a black tie gala" has no single right ans
 state only what the brief states and read the rest as tiers, with the sentence each tier is argued
 from written beside it.
 
-No difference between the two columns clears the 95% interval: recall -0.015, mean grade +0.009,
-MRR +0.031, nDCG -0.012. On a set it was never tuned against, the concierge matches a keyword
-baseline at retrieval while doing the part the baseline cannot — reading the brief, answering in
-prose, and attaching a next step that is useful in 78% of replies.
+Running it the first time found four backend defects at once, all invisible under the earlier
+right-or-wrong labels: a budget filter that let Price on Request pass every ceiling, spec
+constraints that reached the filter bar but never the results, a complaint ("anything over 40mm
+looks silly") read as a floor rather than a ceiling, and an ordinary word resolving a collection
+nobody named. The column above is the re-run after those were fixed: **no card now breaks a
+constraint the brief stated**, where 30 of 198 did before.
 
-Scoring the pool separately from the cards says where the remaining loss is: retrieval puts 39% of
-the ideal answers inside 50 candidates, and the ten that reach the reply hold 6%. That is a
+No difference against BM25 clears the 95% interval: recall +0.039, mean grade +0.070, MRR +0.072,
+nDCG +0.057, each one inside noise on 36 briefs. On a set it was never tuned against, the concierge
+is at least the equal of a keyword baseline at retrieval while doing the part the baseline cannot —
+reading the brief, answering in prose, and attaching a next step that is useful in 83% of replies.
+
+Scoring the pool separately from the cards says where the remaining loss is: retrieval puts 45% of
+the ideal answers inside 50 candidates, and the ten that reach the reply hold 11%. That is a
 selection problem, not a retrieval one.
+
+**The prose is the weakest part, and now it is measured.** A stronger model (`claude-sonnet-5`)
+graded all 36 replies 0-3 against the brief and the cards beside them: mean **1.50**, with 17%
+graded 3 and 19% graded 0. Six replies claim a spec the cards do not carry — the grounding check
+validates the names a draft uses, not the specs it asserts about them — two promise three picks and
+describe one, and three answer past the brief (a diamond-paved piece for "instruments, not
+jewellery"). None of that is visible in the retrieval table above, which is the point of measuring
+it.
 
 Swapping Haiku for Qwen 2.5 7B run locally (Ollama, RTX 3070 laptop) keeps the facet results but
 not the open-ended ones. Measured on the development set under the older binary labels:
