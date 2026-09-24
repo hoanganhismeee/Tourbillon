@@ -1,4 +1,4 @@
-// The wording layer names watches in plain words and the backend adds the links, so the model stops
+﻿// The wording layer names watches in plain words and the backend adds the links, so the model stops
 // spending a third of its token budget writing URLs. These hold the rules that makes that safe:
 // first mention only, never inside an existing link, never a name the catalogue did not resolve.
 using backend.Services;
@@ -127,6 +127,37 @@ public class CatalogueLinkingTests
         const string draft = "See /watches/omega-seamaster-210-30-42-20-01-001-diver-300m for the detail.";
 
         Assert.Equal(draft, ChatService.LinkCatalogueNames(draft, Cards(), []));
+    }
+
+    [Fact]
+    public void ABrandBesideItsOwnCollectionBecomesOneLink()
+    {
+        // Two chips in a row for one thing: the reply read "Rolex Datejust" as a brand and a
+        // collection side by side, and a reader clicking either half wants the same page.
+        const string draft = "The [Rolex](/brands/rolex) [Datejust](/collections/rolex-datejust) 36 suits the evening.";
+
+        var merged = ChatService.MergeBrandIntoCollectionLink(draft);
+
+        Assert.Contains("[Rolex Datejust](/collections/rolex-datejust) 36", merged, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ACollectionFromAnotherBrandIsLeftAlone()
+    {
+        const string draft = "[Rolex](/brands/rolex) and the [Seamaster](/collections/omega-seamaster) are different worlds.";
+
+        Assert.Equal(draft, ChatService.MergeBrandIntoCollectionLink(draft));
+    }
+
+    [Fact]
+    public void AWatchNamedByItsReferenceAloneStillLinks()
+    {
+        // The catalogue name carries a model word after the reference; the reply names the
+        // reference only, and used to be left with a brand chip and a collection chip instead.
+        var linked = ChatService.LinkCatalogueNames(
+            "The Grand Seiko Sport Collection SBGE255 is the other side of that choice.", Cards(), []);
+
+        Assert.Contains("(/watches/grand-seiko-sport-collection-sbge255-spring-drive-gmt)", linked, StringComparison.Ordinal);
     }
 
     [Fact]

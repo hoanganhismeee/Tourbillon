@@ -643,7 +643,8 @@ public class ChatService
             aiMessage = keepDeterministic && !string.IsNullOrWhiteSpace(resolution.Message)
                 ? resolution.Message
                 : aiResult;
-            aiMessage = UnwrapNestedMarkdownLinks(LinkCatalogueNames(aiMessage, resolution.WatchCards, resolution.Context));
+            aiMessage = MergeBrandIntoCollectionLink(
+                UnwrapNestedMarkdownLinks(LinkCatalogueNames(aiMessage, resolution.WatchCards, resolution.Context)));
             if (watchCards.Count == 0)
                 watchCards = await ExtractWatchCardsAsync(aiMessage, actions);
         }
@@ -3727,9 +3728,38 @@ public class ChatService
             .Where(name => !_genericCollectionWords.Contains(name))
             .Distinct(StringComparer.OrdinalIgnoreCase);
 
-        return knownNames.Any(name =>
-            !allowedNames.Contains(name)
-            && normalizedMessage.Contains(name, StringComparison.OrdinalIgnoreCase));
+        if (knownNames.Any(name =>
+                !allowedNames.Contains(name)
+                && normalizedMessage.Contains(name, StringComparison.OrdinalIgnoreCase)))
+            return true;
+
+        return await MentionsWatchOutsideTheShortlistAsync(normalizedMessage, allowedNames);
+    }
+
+    /// True when the draft names a catalogue reference it was not given. Brands and collections were
+    /// the only names checked, so a compare of two watches came back describing a third: the shown
+    /// cards were right and the sentence was about something else, which also left that name without
+    /// a link because there was nothing to link it to.
+    private async Task<bool> MentionsWatchOutsideTheShortlistAsync(string normalizedMessage, HashSet<string> allowedNames)
+    {
+        var references = await _context.Watches
+            .AsNoTracking()
+            .Select(watch => watch.Name)
+            .ToListAsync();
+
+        foreach (var reference in references)
+        {
+            var name = QueryNormalizer.NormalizeText(reference);
+            // Short references collide with ordinary words and with each other; a long one is
+            // distinctive enough that finding it in the draft means the model wrote it.
+            if (name.Length < 5 || allowedNames.Contains(name)) continue;
+            // "5711" is inside "5711/1a-010": a draft naming the allowed watch must not be read as
+            // naming a different one whose reference is a fragment of it.
+            if (allowedNames.Any(allowed => allowed.Contains(name, StringComparison.OrdinalIgnoreCase))) continue;
+            if (normalizedMessage.Contains(name, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+
+        return false;
     }
 
     // Words that carry no request of their own once the watch has been named. Anything left
@@ -4409,7 +4439,35 @@ public class ChatService
             yield return $"{brand} {collection} {tail}";
             yield return $"{collection} {tail}";
         }
+
+        // A catalogue name can carry a model word after the reference — "4200H/222A-B934 222" — and a
+        // reply names the reference alone. Without these the whole watch went unlinked and the brand
+        // and collection were linked separately instead, which reads as two chips for one watch.
+        var reference = Regex.Match(name, @"^\S*\d\S*").Value;
+        if (!string.IsNullOrWhiteSpace(reference) && !string.Equals(reference, name, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return $"{brand} {collection} {reference}";
+            yield return $"{collection} {reference}";
+            yield return $"{brand} {reference}";
+        }
+
         yield return name;
+    }
+
+    /// "[Rolex](/brands/rolex) [Datejust](/collections/rolex-datejust)" reads as two chips for one
+    /// thing. When the collection belongs to the brand beside it, the pair becomes a single link to
+    /// the collection, which is where a reader who clicks either half wants to land.
+    internal static string MergeBrandIntoCollectionLink(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return message;
+
+        return Regex.Replace(
+            message,
+            @"\[(?<brand>[^\]]+)\]\(/brands/(?<brandSlug>[\w-]+)\)\s+\[(?<collection>[^\]]+)\]\(/collections/(?<collectionSlug>[\w-]+)\)",
+            match => match.Groups["collectionSlug"].Value.StartsWith(
+                         match.Groups["brandSlug"].Value + "-", StringComparison.OrdinalIgnoreCase)
+                ? $"[{match.Groups["brand"].Value} {match.Groups["collection"].Value}](/collections/{match.Groups["collectionSlug"].Value})"
+                : match.Value);
     }
 
     /// Wraps the first mention of a phrase that is not already inside a link. Returns false when the
