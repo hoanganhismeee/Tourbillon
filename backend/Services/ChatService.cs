@@ -1297,6 +1297,10 @@ public class ChatService
             return new AiDraftValidation { FailureReason = "mentioned catalogue entities outside the allowed shortlist" };
         }
 
+        var claim = UnsupportedSpecClaim(draft.Message, resolution.Context);
+        if (claim != null)
+            return new AiDraftValidation { FailureReason = $"claimed \"{claim}\", which the supplied specs do not support" };
+
         return new AiDraftValidation { IsValid = true };
     }
 
@@ -3690,6 +3694,161 @@ public class ChatService
         string.Equals(resolution.RoutingPath, "compare", StringComparison.Ordinal)
             ? history.Where(entry => string.Equals(entry.Role, "user", StringComparison.OrdinalIgnoreCase)).ToList()
             : history;
+
+    /// The figure a reply states about a watch has to come from that watch's record.
+    ///
+    /// Grading 36 held-out replies found six claiming a spec the cards do not carry — "65+ hours
+    /// power reserve" for a watch with 45, "integrated bracelet" for one on leather. The name
+    /// checks above catch a watch that was never supplied; this catches the supplied watch
+    /// described wrongly, which reads exactly as confidently.
+    ///
+    /// Only sentences that name a supplied watch are read, so general advice ("I would stay under
+    /// 40 mm for a dress watch") is untouched, and a hedged figure is a judgement rather than a
+    /// claim. Returns the offending claim, or null when every figure is supported.
+    internal static string? UnsupportedSpecClaim(string message, List<string> context)
+    {
+        if (string.IsNullOrWhiteSpace(message) || context.Count == 0) return null;
+
+        var watches = ParseWatchFacts(context);
+        if (watches.Count == 0) return null;
+
+        foreach (var sentence in Regex.Split(message, @"(?<=[.!?])\s+"))
+        {
+            foreach (Match match in _specClaimPattern.Matches(sentence))
+            {
+                if (IsHedged(sentence, match.Index)) continue;
+                if (!double.TryParse(match.Groups["value"].Value.Replace(",", ""),
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out var value))
+                    continue;
+
+                // A figure describes the watch named before it. When the nearest name is one the
+                // context never described — a figure inside a watch's own name, or a watch the name
+                // checks above will deal with — there is nothing here to check it against.
+                var subject = NearestNamedWatch(watches, sentence, match.Index);
+                if (subject == null) continue;
+                // A record with no figures at all cannot contradict anything: the catalogue does not
+                // fill every field, and silence is not evidence against the sentence.
+                if (subject.Value.Numbers.Count == 0 && subject.Value.Price == null) continue;
+
+                var isPrice = match.Value.TrimStart().StartsWith('$');
+                if (Supports(subject.Value, value, isPrice)) continue;
+                return match.Value.Trim();
+            }
+        }
+
+        return null;
+    }
+
+    // A figure with a unit a watch record can answer, or a price. Anything else in a sentence is
+    // prose, not a claim: "the 1950s", "two complications", "36 of them".
+    private static readonly Regex _specClaimPattern = new(
+        @"\$\s?(?<value>\d[\d,]*(?:\.\d+)?)|(?<value>\d[\d,]*(?:\.\d+)?)\s*(?:mm|millimet(?:re|er)s?|metres?|meters?|\bm\b|bar|hours?|hrs?|\bh\b)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Words that turn a figure into a judgement. "around 40 mm" is advice about size; "40 mm" beside
+    // a named watch is a statement about that watch.
+    private static readonly Regex _hedgePattern = new(
+        @"\b(?:under|below|over|above|around|about|roughly|approximately|nearly|almost|up\s+to|at\s+least|at\s+most|from|between|beyond|within|past|sub)\W{0,3}$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static bool IsHedged(string sentence, int index) =>
+        _hedgePattern.IsMatch(sentence[..index]);
+
+    /// The numbers a watch record can defend: everything in its Specs summary, plus its price.
+    private readonly record struct WatchFacts(string Title, string Reference, List<double> Numbers, decimal? Price);
+
+    private static List<WatchFacts> ParseWatchFacts(List<string> context)
+    {
+        var facts = new List<WatchFacts>();
+        foreach (var entry in context)
+        {
+            var header = Regex.Match(entry, "^Watch \"(?<title>[^\"]+)\"");
+            if (!header.Success) continue;
+
+            var specs = Regex.Match(entry, @"Specs (?<specs>.*)$", RegexOptions.Singleline);
+            var price = Regex.Match(entry, @"Price \$(?<price>[\d,]+(?:\.\d+)?)");
+            var numbers = new List<double>();
+            if (specs.Success)
+            {
+                foreach (Match number in Regex.Matches(specs.Groups["specs"].Value, @"\d+(?:\.\d+)?"))
+                    if (double.TryParse(number.Value, System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+                        numbers.Add(parsed);
+            }
+
+            var title = header.Groups["title"].Value;
+            // A name can carry the size — "lineSport elegante 40mm Titalyt" — and quoting the name
+            // back is not a claim about anything. The reference is dropped first: it is a string of
+            // numbers that mean nothing, and leaving it in would let any figure through.
+            var titleWithoutReference = string.Join(" ", title
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(word => !(Regex.IsMatch(word, @"\d") && Regex.IsMatch(word, @"[./-]"))));
+            foreach (Match number in Regex.Matches(titleWithoutReference, @"\d+(?:\.\d+)?"))
+                if (double.TryParse(number.Value, System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out var fromTitle))
+                    numbers.Add(fromTitle);
+
+            facts.Add(new WatchFacts(
+                title,
+                Regex.Match(title, @"\S*\d\S*").Value,
+                numbers,
+                price.Success && decimal.TryParse(price.Groups["price"].Value.Replace(",", ""),
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var parsedPrice)
+                    ? parsedPrice
+                    : null));
+        }
+
+        return facts;
+    }
+
+    /// The supplied watch named closest before this figure, or null when the figure follows no name
+    /// the context describes.
+    private static WatchFacts? NearestNamedWatch(List<WatchFacts> watches, string sentence, int index)
+    {
+        WatchFacts? nearest = null;
+        var nearestAt = -1;
+        foreach (var watch in watches)
+        {
+            var at = MentionIndex(sentence[..index], watch);
+            if (at > nearestAt) { nearestAt = at; nearest = watch; }
+        }
+
+        return nearestAt >= 0 ? nearest : null;
+    }
+
+    /// Where the sentence last names this watch before a point, or -1.
+    private static int MentionIndex(string upToFigure, WatchFacts watch)
+    {
+        var byReference = string.IsNullOrWhiteSpace(watch.Reference)
+            ? -1
+            : upToFigure.LastIndexOf(watch.Reference, StringComparison.OrdinalIgnoreCase);
+        var tail = TitleTail(watch.Title);
+        var byTitle = tail == null ? -1 : upToFigure.LastIndexOf(tail, StringComparison.OrdinalIgnoreCase);
+        return Math.Max(byReference, byTitle);
+    }
+
+    private static string? TitleTail(string title)
+    {
+        var words = title.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(word => word.Length >= 4 && !Regex.IsMatch(word, @"\d"))
+            .ToList();
+        return words.Count == 0 ? null : string.Join(" ", words.TakeLast(2));
+    }
+
+
+    /// A figure is supported when the record carries it. A millimetre rounded in prose is still the
+    /// same case, so unit figures allow a point of slack; a price does not.
+    private static bool Supports(WatchFacts watch, double value, bool isPrice)
+    {
+        if (isPrice)
+            return watch.Price != null && Math.Abs((double)watch.Price.Value - value) < 1
+                   || watch.Numbers.Any(number => Math.Abs(number - value) < 0.001);
+
+        return watch.Numbers.Any(number => Math.Abs(number - value) <= 1)
+               || (watch.Price != null && Math.Abs((double)watch.Price.Value - value) < 1);
+    }
 
     private static bool MentionsResolvedCatalogueEntity(string message, List<ChatWatchCard> watchCards)
     {

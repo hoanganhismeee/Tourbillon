@@ -30,7 +30,9 @@ Rules:
   code, or "what should I wear" question is never non_watch.
 - A statement about the user's own life is context for choosing a watch, not small talk: how they
   travel, the sport they play, the work they do, their daily routine, their wrist. "I cycle to
-  work" and "I'm a chef" are advice_request. So is a watch part named in plain words, such as
+  work" and "I'm a chef" are advice_request, and so is the same life stated without a pronoun or a
+  verb — "long haul flights twice a month for work", "desk job, mostly typing" — which is a person
+  describing what the watch has to live with. So is a watch part named in plain words, such as
   "the crown" or "the ticking inside", because in this setting it can only mean the watch.
 - Reserve non_watch for messages no watch could answer at all: greetings, the weather, arithmetic,
   code, CVs, restaurants, travel tips, or chat with no bearing on what someone wears on the wrist.
@@ -53,7 +55,7 @@ Example utterances (guide, not exhaustive):
 - collection_info: "tell me about the Aquanaut", "what's the Royal Oak about"
 - collection_compare: "compare Aquanaut and Overseas", "Nautilus vs Royal Oak"
 - watch_compare: "compare Nautilus 5711 and Royal Oak 15202", "compare the first and third"
-- advice_request: "do I suit a diving watch, female 26 years old", "should I get gold or steel", "is a 42mm too big for my wrist", "what works for an office job", "help me pick my first nice watch", "which style fits a 30 year old man", "would a dress watch suit me", "what should I wear to a wedding", "is a chronograph right for everyday", "guide me on what suits a small wrist"
+- advice_request: "do I suit a diving watch, female 26 years old", "should I get gold or steel", "is a 42mm too big for my wrist", "what works for an office job", "help me pick my first nice watch", "which style fits a 30 year old man", "would a dress watch suit me", "what should I wear to a wedding", "is a chronograph right for everyday", "guide me on what suits a small wrist", "long haul flights twice a month for work", "desk job, mostly typing", "weekends in the garden with the kids", "I teach, so I'm writing on a whiteboard all day", "I ride motorbikes on weekends"
 - discovery: "sporty watches under 30k", "dress watch for a wedding", "blue dial chronograph", "elegant watch for a formal dinner", "affordable watch for a student", "something cheap", "entry-level luxury", "budget-friendly starter piece", "what's in your lineup for a tight budget", "I want my first nice watch", "looking for accessible options", "the cheapest one you carry", "most expensive piece you have", "high-end grail watch", "something for under 5k"
 - non_watch: "hi", "hello", "hello again", "good evening", "what's the weather", "2+2", "write me a poem", "recommend a restaurant", "write my CV", "update my resume", "help me with a cover letter", "my curriculum vitae needs work", "translate this to French", "fix my code"
 - unclear: any message that does not clearly match one of the above"""
