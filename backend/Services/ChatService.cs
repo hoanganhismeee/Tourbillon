@@ -1,4 +1,4 @@
-// Chat concierge orchestration for Tourbillon.
+﻿// Chat concierge orchestration for Tourbillon.
 // Resolves exact watches, compare requests, and discovery redirects before using the LLM,
 // then sends only compact Tourbillon-specific context to ai-service when explanation helps.
 using System.Net.Http.Json;
@@ -100,6 +100,11 @@ public class ChatApiResponse
     /// right watch and whether the shortlist picked it — and those are fixed in different places.
     /// Off in production: it is an evaluation hook, not part of the contract the frontend reads.
     public List<int>? CandidateWatchIds { get; set; }
+
+    /// What the parse made of the brief, behind the same switch. A brief can fail because the
+    /// parse missed a constraint or because retrieval missed the watch, and the cards alone do not
+    /// say which; reading this offline is the difference between guessing and knowing.
+    public string? ParsedIntent { get; set; }
 }
 
 public class ChatService
@@ -244,6 +249,7 @@ public class ChatService
         public List<string> SuggestedCompareSlugs { get; set; } = [];
         // Retrieval's own output before the card cut, for the evaluation hook above.
         public List<int> CandidateWatchIds { get; set; } = [];
+        public string? ParsedIntentSummary { get; set; }
         // Brands and collections whose context this reply supplies beyond the cards. The draft
         // validator accepts them: a question about two brands has to be answerable in both names,
         // even when only one of them has cards on screen.
@@ -704,6 +710,9 @@ public class ChatService
             CandidateWatchIds = _config.GetValue<bool>("ChatSettings:ExposeCandidates")
                 && resolution.CandidateWatchIds.Count > 0
                 ? resolution.CandidateWatchIds
+                : null,
+            ParsedIntent = _config.GetValue<bool>("ChatSettings:ExposeCandidates")
+                ? resolution.ParsedIntentSummary
                 : null,
         };
 
@@ -1949,6 +1958,34 @@ public class ChatService
             canonicalMessage, searchResult, excludedBrandIds, mentions: mentions);
         resolution.SearchPath = searchResult.SearchPath;
         return resolution;
+    }
+
+    /// A one-line record of what the parse understood, for the evaluation hook only. Empty fields
+    /// are left out, so the line reads as the brief was read: "maxPrice=5000; excl-comp=date".
+    private static string? SummariseIntent(QueryIntent? intent)
+    {
+        if (intent == null) return null;
+        var parts = new List<string>();
+        void Add(string key, object? value) { if (value != null) parts.Add($"{key}={value}"); }
+
+        Add("brand", intent.BrandId);
+        if (intent.BrandIds.Count > 0) Add("brands", string.Join(",", intent.BrandIds));
+        Add("collection", intent.CollectionId);
+        if (intent.CollectionIds.Count > 0) Add("collections", string.Join(",", intent.CollectionIds));
+        Add("minPrice", intent.MinPrice);
+        Add("maxPrice", intent.MaxPrice);
+        Add("style", intent.Style);
+        Add("material", intent.CaseMaterial);
+        Add("dial", intent.DialColour);
+        Add("minDia", intent.MinDiameterMm);
+        Add("maxDia", intent.MaxDiameterMm);
+        Add("water", intent.WaterResistance);
+        if (intent.Complications.Count > 0) Add("comp", string.Join(",", intent.Complications));
+        if (intent.ExcludedComplications.Count > 0) Add("excl-comp", string.Join(",", intent.ExcludedComplications));
+        if (intent.ExcludedMaterials.Count > 0) Add("excl-mat", string.Join(",", intent.ExcludedMaterials));
+        if (intent.ExcludedBrandIds.Count > 0) Add("excl-brand", string.Join(",", intent.ExcludedBrandIds));
+
+        return parts.Count > 0 ? string.Join("; ", parts) : null;
     }
 
     /// True when the sentence carries a constraint the catalogue can be searched on. "I hate date
@@ -3229,6 +3266,7 @@ public class ChatService
             {
                 AiMode = aiMode,
                 CandidateWatchIds = candidateIds,
+                ParsedIntentSummary = SummariseIntent(result.QueryIntent),
                 Message = coverageMessage,
                 WatchCards = discoveryCards,
                 Actions = actions,
@@ -3246,6 +3284,7 @@ public class ChatService
             UseAi = true,
             AiMode = aiMode,
             CandidateWatchIds = candidateIds,
+            ParsedIntentSummary = SummariseIntent(result.QueryIntent),
             Message = BuildGroundedDiscoveryMessage(ordered, offerSmartSearch, requestedDirections),
             Query = query,
             Context = context,

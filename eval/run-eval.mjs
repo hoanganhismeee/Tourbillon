@@ -96,6 +96,13 @@ const ARM_IMPLS = {
           // Without it the concierge can only be scored on what it showed, which hides whether a
           // miss was retrieval failing to find the watch or the shortlist failing to pick it.
           candidateIds: body.candidateWatchIds ?? null,
+          // The prose, kept so a judge can grade offline whether the reply answers the brief and
+          // whether every claim in it is supported by the cards it names. Storing it costs nothing
+          // at run time and saves paying for the run twice.
+          reply: body.message ?? null,
+          // What the parse made of the brief, when the backend is set to expose it. A brief can
+          // fail on the parse or on retrieval, and the cards alone do not say which.
+          parsedIntent: body.parsedIntent ?? null,
           searchPath: body.finderPath ?? body.routingPath ?? 'concierge',
           routingPath: body.routingPath ?? null,
           actions: (body.actions ?? []).map(a => ({
