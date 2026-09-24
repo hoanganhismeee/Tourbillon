@@ -261,11 +261,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       };
       setMessages(prev => [...prev, assistantMessage]);
     } catch (err) {
-      // Ignore errors caused by the user intentionally clearing/aborting
-      if (err instanceof Error && err.name === 'AbortError') return;
+      // Only a cancel the user asked for passes silently: clearing the session, or sending the
+      // next message. A timeout used to land here as the same bare AbortError, so a slow turn
+      // left the panel with the question on screen and no answer and no explanation.
+      if (controller.signal.aborted) return;
+      const timedOut = err instanceof Error && err.name === 'TimeoutError';
       setMessages(prev => [
         ...prev,
-        { role: 'assistant', content: 'Something went wrong. Please try again.', isError: true },
+        {
+          role: 'assistant',
+          content: timedOut
+            ? 'That took longer than I could wait for. Send it again and I will keep looking.'
+            : 'Something went wrong. Please try again.',
+          isError: true,
+        },
       ]);
     } finally {
       if (!controller.signal.aborted) setIsLoading(false);

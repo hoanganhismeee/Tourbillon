@@ -15,7 +15,12 @@ const fetchWithTimeout = async (
 ) => {
   const { timeoutMs = 10000, externalSignal, ...rest } = init || {};
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  // Abort with a reason, so a caller can tell "this took too long" from "the user cancelled".
+  // Without it both arrive as a bare AbortError and a timed-out chat turn looked like a
+  // deliberate cancel: the panel dropped the request and showed nothing at all.
+  const timeoutId = setTimeout(
+    () => controller.abort(new DOMException(`Timed out after ${timeoutMs} ms`, 'TimeoutError')),
+    timeoutMs);
   const onExternalAbort = () => controller.abort();
   externalSignal?.addEventListener('abort', onExternalAbort);
   try {
@@ -1111,7 +1116,9 @@ export const sendChatMessage = async (
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId, message, behaviorSummary, preferredLanguage }),
     credentials: 'include',
-    timeoutMs: 30000,
+    // A concierge turn is a model call, two on a slow path. Haiku answers in about five seconds,
+    // but a local model on a laptop GPU takes half a minute, and the old 30 s cap cut those off.
+    timeoutMs: 60000,
     externalSignal: signal,
   });
   if (response.status === 429) {
