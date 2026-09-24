@@ -284,8 +284,13 @@ change in the code or in the labels — which is what makes a before/after compa
 **The last violation.** That 1.2% was a single brief, `f35` — "a bracelet, not a strap, I sweat
 through leather" — where four of ten cards were on leather: the strap was not part of the parse at
 all. Reading it needed the complaint to be cut from the sentence before the positive matcher runs,
-because the word being complained about is the word the brief would otherwise be asking for. After
-that fix the brief returns ten cards and no violations.
+because the word being complained about is the word the brief would otherwise be asking for.
+
+That fix landed in the deterministic parser, and the next held-out run showed the same brief still
+failing: the concierge reaches its retrieval through the **LLM parse**, which copies what the model
+returned and runs none of the regex readers. Smart Search answered the brief correctly while the
+concierge did not, from the same words. One reader now serves both paths, and the brief returns ten
+cards and no violations — a reminder that a fix verified on one entry point is not a fix.
 
 ## Known gaps in these numbers
 - **One request took 134 s** during the run, an API stall rather than pipeline work. It is the
