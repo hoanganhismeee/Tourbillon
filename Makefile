@@ -41,6 +41,27 @@ back:
 		$(COMPOSE) up --build -d; \
 	fi
 
+# Rebuild the backend only, leaving the model container up. `docker compose up -d --build backend`
+# without the override file silently recreates ai-service from the base config and it loses the GPU,
+# which turns a 20-second concierge turn into three minutes.
+back-fast:
+	@GPU=$$($(MAKE) -s detect-gpu); 	if [ "$$GPU" = "nvidia" ]; then 		$(COMPOSE) -f docker-compose.yml -f docker-compose.nvidia.yml up -d --build backend; 	else 		$(COMPOSE) up -d --build backend; 	fi
+	@until curl -sf --max-time 5 http://localhost:5248/api/brand >/dev/null 2>&1; do sleep 2; done
+	@echo "==> backend ready"
+
+# ---- Evaluation ----
+
+# Both caches serve the previous run's answers, so a measurement taken without this reads the code
+# as it was, not as it is. Run before every before/after comparison.
+eval-reset:
+	@docker exec redis redis-cli INCR chat:resp:ver > /dev/null && echo "==> reply cache retired"
+	@docker exec postgresql psql -U $${POSTGRES_USER:-tourbillon} -d tourbillon 		-c 'DELETE FROM "QueryCaches";' > /dev/null && echo "==> semantic cache cleared"
+
+# What a slow run usually means: the model fell back to the CPU, or the laptop GPU is throttling.
+eval-health:
+	@docker logs qwen2.5-7b 2>&1 | grep -E "offloaded [0-9]+/" | tail -1 || echo "no offload line yet"
+	@nvidia-smi --query-gpu=utilization.gpu,memory.used,temperature.gpu,clocks.sm --format=csv 2>/dev/null 		|| echo "no nvidia-smi"
+
 # ---- Combo: start docker stack + frontend together ----
 
 dev:

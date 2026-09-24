@@ -1180,10 +1180,14 @@ public class ChatService
         var retryContext = BuildAiRewriteContext(validation.FailureReason ?? "left the allowed catalogue scope", resolution);
         retryContext.AddRange(context);
 
+        // The draft itself is logged, not just the verdict: knowing a draft was refused for naming
+        // something outside the shortlist says nothing about which word did it, and finding that by
+        // bisecting the validator costs an afternoon.
         _logger.LogInformation(
-            "Chat ai draft retry path={RoutingPath} reason={Reason}",
+            "Chat ai draft retry path={RoutingPath} reason={Reason} draft={DraftPreview}",
             resolution.RoutingPath,
-            validation.FailureReason ?? "unknown");
+            validation.FailureReason ?? "unknown",
+            Preview(aiDraft.Message));
 
         var correctedDraft = await CallAiServiceAsync(
             history,
@@ -1202,12 +1206,21 @@ public class ChatService
 
         var fallbackMessage = BuildDeterministicAiFallbackMessage(resolution);
         _logger.LogWarning(
-            "Chat ai draft fallback path={RoutingPath} firstReason={FirstReason} secondReason={SecondReason}",
+            "Chat ai draft fallback path={RoutingPath} firstReason={FirstReason} secondReason={SecondReason} draft={DraftPreview}",
             resolution.RoutingPath,
             validation.FailureReason ?? "unknown",
-            correctedValidation.FailureReason ?? "unknown");
+            correctedValidation.FailureReason ?? "unknown",
+            Preview(correctedDraft.Message));
 
         return new AiChatDraft { Message = fallbackMessage, Fallback = true };
+    }
+
+    /// One line of a draft, for a log entry that has to stay readable.
+    private static string Preview(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return "(empty)";
+        var flat = Regex.Replace(message, @"\s+", " ").Trim();
+        return flat.Length > 160 ? flat[..160] + "..." : flat;
     }
 
     private async Task<AiChatDraft> CallAiServiceAsync(

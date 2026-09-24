@@ -47,6 +47,9 @@ const ARMS = String(args.arms ?? 'keyword,smart').split(',').map(s => s.trim()).
 // other subsystem now serves measures a scope decision, not retrieval quality.
 const SCOPE = String(args.scope ?? 'all').trim();
 const LIMIT = args.limit ? Number(args.limit) : null;
+// The briefs a fix was written for. Re-running all 36 to see whether one of them still breaks is
+// twenty minutes on a local model; naming them is one.
+const ONLY = args.only ? new Set(args.only.split(',').map(id => id.trim()).filter(Boolean)) : null;
 const PASSES = Number(args.passes ?? 1);
 const DELAY_MS = Number(args.delay ?? 0);
 // Largest share of the catalogue a label may match before it stops discriminating between
@@ -199,7 +202,10 @@ async function main() {
   const validated = validateQueries(catalogue, all, { maxShare: MAX_SHARE });
   const usable = validated.filter(q => q.status === 'ok');
   const inScope = SCOPE === 'all' ? usable : usable.filter(q => scopeOf(q) === SCOPE);
-  const scored = LIMIT ? inScope.slice(0, LIMIT) : inScope;
+  const selected = ONLY ? inScope.filter(q => ONLY.has(q.id)) : inScope;
+  if (ONLY && selected.length === 0) throw new Error(`--only matched no brief in the ${SET} set: ${[...ONLY].join(', ')}`);
+  if (ONLY) console.log(`${YELLOW}only${RESET} ${DIM}${selected.map(q => q.id).join(', ')} — a spot check, not a score${RESET}`);
+  const scored = LIMIT ? selected.slice(0, LIMIT) : selected;
 
   printLabelReport(validated, catalogue);
   if (args.validate) return;
