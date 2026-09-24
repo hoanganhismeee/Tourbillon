@@ -23,6 +23,8 @@ node eval/run-eval.mjs --from=eval/results/eval-<stamp>.json   # re-print a save
 node eval/run-eval.mjs --rescore=eval/results/<run>.json      # score a saved run against today's labels
 node eval/run-eval.mjs --set=test --arms=bm25,concierge       # the frozen set: report, never tune
 node eval/judge-pool.mjs --sample=12                          # blind second opinion on the rubrics (~$0.02)
+node eval/label-versions.mjs                                  # v1 vs v2 labels against a rubric-free judge
+node eval/judge-reply.mjs --from=<run.json>                   # grade the concierge's prose 0-3 (~$0.15 for 36)
 node eval/compare-runs.mjs --a=<run.json> --b=<run.json> --arm=concierge   # same arm, two runs: paired deltas, latency, per-category
 ```
 
@@ -165,12 +167,13 @@ stay in the catalogue but can never satisfy a budget constraint, because their p
 | **Hit rate@10** | Did the user see anything useful at all? The most legible number for non-engineers. |
 | **p50 / p95 latency** | What a single user waits. The mean hides the tail of slow model calls; p95 is the number worth quoting. |
 
-Three further measurements sit beside the retrieval table:
+Four further measurements sit beside the retrieval table:
 
 | Measurement | Arm | Question it answers |
 |---|---|---|
 | **Structured filter accuracy** | `smart` | Did the parser read the constraints the brief states? Slot recall (constraints read), slot precision (parsed constraints that were right) and the share of queries read exactly, on the spec half only. It separates a parse error from a ranking error. |
 | **Action relevance** | `concierge` | Are the compare, navigate and search actions on a reply valid and useful? A comparison is relevant when every compared watch is in the answer set, a destination when at least half its watches are, a hand-off search when two of its first five results are. |
+| **Reply grade** (`judge-reply.mjs`) | `concierge` | Does the prose answer the brief, is every claim supported by the cards it names, and does it end somewhere useful? Graded 0-3 offline from the stored reply by a stronger model than the one that wrote it, and reported as a distribution with the low grades quoted. |
 | **Candidate recall** (`--k=50`) | `bm25`, `vector`, `hybrid` | Does a retriever's pool of 50 contain the answers? This is the job a retriever does for a reranker (the concierge had one until it was removed; it now shows the fused order, so recall@10 is its metric), and it can rank designs differently from recall@10, which is the job it does when its order is shown directly. |
 
 Structured filter accuracy is a component metric, not a headline: a perfect parse can still rank

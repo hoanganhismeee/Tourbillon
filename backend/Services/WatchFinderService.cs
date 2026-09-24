@@ -76,12 +76,13 @@ public class QueryIntent
     public bool CollectionsDerivedFromStyle { get; set; }
     public decimal? MaxPrice { get; set; }
     public decimal? MinPrice { get; set; }
-    /// Parsed diameter range in mm — frontend uses these to pre-select the Diameter filter.
-    /// Not applied as SQL WHERE (diameter is stored in Watch.Specs JSON, not a column).
+    /// Parsed diameter range in mm — also pre-selects the Diameter filter in the bar.
+    /// No SQL WHERE (diameter lives in Watch.Specs JSON), but StatedConstraintFilter applies it in
+    /// memory over the candidate list when the user stated it.
     public double? MinDiameterMm { get; set; }
     public double? MaxDiameterMm { get; set; }
-    /// Spec-level filters — frontend uses these to pre-select filter bar dropdowns.
-    /// Not applied as SQL WHERE (stored in Watch.Specs JSON, not columns).
+    /// Spec-level filters — they pre-select the filter bar dropdowns, and the ones the user stated
+    /// are enforced by StatedConstraintFilter over the candidates, since Specs is JSON not columns.
     public string? CaseMaterial { get; set; }
     /// Canonical dial colour ("Blue", "Silver"...). Catalogue dials are free text with 112
     /// distinct spellings, so both sides are normalised to this small set before matching.
@@ -106,8 +107,8 @@ public class QueryIntent
     /// Applied as SQL WHERE BrandId NOT IN (ids). Overrides BrandId/BrandIds inclusions.
     public List<int> ExcludedBrandIds { get; set; } = [];
     /// Complication labels from query text (e.g. "Chronograph", "Perpetual Calendar").
-    /// Client-side filter only — complications live in Watch.Specs JSON, not a DB column.
-    /// Labels must match frontend COMPLICATION_OPTIONS labels exactly.
+    /// Enforced in memory by StatedConstraintFilter, not in SQL — complications live in the Specs
+    /// JSON. Labels must match frontend COMPLICATION_OPTIONS labels exactly.
     public List<string> Complications { get; set; } = [];
     /// Power reserve bucket labels from query text (e.g. "48h – 72h", "Over 100h").
     /// Client-side filter only. Labels must match frontend POWER_RESERVE_OPTIONS exactly.

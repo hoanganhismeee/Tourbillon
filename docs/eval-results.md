@@ -194,6 +194,34 @@ The last row is the one that matters: the old labels called a watch worthless 23
 where an outside reader would have taken it seriously. That is what "the labels are too strict" looks
 like when it is measured rather than argued.
 
+## What the held-out run found, and what the fixes did
+
+2026-09-23/24. The point of a held-out set is to find what tuning cannot. The first run found four
+backend defects, all of them invisible under the v1 binary labels because a violation was scored the
+same as an ordinary miss.
+
+| Defect | What it did | Fix |
+|---|---|---|
+| Price on Request satisfied every budget | "under five thousand" answered with an A. Lange & Söhne tourbillon; 9 of 10 cards over budget | a stated budget requires `CurrentPrice > 0` |
+| Stated spec constraints never filtered | "a green dial, nothing else matters" returned five non-green dials | `StatedConstraintFilter` over the candidate list, on both retrieval paths and Smart Search |
+| A complaint was not read as a constraint | "anything over 40mm looks silly on me" set a floor of 40 mm, not a ceiling | the exclusion vocabulary reads complaints; a size complaint sets the ceiling |
+| An ordinary word named a collection | "nothing else matters" resolved GMT-Master II and pinned the search to Rolex; "I hate date windows" resolved Datejust | a short name word must appear in the query, and a negated word cannot name a collection |
+
+On the six briefs that failed, results breaking a stated constraint went **29 → 0**, with card counts
+held or improved (f18 went from 0 cards to 10: the concierge had been reading the complaint as a
+revision of a shortlist that did not exist, and searching nothing).
+
+**A hypothesis that did not survive.** The brand-prestige sort was suspected of costing quality — it
+promotes the most prestigious catalogue pieces into the visible cards, and Price on Request is
+concentrated in those brands. Scored against the stored pools, the sort is not the problem: mean
+grade over the three cards is **0.590 as shown against 0.562 in raw retrieval order**. It stays, and
+the defect was the budget filter underneath it.
+
+**Run-to-run spread.** The `bm25`, `hybrid` and `vector` arms are deterministic: two passes over the
+held-out set return identical ids, so any movement between runs on those arms is a code change, not
+noise. The model-backed arms are not, which is why a comparison between two concierge runs needs
+both caches cleared and the spread quoted beside it.
+
 ## Known gaps in these numbers
 - **One request took 134 s** during the run, an API stall rather than pipeline work. It is the
   maximum, not the p95, so the table is unaffected.

@@ -99,6 +99,67 @@ Ba lý do:
 3. **Không tự chấm điểm mình.** Nhãn viết từ đề bài, trước khi nhìn kết quả. Gán nhãn bằng
    cách xem hệ thống trả về gì rồi tick "cái này hợp lý" là chấm điểm chính mình.
 
+### Graded relevance — nửa `semantic` dùng thang 0-3, không phải đúng/sai
+
+Predicate nhị phân hợp với câu hỏi facet: "dial xanh dưới 30k" thì một chiếc hoặc thoả hoặc không.
+Với câu hỏi mở nó sai bản chất. Brief *"quà tốt nghiệp trường y cho em trai, tầm 8 nghìn"* có chiếc
+đúng hẳn, có chiếc chấp nhận được, có chiếc chỉ đúng ngân sách — nhãn nhị phân ép cả ba vào một ô
+và phần lớn rơi vào ô "sai", nên mọi arm cùng trông tệ như nhau.
+
+Từ **label v2**, mỗi câu `semantic` mang hai phần:
+
+```js
+{ id: 'f08', query: 'my brother just qualified as a doctor, budget around eight thousand',
+  must: { priceMax: 9000 },                       // hard constraint: phá là grade 0
+  rubric: [
+    { grade: 3, when: { styleAny: ['dress'], diameterMax: 41 },
+      why: 'một chiếc dress watch là thứ đeo được trong phòng khám và ở đám cưới' },
+    { grade: 2, whenAny: [{ styleAny: ['sport'] }, { materialAny: ['steel'] }],
+      why: 'đeo hằng ngày vẫn hợp dịp, chỉ kém trang trọng hơn' },
+    { grade: 1, when: {}, why: 'đúng ngân sách, không có gì chống lại brief' },
+  ] }
+```
+
+- `must` = điều người dùng **nói thẳng**. Vi phạm → grade 0, bất kể tier nào khớp.
+- `rubric` = các tier. `when` là AND của mọi key; `whenAny` khớp nếu **một** nhánh đúng.
+- Grade của một chiếc = **tier cao nhất khớp**; không tier nào khớp → 0.
+- Mỗi tier có `why` — một câu tiếng Anh giải thích vì sao mức đó, để người review cãi bằng lập luận.
+
+Nửa `spec` vẫn giữ `truth` nhị phân: ở đó "đúng" là khái niệm rõ ràng, và đổi sang graded chỉ làm
+nhãn khó đọc hơn mà không thêm thông tin.
+
+**Vì sao v2 tốt hơn v1 chứ không chỉ khác v1.** Cả hai phiên bản nhãn được đem chấm mù bởi một
+judge model *không* nhìn thấy rubric (`label-versions.mjs`), rồi so với nhãn:
+
+| | label v1 (nhị phân) | label v2 (graded) |
+|---|---|---|
+| exact agreement với judge | 36% | **42%** |
+| within one grade | 58% | **86%** |
+| MAE | 1.22 | **0.75** |
+| gán 0 trong khi judge chấm 2-3 | 23 lần | **6 lần** |
+
+Đây là lý do duy nhất chấp nhận được để đổi cách tính: phiên bản mới **gần với phán đoán độc lập
+hơn**, chứ không phải vì nó làm điểm đẹp hơn.
+
+### dev set và held-out test set
+
+Nhãn là *đáp án*. dev set và test set là *hai tập câu hỏi khác nhau* dùng đáp án đó.
+
+| | dev set | held-out test set |
+|---|---|---|
+| File | `queries.mjs` | `frozen-set.mjs` |
+| n | 100 (50 spec + 50 semantic) | 36 brief, 6 mỗi intent group |
+| Dùng để | thử, sửa, tinh chỉnh — chạy bao nhiêu lần cũng được | **chỉ để báo cáo** |
+| Cờ | mặc định | `--set=test` |
+
+Lý do tách: sau vài chục vòng sửa code theo kết quả của cùng 100 câu, hệ thống bắt đầu hợp với
+**chính 100 câu đó**. Điểm vẫn lên, chất lượng thật thì không — overfitting. Test set bị đóng băng
+(không sửa nhãn theo kết quả, không thêm câu vì câu cũ khó) nên con số của nó là ước lượng thật sự
+về câu chưa từng gặp. Số đưa lên README hay portfolio lấy từ test set; số dùng trong lúc làm lấy từ
+dev set.
+
+Quy tắc ghi ngay đầu `frozen-set.mjs`: *run to report, never to tune.*
+
 ### Hai nguồn câu hỏi
 
 Bộ câu hỏi có 100 câu, chia đều theo hệ thống phụ trách:
@@ -133,6 +194,21 @@ theo cấu tạo, dùng seeded PRNG nên hai lần chạy cho ra cùng một b�
 | **nDCG@10** | Recall có trọng số theo vị trí — phân biệt "đúng nhưng bị chôn" với "đúng và ở đầu". |
 | **Hit rate@10** | Người dùng có thấy được thứ gì hữu ích không? Dễ hiểu nhất với người không kỹ thuật. |
 | **p50 / p95** | Người dùng chờ bao lâu. Không dùng mean — LLM tạo đuôi dài, mean che mất trải nghiệm tệ nhất. |
+
+Nửa `semantic` (label v2) chấm thêm bằng nhóm chỉ số graded:
+
+| Chỉ số | Công thức | Trả lời câu hỏi gì |
+|---|---|---|
+| **gain@k** | trung bình `grade / 3` của k kết quả đầu | Trung bình một kết quả hiển thị tốt đến đâu. |
+| **nDCG@k (graded)** | `gain(g) = 2^g − 1`, chiết khấu theo vị trí | Có xếp chiếc grade 3 lên trước chiếc grade 1 không. |
+| **useful hit@k** | có ít nhất một kết quả grade ≥ 2 | Người dùng có thấy thứ **thực sự** dùng được không, không phải chỉ "không sai". |
+| **violation rate@k** | tỉ lệ kết quả phá `must` | Bao nhiêu % thứ hiển thị vi phạm điều người dùng nói thẳng. Đây là chỉ số *chất lượng sản phẩm*, không phải chỉ số ranking. |
+
+`violation rate` là chỉ số tìm ra bug nhiều nhất cho đến giờ: 4 lỗi backend thật trong lần chạy
+held-out đầu tiên, tất cả đều vô hình dưới nhãn nhị phân (xem `docs/eval-results.md`).
+
+Các arm `bm25`, `hybrid`, `vector` gọi thẳng retrieval, **không** chạy parser và không áp bộ lọc
+nào, nên violation rate của chúng là con số của retrieval thô — đó là baseline, không phải bug.
 
 ### Trần của recall — điều quan trọng nhất trong tài liệu này
 
@@ -252,6 +328,18 @@ Nhãn xấu làm phép đo vô nghĩa. `--validate` loại bốn loại trước
 
 Ngưỡng đổi được bằng `--max-share`, để nó là tham số hiển chứ không phải hằng số ẩn.
 
+Nhãn graded có hai kiểm tra riêng:
+
+| Trạng thái | Nghĩa là | Vì sao loại |
+|---|---|---|
+| `must_empty` | `must` khắt khe đến mức 0 chiếc trong catalogue thoả | Mọi kết quả đều grade 0, arm nào cũng bằng nhau |
+| `tier_dead` | Một tier không khớp chiếc nào | Tier đó không tồn tại trong phép đo, nhưng vẫn làm người đọc tưởng có |
+
+Ngoài `--validate`, chất lượng rubric còn kiểm bằng judge mù (`judge-pool.mjs`): pool ứng viên từ
+nhiều arm cộng vài chiếc ngẫu nhiên, giấu arm nào tìm ra cái gì, rồi hỏi model chấm 0-3 theo đúng
+những câu `why` trong rubric. Kết quả không phải sự thật — nó là ý kiến thứ hai, và con số đáng báo
+cáo là **mức đồng thuận**. Chỗ nào lệch từ 2 grade trở lên thì đọc lại rubric.
+
 ---
 
 ## 5. Hai loại cache có thể phá phép đo
@@ -285,7 +373,11 @@ docker compose exec -T redis sh -lc \
 |---|---|
 | `run-eval.mjs` | Runner. Chấm các arm, in bảng, ghi JSON per-query. |
 | `catalogue.mjs` | Nạp catalogue từ API, chuẩn hoá specs, đánh giá predicate. |
-| `queries.mjs` | Bộ câu hỏi có nhãn — handwritten + generated. |
+| `queries.mjs` | dev set — 100 câu có nhãn, handwritten + generated. |
+| `frozen-set.mjs` | held-out test set — 36 brief đóng băng, chỉ chạy để báo cáo (`--set=test`). |
+| `judge-pool.mjs` | Judge mù chấm lại rubric: pool nhiều arm, giấu nguồn, so mức đồng thuận. |
+| `label-versions.mjs` | So label v1 và v2 bằng một judge **không** nhìn rubric. |
+| `judge-reply.mjs` | Chấm phần văn của concierge 0-3 từ reply đã lưu trong file kết quả. |
 | `metrics.mjs` | Recall, precision, MRR, nDCG, percentile, bootstrap, trần recall. |
 | `metrics.test.mjs` | Test cho metrics. |
 | `slots.mjs` | Structured filter accuracy — so intent đã parse với facet của nhãn. |
@@ -322,6 +414,20 @@ node eval/run-eval.mjs --scope=semantic --arms=bm25,keyword,vector,hybrid,concie
 node eval/run-eval.mjs --from=eval/results/eval-<stamp>.json   # in lại một lần chạy, không gọi API
 node eval/compare-runs.mjs --a=<run.json> --b=<run.json> --arm=concierge   # cùng một arm, hai lần chạy
 ```
+
+**Held-out set và chấm lại offline:**
+
+```bash
+node eval/run-eval.mjs --set=test --arms=bm25,hybrid       # 36 brief đóng băng, arm miễn phí
+node eval/run-eval.mjs --set=test --arms=bm25,concierge    # tốn tiền: chỉ chạy khi cần báo cáo
+node eval/run-eval.mjs --rescore --from=<run.json>         # sửa nhãn xong chấm lại ids đã lưu, không gọi API
+node eval/judge-pool.mjs --sample=12 --per-brief=10        # judge mù kiểm rubric
+node eval/label-versions.mjs                               # v1 so v2, judge không thấy rubric
+node eval/judge-reply.mjs --from=<run.json>                # chấm phần văn, dùng model mạnh hơn model viết
+```
+
+`--rescore` là lý do mỗi row lưu `rankedIds`: đổi rubric xong không phải trả tiền chạy lại arm có
+model, vì thứ tự kết quả của lần chạy đó đã nằm sẵn trong file.
 
 ### Chạy concierge trên model local (không tốn credit)
 
